@@ -11,7 +11,6 @@ permissions:
   contents: read
   issues: write
   pull-requests: write
-  project: write
 
 jobs:
   sync:
@@ -58,7 +57,7 @@ jobs:
                 query($projectId:ID!){
                   node(id:$projectId){
                     ... on ProjectV2 {
-                      items(first:200){ nodes { id content { ... on Issue { id } ... on PullRequest { id } } } }
+                      items(first:100){ nodes { id content { ... on Issue { id } ... on PullRequest { id } } } }
                     }
                   }
                 }`, { projectId })
