@@ -1,32 +1,45 @@
-APP_PORT ?= 8787
-IMAGE ?= newsbrief
+# ---- Config ----
+IMAGE ?= newsbrief-api:dev
+PORT  ?= 8787
 
-.PHONY: setup venv lock run-local build run stop logs refresh
-
-setup:
-	python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
-
+# ---- Local dev ----
 venv:
-	. .venv/bin/activate
-
-run-local:
-	. .venv/bin/activate; uvicorn app.main:app --reload --port $(APP_PORT)
-
-build:
-	podman build -t $(IMAGE) .
+	python3 -m venv .venv && . .venv/bin/activate && pip install -U pip && pip install -r requirements.txt
 
 run:
-	podman run --name $(IMAGE) -p 127.0.0.1:$(APP_PORT):8787 \
-	  -v $(PWD)/data:/app/data \
-	  -e SUMMARY_MODEL=llama3.1:8b \
-	  -e OLLAMA_HOST=http://host.containers.internal:11434 \
-	  $(IMAGE)
-
-stop:
-	podman stop $(IMAGE) || true && podman rm $(IMAGE) || true
-
-logs:
-	podman logs -f $(IMAGE)
+	uvicorn app.main:app --reload --port $(PORT)
 
 refresh:
-	curl -X POST http://localhost:$(APP_PORT)/refresh
+	curl -s -X POST http://localhost:$(PORT)/refresh | jq .
+
+items:
+	curl -s "http://localhost:$(PORT)/items?limit=20" | jq .
+
+# ---- Container (Docker or Podman) ----
+docker-build:
+	docker build -t $(IMAGE) .
+
+docker-run:
+	# Mount ./data so SQLite persists; map port
+	docker run --rm -it \
+		-p $(PORT):$(PORT) \
+		-v $$PWD/data:/app/data \
+		-e OLLAMA_BASE_URL=$${OLLAMA_BASE_URL:-http://host.docker.internal:11434} \
+		--name newsbrief $(IMAGE)
+
+compose-up:
+	docker compose up -d --build
+
+compose-down:
+	docker compose down
+
+compose-logs:
+	docker compose logs -f
+
+# ---- Podman tips ----
+podman-run:
+	podman run --rm -it \
+		-p $(PORT):$(PORT) \
+		-v $$PWD/data:/app/data \
+		-e OLLAMA_BASE_URL=$${OLLAMA_BASE_URL:-http://host.containers.internal:11434} \
+		--name newsbrief $(IMAGE)
