@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+jinja2
+httpx
+feedparser
+readability-lxml
+beautifulsoup4
+lxml
+sqlite-utils
+python-slugify
+htmx
