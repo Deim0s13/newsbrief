@@ -1,0 +1,142 @@
+name: Project Automation
+
+on:
+  workflow_dispatch:
+  issues:
+    types: [opened, labeled, reopened, closed, assigned]
+  pull_request:
+    types: [opened, ready_for_review, closed]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  project: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_NUMBER: "7"   # <-- your project number
+    steps:
+      - name: Add to Project + Set Fields
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const gql = (q,v) => github.graphql(q, v)
+            const login = context.repo.owner
+            const number = parseInt(process.env.PROJECT_NUMBER, 10)
+
+            // 1) Resolve project id (user or org)
+            const proj = await gql(`
+              query($login:String!,$num:Int!){
+                user(login:$login){ projectV2(number:$num){ id } }
+                organization(login:$login){ projectV2(number:$num){ id } }
+              }`, { login, num: number })
+            const projectId = proj.user?.projectV2?.id || proj.organization?.projectV2?.id
+            if (!projectId) {
+              core.setFailed(`Project #${number} not found under ${login}`)
+              return
+            }
+
+            // 2) Identify triggering content (Issue or PR)
+            const isIssue = context.eventName === 'issues'
+            const payload = isIssue ? context.payload.issue : context.payload.pull_request
+            const contentId = payload.node_id
+
+            // 3) Ensure the item is in the project
+            let itemId
+            try {
+              const add = await gql(`
+                mutation($projectId:ID!,$contentId:ID!){
+                  addProjectV2ItemById(input:{projectId:$projectId,contentId:$contentId}){ item { id } }
+                }`, { projectId, contentId })
+              itemId = add.addProjectV2ItemById.item.id
+            } catch {
+              const items = await gql(`
+                query($projectId:ID!){
+                  node(id:$projectId){
+                    ... on ProjectV2 {
+                      items(first:200){ nodes { id content { ... on Issue { id } ... on PullRequest { id } } } }
+                    }
+                  }
+                }`, { projectId })
+              itemId = items.node.items.nodes.find(n => n.content?.id === contentId)?.id
+              if (!itemId) { core.setFailed("Item not found in project and cannot add."); return }
+            }
+
+            // 4) Fetch fields (Status, Epic) and auto-detect Status options
+            const f = await gql(`
+              query($projectId:ID!){
+                node(id:$projectId){
+                  ... on ProjectV2 {
+                    fields(first:50){
+                      nodes {
+                        ... on ProjectV2FieldCommon { id name }
+                        ... on ProjectV2SingleSelectField { id name options { id name } }
+                      }
+                    }
+                  }
+                }
+              }`, { projectId })
+            const fields = f.node.fields.nodes
+            const findField = n => fields.find(fl => fl.name === n)
+            const statusField = findField("Status")
+            const epicField   = findField("Epic")
+
+            if (!statusField) { core.info("No Status field found; exiting"); return }
+            const statusOpts = statusField.options || []
+            const firstOpt   = statusOpts[0]  // your "Todo"/"To do"/"Not started"
+            const findOpt = (...candidates) => {
+              const exact = n => statusOpts.find(o => o.name.toLowerCase() === n.toLowerCase())
+              for (const n of candidates) { const m = exact(n); if (m) return m }
+              const rx = new RegExp(candidates.join("|"), "i")
+              return statusOpts.find(o => rx.test(o.name))
+            }
+            const todoOpt = firstOpt || findOpt("Todo","To do","Not started","Backlog")
+            const wipOpt  = findOpt("In Progress","In progress","Doing","WIP","Started") || todoOpt
+            const doneOpt = findOpt("Done","Complete","Completed","Closed","Resolved") || statusOpts[statusOpts.length-1] || todoOpt
+
+            async function setSingleSelect(field, opt) {
+              if (!field || !opt) return
+              await gql(`
+                mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!,$opt:String!){
+                  updateProjectV2ItemFieldValue(input:{
+                    projectId:$projectId,itemId:$itemId,fieldId:$fieldId,
+                    value:{ singleSelectOptionId:$opt }
+                  }){ projectV2Item { id } }
+                }`, { projectId, itemId, fieldId: field.id, opt: opt.id })
+            }
+            const setStatus = (opt) => setSingleSelect(statusField, opt)
+
+            // 5) Epic mapping from labels (issues only)
+            const labels = (payload.labels || []).map(l => l.name)
+            const epicLabel = labels.find(l => l.startsWith("epic:"))
+            const epicName  = epicLabel ? epicLabel.replace(/^epic:/,'').trim() : null
+            if (epicName && epicField) {
+              const epicOpt = (epicField.options || []).find(o => o.name === epicName)
+              if (epicOpt) await setSingleSelect(epicField, epicOpt)
+            }
+
+            // 6) Status rules
+            const action = context.payload.action
+
+            // New / Reopened -> Todo
+            if ((isIssue && (action === 'opened' || action === 'reopened')) ||
+                (!isIssue && action === 'opened')) {
+              await setStatus(todoOpt)
+            }
+
+            // Assigned or labeled "in-progress" -> In Progress
+            if ((isIssue && action === 'assigned') ||
+                (isIssue && action === 'labeled' && context.payload.label?.name === 'in-progress') ||
+                (!isIssue && action === 'ready_for_review')) {
+              await setStatus(wipOpt)
+            }
+
+            // Closed or PR merged -> Done
+            if ((isIssue && action === 'closed') ||
+                (!isIssue && action === 'closed' && context.payload.pull_request.merged)) {
+              await setStatus(doneOpt)
+            }
