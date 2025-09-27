@@ -87,21 +87,83 @@ POST /refresh HTTP/1.1
 **Success (200)**
 ```json
 {
-  "ingested": 47
+  "ingested": 47,
+  "stats": {
+    "items": {
+      "total": 47,
+      "per_feed": {
+        "1": 20,
+        "2": 15,
+        "3": 12
+      },
+      "robots_blocked": 3
+    },
+    "feeds": {
+      "processed": 3,
+      "skipped_disabled": 1,
+      "skipped_robots": 0,
+      "cached_304": 2,
+      "errors": 1
+    },
+    "performance": {
+      "refresh_time_seconds": 12.45,
+      "hit_global_limit": false,
+      "hit_time_limit": false
+    },
+    "config": {
+      "max_items_per_refresh": 150,
+      "max_items_per_feed": 50,
+      "max_refresh_time_seconds": 300
+    }
+  }
 }
 ```
 
+#### Response Fields
+
 | Field | Type | Description |
 |-------|------|-------------|
-| `ingested` | integer | Number of new articles added |
+| `ingested` | integer | **Total number of new articles added (backward compatibility)** |
+| `stats` | object | **Detailed refresh statistics and performance metrics** |
+| `stats.items.total` | integer | Total items ingested this refresh |
+| `stats.items.per_feed` | object | Items ingested per feed ID (fair distribution tracking) |
+| `stats.items.robots_blocked` | integer | Articles blocked by robots.txt policies |
+| `stats.feeds.processed` | integer | Feeds successfully processed |
+| `stats.feeds.skipped_disabled` | integer | Feeds skipped (disabled) |
+| `stats.feeds.skipped_robots` | integer | Feeds skipped (robots.txt blocked) |
+| `stats.feeds.cached_304` | integer | Feeds that returned 304 Not Modified |
+| `stats.feeds.errors` | integer | Feeds with connection/parsing errors |
+| `stats.performance.refresh_time_seconds` | float | Total refresh operation time |
+| `stats.performance.hit_global_limit` | boolean | Whether global item limit was reached |
+| `stats.performance.hit_time_limit` | boolean | Whether time limit was reached |
+| `stats.config.max_items_per_refresh` | integer | Current global item limit |
+| `stats.config.max_items_per_feed` | integer | Current per-feed fairness limit |
+| `stats.config.max_refresh_time_seconds` | integer | Current time-based safety limit |
 
 #### Behavior
 
-- Respects ETag and Last-Modified headers for efficient fetching
-- Skips disabled feeds and feeds that don't allow robots
-- Processes up to 150 items per refresh (configurable)
-- Automatically deduplicates articles by URL
-- Extracts readable content from article pages
+**Feed Processing:**
+- Respects ETag and Last-Modified headers for efficient caching
+- Skips disabled feeds and feeds blocked by robots.txt policies
+- Implements fair distribution with per-feed limits to prevent quota hogging
+- Automatically deduplicates articles by URL hash
+
+**Content Extraction:**
+- Extracts readable content from article pages using Mozilla Readability
+- Respects robots.txt policies before fetching individual article content
+- Gracefully degrades when content extraction is blocked or fails
+
+**Limits and Safety:**
+- **Global limit**: Configurable via `NEWSBRIEF_MAX_ITEMS_PER_REFRESH` (default: 150)
+- **Per-feed limit**: Configurable via `NEWSBRIEF_MAX_ITEMS_PER_FEED` (default: 50)
+- **Time limit**: Configurable via `NEWSBRIEF_MAX_REFRESH_TIME` (default: 300 seconds)
+- **Multiple exit conditions**: Stops when any limit is reached for predictable runtime
+
+**Comprehensive Monitoring:**
+- Tracks item distribution across feeds for fairness verification
+- Records feed-level statistics (errors, caching effectiveness, robots.txt blocks)
+- Provides performance metrics and limit breach detection
+- Exposes runtime configuration for operational transparency
 
 #### Example
 

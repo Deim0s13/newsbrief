@@ -101,7 +101,15 @@ Modern RSS readers are often cloud-based services that compromise privacy, requi
 - **Fail-safe design**: Network/parsing errors default to "allow" for service reliability
 - **Graceful degradation**: Blocked articles saved without full content rather than rejected
 
-#### 4. Extensible Architecture
+#### 4. Enhanced Fetch Cap Strategy ⭐ *Added in v0.2.4*
+- **Multi-layer limits**: Global, per-feed, and time-based safety caps for predictable runtime
+- **Fair distribution**: Per-feed limits prevent individual feeds from consuming entire refresh quota
+- **Configurable via environment**: Production-ready flexibility without code changes
+- **Comprehensive monitoring**: Detailed statistics for operational insights and debugging
+- **Backward compatibility**: Enhanced API maintains existing integrations while adding new capabilities
+- **Performance optimization**: Early exit conditions and efficient limit checking minimize overhead
+
+#### 5. Extensible Architecture
 - **Plugin-ready**: Clean separation of concerns for future extensions
 - **API-first**: All functionality exposed via REST endpoints
 - **Modular components**: Easy to swap implementations (e.g., database)

@@ -59,6 +59,9 @@ make run
 
 ### **Environment Variables**
 
+NewsBrief supports several environment variables for configuration:
+
+#### **Core Configuration**
 ```bash
 # Optional: Ollama integration (for future LLM features)
 export OLLAMA_BASE_URL=http://localhost:11434
@@ -67,21 +70,97 @@ export OLLAMA_BASE_URL=http://localhost:11434
 export DATA_DIR=/path/to/your/data
 ```
 
+#### **Fetch Limits & Performance** ⭐ *New in v0.2.4*
+```bash
+# Global item limit per refresh (default: 150)
+export NEWSBRIEF_MAX_ITEMS_PER_REFRESH=200
+
+# Per-feed fairness limit (default: 50)
+export NEWSBRIEF_MAX_ITEMS_PER_FEED=25
+
+# Time-based safety cap in seconds (default: 300 = 5 minutes)
+export NEWSBRIEF_MAX_REFRESH_TIME=600
+
+# Example: Production configuration for high-volume feeds
+export NEWSBRIEF_MAX_ITEMS_PER_REFRESH=500
+export NEWSBRIEF_MAX_ITEMS_PER_FEED=100
+export NEWSBRIEF_MAX_REFRESH_TIME=900  # 15 minutes
+```
+
+#### **Container Configuration Examples**
+```bash
+# Development: Fast refresh with low limits
+podman run --rm -d \
+  -p 8787:8787 \
+  -v ./data:/app/data \
+  -e NEWSBRIEF_MAX_ITEMS_PER_REFRESH=50 \
+  -e NEWSBRIEF_MAX_ITEMS_PER_FEED=10 \
+  -e NEWSBRIEF_MAX_REFRESH_TIME=120 \
+  --name newsbrief newsbrief-api:latest
+
+# Production: High-capacity configuration
+podman run --rm -d \
+  -p 8787:8787 \
+  -v ./data:/app/data \
+  -e NEWSBRIEF_MAX_ITEMS_PER_REFRESH=1000 \
+  -e NEWSBRIEF_MAX_ITEMS_PER_FEED=200 \
+  -e NEWSBRIEF_MAX_REFRESH_TIME=1800 \
+  --name newsbrief newsbrief-api:latest
+```
+
 ## 🧪 Testing & Debugging
 
 ### **Manual API Testing**
 
 ```bash
-# Add a test feed
+# Add test feeds
 curl -X POST http://localhost:8787/feeds \
   -H "Content-Type: application/json" \
   -d '{"url": "https://feeds.bbci.co.uk/news/rss.xml"}'
 
-# Fetch articles
-curl -X POST http://localhost:8787/refresh
+curl -X POST http://localhost:8787/feeds \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://hnrss.org/frontpage"}'
+
+# Fetch articles with enhanced statistics
+curl -X POST http://localhost:8787/refresh | jq .
+
+# View just the statistics summary  
+curl -X POST http://localhost:8787/refresh | jq .stats
+
+# Monitor performance metrics
+curl -X POST http://localhost:8787/refresh | jq '.stats.performance'
+
+# Check per-feed fairness distribution
+curl -X POST http://localhost:8787/refresh | jq '.stats.items.per_feed'
 
 # List articles
 curl "http://localhost:8787/items?limit=5" | jq .
+```
+
+#### **Enhanced Monitoring Examples** ⭐ *New in v0.2.4*
+
+```bash
+# Monitor refresh performance
+watch -n 30 'curl -s -X POST http://localhost:8787/refresh | jq ".stats.performance"'
+
+# Check if limits are being hit
+curl -s -X POST http://localhost:8787/refresh | jq '
+  if .stats.performance.hit_global_limit then
+    "WARNING: Global limit reached" 
+  elif .stats.performance.hit_time_limit then
+    "WARNING: Time limit reached"
+  else
+    "OK: Within limits"
+  end'
+
+# View fairness distribution
+curl -s -X POST http://localhost:8787/refresh | jq '
+  "Per-feed distribution:", 
+  (.stats.items.per_feed | to_entries[] | "\(.key): \(.value) items")'
+
+# Configuration check
+curl -s -X POST http://localhost:8787/refresh | jq '.stats.config'
 ```
 
 ### **Database Inspection**
