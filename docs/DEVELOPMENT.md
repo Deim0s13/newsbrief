@@ -269,6 +269,146 @@ podman logs newsbrief
 podman exec -it newsbrief /bin/bash
 ```
 
+## 🤖 Robots.txt Compliance
+
+NewsBrief includes comprehensive robots.txt support to ensure respectful web crawling and compliance with website policies.
+
+### **Implementation Overview**
+
+NewsBrief implements robots.txt checking at two levels:
+
+```python
+# Key functions in app/feeds.py
+
+is_robot_allowed(feed_url)           # Feed-level checking
+is_article_url_allowed(article_url)  # Article-level checking  
+_get_robots_txt(domain)             # Cached robots.txt fetching
+_check_robots_txt_path(robots_txt, path, user_agent)  # Parser
+```
+
+### **How It Works**
+
+**1. Feed Addition**
+- When adding feeds, `is_robot_allowed()` fetches and parses robots.txt
+- Result stored in `feeds.robots_allowed` column (1=allowed, 0=blocked)
+- Blocked feeds are skipped during refresh cycles
+
+**2. Article Content Extraction**
+- Before fetching article content, `is_article_url_allowed()` validates each URL
+- Uses specific User-agent: `newsbrief` for identification
+- If disallowed, article is saved without full content (graceful degradation)
+
+**3. Performance Optimization**
+- In-memory cache prevents repeated robots.txt requests
+- Cache cleared at start of each refresh cycle for freshness
+- Failed requests cached as "allow" to avoid timeout loops
+
+### **Robots.txt Parser Features**
+
+```python
+# Supports proper robots.txt syntax:
+User-agent: *
+Disallow: /admin/
+Disallow: /api/
+Allow: /rss/
+
+User-agent: newsbrief
+Disallow: /private/
+```
+
+**Parsing Rules**:
+- ✅ Multiple `User-agent` sections  
+- ✅ `Disallow:` patterns with path prefixes
+- ✅ `Allow:` patterns that override disallows
+- ✅ `Disallow: /` blocks entire site
+- ✅ Empty `Disallow:` allows everything
+
+### **Database Schema**
+
+```sql
+CREATE TABLE feeds (
+  id INTEGER PRIMARY KEY,
+  url TEXT UNIQUE NOT NULL,
+  robots_allowed INTEGER DEFAULT 1,  -- 1=allowed, 0=blocked
+  disabled INTEGER DEFAULT 0,
+  etag TEXT,
+  last_modified TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### **Testing Robots.txt**
+
+**Test permissive robots.txt:**
+
+```bash
+# Add HackerNews RSS (robots.txt allows everything)
+curl -X POST http://localhost:8787/feeds \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://hnrss.org/frontpage"}'
+
+# Refresh should work normally
+curl -X POST http://localhost:8787/refresh
+```
+
+**Check restrictive robots.txt:**
+
+```bash
+# Check Reddit's restrictive robots.txt
+curl -s https://www.reddit.com/robots.txt | head -10
+# Output: Disallow: / (blocks everything)
+
+# Adding Reddit RSS would be blocked
+curl -X POST http://localhost:8787/feeds \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://www.reddit.com/r/programming.rss"}'
+```
+
+**Debug robots.txt behavior:**
+
+```bash
+# Check feed status in database
+sqlite3 data/newsbrief.sqlite3 "SELECT url, robots_allowed FROM feeds;"
+
+# Watch cache behavior in logs
+podman logs newsbrief | grep -i robots
+```
+
+### **Configuration**
+
+Robots.txt behavior is configured via constants in `app/feeds.py`:
+
+```python
+HTTP_TIMEOUT = 20.0                      # robots.txt request timeout  
+_robots_txt_cache: dict[str, str | None] = {}  # cache storage
+```
+
+**User-Agent Strings**:
+- **Feed checking**: `User-agent: *` (matches general policies)
+- **Article checking**: `User-agent: newsbrief` (specific identification)
+
+### **Error Handling & Fail-Safe Design**
+
+```python
+def is_robot_allowed(feed_url: str) -> bool:
+    try:
+        robots_txt = _get_robots_txt(domain)
+        if robots_txt is None:
+            return True  # No robots.txt = allowed
+        return _check_robots_txt_path(robots_txt, path, user_agent='*')
+    except Exception:
+        return True  # Error = allow (fail-safe)
+```
+
+**Fail-Safe Principles**:
+- Network errors default to "allow"
+- Invalid robots.txt defaults to "allow"  
+- Parsing errors default to "allow"
+- Missing robots.txt defaults to "allow"
+
+This ensures service reliability while respecting robots.txt when available.
+
 ## 🎯 Feature Development
 
 ### **Adding New API Endpoints**

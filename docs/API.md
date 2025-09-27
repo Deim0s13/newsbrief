@@ -20,7 +20,7 @@ NewsBrief automatically generates interactive API documentation:
 
 ### **POST /feeds**
 
-Add a new RSS feed to the system.
+Add a new RSS feed to the system. NewsBrief automatically checks the feed's robots.txt compliance before adding.
 
 #### Request
 
@@ -74,7 +74,7 @@ curl -X POST http://localhost:8787/feeds \
 
 ### **POST /refresh**
 
-Fetch latest articles from all configured feeds.
+Fetch latest articles from all configured feeds. Only processes feeds that comply with robots.txt policies. For each article, respects robots.txt before extracting full content.
 
 #### Request
 

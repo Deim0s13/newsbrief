@@ -91,9 +91,17 @@ Modern RSS readers are often cloud-based services that compromise privacy, requi
 - **Efficient caching**: ETag and Last-Modified headers reduce bandwidth
 - **Content extraction**: Mozilla Readability for clean article text
 - **Deduplication**: URL-based hashing prevents duplicate articles
-- **Respectful fetching**: robots.txt compliance and reasonable rate limits
+- **Robots.txt compliance**: Two-tier checking (feed-level + article-level) with caching
+- **Respectful fetching**: Configurable timeouts, fail-safe error handling, User-Agent identification
 
-#### 3. Extensible Architecture
+#### 3. Robots.txt Compliance Strategy
+- **Dual-layer checking**: Feed URLs validated on addition, article URLs validated before content extraction
+- **Performance-optimized**: In-memory caching with refresh-cycle invalidation
+- **Standards compliance**: Proper parsing of User-agent, Disallow, and Allow directives
+- **Fail-safe design**: Network/parsing errors default to "allow" for service reliability
+- **Graceful degradation**: Blocked articles saved without full content rather than rejected
+
+#### 4. Extensible Architecture
 - **Plugin-ready**: Clean separation of concerns for future extensions
 - **API-first**: All functionality exposed via REST endpoints
 - **Modular components**: Easy to swap implementations (e.g., database)
