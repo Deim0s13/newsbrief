@@ -1,7 +1,17 @@
 services:
-  newsbrief:
+  api:
     build: .
+    container_name: newsbrief
     ports:
-      - "127.0.0.1:8787:8787"
+      - "8787:8787"
+    environment:
+      # If you run Ollama on the host:
+      # Docker Desktop on macOS/Windows:
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      # On Podman, override to:
+      # OLLAMA_BASE_URL=http://host.containers.internal:11434
     volumes:
       - ./data:/app/data
+    # For Docker on Linux, uncomment to resolve host.docker.internal
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
