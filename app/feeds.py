@@ -1,6 +1,8 @@
 from __future__ import annotations
 import hashlib
+import os
 import time
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Iterable, Optional, Tuple
 import httpx
@@ -9,7 +11,25 @@ from sqlalchemy import text
 from .db import session_scope
 from .readability import extract_readable
 
-MAX_ITEMS_PER_REFRESH = 150         # global cap per run
+@dataclass
+class RefreshStats:
+    """Detailed statistics from a refresh operation."""
+    total_items: int
+    total_feeds_processed: int
+    feeds_skipped_disabled: int
+    feeds_skipped_robots: int
+    feeds_cached_304: int
+    feeds_error: int
+    items_per_feed: dict[int, int]
+    refresh_time_seconds: float
+    hit_global_limit: bool
+    hit_time_limit: bool
+    robots_txt_blocked_articles: int
+
+# Configurable limits (can be overridden by environment variables)
+MAX_ITEMS_PER_REFRESH = int(os.getenv("NEWSBRIEF_MAX_ITEMS_PER_REFRESH", "150"))
+MAX_ITEMS_PER_FEED = int(os.getenv("NEWSBRIEF_MAX_ITEMS_PER_FEED", "50"))
+MAX_REFRESH_TIME_SECONDS = int(os.getenv("NEWSBRIEF_MAX_REFRESH_TIME", "300"))  # 5 minutes
 HTTP_TIMEOUT = 20.0                 # seconds
 
 # In-memory cache for robots.txt files (cleared each refresh cycle)
@@ -172,60 +192,117 @@ def import_opml(path: str) -> int:
         pass
     return added
 
-def fetch_and_store() -> int:
+def fetch_and_store() -> RefreshStats:
     """
     Iterate all feeds, use ETag/Last-Modified. Respect robots_allowed/disabled.
-    Insert new items up to MAX_ITEMS_PER_REFRESH.
+    Implements fair distribution, configurable limits, and comprehensive reporting.
     """
+    start_time = time.time()
+    
     # Clear robots.txt cache at start of each refresh cycle
     global _robots_txt_cache
     _robots_txt_cache = {}
     
-    inserted = 0
+    # Initialize statistics tracking
+    stats = RefreshStats(
+        total_items=0,
+        total_feeds_processed=0,
+        feeds_skipped_disabled=0,
+        feeds_skipped_robots=0,
+        feeds_cached_304=0,
+        feeds_error=0,
+        items_per_feed={},
+        refresh_time_seconds=0.0,
+        hit_global_limit=False,
+        hit_time_limit=False,
+        robots_txt_blocked_articles=0
+    )
+    
     with httpx.Client(timeout=HTTP_TIMEOUT, headers={"User-Agent": "newsbrief/0.1"}) as client:
         for fid, url, etag, last_mod, robots_allowed, disabled in list_feeds():
-            if disabled or not robots_allowed:
+            # Check time limit
+            elapsed = time.time() - start_time
+            if elapsed > MAX_REFRESH_TIME_SECONDS:
+                stats.hit_time_limit = True
+                break
+            
+            # Track feed-specific statistics
+            stats.items_per_feed[fid] = 0
+            
+            # Skip disabled feeds
+            if disabled:
+                stats.feeds_skipped_disabled += 1
                 continue
+                
+            # Skip feeds blocked by robots.txt
+            if not robots_allowed:
+                stats.feeds_skipped_robots += 1
+                continue
+            
+            # Prepare cache headers
             headers = {}
             if etag:
                 headers["If-None-Match"] = etag
             if last_mod:
                 headers["If-Modified-Since"] = last_mod
 
+            # Fetch feed
             try:
                 resp = client.get(url, headers=headers)
             except Exception:
+                stats.feeds_error += 1
                 continue
 
+            # Handle cached response
             if resp.status_code == 304:
+                stats.feeds_cached_304 += 1
                 continue
 
+            # Handle error responses  
             if resp.status_code >= 400:
-                # back off temporarily by marking disabled? For now, continue.
+                stats.feeds_error += 1
                 continue
 
-            # update caching headers
+            # Successfully fetched feed
+            stats.total_feeds_processed += 1
+            
+            # Update caching headers
             new_etag = resp.headers.get("ETag")
             new_last_mod = resp.headers.get("Last-Modified")
 
-            # parse feed
+            # Parse feed
             parsed = feedparser.parse(resp.content)
-            # store headers
+            
+            # Store headers
             with session_scope() as s:
                 s.execute(text("""
                     UPDATE feeds SET etag=:e, last_modified=:lm, updated_at=CURRENT_TIMESTAMP WHERE id=:id
                 """), {"e": new_etag, "lm": new_last_mod, "id": fid})
 
+            # Process feed entries with per-feed limit for fairness
             for entry in parsed.entries:
-                if inserted >= MAX_ITEMS_PER_REFRESH:
-                    return inserted
+                # Check global limit
+                if stats.total_items >= MAX_ITEMS_PER_REFRESH:
+                    stats.hit_global_limit = True
+                    break
+                    
+                # Check per-feed limit for fairness
+                if stats.items_per_feed[fid] >= MAX_ITEMS_PER_FEED:
+                    break
+                
+                # Check time limit
+                elapsed = time.time() - start_time  
+                if elapsed > MAX_REFRESH_TIME_SECONDS:
+                    stats.hit_time_limit = True
+                    break
 
                 link = entry.get("link") or entry.get("id")
                 if not link:
                     continue
+                    
                 h = url_hash(link)
 
-                # skip if exists
+                # Skip if exists
                 with session_scope() as s:
                     exists = s.execute(text("SELECT 1 FROM items WHERE url_hash=:h"), {"h": h}).first()
                     if exists:
@@ -241,10 +318,11 @@ def fetch_and_store() -> int:
                             break
                         except Exception:
                             pass
-                # initial summary (feed-provided)
+                            
+                # Initial summary (feed-provided)
                 summary = entry.get("summary") or ""
 
-                # fetch article page for full text (best-effort)
+                # Fetch article page for full text (best-effort)
                 content_text = None
                 try:
                     # Check robots.txt before fetching article content
@@ -252,10 +330,13 @@ def fetch_and_store() -> int:
                         page = client.get(link, follow_redirects=True, timeout=HTTP_TIMEOUT)
                         if page.status_code < 400 and page.headers.get("content-type","").startswith(("text/html","application/xhtml")):
                             _, content_text = extract_readable(page.text)
-                    # If robots.txt disallows, content_text remains None (graceful degradation)
+                    else:
+                        stats.robots_txt_blocked_articles += 1
+                        # If robots.txt disallows, content_text remains None (graceful degradation)
                 except Exception:
                     pass
 
+                # Insert item
                 with session_scope() as s:
                     s.execute(text("""
                     INSERT INTO items(feed_id, title, url, url_hash, published, author, summary, content)
@@ -270,5 +351,14 @@ def fetch_and_store() -> int:
                         "summary": summary,
                         "content": content_text
                     })
-                inserted += 1
-    return inserted
+                
+                stats.total_items += 1
+                stats.items_per_feed[fid] += 1
+            
+            # Break outer loop if limits hit
+            if stats.hit_global_limit or stats.hit_time_limit:
+                break
+    
+    # Record final timing
+    stats.refresh_time_seconds = time.time() - start_time
+    return stats

@@ -3,7 +3,7 @@ from fastapi import FastAPI, Query
 from typing import List
 from .db import init_db, session_scope
 from .models import FeedIn, ItemOut
-from .feeds import add_feed, import_opml, fetch_and_store
+from .feeds import add_feed, import_opml, fetch_and_store, RefreshStats, MAX_ITEMS_PER_REFRESH, MAX_ITEMS_PER_FEED, MAX_REFRESH_TIME_SECONDS
 
 app = FastAPI(title="NewsBrief")
 
@@ -20,8 +20,37 @@ def add_feed_endpoint(feed: FeedIn):
 
 @app.post("/refresh")
 def refresh_endpoint():
-    n = fetch_and_store()
-    return {"ingested": n}
+    stats = fetch_and_store()
+    return {
+        # Backward compatibility
+        "ingested": stats.total_items,
+        
+        # Enhanced statistics
+        "stats": {
+            "items": {
+                "total": stats.total_items,
+                "per_feed": stats.items_per_feed,
+                "robots_blocked": stats.robots_txt_blocked_articles
+            },
+            "feeds": {
+                "processed": stats.total_feeds_processed,
+                "skipped_disabled": stats.feeds_skipped_disabled,
+                "skipped_robots": stats.feeds_skipped_robots,
+                "cached_304": stats.feeds_cached_304,
+                "errors": stats.feeds_error
+            },
+            "performance": {
+                "refresh_time_seconds": round(stats.refresh_time_seconds, 2),
+                "hit_global_limit": stats.hit_global_limit,
+                "hit_time_limit": stats.hit_time_limit
+            },
+            "config": {
+                "max_items_per_refresh": MAX_ITEMS_PER_REFRESH,
+                "max_items_per_feed": MAX_ITEMS_PER_FEED,
+                "max_refresh_time_seconds": MAX_REFRESH_TIME_SECONDS
+            }
+        }
+    }
 
 @app.get("/items", response_model=List[ItemOut])
 def list_items(limit: int = Query(50, le=200)):
