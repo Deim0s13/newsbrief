@@ -12,25 +12,127 @@ from .readability import extract_readable
 MAX_ITEMS_PER_REFRESH = 150         # global cap per run
 HTTP_TIMEOUT = 20.0                 # seconds
 
+# In-memory cache for robots.txt files (cleared each refresh cycle)
+_robots_txt_cache: dict[str, str | None] = {}
+
 def url_hash(url: str) -> str:
     return hashlib.sha256(url.encode("utf-8")).hexdigest()
 
+def _get_robots_txt(domain: str) -> str | None:
+    """
+    Get robots.txt content for domain, using cache.
+    Returns None if not available or error.
+    """
+    if domain in _robots_txt_cache:
+        return _robots_txt_cache[domain]
+    
+    try:
+        robots_url = f"https://{domain}/robots.txt"
+        with httpx.Client(timeout=HTTP_TIMEOUT) as c:
+            r = c.get(robots_url)
+            if r.status_code == 200:
+                _robots_txt_cache[domain] = r.text
+                return r.text
+    except Exception:
+        pass
+    
+    # Cache empty result to avoid repeated failures
+    _robots_txt_cache[domain] = None
+    return None
+
 def is_robot_allowed(feed_url: str) -> bool:
-    # simple allow: try fetch robots.txt and disallow if matching
+    """
+    Check if feed URL is allowed by robots.txt.
+    Uses simple robots.txt parsing for common patterns.
+    """
     try:
         from urllib.parse import urlparse
         parts = urlparse(feed_url)
-        robots_url = f"{parts.scheme}://{parts.netloc}/robots.txt"
-        with httpx.Client(timeout=HTTP_TIMEOUT) as c:
-            r = c.get(robots_url)
-            if r.status_code != 200:
-                return True
-            # naive: if "Disallow: /" exists, consider blocked
-            if "Disallow: /" in r.text:
-                return False
+        domain = parts.netloc
+        
+        robots_txt = _get_robots_txt(domain)
+        if robots_txt is None:
+            return True  # No robots.txt = allowed
+            
+        return _check_robots_txt_path(robots_txt, parts.path or '/', user_agent='*')
     except Exception:
+        return True  # Error = allow (fail-safe)
+
+def _check_robots_txt_path(robots_txt: str, path: str, user_agent: str = '*') -> bool:
+    """
+    Parse robots.txt and check if specific path is allowed.
+    
+    Args:
+        robots_txt: Raw robots.txt content
+        path: URL path to check (e.g., '/rss.xml')
+        user_agent: User agent to match (default: '*')
+    
+    Returns:
+        True if allowed, False if disallowed
+    """
+    if not robots_txt.strip():
         return True
-    return True
+    
+    # Simple line-by-line parser
+    current_user_agent = None
+    disallow_patterns: list[str] = []
+    allow_patterns: list[str] = []
+    
+    for line in robots_txt.split('\n'):
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+            
+        if line.lower().startswith('user-agent:'):
+            current_user_agent = line.split(':', 1)[1].strip()
+            if current_user_agent in ('*', user_agent.lower()):
+                disallow_patterns = []  # Reset for this user agent
+                allow_patterns = []
+        elif current_user_agent in ('*', user_agent.lower()):
+            if line.lower().startswith('disallow:'):
+                pattern = line.split(':', 1)[1].strip()
+                if pattern:
+                    disallow_patterns.append(pattern)
+            elif line.lower().startswith('allow:'):
+                pattern = line.split(':', 1)[1].strip()
+                if pattern:
+                    allow_patterns.append(pattern)
+    
+    # Check allow patterns first (they override disallow)
+    for pattern in allow_patterns:
+        if _path_matches_pattern(path, pattern):
+            return True
+    
+    # Check disallow patterns
+    for pattern in disallow_patterns:
+        if _path_matches_pattern(path, pattern):
+            return False
+    
+    return True  # Default: allow
+
+def _path_matches_pattern(path: str, pattern: str) -> bool:
+    """Check if path matches robots.txt pattern (simple prefix matching)."""
+    if pattern == '/':
+        return True  # Disallow everything
+    return path.startswith(pattern)
+
+def is_article_url_allowed(article_url: str) -> bool:
+    """
+    Check if individual article URL is allowed by robots.txt.
+    Used before fetching article content for readability extraction.
+    """
+    try:
+        from urllib.parse import urlparse
+        parts = urlparse(article_url)
+        domain = parts.netloc
+        
+        robots_txt = _get_robots_txt(domain)
+        if robots_txt is None:
+            return True  # No robots.txt = allowed
+            
+        return _check_robots_txt_path(robots_txt, parts.path or '/', user_agent='newsbrief')
+    except Exception:
+        return True  # Error = allow (fail-safe)
 
 def ensure_feed(feed_url: str) -> int:
     with session_scope() as s:
@@ -75,6 +177,10 @@ def fetch_and_store() -> int:
     Iterate all feeds, use ETag/Last-Modified. Respect robots_allowed/disabled.
     Insert new items up to MAX_ITEMS_PER_REFRESH.
     """
+    # Clear robots.txt cache at start of each refresh cycle
+    global _robots_txt_cache
+    _robots_txt_cache = {}
+    
     inserted = 0
     with httpx.Client(timeout=HTTP_TIMEOUT, headers={"User-Agent": "newsbrief/0.1"}) as client:
         for fid, url, etag, last_mod, robots_allowed, disabled in list_feeds():
@@ -141,9 +247,12 @@ def fetch_and_store() -> int:
                 # fetch article page for full text (best-effort)
                 content_text = None
                 try:
-                    page = client.get(link, follow_redirects=True, timeout=HTTP_TIMEOUT)
-                    if page.status_code < 400 and page.headers.get("content-type","").startswith(("text/html","application/xhtml")):
-                        _, content_text = extract_readable(page.text)
+                    # Check robots.txt before fetching article content
+                    if is_article_url_allowed(link):
+                        page = client.get(link, follow_redirects=True, timeout=HTTP_TIMEOUT)
+                        if page.status_code < 400 and page.headers.get("content-type","").startswith(("text/html","application/xhtml")):
+                            _, content_text = extract_readable(page.text)
+                    # If robots.txt disallows, content_text remains None (graceful degradation)
                 except Exception:
                     pass
 
