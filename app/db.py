@@ -54,10 +54,27 @@ def init_db() -> None:
           author TEXT,
           summary TEXT,
           content TEXT,
+          ai_summary TEXT,
+          ai_model TEXT,
+          ai_generated_at DATETIME,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY(feed_id) REFERENCES feeds(id)
         );
         """)
+        
+        # Migration: Add AI summary columns if they don't exist
+        try:
+            conn.exec_driver_sql("ALTER TABLE items ADD COLUMN ai_summary TEXT;")
+        except:
+            pass  # Column already exists
+        try:
+            conn.exec_driver_sql("ALTER TABLE items ADD COLUMN ai_model TEXT;")
+        except:
+            pass  # Column already exists
+        try:
+            conn.exec_driver_sql("ALTER TABLE items ADD COLUMN ai_generated_at DATETIME;")
+        except:
+            pass  # Column already exists
         conn.exec_driver_sql("""
         CREATE INDEX IF NOT EXISTS idx_items_published ON items(published DESC);
         """)

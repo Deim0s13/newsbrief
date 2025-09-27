@@ -8,3 +8,4 @@ lxml
 sqlalchemy>=2.0
 pydantic>=2.7
 python-slugify
+ollama>=0.3.0
