@@ -53,14 +53,44 @@ push: tag
 		$(RUNTIME) push $(IMAGE_BASE):$$t; \
 	done
 
+# ---------- Cleanup helpers ----------
+cleanup-old-images:               ## Remove old image versions (keeps current + 1 previous)
+	@echo "🧹 Cleaning up old newsbrief images..."
+	@# Stop and remove any running newsbrief containers
+	-$(RUNTIME) stop newsbrief 2>/dev/null || true
+	-$(RUNTIME) rm newsbrief 2>/dev/null || true
+	@# Get current image ID to protect it
+	@CURRENT_ID=$$($(RUNTIME) images --format "{{.ID}}" localhost/newsbrief-api:buildcache 2>/dev/null || echo ""); \
+	if [ -n "$$CURRENT_ID" ]; then \
+		echo "🛡️  Protecting current image: $$CURRENT_ID"; \
+		$(RUNTIME) images localhost/newsbrief-api --format "{{.Repository}}:{{.Tag}} {{.ID}}" | \
+		while read -r tag id; do \
+			if [ "$$tag" != "localhost/newsbrief-api:buildcache" ] && [ "$$id" != "$$CURRENT_ID" ]; then \
+				echo "🗑️  Removing old image: $$tag ($$id)"; \
+				$(RUNTIME) rmi "$$tag" 2>/dev/null || true; \
+			fi; \
+		done; \
+	fi
+	@# Clean up any orphaned images and build cache
+	-$(RUNTIME) system prune -f >/dev/null 2>&1
+	@echo "✅ Cleanup complete!"
+
 # Convenience targets
 release:                          ## Example: make release VERSION=v0.2.0 REGISTRY=ghcr.io/deim0s13
 	@test -n "$(VERSION)" || (echo "Set VERSION=vX.Y.Z" && exit 1)
 	$(MAKE) push
 
-local-release:                    ## Build and tag locally: make local-release VERSION=v0.2.0
+local-release:                    ## Build and tag locally: make local-release VERSION=v0.2.0 [CLEANUP=true]
 	@test -n "$(VERSION)" || (echo "Set VERSION=vX.Y.Z" && exit 1)
+	@if [ "$(CLEANUP)" = "true" ]; then $(MAKE) cleanup-old-images; fi
 	$(MAKE) tag
+	@if [ "$(CLEANUP)" = "true" ]; then echo "🎉 Released $(VERSION) with cleanup!"; else echo "💡 Tip: Use CLEANUP=true to auto-remove old images"; fi
+
+clean-release:                    ## Build new version and auto-cleanup old images
+	@test -n "$(VERSION)" || (echo "Set VERSION=vX.Y.Z" && exit 1)
+	$(MAKE) cleanup-old-images
+	$(MAKE) tag
+	@echo "🎉 Released $(VERSION) with automatic cleanup!"
 
 run:
 	$(RUNTIME) run --rm -it \
@@ -81,4 +111,4 @@ logs:
 
 # ---------- Defaults ----------
 .DEFAULT_GOAL := run
-.PHONY: venv run-local build tag push release local-release run up down logs
+.PHONY: venv run-local build tag push release local-release clean-release cleanup-old-images run up down logs
