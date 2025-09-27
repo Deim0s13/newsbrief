@@ -1,6 +1,6 @@
 from __future__ import annotations
-from fastapi import FastAPI, HTTPException, Query
-from typing import List, Optional
+from fastapi import FastAPI, Query
+from typing import List
 from .db import init_db, session_scope
 from .models import FeedIn, ItemOut
 from .feeds import add_feed, import_opml, fetch_and_store

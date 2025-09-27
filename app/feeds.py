@@ -62,7 +62,8 @@ def import_opml(path: str) -> int:
             txt = f.read()
         for m in re.finditer(r'xmlUrl="([^"]+)"', txt):
             try:
-                ensure_feed(m.group(1)); added += 1
+                ensure_feed(m.group(1))
+                added += 1
             except Exception:
                 pass
     except FileNotFoundError:
@@ -80,8 +81,10 @@ def fetch_and_store() -> int:
             if disabled or not robots_allowed:
                 continue
             headers = {}
-            if etag: headers["If-None-Match"] = etag
-            if last_mod: headers["If-Modified-Since"] = last_mod
+            if etag:
+                headers["If-None-Match"] = etag
+            if last_mod:
+                headers["If-Modified-Since"] = last_mod
 
             try:
                 resp = client.get(url, headers=headers)
