@@ -63,8 +63,9 @@ NewsBrief supports several environment variables for configuration:
 
 #### **Core Configuration**
 ```bash
-# Optional: Ollama integration (for future LLM features)
+# LLM Integration: Ollama service for AI summarization  
 export OLLAMA_BASE_URL=http://localhost:11434
+export NEWSBRIEF_LLM_MODEL=llama3.2:3b
 
 # Optional: Custom data directory
 export DATA_DIR=/path/to/your/data
@@ -87,24 +88,84 @@ export NEWSBRIEF_MAX_ITEMS_PER_FEED=100
 export NEWSBRIEF_MAX_REFRESH_TIME=900  # 15 minutes
 ```
 
+#### **AI Summarization (LLM) Configuration** ⭐ *New in v0.3.0*
+
+NewsBrief includes integrated AI summarization using local LLM services via Ollama:
+
+```bash
+# LLM Service Configuration
+export OLLAMA_BASE_URL=http://localhost:11434  # Ollama service URL
+export NEWSBRIEF_LLM_MODEL=llama3.2:3b        # Default model for summarization
+
+# Production LLM settings
+export OLLAMA_BASE_URL=http://ollama-service:11434  # Internal service
+export NEWSBRIEF_LLM_MODEL=mistral:7b              # Larger model for better quality
+```
+
+**LLM Setup Requirements:**
+
+1. **Install Ollama** (if running locally):
+   ```bash
+   # macOS
+   brew install ollama
+   
+   # Start Ollama service
+   ollama serve
+   
+   # Pull recommended models
+   ollama pull llama3.2:3b    # Fast, good quality
+   ollama pull mistral:7b     # Better quality, slower
+   ```
+
+2. **Container Integration:**
+   ```bash
+   # Connect NewsBreif container to local Ollama
+   podman run --rm -d \
+     -p 8787:8787 \
+     -v ./data:/app/data \
+     -e OLLAMA_BASE_URL=http://host.containers.internal:11434 \
+     -e NEWSBRIEF_LLM_MODEL=llama3.2:3b \
+     --name newsbrief newsbrief-api:latest
+   ```
+
+3. **Verify LLM Integration:**
+   ```bash
+   # Check LLM service status
+   curl http://localhost:8787/llm/status | jq .
+   
+   # Generate test summary
+   curl -X POST http://localhost:8787/summarize \
+     -H "Content-Type: application/json" \
+     -d '{"item_ids": [1]}'
+   ```
+
+**Model Recommendations:**
+- **Development**: `llama3.2:3b` - Fast inference, good quality
+- **Production**: `mistral:7b` - Higher quality, more detailed summaries  
+- **High-volume**: `llama3.2:1b` - Fastest inference for large-scale processing
+
 #### **Container Configuration Examples**
 ```bash
-# Development: Fast refresh with low limits
+# Development: Fast refresh with low limits + AI summarization
 podman run --rm -d \
   -p 8787:8787 \
   -v ./data:/app/data \
   -e NEWSBRIEF_MAX_ITEMS_PER_REFRESH=50 \
   -e NEWSBRIEF_MAX_ITEMS_PER_FEED=10 \
   -e NEWSBRIEF_MAX_REFRESH_TIME=120 \
+  -e OLLAMA_BASE_URL=http://host.containers.internal:11434 \
+  -e NEWSBRIEF_LLM_MODEL=llama3.2:3b \
   --name newsbrief newsbrief-api:latest
 
-# Production: High-capacity configuration
+# Production: High-capacity configuration + Advanced LLM
 podman run --rm -d \
   -p 8787:8787 \
   -v ./data:/app/data \
   -e NEWSBRIEF_MAX_ITEMS_PER_REFRESH=1000 \
   -e NEWSBRIEF_MAX_ITEMS_PER_FEED=200 \
   -e NEWSBRIEF_MAX_REFRESH_TIME=1800 \
+  -e OLLAMA_BASE_URL=http://ollama-service:11434 \
+  -e NEWSBRIEF_LLM_MODEL=mistral:7b \
   --name newsbrief newsbrief-api:latest
 ```
 
@@ -161,6 +222,39 @@ curl -s -X POST http://localhost:8787/refresh | jq '
 
 # Configuration check
 curl -s -X POST http://localhost:8787/refresh | jq '.stats.config'
+```
+
+#### **AI Summarization Testing** ⭐ *New in v0.3.0*
+
+```bash
+# Check LLM service status and available models
+curl http://localhost:8787/llm/status | jq .
+
+# Test AI summarization on recent articles
+curl -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1,2,3]}'
+
+# Generate summaries with specific model
+curl -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1], "model": "mistral:7b"}'
+
+# Force regenerate existing summaries  
+curl -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1], "force_regenerate": true}'
+
+# View articles with AI summaries
+curl "http://localhost:8787/items?limit=5" | jq '.[] | select(.ai_summary != null) | {id, title, ai_model, ai_summary}'
+
+# Get specific article with full AI details
+curl http://localhost:8787/items/1 | jq '{id, title, original_summary: .summary, ai_summary, ai_model, ai_generated_at}'
+
+# Monitor AI performance over batch operations
+curl -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1,2,3,4,5]}' | jq '.results[] | {item_id, tokens_used, generation_time}'
 ```
 
 ### **Database Inspection**
@@ -590,7 +684,7 @@ Before starting development, check the **[GitHub Project Board](https://github.c
 
 The project board organizes work into focused epics:
 - **epic:ingestion** - RSS feed processing improvements
-- **epic:summaries** - LLM integration and content summarization  
+- **epic:summaries** - ✅ Complete: AI summarization with Ollama integration  
 - **epic:ranking** - Content scoring and curation algorithms
 - **epic:ui** - Web interface development with HTMX
 - **epic:embeddings** - Semantic search and vector operations

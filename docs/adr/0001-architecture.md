@@ -40,6 +40,16 @@ Modern RSS readers are often cloud-based services that compromise privacy, requi
 - Graceful degradation for users without JavaScript
 - Faster initial page loads compared to SPA approaches
 
+**AI Integration**: Local LLM with Ollama (v0.3.0 Implementation)
+- Privacy-first AI summarization using local Ollama models
+- No external API dependencies or data sharing
+- Support for multiple models (Llama 3.2, Mistral, etc.)
+- Configurable model selection for performance vs quality trade-offs  
+- Batch processing capabilities for efficient resource utilization
+- Comprehensive error handling and graceful degradation
+- Token usage tracking and performance monitoring
+- Database persistence of generated summaries with metadata
+
 **Containerization**: Podman/Docker with Future Apple Containers
 - Container-first design for consistent deployment
 - Podman preferred for better security model (rootless)
@@ -51,7 +61,8 @@ Modern RSS readers are often cloud-based services that compromise privacy, requi
 - No data sent to external services
 - Ollama provides easy local LLM deployment
 - Support for multiple models (Llama, Mistral, etc.)
-- Planned features: summarization, embeddings, categorization
+- ✅ Current features (v0.3.0): article summarization with local privacy
+- 🚧 Planned features: embeddings, categorization, semantic search
 
 ### Data Architecture
 
@@ -67,8 +78,8 @@ Modern RSS readers are often cloud-based services that compromise privacy, requi
 ├─────────────────────────────────────────┤
 │         Business Logic                  │
 │  ┌─────────┬─────────┬─────────────────┐ │
-│  │  Feed   │Content  │    Future:      │ │
-│  │Manager  │Extract  │ LLM Integration │ │
+│  │  Feed   │Content  │   AI Summary    │ │
+│  │Manager  │Extract  │  (Ollama LLM)   │ │
 │  └─────────┴─────────┴─────────────────┘ │
 ├─────────────────────────────────────────┤
 │           Data Layer                    │
@@ -212,9 +223,11 @@ The following enhancements are organized into epics with detailed user stories a
 - Feed management dashboard
 - Search and filtering capabilities
 
-**AI Integration** (v0.4.0) - Epic: Summaries + Epic: Embeddings
-- Ollama integration for article summarization
-- Automatic content categorization
+**AI Integration** ✅ (v0.3.0) - Epic: Summaries 
+- ✅ Ollama integration for article summarization with local privacy
+- ✅ Multi-model support (Llama, Mistral, etc.)  
+- ✅ Batch processing and performance monitoring
+- 🚧 Future (v0.4.0): Automatic content categorization via embeddings
 - Duplicate detection improvement
 - Smart feed recommendations
 
@@ -229,7 +242,7 @@ The following enhancements are organized into epics with detailed user stories a
 The project board breaks development into focused, deliverable epics:
 
 - **epic:ingestion** - Core RSS/feed processing pipeline improvements
-- **epic:summaries** - Local LLM integration for content summarization
+- **epic:summaries** - ✅ Complete: AI summarization with Ollama integration (v0.3.0)
 - **epic:ranking** - Content scoring, curation, and recommendation algorithms
 - **epic:ui** - Complete web interface using HTMX and progressive enhancement
 - **epic:embeddings** - Vector embeddings for semantic search and clustering

@@ -199,14 +199,20 @@ GET /items?limit=10 HTTP/1.1
     "title": "Breaking: Important News Event",
     "url": "https://example.com/article/123",
     "published": "2025-09-27T10:30:00Z",
-    "summary": "This is a brief summary of the article content..."
+    "summary": "This is a brief summary of the article content...",
+    "ai_summary": "This article covers a significant breaking news event with major implications for the industry, highlighting key developments and their potential impact on stakeholders.",
+    "ai_model": "llama3.2:3b",
+    "ai_generated_at": "2025-09-27T10:35:15Z"
   },
   {
     "id": 124,
     "title": "Tech Update: New Framework Released",
     "url": "https://example.com/article/124",
     "published": "2025-09-27T09:15:00Z",
-    "summary": "A comprehensive overview of the new features..."
+    "summary": "A comprehensive overview of the new features...",
+    "ai_summary": null,
+    "ai_model": null,
+    "ai_generated_at": null
   }
 ]
 ```
@@ -219,16 +225,232 @@ GET /items?limit=10 HTTP/1.1
 | `title` | string or null | Article title |
 | `url` | string | Original article URL |
 | `published` | string (ISO 8601) or null | Publication timestamp |
-| `summary` | string or null | Article summary or excerpt |
+| `summary` | string or null | Article summary or excerpt from RSS feed |
+| `ai_summary` | string or null | AI-generated intelligent summary |
+| `ai_model` | string or null | Model used for AI summary generation |
+| `ai_generated_at` | string (ISO 8601) or null | When AI summary was created |
 
 #### Example
 
 ```bash
-# Get latest 5 articles
+# Get latest 5 articles with AI summaries
 curl "http://localhost:8787/items?limit=5" | jq .
 
 # Get latest 50 articles (default)
 curl http://localhost:8787/items
+
+# Extract just AI summaries from recent articles
+curl "http://localhost:8787/items?limit=5" | jq '.[] | select(.ai_summary != null) | {id, title, ai_summary}'
+```
+
+---
+
+## 🤖 AI Summarization Endpoints
+
+### **GET /llm/status**
+
+Check the status and availability of the LLM (Large Language Model) service for AI summarization.
+
+#### Request
+
+```http
+GET /llm/status HTTP/1.1
+```
+
+#### Response
+
+**Success (200)**
+```json
+{
+  "available": true,
+  "base_url": "http://host.containers.internal:11434",
+  "current_model": "llama3.2:3b",
+  "models_available": ["llama3.2:3b", "mistral:7b"],
+  "error": null
+}
+```
+
+#### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `available` | boolean | Whether the LLM service is accessible |
+| `base_url` | string | Ollama service base URL |
+| `current_model` | string | Currently configured default model |
+| `models_available` | array | List of available model names |
+| `error` | string or null | Error message if service unavailable |
+
+#### Example
+
+```bash
+# Check LLM service status
+curl http://localhost:8787/llm/status | jq .
+```
+
+---
+
+### **POST /summarize**
+
+Generate AI-powered summaries for one or more articles using local LLM integration.
+
+#### Request
+
+```http
+POST /summarize HTTP/1.1
+Content-Type: application/json
+
+{
+  "item_ids": [1, 2, 3],
+  "model": "llama3.2:3b",
+  "force_regenerate": false
+}
+```
+
+#### Request Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `item_ids` | array | ✅ | Array of article IDs to summarize |
+| `model` | string | ❌ | Optional model override (uses default if not specified) |
+| `force_regenerate` | boolean | ❌ | Force regenerate even if summary exists (default: false) |
+
+#### Response
+
+**Success (200)**
+```json
+{
+  "success": true,
+  "summaries_generated": 2,
+  "errors": 0,
+  "results": [
+    {
+      "item_id": 1,
+      "success": true,
+      "summary": "This article discusses the latest developments in AI technology, focusing on the rapid advancement of large language models and their potential impact on various industries. The author examines both the opportunities and challenges presented by these technological advances.",
+      "model": "llama3.2:3b",
+      "error": null,
+      "tokens_used": 1245,
+      "generation_time": 8.32
+    },
+    {
+      "item_id": 2,
+      "success": true,
+      "summary": "A comprehensive analysis of recent market trends shows significant growth in the technology sector...",
+      "model": "llama3.2:3b",
+      "error": null,
+      "tokens_used": 987,
+      "generation_time": 6.15
+    }
+  ]
+}
+```
+
+#### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `success` | boolean | Overall operation success (true if no errors) |
+| `summaries_generated` | integer | Number of summaries successfully created |
+| `errors` | integer | Number of items that failed to process |
+| `results` | array | Detailed results for each requested item |
+| `results[].item_id` | integer | Article ID that was processed |
+| `results[].success` | boolean | Whether summarization succeeded for this item |
+| `results[].summary` | string or null | Generated summary text |
+| `results[].model` | string | Model used for generation |
+| `results[].error` | string or null | Error message if failed |
+| `results[].tokens_used` | integer or null | Approximate token count for generation |
+| `results[].generation_time` | float or null | Time taken in seconds |
+
+#### Behavior
+
+**AI Model Integration:**
+- Uses local Ollama LLM service for privacy-preserving summarization
+- Configurable models via `NEWSBRIEF_LLM_MODEL` environment variable
+- Automatic model pulling if not locally available
+
+**Intelligent Processing:**
+- Skips items that already have summaries unless `force_regenerate` is true
+- Handles missing items gracefully with detailed error reporting
+- Processes content through Mozilla Readability for clean text input
+
+**Performance & Reliability:**
+- Tracks generation time and token usage for monitoring
+- Implements fallback summarization when LLM service unavailable
+- Stores generated summaries in database for future retrieval
+
+**Error Handling:**
+- Returns partial success when some items fail
+- Detailed error messages for debugging and monitoring
+- Graceful degradation when Ollama service is offline
+
+#### Examples
+
+```bash
+# Generate summary for single article
+curl -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1]}'
+
+# Batch summarize multiple articles with custom model
+curl -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1,2,3], "model": "mistral:7b"}'
+
+# Force regenerate existing summaries
+curl -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1], "force_regenerate": true}'
+```
+
+---
+
+### **GET /items/{item_id}**
+
+Retrieve a specific article with complete details including AI summary.
+
+#### Request
+
+```http
+GET /items/1 HTTP/1.1
+```
+
+#### Response
+
+**Success (200)**
+```json
+{
+  "id": 1,
+  "title": "Revolutionary AI Breakthrough Announced",
+  "url": "https://example.com/article/ai-breakthrough",
+  "published": "2024-01-15T10:30:00",
+  "summary": "Initial article excerpt from RSS feed...",
+  "ai_summary": "This groundbreaking article reveals significant advances in artificial intelligence research, with researchers announcing a new model architecture that achieves unprecedented performance on reasoning tasks...",
+  "ai_model": "llama3.2:3b",
+  "ai_generated_at": "2024-01-15T15:45:22"
+}
+```
+
+#### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | integer | Unique article identifier |
+| `title` | string or null | Article title |
+| `url` | string | Original article URL |
+| `published` | string (ISO 8601) or null | Publication timestamp |
+| `summary` | string or null | Original article summary from RSS feed |
+| `ai_summary` | string or null | AI-generated intelligent summary |
+| `ai_model` | string or null | Model used for AI summary generation |
+| `ai_generated_at` | string (ISO 8601) or null | When AI summary was created |
+
+#### Example
+
+```bash
+# Get specific article with AI summary
+curl http://localhost:8787/items/1 | jq .
+
+# Extract just the AI summary
+curl http://localhost:8787/items/1 | jq '.ai_summary'
 ```
 
 ---
