@@ -360,13 +360,31 @@ podman run --rm newsbrief-api:v0.3.0 --version
 
 ## 🤝 Contributing
 
+### **Project Planning & Issues**
+
+Before starting development, check the **[GitHub Project Board](https://github.com/users/Deim0s13/projects/7/views/1?layout=board)** for:
+
+- **Current epics** and their progress status
+- **Open issues** ready for development  
+- **Sprint planning** and release milestones
+- **Epic breakdowns** with detailed user stories
+
+The project board organizes work into focused epics:
+- **epic:ingestion** - RSS feed processing improvements
+- **epic:summaries** - LLM integration and content summarization  
+- **epic:ranking** - Content scoring and curation algorithms
+- **epic:ui** - Web interface development with HTMX
+- **epic:embeddings** - Semantic search and vector operations
+- **epic:search** - Full-text search and query capabilities  
+- **epic:ops** - DevOps, monitoring, and deployment tooling
+
 ### **Pull Request Process**
 
-1. Fork repository
-2. Create feature branch
-3. Make changes with tests
-4. Update documentation
-5. Submit pull request
+1. **Choose an issue** from the project board
+2. **Fork repository** and create feature branch
+3. **Make changes with tests** and update documentation
+4. **Reference issue number** in commit messages
+5. **Submit pull request** with clear description
 
 ### **Commit Message Format**
 

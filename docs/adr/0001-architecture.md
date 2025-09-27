@@ -183,25 +183,42 @@ Modern RSS readers are often cloud-based services that compromise privacy, requi
 
 ## Future Considerations
 
+> **📋 Implementation Tracking**: Detailed epic breakdowns and current development status available at  
+> **[GitHub Project Board](https://github.com/users/Deim0s13/projects/7/views/1?layout=board)**
+
 ### Planned Enhancements (v0.3.x - v0.5.x)
 
-**Web Interface** (v0.3.0)
+The following enhancements are organized into epics with detailed user stories and acceptance criteria tracked on the GitHub project board:
+
+**Web Interface** (v0.3.0) - Epic: UI
 - HTMX-powered responsive web UI
 - Article reading interface with clean typography
 - Feed management dashboard
 - Search and filtering capabilities
 
-**AI Integration** (v0.4.0)
+**AI Integration** (v0.4.0) - Epic: Summaries + Epic: Embeddings
 - Ollama integration for article summarization
 - Automatic content categorization
 - Duplicate detection improvement
 - Smart feed recommendations
 
-**Advanced Features** (v0.5.0)
+**Advanced Features** (v0.5.0) - Epic: Search + Epic: Operations
 - Vector embeddings for semantic search
 - Export/import functionality (OPML, JSON)
 - Multi-user support with access controls
 - API rate limiting and authentication
+
+### Epic Organization
+
+The project board breaks development into focused, deliverable epics:
+
+- **epic:ingestion** - Core RSS/feed processing pipeline improvements
+- **epic:summaries** - Local LLM integration for content summarization
+- **epic:ranking** - Content scoring, curation, and recommendation algorithms
+- **epic:ui** - Complete web interface using HTMX and progressive enhancement
+- **epic:embeddings** - Vector embeddings for semantic search and clustering
+- **epic:search** - Full-text search with SQLite FTS5 and advanced filtering
+- **epic:ops** - DevOps tooling, monitoring, deployment, and operational concerns
 
 ### Potential Architecture Evolution
 

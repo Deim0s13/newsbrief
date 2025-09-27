@@ -195,13 +195,16 @@ newsbrief/
 
 ## 🎯 Roadmap
 
+> **📋 Live Project Board**: Track detailed progress and epic breakdowns at  
+> **[GitHub Project Board](https://github.com/users/Deim0s13/projects/7/views/1?layout=board)**
+
 ### **v0.3.0 - Web Interface**
 - [ ] HTMX-powered web UI
 - [ ] Article reading interface
 - [ ] Feed management dashboard
 - [ ] Search functionality
 
-### **v0.4.0 - AI Integration**
+### **v0.4.0 - AI Integration** 
 - [ ] Ollama LLM integration
 - [ ] Article summarization
 - [ ] Content classification
@@ -213,10 +216,28 @@ newsbrief/
 - [ ] Export/import functionality
 - [ ] Advanced filtering and rules
 
+### **Epic Organization**
+
+The roadmap above represents high-level milestones. For detailed epic breakdowns, user stories, and current development status, see the **[GitHub Project Board](https://github.com/users/Deim0s13/projects/7/views/1?layout=board)** which includes:
+
+- **Epic: Ingestion** - Feed processing and content extraction improvements
+- **Epic: Summaries** - AI-powered content summarization with Ollama
+- **Epic: Ranking** - Content scoring and intelligent curation
+- **Epic: UI** - Web interface and user experience enhancements  
+- **Epic: Embeddings** - Semantic search and content clustering
+- **Epic: Search** - Full-text and semantic search capabilities
+- **Epic: Operations** - DevOps, monitoring, and deployment tooling
+
 ## 🤝 Contributing
 
 We welcome contributions! Here's how to get started:
 
+### **Find Work to Do**
+1. **Check the [GitHub Project Board](https://github.com/users/Deim0s13/projects/7/views/1?layout=board)** for current epics and open issues
+2. **Look for issues labeled** `good first issue` or `help wanted`  
+3. **Comment on issues** you'd like to work on to avoid duplication
+
+### **Development Process**
 1. **Fork the repository**
 2. **Create feature branch**: `git checkout -b feature/amazing-feature`
 3. **Make changes and test**: `make build && make run`
