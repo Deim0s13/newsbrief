@@ -6,25 +6,30 @@ NewsBrief is a self-hosted, privacy-focused RSS feed aggregator that intelligent
 
 ## 🌟 Features
 
-### **Current (v0.2.4)**
+### **Current (v0.3.3)**
 - **RSS Feed Management**: Import feeds from OPML or add individually via API
 - **Intelligent Content Extraction**: Clean article content using Mozilla Readability
+- **Long Article Processing**: Map-reduce summarization for articles exceeding context limits with intelligent chunking
+- **Structured AI Summarization**: Local LLM via Ollama generates structured JSON summaries with bullets, significance analysis, and topic tags
+- **Fallback Summary Display**: Intelligent first-2-sentences extraction when AI services are offline or unavailable
+- **Advanced Caching System**: Hash+model based caching for instant responses and cross-article deduplication
+- **Batch Processing**: Efficient multi-article summarization with comprehensive error handling
 - **Robots.txt Compliance**: Respects robots.txt policies at both feed and article levels
 - **Enhanced Fetch Caps**: Configurable global and per-feed limits with time-based safety caps
 - **Fair Distribution**: Prevents individual feeds from consuming entire refresh quota
-- **Comprehensive Monitoring**: Detailed statistics, performance metrics, and configuration visibility
+- **Comprehensive Monitoring**: Detailed statistics, performance metrics, cache hit rates, and configuration visibility
 - **Efficient Caching**: ETag and Last-Modified support to minimize bandwidth
-- **Local SQLite Storage**: Fast, reliable, file-based database
-- **Deduplication**: Automatic detection of duplicate articles across feeds  
-- **RESTful API**: JSON endpoints for feeds and articles with enhanced statistics
+- **Local SQLite Storage**: Fast, reliable, file-based database with optimized indexing
+- **Content Deduplication**: SHA256-based hashing with intelligent cache invalidation  
+- **RESTful API**: Enhanced JSON endpoints with structured summary support and backward compatibility
 - **Container Ready**: Docker/Podman support with optimized builds and environment configuration
 
 ### **Planned (Roadmap)**
-- **AI Summarization**: Local LLM integration via Ollama for intelligent summaries
-- **Semantic Search**: Vector embeddings for content discovery
-- **Web Interface**: HTMX-powered responsive UI
-- **Full-Text Search**: SQLite FTS5 integration
-- **Smart Categorization**: Automatic topic clustering
+- **Enhanced AI Features**: Advanced categorization, sentiment analysis, and content recommendations
+- **Web Interface**: HTMX-powered responsive UI for browsing and management
+- **Semantic Search**: Vector embeddings for content discovery and similarity matching
+- **Full-Text Search**: SQLite FTS5 integration for fast text search
+- **Smart Categorization**: Automatic topic clustering and intelligent feeds organization
 - **Export/Import**: Data portability and backup features
 
 ## 🚀 Quick Start
@@ -48,7 +53,7 @@ docker-compose up -d
 
 ```bash
 # Build and run locally
-make clean-release VERSION=v0.2.4
+make clean-release VERSION=v0.3.3
 make run
 
 # Check available commands
@@ -168,10 +173,10 @@ python -m py_compile app/*.py   # Syntax check
 # Container development
 make build                      # Build container
 make run                       # Run container locally
-make local-release VERSION=v0.3.0  # Tagged release
+make local-release VERSION=v0.3.2  # Tagged release
 
 # Automated cleanup
-make clean-release VERSION=v0.3.0  # Build + auto-cleanup old images
+make clean-release VERSION=v0.3.3  # Build + auto-cleanup old images
 ```
 
 ### **Project Structure**
@@ -184,7 +189,7 @@ newsbrief/
 │   ├── feeds.py           # RSS fetching and processing
 │   ├── models.py          # Pydantic models
 │   ├── readability.py     # Content extraction
-│   ├── llm.py             # LLM integration (planned)
+│   ├── llm.py             # LLM integration with Ollama
 │   ├── embed.py           # Embeddings (planned)
 │   └── templates/         # HTML templates
 ├── data/                   # Persistent data
@@ -202,23 +207,19 @@ newsbrief/
 > **📋 Live Project Board**: Track detailed progress and epic breakdowns at  
 > **[GitHub Project Board](https://github.com/users/Deim0s13/projects/7/views/1?layout=board)**
 
-### **v0.3.0 - Web Interface**
+### **v0.4.0 - Web Interface**
 - [ ] HTMX-powered web UI
-- [ ] Article reading interface
+- [ ] Article reading interface with AI summaries
 - [ ] Feed management dashboard
-- [ ] Search functionality
-
-### **v0.4.0 - AI Integration** 
-- [ ] Ollama LLM integration
-- [ ] Article summarization
-- [ ] Content classification
-- [ ] Intelligent recommendations
+- [ ] Search and filtering functionality
 
 ### **v0.5.0 - Advanced Features**
 - [ ] Vector embeddings for semantic search
-- [ ] Topic clustering and categorization
-- [ ] Export/import functionality
-- [ ] Advanced filtering and rules
+- [ ] Enhanced content classification and categorization
+- [ ] Intelligent content recommendations
+- [ ] Sentiment analysis and topic clustering
+- [ ] Export/import functionality and data portability
+- [ ] Advanced filtering and rules engine
 
 ### **Epic Organization**
 

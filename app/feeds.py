@@ -10,6 +10,7 @@ import feedparser
 from sqlalchemy import text
 from .db import session_scope
 from .readability import extract_readable
+from .models import create_content_hash
 
 @dataclass
 class RefreshStats:
@@ -336,11 +337,14 @@ def fetch_and_store() -> RefreshStats:
                 except Exception:
                     pass
 
+                # Calculate content hash for AI caching
+                content_hash = create_content_hash(title, content_text or summary or "")
+                
                 # Insert item
                 with session_scope() as s:
                     s.execute(text("""
-                    INSERT INTO items(feed_id, title, url, url_hash, published, author, summary, content)
-                    VALUES(:feed_id, :title, :url, :url_hash, :published, :author, :summary, :content)
+                    INSERT INTO items(feed_id, title, url, url_hash, published, author, summary, content, content_hash)
+                    VALUES(:feed_id, :title, :url, :url_hash, :published, :author, :summary, :content, :content_hash)
                     """), {
                         "feed_id": fid,
                         "title": title,
@@ -349,7 +353,8 @@ def fetch_and_store() -> RefreshStats:
                         "published": published.isoformat() if published else None,
                         "author": author,
                         "summary": summary,
-                        "content": content_text
+                        "content": content_text,
+                        "content_hash": content_hash
                     })
                 
                 stats.total_items += 1

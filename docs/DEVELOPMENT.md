@@ -63,8 +63,9 @@ NewsBrief supports several environment variables for configuration:
 
 #### **Core Configuration**
 ```bash
-# Optional: Ollama integration (for future LLM features)
+# LLM Integration: Ollama service for AI summarization  
 export OLLAMA_BASE_URL=http://localhost:11434
+export NEWSBRIEF_LLM_MODEL=llama3.2:3b
 
 # Optional: Custom data directory
 export DATA_DIR=/path/to/your/data
@@ -87,25 +88,120 @@ export NEWSBRIEF_MAX_ITEMS_PER_FEED=100
 export NEWSBRIEF_MAX_REFRESH_TIME=900  # 15 minutes
 ```
 
+#### **AI Summarization (LLM) Configuration** ⭐ *New in v0.3.0*
+
+NewsBrief includes integrated AI summarization using local LLM services via Ollama:
+
+```bash
+# LLM Service Configuration
+export OLLAMA_BASE_URL=http://localhost:11434  # Ollama service URL
+export NEWSBRIEF_LLM_MODEL=llama3.2:3b        # Default model for summarization
+
+# Production LLM settings
+export OLLAMA_BASE_URL=http://ollama-service:11434  # Internal service
+export NEWSBRIEF_LLM_MODEL=mistral:7b              # Larger model for better quality
+```
+
+**LLM Setup Requirements:**
+
+1. **Install Ollama** (if running locally):
+   ```bash
+   # macOS
+   brew install ollama
+   
+   # Start Ollama service
+   ollama serve
+   
+   # Pull recommended models
+   ollama pull llama3.2:3b    # Fast, good quality
+   ollama pull mistral:7b     # Better quality, slower
+   ```
+
+2. **Container Integration:**
+   ```bash
+   # Connect NewsBreif container to local Ollama
+   podman run --rm -d \
+     -p 8787:8787 \
+     -v ./data:/app/data \
+     -e OLLAMA_BASE_URL=http://host.containers.internal:11434 \
+     -e NEWSBRIEF_LLM_MODEL=llama3.2:3b \
+     --name newsbrief newsbrief-api:latest
+   ```
+
+3. **Verify LLM Integration:**
+   ```bash
+   # Check LLM service status
+   curl http://localhost:8787/llm/status | jq .
+   
+   # Generate test summary
+   curl -X POST http://localhost:8787/summarize \
+     -H "Content-Type: application/json" \
+     -d '{"item_ids": [1]}'
+   ```
+
+**Model Recommendations:**
+- **Development**: `llama3.2:3b` - Fast inference, good quality
+- **Production**: `mistral:7b` - Higher quality, more detailed summaries  
+- **High-volume**: `llama3.2:1b` - Fastest inference for large-scale processing
+
+#### **Long Article Processing (Map-Reduce)** ⭐ *New in v0.3.2*
+
+NewsBrief automatically handles long articles that exceed typical LLM context windows using intelligent chunking and map-reduce summarization:
+
+```bash
+# Map-Reduce Processing Configuration
+export NEWSBRIEF_CHUNKING_THRESHOLD=3000    # Token threshold to trigger chunking (default: 3000)
+export NEWSBRIEF_CHUNK_SIZE=1500            # Target chunk size in tokens (default: 1500)
+export NEWSBRIEF_MAX_CHUNK_SIZE=2000        # Maximum chunk size limit (default: 2000)
+export NEWSBRIEF_CHUNK_OVERLAP=200          # Overlap between chunks for context (default: 200)
+
+# Advanced chunking configuration for different content types
+export NEWSBRIEF_CHUNKING_THRESHOLD=2500    # Lower threshold for academic papers
+export NEWSBRIEF_CHUNK_SIZE=1800            # Larger chunks for technical content
+export NEWSBRIEF_MAX_CHUNK_SIZE=2200        # Higher max for dense content
+export NEWSBRIEF_CHUNK_OVERLAP=300          # More overlap for complex articles
+```
+
+**Processing Method Selection:**
+- **Direct Processing**: Articles under `NEWSBRIEF_CHUNKING_THRESHOLD` tokens
+- **Map-Reduce Processing**: Articles exceeding the threshold are automatically chunked
+- **Intelligent Chunking**: Respects paragraph and sentence boundaries for coherent analysis
+- **Enhanced Metadata**: All responses include processing method, chunk count, and token information
+
+**Chunking Strategy:**
+1. **Hierarchical Splitting**: Paragraphs → Sentences → Words (preserves context)
+2. **Boundary Respect**: Never splits mid-sentence or mid-paragraph when possible
+3. **Context Preservation**: First chunk includes article title and context
+4. **Overlap Management**: Configurable overlap prevents information loss at chunk boundaries
+
 #### **Container Configuration Examples**
 ```bash
-# Development: Fast refresh with low limits
+# Development: Fast refresh with low limits + AI summarization + map-reduce
 podman run --rm -d \
   -p 8787:8787 \
   -v ./data:/app/data \
   -e NEWSBRIEF_MAX_ITEMS_PER_REFRESH=50 \
   -e NEWSBRIEF_MAX_ITEMS_PER_FEED=10 \
   -e NEWSBRIEF_MAX_REFRESH_TIME=120 \
-  --name newsbrief newsbrief-api:latest
+  -e OLLAMA_BASE_URL=http://host.containers.internal:11434 \
+  -e NEWSBRIEF_LLM_MODEL=llama3.2:3b \
+  -e NEWSBRIEF_CHUNKING_THRESHOLD=2000 \
+  -e NEWSBRIEF_CHUNK_SIZE=1200 \
+  --name newsbrief newsbrief-api:v0.3.3
 
-# Production: High-capacity configuration
+# Production: High-capacity configuration + Advanced LLM + Optimized chunking
 podman run --rm -d \
   -p 8787:8787 \
   -v ./data:/app/data \
   -e NEWSBRIEF_MAX_ITEMS_PER_REFRESH=1000 \
   -e NEWSBRIEF_MAX_ITEMS_PER_FEED=200 \
   -e NEWSBRIEF_MAX_REFRESH_TIME=1800 \
-  --name newsbrief newsbrief-api:latest
+  -e OLLAMA_BASE_URL=http://ollama-service:11434 \
+  -e NEWSBRIEF_LLM_MODEL=mistral:7b \
+  -e NEWSBRIEF_CHUNKING_THRESHOLD=3500 \
+  -e NEWSBRIEF_CHUNK_SIZE=1800 \
+  -e NEWSBRIEF_MAX_CHUNK_SIZE=2200 \
+  --name newsbrief newsbrief-api:v0.3.3
 ```
 
 ## 🧪 Testing & Debugging
@@ -161,6 +257,145 @@ curl -s -X POST http://localhost:8787/refresh | jq '
 
 # Configuration check
 curl -s -X POST http://localhost:8787/refresh | jq '.stats.config'
+```
+
+#### **AI Summarization Testing** ⭐ *Updated in v0.3.3*
+
+```bash
+# Check LLM service status and available models
+curl http://localhost:8787/llm/status | jq .
+
+# Test structured JSON summarization (default behavior)
+curl -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1,2,3]}'
+
+# Extract structured components from response
+curl -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1]}' | jq '.results[0].structured_summary | {bullets, why_it_matters, tags}'
+
+# Test hash+model caching system (second request should be instant)
+echo "First request (cache miss):"
+time curl -s -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1]}' | jq '.results[0].cache_hit'
+  
+echo "Second request (cache hit):"
+time curl -s -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1]}' | jq '.results[0].cache_hit'
+
+# Generate summaries with specific model (cache miss due to model change)
+curl -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1], "model": "mistral:7b"}'
+
+# Legacy plain text summaries (backward compatibility)  
+curl -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1], "use_structured": false}'
+
+# Force regenerate existing summaries  
+curl -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1], "force_regenerate": true}'
+
+# View articles with structured summaries
+curl "http://localhost:8787/items?limit=5" | jq '.[] | select(.structured_summary != null) | {id, title, bullets: .structured_summary.bullets, tags: .structured_summary.tags}'
+
+# Get specific article with full structured details
+curl http://localhost:8787/items/1 | jq '{id, title, original_summary: .summary, structured_summary}'
+
+# Monitor performance and caching efficiency
+curl -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1,2,3,4,5]}' | jq '.results[] | {item_id, cache_hit, tokens_used, generation_time}'
+
+# Batch processing with structured output inspection
+curl -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1,2,3]}' | jq '{summaries_generated, cache_hits: [.results[] | select(.cache_hit == true)] | length, bullet_counts: [.results[].structured_summary.bullets | length]}'
+
+# ✨ Map-Reduce Testing (Long Article Processing) ⭐ *New in v0.3.2*
+
+# Check processing method and chunking metadata
+curl -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1], "force_regenerate": true}' | jq '.results[0].structured_summary | {processing_method, is_chunked, chunk_count, total_tokens}'
+
+# Test chunking threshold by temporarily lowering it
+# (Restart container with NEWSBRIEF_CHUNKING_THRESHOLD=500 to trigger chunking on normal articles)
+curl -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1], "force_regenerate": true}' | jq '.results[0] | {
+    item_id,
+    success,
+    processing_method: .structured_summary.processing_method,
+    is_chunked: .structured_summary.is_chunked,
+    chunks: .structured_summary.chunk_count,
+    tokens: .structured_summary.total_tokens,
+    generation_time
+  }'
+
+# Compare direct vs map-reduce processing performance
+echo "=== Processing Method Comparison ==="
+curl -s -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1,2,3], "force_regenerate": true}' | jq '.results[] | {
+    id: .item_id,
+    method: .structured_summary.processing_method,
+    chunked: .structured_summary.is_chunked,
+    chunks: .structured_summary.chunk_count // 1,
+    tokens: .structured_summary.total_tokens,
+    time: .generation_time
+  }'
+
+# Inspect chunking metadata across all summaries
+curl -s "http://localhost:8787/items" | jq '[.[] | select(.structured_summary != null)] | group_by(.structured_summary.processing_method) | map({method: .[0].structured_summary.processing_method, count: length})'
+
+# ✨ Fallback Summary Testing (Offline AI Handling) ⭐ *New in v0.3.3*
+
+# Test fallback behavior when AI services are unavailable
+# Note: This shows first 2 sentences of article content when no AI summary exists
+
+# Check items with and without AI summaries
+curl -s "http://localhost:8787/items?limit=5" | jq '.[] | {
+  id,
+  title,
+  has_ai_summary: (.structured_summary != null or .ai_summary != null),
+  has_fallback: .is_fallback_summary,
+  fallback_preview: (.fallback_summary // "none")[0:80]
+}'
+
+# Test individual item fallback behavior
+curl -s http://localhost:8787/items/1 | jq '{
+  id,
+  title,
+  ai_available: (.structured_summary != null),
+  fallback_used: .is_fallback_summary,
+  fallback_content: .fallback_summary
+}'
+
+# Simulate AI service offline scenario
+# (Stop Ollama service: pkill -f ollama)
+# Then check if new items get fallback summaries automatically
+
+# Test fallback summary extraction quality
+curl -s "http://localhost:8787/items" | jq '[.[] | select(.is_fallback_summary == true)] | map({
+  id,
+  title,
+  fallback_length: (.fallback_summary | length),
+  fallback_preview: (.fallback_summary[0:100] + "...")
+})'
+
+# Monitor fallback vs AI summary distribution
+curl -s "http://localhost:8787/items" | jq '{
+  total_items: length,
+  ai_summaries: [.[] | select(.structured_summary != null)] | length,
+  fallback_summaries: [.[] | select(.is_fallback_summary == true)] | length,
+  no_summary: [.[] | select(.structured_summary == null and .is_fallback_summary == false)] | length
+}'
 ```
 
 ### **Database Inspection**
@@ -590,7 +825,7 @@ Before starting development, check the **[GitHub Project Board](https://github.c
 
 The project board organizes work into focused epics:
 - **epic:ingestion** - RSS feed processing improvements
-- **epic:summaries** - LLM integration and content summarization  
+- **epic:summaries** - ✅ Complete: AI summarization with Ollama integration  
 - **epic:ranking** - Content scoring and curation algorithms
 - **epic:ui** - Web interface development with HTMX
 - **epic:embeddings** - Semantic search and vector operations
