@@ -40,29 +40,29 @@ Modern RSS readers are often cloud-based services that compromise privacy, requi
 - Graceful degradation for users without JavaScript
 - Faster initial page loads compared to SPA approaches
 
-**AI Integration**: Local LLM with Ollama (v0.3.0 Implementation)
+**AI Integration**: Local LLM with Ollama (v0.3.2 Enhanced)
 - Privacy-first AI summarization using local Ollama models
 - No external API dependencies or data sharing
 - Support for multiple models (Llama 3.2, Mistral, etc.)
 - Configurable model selection for performance vs quality trade-offs  
 - Batch processing capabilities for efficient resource utilization
+- **Map-Reduce Processing**: Intelligent chunking for long articles exceeding context limits
+  - Automatic threshold detection and processing method selection
+  - Hierarchical text chunking respecting paragraph/sentence boundaries
+  - MAP phase: Individual chunk summarization with structured extraction
+  - REDUCE phase: Synthesis of chunk summaries into coherent final result
+  - Processing transparency with detailed metadata (chunk count, tokens, method)
 - Comprehensive error handling and graceful degradation
-- Token usage tracking and performance monitoring
-- Database persistence of generated summaries with metadata
+- Token usage tracking and performance monitoring with tiktoken integration
+- Database persistence of generated summaries with enhanced metadata
+- ✅ Current features (v0.3.2): structured JSON summaries, long article processing, hash+model caching
+- 🚧 Planned features: embeddings, categorization, semantic search
 
 **Containerization**: Podman/Docker with Future Apple Containers
 - Container-first design for consistent deployment
 - Podman preferred for better security model (rootless)
 - Future experiment with Apple Containers on macOS
 - Easy scaling from development to production
-
-**AI Integration**: Local LLM via Ollama
-- Privacy-preserving AI summaries and categorization
-- No data sent to external services
-- Ollama provides easy local LLM deployment
-- Support for multiple models (Llama, Mistral, etc.)
-- ✅ Current features (v0.3.0): article summarization with local privacy
-- 🚧 Planned features: embeddings, categorization, semantic search
 
 ### Data Architecture
 
@@ -242,7 +242,7 @@ The following enhancements are organized into epics with detailed user stories a
 The project board breaks development into focused, deliverable epics:
 
 - **epic:ingestion** - Core RSS/feed processing pipeline improvements
-- **epic:summaries** - ✅ Complete: AI summarization with Ollama integration (v0.3.0)
+- **epic:summaries** - ✅ Complete: AI summarization with Ollama integration and map-reduce processing (v0.3.2)
 - **epic:ranking** - Content scoring, curation, and recommendation algorithms
 - **epic:ui** - Complete web interface using HTMX and progressive enhancement
 - **epic:embeddings** - Vector embeddings for semantic search and clustering

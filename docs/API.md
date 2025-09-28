@@ -399,18 +399,29 @@ Content-Type: application/json
 | `results[].structured_summary.content_hash` | string | Content hash for deduplication and caching |
 | `results[].structured_summary.model` | string | Model used for this specific summary |
 | `results[].structured_summary.generated_at` | string (ISO 8601) | When this summary was generated |
+| `results[].structured_summary.is_chunked` | boolean | **NEW v0.3.2**: Whether map-reduce processing was used |
+| `results[].structured_summary.chunk_count` | integer or null | **NEW v0.3.2**: Number of chunks processed (null if direct) |
+| `results[].structured_summary.total_tokens` | integer or null | **NEW v0.3.2**: Total token count of original content |
+| `results[].structured_summary.processing_method` | string | **NEW v0.3.2**: "direct" or "map-reduce" |
 | `results[].content_hash` | string or null | **NEW**: Content hash for caching and deduplication |
 | `results[].cache_hit` | boolean | **NEW**: Whether this result came from cache (instant response) |
 
 #### Behavior
 
-**Structured JSON Summaries (v0.3.1)** ⭐ *NEW*
+**Structured JSON Summaries (v0.3.2)** ⭐ *ENHANCED*
 - **Default Format**: `use_structured=true` generates structured JSON with:
   - `bullets`: 3-5 key points as concise sentences (max 80 chars each)
   - `why_it_matters`: Significance explanation (50-150 words) 
   - `tags`: 3-6 relevant topic tags for categorization and search
 - **Legacy Support**: `use_structured=false` generates plain text summaries
 - **JSON Validation**: Strict validation with automatic fallback on malformed responses
+
+**Long Article Processing (v0.3.2)** ⭐ *NEW*
+- **Automatic Detection**: Articles exceeding token threshold trigger map-reduce processing
+- **Intelligent Chunking**: Respects paragraph and sentence boundaries for context preservation
+- **MAP Phase**: Individual chunk summarization with structured extraction
+- **REDUCE Phase**: Synthesis of chunk summaries into coherent final result
+- **Processing Transparency**: All responses include processing method and chunking metadata
 
 **Hash+Model Caching System** ⭐ *NEW*  
 - **Content Hashing**: SHA256-based deduplication during article ingestion
@@ -542,6 +553,10 @@ GET /items/1 HTTP/1.1
 | `structured_summary.content_hash` | string | Content hash for caching |
 | `structured_summary.model` | string | Model used for generation |
 | `structured_summary.generated_at` | string (ISO 8601) | When this summary was generated |
+| `structured_summary.is_chunked` | boolean | **NEW v0.3.2**: Whether map-reduce processing was used |
+| `structured_summary.chunk_count` | integer or null | **NEW v0.3.2**: Number of chunks processed |
+| `structured_summary.total_tokens` | integer or null | **NEW v0.3.2**: Total token count of content |
+| `structured_summary.processing_method` | string | **NEW v0.3.2**: Processing method used |
 
 #### Example
 
@@ -560,6 +575,23 @@ curl http://localhost:8787/items/1 | jq '.structured_summary.tags'
 
 # Legacy: Extract plain text AI summary (if available)
 curl http://localhost:8787/items/1 | jq '.ai_summary'
+
+# ✨ Map-Reduce Processing Examples ⭐ *New in v0.3.2*
+
+# Check if article was processed using map-reduce
+curl http://localhost:8787/items/1 | jq '.structured_summary | {
+  processing_method,
+  is_chunked,
+  chunk_count,
+  total_tokens
+}'
+
+# Find articles processed with different methods
+curl "http://localhost:8787/items" | jq '[.[] | select(.structured_summary != null)] | group_by(.structured_summary.processing_method) | map({
+  method: .[0].structured_summary.processing_method,
+  count: length,
+  avg_tokens: ([.[].structured_summary.total_tokens | select(. != null)] | add / length | floor)
+})'
 ```
 
 ---

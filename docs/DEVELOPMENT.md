@@ -144,9 +144,39 @@ export NEWSBRIEF_LLM_MODEL=mistral:7b              # Larger model for better qua
 - **Production**: `mistral:7b` - Higher quality, more detailed summaries  
 - **High-volume**: `llama3.2:1b` - Fastest inference for large-scale processing
 
+#### **Long Article Processing (Map-Reduce)** ⭐ *New in v0.3.2*
+
+NewsBrief automatically handles long articles that exceed typical LLM context windows using intelligent chunking and map-reduce summarization:
+
+```bash
+# Map-Reduce Processing Configuration
+export NEWSBRIEF_CHUNKING_THRESHOLD=3000    # Token threshold to trigger chunking (default: 3000)
+export NEWSBRIEF_CHUNK_SIZE=1500            # Target chunk size in tokens (default: 1500)
+export NEWSBRIEF_MAX_CHUNK_SIZE=2000        # Maximum chunk size limit (default: 2000)
+export NEWSBRIEF_CHUNK_OVERLAP=200          # Overlap between chunks for context (default: 200)
+
+# Advanced chunking configuration for different content types
+export NEWSBRIEF_CHUNKING_THRESHOLD=2500    # Lower threshold for academic papers
+export NEWSBRIEF_CHUNK_SIZE=1800            # Larger chunks for technical content
+export NEWSBRIEF_MAX_CHUNK_SIZE=2200        # Higher max for dense content
+export NEWSBRIEF_CHUNK_OVERLAP=300          # More overlap for complex articles
+```
+
+**Processing Method Selection:**
+- **Direct Processing**: Articles under `NEWSBRIEF_CHUNKING_THRESHOLD` tokens
+- **Map-Reduce Processing**: Articles exceeding the threshold are automatically chunked
+- **Intelligent Chunking**: Respects paragraph and sentence boundaries for coherent analysis
+- **Enhanced Metadata**: All responses include processing method, chunk count, and token information
+
+**Chunking Strategy:**
+1. **Hierarchical Splitting**: Paragraphs → Sentences → Words (preserves context)
+2. **Boundary Respect**: Never splits mid-sentence or mid-paragraph when possible
+3. **Context Preservation**: First chunk includes article title and context
+4. **Overlap Management**: Configurable overlap prevents information loss at chunk boundaries
+
 #### **Container Configuration Examples**
 ```bash
-# Development: Fast refresh with low limits + AI summarization
+# Development: Fast refresh with low limits + AI summarization + map-reduce
 podman run --rm -d \
   -p 8787:8787 \
   -v ./data:/app/data \
@@ -155,9 +185,11 @@ podman run --rm -d \
   -e NEWSBRIEF_MAX_REFRESH_TIME=120 \
   -e OLLAMA_BASE_URL=http://host.containers.internal:11434 \
   -e NEWSBRIEF_LLM_MODEL=llama3.2:3b \
-  --name newsbrief newsbrief-api:latest
+  -e NEWSBRIEF_CHUNKING_THRESHOLD=2000 \
+  -e NEWSBRIEF_CHUNK_SIZE=1200 \
+  --name newsbrief newsbrief-api:v0.3.2
 
-# Production: High-capacity configuration + Advanced LLM
+# Production: High-capacity configuration + Advanced LLM + Optimized chunking
 podman run --rm -d \
   -p 8787:8787 \
   -v ./data:/app/data \
@@ -166,7 +198,10 @@ podman run --rm -d \
   -e NEWSBRIEF_MAX_REFRESH_TIME=1800 \
   -e OLLAMA_BASE_URL=http://ollama-service:11434 \
   -e NEWSBRIEF_LLM_MODEL=mistral:7b \
-  --name newsbrief newsbrief-api:latest
+  -e NEWSBRIEF_CHUNKING_THRESHOLD=3500 \
+  -e NEWSBRIEF_CHUNK_SIZE=1800 \
+  -e NEWSBRIEF_MAX_CHUNK_SIZE=2200 \
+  --name newsbrief newsbrief-api:v0.3.2
 ```
 
 ## 🧪 Testing & Debugging
@@ -224,7 +259,7 @@ curl -s -X POST http://localhost:8787/refresh | jq '
 curl -s -X POST http://localhost:8787/refresh | jq '.stats.config'
 ```
 
-#### **AI Summarization Testing** ⭐ *Updated in v0.3.1*
+#### **AI Summarization Testing** ⭐ *Updated in v0.3.2*
 
 ```bash
 # Check LLM service status and available models
@@ -281,6 +316,43 @@ curl -X POST http://localhost:8787/summarize \
 curl -X POST http://localhost:8787/summarize \
   -H "Content-Type: application/json" \
   -d '{"item_ids": [1,2,3]}' | jq '{summaries_generated, cache_hits: [.results[] | select(.cache_hit == true)] | length, bullet_counts: [.results[].structured_summary.bullets | length]}'
+
+# ✨ Map-Reduce Testing (Long Article Processing) ⭐ *New in v0.3.2*
+
+# Check processing method and chunking metadata
+curl -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1], "force_regenerate": true}' | jq '.results[0].structured_summary | {processing_method, is_chunked, chunk_count, total_tokens}'
+
+# Test chunking threshold by temporarily lowering it
+# (Restart container with NEWSBRIEF_CHUNKING_THRESHOLD=500 to trigger chunking on normal articles)
+curl -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1], "force_regenerate": true}' | jq '.results[0] | {
+    item_id,
+    success,
+    processing_method: .structured_summary.processing_method,
+    is_chunked: .structured_summary.is_chunked,
+    chunks: .structured_summary.chunk_count,
+    tokens: .structured_summary.total_tokens,
+    generation_time
+  }'
+
+# Compare direct vs map-reduce processing performance
+echo "=== Processing Method Comparison ==="
+curl -s -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1,2,3], "force_regenerate": true}' | jq '.results[] | {
+    id: .item_id,
+    method: .structured_summary.processing_method,
+    chunked: .structured_summary.is_chunked,
+    chunks: .structured_summary.chunk_count // 1,
+    tokens: .structured_summary.total_tokens,
+    time: .generation_time
+  }'
+
+# Inspect chunking metadata across all summaries
+curl -s "http://localhost:8787/items" | jq '[.[] | select(.structured_summary != null)] | group_by(.structured_summary.processing_method) | map({method: .[0].structured_summary.processing_method, count: length})'
 ```
 
 ### **Database Inspection**
