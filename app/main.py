@@ -3,10 +3,13 @@ from fastapi import FastAPI, Query, HTTPException
 from typing import List
 from datetime import datetime
 from sqlalchemy import text
+import logging
 from .db import init_db, session_scope
-from .models import FeedIn, ItemOut, SummaryRequest, SummaryResponse, SummaryResultOut, LLMStatusOut
+from .models import FeedIn, ItemOut, SummaryRequest, SummaryResponse, SummaryResultOut, LLMStatusOut, StructuredSummary
 from .feeds import add_feed, import_opml, fetch_and_store, RefreshStats, MAX_ITEMS_PER_REFRESH, MAX_ITEMS_PER_FEED, MAX_REFRESH_TIME_SECONDS
 from .llm import get_llm_service, is_llm_available, OLLAMA_BASE_URL, DEFAULT_MODEL
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="NewsBrief")
 
@@ -59,21 +62,43 @@ def refresh_endpoint():
 def list_items(limit: int = Query(50, le=200)):
     with session_scope() as s:
         rows = s.execute(text("""
-        SELECT id, title, url, published, summary, ai_summary, ai_model, ai_generated_at
+        SELECT id, title, url, published, summary, content_hash,
+               ai_summary, ai_model, ai_generated_at,
+               structured_summary_json, structured_summary_model, 
+               structured_summary_content_hash, structured_summary_generated_at
         FROM items
         ORDER BY COALESCE(published, created_at) DESC
         LIMIT :lim
         """), {"lim": limit}).all()
-        return [ItemOut(
-            id=r[0], 
-            title=r[1], 
-            url=r[2], 
-            published=r[3], 
-            summary=r[4],
-            ai_summary=r[5],
-            ai_model=r[6],
-            ai_generated_at=r[7]
-        ) for r in rows]
+        
+        items = []
+        for r in rows:
+            # Parse structured summary if available
+            structured_summary = None
+            if r[9] and r[10]:  # structured_summary_json and model
+                try:
+                    structured_summary = StructuredSummary.from_json_string(
+                        r[9], 
+                        r[11] or r[5] or "",  # structured content_hash, fallback to main content_hash
+                        r[10],
+                        datetime.fromisoformat(r[12]) if r[12] else datetime.now()
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to parse structured summary for item {r[0]}: {e}")
+            
+            items.append(ItemOut(
+                id=r[0], 
+                title=r[1], 
+                url=r[2], 
+                published=r[3], 
+                summary=r[4],
+                ai_summary=r[6],
+                ai_model=r[7],
+                ai_generated_at=r[8],
+                structured_summary=structured_summary
+            ))
+        
+        return items
 
 @app.get("/llm/status", response_model=LLMStatusOut)
 def llm_status():
@@ -126,9 +151,12 @@ def generate_summaries(request: SummaryRequest):
     with session_scope() as s:
         for item_id in request.item_ids:
             try:
-                # Get item details
+                # Get item details including structured summary fields
                 row = s.execute(text("""
-                    SELECT id, title, content, ai_summary, ai_model
+                    SELECT id, title, content, content_hash, 
+                           ai_summary, ai_model, ai_generated_at,
+                           structured_summary_json, structured_summary_model, 
+                           structured_summary_content_hash, structured_summary_generated_at
                     FROM items 
                     WHERE id = :item_id
                 """), {"item_id": item_id}).first()
@@ -142,35 +170,91 @@ def generate_summaries(request: SummaryRequest):
                     errors += 1
                     continue
                 
-                # Check if summary already exists and force_regenerate is False
-                if row[3] and not request.force_regenerate:  # ai_summary exists
+                # Extract fields
+                title, content, content_hash = row[1] or "", row[2] or "", row[3]
+                structured_json = row[7]  # structured_summary_json
+                structured_model = row[8]  # structured_summary_model
+                
+                # Check for existing structured summary (if not force regenerate)
+                if (request.use_structured and structured_json and 
+                    not request.force_regenerate and 
+                    structured_model == (request.model or DEFAULT_MODEL)):
+                    
+                    # Return existing structured summary
+                    try:
+                        structured_summary = StructuredSummary.from_json_string(
+                            structured_json, content_hash or "", structured_model, 
+                            datetime.fromisoformat(row[10]) if row[10] else datetime.now()
+                        )
+                        results.append(SummaryResultOut(
+                            item_id=item_id,
+                            success=True,
+                            summary=structured_json,  # Legacy field
+                            model=structured_model,
+                            structured_summary=structured_summary,
+                            content_hash=content_hash,
+                            cache_hit=True
+                        ))
+                        continue
+                    except Exception as e:
+                        logger.warning(f"Failed to parse existing structured summary for item {item_id}: {e}")
+                
+                # Check for existing legacy summary (backward compatibility)
+                elif (not request.use_structured and row[4] and 
+                      not request.force_regenerate):  # ai_summary exists
                     results.append(SummaryResultOut(
                         item_id=item_id,
                         success=True,
-                        summary=row[3],
-                        model=row[4] or "existing"
+                        summary=row[4],
+                        model=row[5] or "existing",
+                        cache_hit=True
                     ))
                     continue
                 
-                # Generate summary
+                # Generate new summary
                 result = service.summarize_article(
-                    title=row[1] or "",
-                    content=row[2] or "",
-                    model=request.model
+                    title=title,
+                    content=content,
+                    model=request.model,
+                    use_structured=request.use_structured
                 )
                 
                 if result.success:
-                    # Store in database
-                    s.execute(text("""
-                        UPDATE items 
-                        SET ai_summary = :summary, ai_model = :model, ai_generated_at = :generated_at
-                        WHERE id = :item_id
-                    """), {
-                        "summary": result.summary,
-                        "model": result.model,
-                        "generated_at": datetime.now().isoformat(),
-                        "item_id": item_id
-                    })
+                    # Store in database - update content_hash if missing
+                    if not content_hash and result.content_hash:
+                        s.execute(text("""
+                            UPDATE items SET content_hash = :content_hash WHERE id = :item_id
+                        """), {"content_hash": result.content_hash, "item_id": item_id})
+                    
+                    if request.use_structured and result.structured_summary:
+                        # Store structured summary
+                        s.execute(text("""
+                            UPDATE items 
+                            SET structured_summary_json = :json_data,
+                                structured_summary_model = :model,
+                                structured_summary_content_hash = :content_hash,
+                                structured_summary_generated_at = :generated_at
+                            WHERE id = :item_id
+                        """), {
+                            "json_data": result.structured_summary.to_json_string(),
+                            "model": result.model,
+                            "content_hash": result.content_hash,
+                            "generated_at": result.structured_summary.generated_at.isoformat(),
+                            "item_id": item_id
+                        })
+                    else:
+                        # Store legacy summary
+                        s.execute(text("""
+                            UPDATE items 
+                            SET ai_summary = :summary, ai_model = :model, ai_generated_at = :generated_at
+                            WHERE id = :item_id
+                        """), {
+                            "summary": result.summary,
+                            "model": result.model,
+                            "generated_at": datetime.now().isoformat(),
+                            "item_id": item_id
+                        })
+                    
                     summaries_generated += 1
                 else:
                     errors += 1
@@ -182,10 +266,14 @@ def generate_summaries(request: SummaryRequest):
                     model=result.model,
                     error=result.error,
                     tokens_used=result.tokens_used,
-                    generation_time=result.generation_time
+                    generation_time=result.generation_time,
+                    structured_summary=result.structured_summary,
+                    content_hash=result.content_hash,
+                    cache_hit=result.cache_hit
                 ))
                 
             except Exception as e:
+                logger.error(f"Error processing item {item_id}: {e}")
                 results.append(SummaryResultOut(
                     item_id=item_id,
                     success=False,
@@ -205,7 +293,10 @@ def get_item(item_id: int):
     """Get a specific item with all details including AI summary."""
     with session_scope() as s:
         row = s.execute(text("""
-            SELECT id, title, url, published, summary, ai_summary, ai_model, ai_generated_at
+            SELECT id, title, url, published, summary, content_hash,
+                   ai_summary, ai_model, ai_generated_at,
+                   structured_summary_json, structured_summary_model, 
+                   structured_summary_content_hash, structured_summary_generated_at
             FROM items 
             WHERE id = :item_id
         """), {"item_id": item_id}).first()
@@ -213,13 +304,27 @@ def get_item(item_id: int):
         if not row:
             raise HTTPException(status_code=404, detail="Item not found")
         
+        # Parse structured summary if available
+        structured_summary = None
+        if row[9] and row[10]:  # structured_summary_json and model
+            try:
+                structured_summary = StructuredSummary.from_json_string(
+                    row[9], 
+                    row[11] or row[5] or "",  # Use structured content_hash, fallback to main content_hash
+                    row[10],
+                    datetime.fromisoformat(row[12]) if row[12] else datetime.now()
+                )
+            except Exception as e:
+                logger.warning(f"Failed to parse structured summary for item {item_id}: {e}")
+        
         return ItemOut(
             id=row[0],
             title=row[1],
             url=row[2],
             published=row[3],
             summary=row[4],
-            ai_summary=row[5],
-            ai_model=row[6],
-            ai_generated_at=row[7]
+            ai_summary=row[6],
+            ai_model=row[7],
+            ai_generated_at=row[8],
+            structured_summary=structured_summary
         )

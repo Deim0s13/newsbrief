@@ -54,27 +54,45 @@ def init_db() -> None:
           author TEXT,
           summary TEXT,
           content TEXT,
+          content_hash TEXT,
           ai_summary TEXT,
           ai_model TEXT,
           ai_generated_at DATETIME,
+          structured_summary_json TEXT,
+          structured_summary_model TEXT,
+          structured_summary_content_hash TEXT,
+          structured_summary_generated_at DATETIME,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY(feed_id) REFERENCES feeds(id)
         );
         """)
         
         # Migration: Add AI summary columns if they don't exist
-        try:
-            conn.exec_driver_sql("ALTER TABLE items ADD COLUMN ai_summary TEXT;")
-        except:
-            pass  # Column already exists
-        try:
-            conn.exec_driver_sql("ALTER TABLE items ADD COLUMN ai_model TEXT;")
-        except:
-            pass  # Column already exists
-        try:
-            conn.exec_driver_sql("ALTER TABLE items ADD COLUMN ai_generated_at DATETIME;")
-        except:
-            pass  # Column already exists
+        migration_columns = [
+            "ALTER TABLE items ADD COLUMN ai_summary TEXT;",
+            "ALTER TABLE items ADD COLUMN ai_model TEXT;",
+            "ALTER TABLE items ADD COLUMN ai_generated_at DATETIME;",
+            # New structured summary columns  
+            "ALTER TABLE items ADD COLUMN content_hash TEXT;",
+            "ALTER TABLE items ADD COLUMN structured_summary_json TEXT;",
+            "ALTER TABLE items ADD COLUMN structured_summary_model TEXT;",
+            "ALTER TABLE items ADD COLUMN structured_summary_content_hash TEXT;",
+            "ALTER TABLE items ADD COLUMN structured_summary_generated_at DATETIME;"
+        ]
+        
+        for migration_sql in migration_columns:
+            try:
+                conn.exec_driver_sql(migration_sql)
+            except:
+                pass  # Column already exists
+        # Create indexes for performance
         conn.exec_driver_sql("""
         CREATE INDEX IF NOT EXISTS idx_items_published ON items(published DESC);
+        """)
+        conn.exec_driver_sql("""
+        CREATE INDEX IF NOT EXISTS idx_items_content_hash ON items(content_hash);
+        """)
+        conn.exec_driver_sql("""
+        CREATE INDEX IF NOT EXISTS idx_structured_summary_cache 
+        ON items(structured_summary_content_hash, structured_summary_model);
         """)
