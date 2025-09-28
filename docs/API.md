@@ -239,8 +239,11 @@ curl "http://localhost:8787/items?limit=5" | jq .
 # Get latest 50 articles (default)
 curl http://localhost:8787/items
 
-# Extract just AI summaries from recent articles
-curl "http://localhost:8787/items?limit=5" | jq '.[] | select(.ai_summary != null) | {id, title, ai_summary}'
+# Extract structured summaries from recent articles  
+curl "http://localhost:8787/items?limit=5" | jq '.[] | select(.structured_summary != null) | {id, title, bullets: .structured_summary.bullets, tags: .structured_summary.tags}'
+
+# Extract just bullet points from articles with structured summaries
+curl "http://localhost:8787/items?limit=5" | jq '.[] | select(.structured_summary != null) | {id, title, bullets: .structured_summary.bullets}'
 ```
 
 ---
@@ -302,7 +305,8 @@ Content-Type: application/json
 {
   "item_ids": [1, 2, 3],
   "model": "llama3.2:3b",
-  "force_regenerate": false
+  "force_regenerate": false,
+  "use_structured": true
 }
 ```
 
@@ -313,10 +317,11 @@ Content-Type: application/json
 | `item_ids` | array | ✅ | Array of article IDs to summarize |
 | `model` | string | ❌ | Optional model override (uses default if not specified) |
 | `force_regenerate` | boolean | ❌ | Force regenerate even if summary exists (default: false) |
+| `use_structured` | boolean | ❌ | Generate structured JSON summaries (default: true) |
 
 #### Response
 
-**Success (200)**
+**Success (200) - Structured Summary (default)**
 ```json
 {
   "success": true,
@@ -326,20 +331,47 @@ Content-Type: application/json
     {
       "item_id": 1,
       "success": true,
-      "summary": "This article discusses the latest developments in AI technology, focusing on the rapid advancement of large language models and their potential impact on various industries. The author examines both the opportunities and challenges presented by these technological advances.",
+      "summary": "{\"bullets\": [\"AI companies are not profitable...\"], \"why_it_matters\": \"This development...\", \"tags\": [\"ai\", \"technology\"]}",
       "model": "llama3.2:3b",
       "error": null,
       "tokens_used": 1245,
-      "generation_time": 8.32
+      "generation_time": 8.32,
+      "structured_summary": {
+        "bullets": [
+          "AI companies are not profitable and rely on investors' money to stay afloat",
+          "The AI industry's growth is driven by replacing workers with AI, leading to job losses",
+          "The sector's financials are unsustainable, with massive debt and accounting irregularities"
+        ],
+        "why_it_matters": "The impending AI apocalypse poses significant economic risks, threatening the livelihoods of millions and reshaping the global economy as investors and policymakers need to address this issue before it's too late.",
+        "tags": ["ai-apocalypse", "economic-risks", "job-market-disruption", "financial-stability"],
+        "content_hash": "a1b2c3d4e5f6789a",
+        "model": "llama3.2:3b",
+        "generated_at": "2024-01-15T15:45:22Z"
+      },
+      "content_hash": "a1b2c3d4e5f6789a",
+      "cache_hit": false
     },
     {
       "item_id": 2,
       "success": true,
-      "summary": "A comprehensive analysis of recent market trends shows significant growth in the technology sector...",
+      "summary": "{\"bullets\": [\"Flash Attention 4 achieves...\"], \"why_it_matters\": \"This breakthrough...\", \"tags\": [\"gpu\", \"performance\"]}",
       "model": "llama3.2:3b",
       "error": null,
       "tokens_used": 987,
-      "generation_time": 6.15
+      "generation_time": 6.15,
+      "structured_summary": {
+        "bullets": [
+          "Flash Attention 4 achieves a ~20% speedup over previous state-of-the-art",
+          "New architecture uses asynchronous 'pipeline' of operations for concurrency"
+        ],
+        "why_it_matters": "This breakthrough in GPU kernel optimization significantly improves AI model inference speed, enabling more efficient deployment of large language models.",
+        "tags": ["ai-processing", "gpu-technology", "cuda-kernels", "performance"],
+        "content_hash": "b2c3d4e5f6789ab1",
+        "model": "llama3.2:3b", 
+        "generated_at": "2024-01-15T15:46:10Z"
+      },
+      "content_hash": "b2c3d4e5f6789ab1",
+      "cache_hit": false
     }
   ]
 }
@@ -355,51 +387,100 @@ Content-Type: application/json
 | `results` | array | Detailed results for each requested item |
 | `results[].item_id` | integer | Article ID that was processed |
 | `results[].success` | boolean | Whether summarization succeeded for this item |
-| `results[].summary` | string or null | Generated summary text |
+| `results[].summary` | string or null | Generated summary text (legacy field) |
 | `results[].model` | string | Model used for generation |
 | `results[].error` | string or null | Error message if failed |
 | `results[].tokens_used` | integer or null | Approximate token count for generation |
 | `results[].generation_time` | float or null | Time taken in seconds |
+| `results[].structured_summary` | object or null | **NEW**: Structured JSON summary with bullets/why_it_matters/tags |
+| `results[].structured_summary.bullets` | array | Key points as concise bullet list (3-5 items) |
+| `results[].structured_summary.why_it_matters` | string | Explanation of significance and broader impact |
+| `results[].structured_summary.tags` | array | Relevant topic tags for categorization and search |
+| `results[].structured_summary.content_hash` | string | Content hash for deduplication and caching |
+| `results[].structured_summary.model` | string | Model used for this specific summary |
+| `results[].structured_summary.generated_at` | string (ISO 8601) | When this summary was generated |
+| `results[].content_hash` | string or null | **NEW**: Content hash for caching and deduplication |
+| `results[].cache_hit` | boolean | **NEW**: Whether this result came from cache (instant response) |
 
 #### Behavior
+
+**Structured JSON Summaries (v0.3.1)** ⭐ *NEW*
+- **Default Format**: `use_structured=true` generates structured JSON with:
+  - `bullets`: 3-5 key points as concise sentences (max 80 chars each)
+  - `why_it_matters`: Significance explanation (50-150 words) 
+  - `tags`: 3-6 relevant topic tags for categorization and search
+- **Legacy Support**: `use_structured=false` generates plain text summaries
+- **JSON Validation**: Strict validation with automatic fallback on malformed responses
+
+**Hash+Model Caching System** ⭐ *NEW*  
+- **Content Hashing**: SHA256-based deduplication during article ingestion
+- **Cache Keys**: `{content_hash}:{model}` for precise cache invalidation
+- **Instant Cache Hits**: Sub-second responses for repeated content/model combinations
+- **Smart Invalidation**: Only regenerates when content OR model changes
+- **Cross-Article Deduplication**: Identical content cached across different articles
 
 **AI Model Integration:**
 - Uses local Ollama LLM service for privacy-preserving summarization
 - Configurable models via `NEWSBRIEF_LLM_MODEL` environment variable
 - Automatic model pulling if not locally available
+- Optimized prompts for consistent structured JSON generation
 
 **Intelligent Processing:**
-- Skips items that already have summaries unless `force_regenerate` is true
+- Skips items with existing summaries unless `force_regenerate=true` 
+- Smart caching checks both legacy and structured summary formats
 - Handles missing items gracefully with detailed error reporting
 - Processes content through Mozilla Readability for clean text input
+- Automatic content hash calculation and storage
 
 **Performance & Reliability:**
-- Tracks generation time and token usage for monitoring
-- Implements fallback summarization when LLM service unavailable
-- Stores generated summaries in database for future retrieval
+- Tracks generation time, token usage, and cache hit rates for monitoring
+- Implements fallback summarization when LLM service unavailable  
+- Database persistence with optimized indexing for cache lookups
+- Graceful fallbacks to extractive summaries when JSON parsing fails
 
 **Error Handling:**
 - Returns partial success when some items fail
 - Detailed error messages for debugging and monitoring
 - Graceful degradation when Ollama service is offline
+- JSON validation with structured fallback creation
 
 #### Examples
 
 ```bash
-# Generate summary for single article
+# Generate structured JSON summary (default behavior)
 curl -X POST http://localhost:8787/summarize \
   -H "Content-Type: application/json" \
-  -d '{"item_ids": [1]}'
+  -d '{"item_ids": [1], "use_structured": true}'
 
-# Batch summarize multiple articles with custom model
+# Extract bullets, significance, and tags from response  
 curl -X POST http://localhost:8787/summarize \
   -H "Content-Type: application/json" \
-  -d '{"item_ids": [1,2,3], "model": "mistral:7b"}'
+  -d '{"item_ids": [1]}' | jq '.results[0].structured_summary | {bullets, why_it_matters, tags}'
 
-# Force regenerate existing summaries
+# Test caching - second request should show cache_hit: true
 curl -X POST http://localhost:8787/summarize \
   -H "Content-Type: application/json" \
-  -d '{"item_ids": [1], "force_regenerate": true}'
+  -d '{"item_ids": [1]}' | jq '.results[0].cache_hit'
+
+# Batch structured summarization with custom model
+curl -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1,2,3], "model": "mistral:7b", "use_structured": true}'
+
+# Legacy plain text summaries (backward compatibility)  
+curl -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1], "use_structured": false}'
+
+# Force regenerate with different model (cache miss expected)
+curl -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1], "model": "llama3.2:1b", "force_regenerate": true}'
+
+# Monitor performance and cache efficiency
+curl -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1,2,3]}' | jq '.results[] | {item_id, cache_hit, generation_time}'
 ```
 
 ---
@@ -424,9 +505,21 @@ GET /items/1 HTTP/1.1
   "url": "https://example.com/article/ai-breakthrough",
   "published": "2024-01-15T10:30:00",
   "summary": "Initial article excerpt from RSS feed...",
-  "ai_summary": "This groundbreaking article reveals significant advances in artificial intelligence research, with researchers announcing a new model architecture that achieves unprecedented performance on reasoning tasks...",
+  "ai_summary": "This groundbreaking article reveals significant advances in artificial intelligence research...",
   "ai_model": "llama3.2:3b",
-  "ai_generated_at": "2024-01-15T15:45:22"
+  "ai_generated_at": "2024-01-15T15:45:22",
+  "structured_summary": {
+    "bullets": [
+      "Researchers announce new model architecture achieving unprecedented reasoning performance",
+      "Breakthrough represents significant advance in artificial intelligence research capabilities",
+      "New approach could transform industry applications and scientific discovery"
+    ],
+    "why_it_matters": "This breakthrough represents a fundamental advancement in AI reasoning capabilities, potentially transforming how artificial intelligence systems approach complex problem-solving and accelerating progress across multiple scientific and industrial domains.",
+    "tags": ["artificial-intelligence", "research-breakthrough", "model-architecture", "reasoning-systems", "technology"],
+    "content_hash": "a1b2c3d4e5f6789a",
+    "model": "llama3.2:3b",
+    "generated_at": "2024-01-15T15:45:22Z"
+  }
 }
 ```
 
@@ -439,17 +532,33 @@ GET /items/1 HTTP/1.1
 | `url` | string | Original article URL |
 | `published` | string (ISO 8601) or null | Publication timestamp |
 | `summary` | string or null | Original article summary from RSS feed |
-| `ai_summary` | string or null | AI-generated intelligent summary |
-| `ai_model` | string or null | Model used for AI summary generation |
-| `ai_generated_at` | string (ISO 8601) or null | When AI summary was created |
+| `ai_summary` | string or null | AI-generated intelligent summary (legacy) |
+| `ai_model` | string or null | Model used for AI summary generation (legacy) |
+| `ai_generated_at` | string (ISO 8601) or null | When AI summary was created (legacy) |
+| `structured_summary` | object or null | **NEW**: Structured JSON summary with bullets/why_it_matters/tags |
+| `structured_summary.bullets` | array | Key points as concise bullet list |
+| `structured_summary.why_it_matters` | string | Explanation of significance and broader impact |
+| `structured_summary.tags` | array | Relevant topic tags for categorization |
+| `structured_summary.content_hash` | string | Content hash for caching |
+| `structured_summary.model` | string | Model used for generation |
+| `structured_summary.generated_at` | string (ISO 8601) | When this summary was generated |
 
 #### Example
 
 ```bash
-# Get specific article with AI summary
+# Get specific article with structured summary
 curl http://localhost:8787/items/1 | jq .
 
-# Extract just the AI summary
+# Extract structured summary components
+curl http://localhost:8787/items/1 | jq '.structured_summary | {bullets, why_it_matters, tags}'
+
+# Extract just the bullet points
+curl http://localhost:8787/items/1 | jq '.structured_summary.bullets'
+
+# Extract topic tags for categorization
+curl http://localhost:8787/items/1 | jq '.structured_summary.tags'
+
+# Legacy: Extract plain text AI summary (if available)
 curl http://localhost:8787/items/1 | jq '.ai_summary'
 ```
 

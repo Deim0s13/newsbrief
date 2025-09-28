@@ -224,37 +224,63 @@ curl -s -X POST http://localhost:8787/refresh | jq '
 curl -s -X POST http://localhost:8787/refresh | jq '.stats.config'
 ```
 
-#### **AI Summarization Testing** ⭐ *New in v0.3.0*
+#### **AI Summarization Testing** ⭐ *Updated in v0.3.1*
 
 ```bash
 # Check LLM service status and available models
 curl http://localhost:8787/llm/status | jq .
 
-# Test AI summarization on recent articles
+# Test structured JSON summarization (default behavior)
 curl -X POST http://localhost:8787/summarize \
   -H "Content-Type: application/json" \
   -d '{"item_ids": [1,2,3]}'
 
-# Generate summaries with specific model
+# Extract structured components from response
+curl -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1]}' | jq '.results[0].structured_summary | {bullets, why_it_matters, tags}'
+
+# Test hash+model caching system (second request should be instant)
+echo "First request (cache miss):"
+time curl -s -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1]}' | jq '.results[0].cache_hit'
+  
+echo "Second request (cache hit):"
+time curl -s -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1]}' | jq '.results[0].cache_hit'
+
+# Generate summaries with specific model (cache miss due to model change)
 curl -X POST http://localhost:8787/summarize \
   -H "Content-Type: application/json" \
   -d '{"item_ids": [1], "model": "mistral:7b"}'
+
+# Legacy plain text summaries (backward compatibility)  
+curl -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1], "use_structured": false}'
 
 # Force regenerate existing summaries  
 curl -X POST http://localhost:8787/summarize \
   -H "Content-Type: application/json" \
   -d '{"item_ids": [1], "force_regenerate": true}'
 
-# View articles with AI summaries
-curl "http://localhost:8787/items?limit=5" | jq '.[] | select(.ai_summary != null) | {id, title, ai_model, ai_summary}'
+# View articles with structured summaries
+curl "http://localhost:8787/items?limit=5" | jq '.[] | select(.structured_summary != null) | {id, title, bullets: .structured_summary.bullets, tags: .structured_summary.tags}'
 
-# Get specific article with full AI details
-curl http://localhost:8787/items/1 | jq '{id, title, original_summary: .summary, ai_summary, ai_model, ai_generated_at}'
+# Get specific article with full structured details
+curl http://localhost:8787/items/1 | jq '{id, title, original_summary: .summary, structured_summary}'
 
-# Monitor AI performance over batch operations
+# Monitor performance and caching efficiency
 curl -X POST http://localhost:8787/summarize \
   -H "Content-Type: application/json" \
-  -d '{"item_ids": [1,2,3,4,5]}' | jq '.results[] | {item_id, tokens_used, generation_time}'
+  -d '{"item_ids": [1,2,3,4,5]}' | jq '.results[] | {item_id, cache_hit, tokens_used, generation_time}'
+
+# Batch processing with structured output inspection
+curl -X POST http://localhost:8787/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"item_ids": [1,2,3]}' | jq '{summaries_generated, cache_hits: [.results[] | select(.cache_hit == true)] | length, bullet_counts: [.results[].structured_summary.bullets | length]}'
 ```
 
 ### **Database Inspection**
