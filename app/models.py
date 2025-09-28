@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import hashlib
+import re
 from datetime import datetime
 from pydantic import BaseModel, HttpUrl, Field, validator
 from typing import Optional, List, Union
@@ -94,6 +95,9 @@ class ItemOut(BaseModel):
     ai_generated_at: Optional[datetime] = None
     # New structured AI summary
     structured_summary: Optional[StructuredSummary] = None
+    # Fallback summary (v0.3.3) - extracted sentences when AI unavailable
+    fallback_summary: Optional[str] = Field(None, description="First 2 sentences when AI summary unavailable")
+    is_fallback_summary: bool = Field(False, description="Whether the primary summary is a fallback")
 
 class SummaryRequest(BaseModel):
     """Request to generate summary for specific item(s)."""
@@ -133,6 +137,46 @@ class LLMStatusOut(BaseModel):
     error: Optional[str] = None
 
 # Utility functions for content hashing
+def extract_first_sentences(content: str, sentence_count: int = 2) -> str:
+    """
+    Extract the first N sentences from content as a fallback summary.
+    
+    Args:
+        content: The article content to extract sentences from
+        sentence_count: Number of sentences to extract (default: 2)
+        
+    Returns:
+        String containing the first N sentences, or the full content if shorter
+    """
+    if not content or not content.strip():
+        return ""
+    
+    # Clean the content - remove excessive whitespace
+    cleaned_content = re.sub(r'\s+', ' ', content.strip())
+    
+    # Split into sentences using a simpler, more reliable pattern
+    # This handles periods, exclamation marks, question marks
+    # Use a simple approach that works reliably
+    sentence_pattern = r'[.!?]+\s+'
+    sentences = re.split(sentence_pattern, cleaned_content)
+    
+    # Filter out empty sentences and take the first N
+    sentences = [s.strip() for s in sentences if s.strip()]
+    
+    if not sentences:
+        # If no sentences found, return first 200 characters as fallback
+        return cleaned_content[:200] + "..." if len(cleaned_content) > 200 else cleaned_content
+    
+    # Take first N sentences
+    selected_sentences = sentences[:sentence_count]
+    result = ' '.join(selected_sentences)
+    
+    # Ensure the result ends with proper punctuation
+    if result and result[-1] not in '.!?':
+        result += '...'
+    
+    return result
+
 def create_content_hash(title: str, content: str) -> str:
     """Create a hash of article title + content for caching purposes."""
     combined = f"{title}|{content}".encode('utf-8')

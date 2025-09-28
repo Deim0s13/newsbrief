@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import text
 import logging
 from .db import init_db, session_scope
-from .models import FeedIn, ItemOut, SummaryRequest, SummaryResponse, SummaryResultOut, LLMStatusOut, StructuredSummary
+from .models import FeedIn, ItemOut, SummaryRequest, SummaryResponse, SummaryResultOut, LLMStatusOut, StructuredSummary, extract_first_sentences
 from .feeds import add_feed, import_opml, fetch_and_store, RefreshStats, MAX_ITEMS_PER_REFRESH, MAX_ITEMS_PER_FEED, MAX_REFRESH_TIME_SECONDS
 from .llm import get_llm_service, is_llm_available, OLLAMA_BASE_URL, DEFAULT_MODEL
 
@@ -62,7 +62,7 @@ def refresh_endpoint():
 def list_items(limit: int = Query(50, le=200)):
     with session_scope() as s:
         rows = s.execute(text("""
-        SELECT id, title, url, published, summary, content_hash,
+        SELECT id, title, url, published, summary, content_hash, content,
                ai_summary, ai_model, ai_generated_at,
                structured_summary_json, structured_summary_model, 
                structured_summary_content_hash, structured_summary_generated_at
@@ -75,16 +75,37 @@ def list_items(limit: int = Query(50, le=200)):
         for r in rows:
             # Parse structured summary if available
             structured_summary = None
-            if r[9] and r[10]:  # structured_summary_json and model
+            if r[10] and r[11]:  # structured_summary_json and model (indices shifted due to content column)
                 try:
                     structured_summary = StructuredSummary.from_json_string(
-                        r[9], 
-                        r[11] or r[5] or "",  # structured content_hash, fallback to main content_hash
-                        r[10],
-                        datetime.fromisoformat(r[12]) if r[12] else datetime.now()
+                        r[10], 
+                        r[12] or r[5] or "",  # structured content_hash, fallback to main content_hash
+                        r[11],
+                        datetime.fromisoformat(r[13]) if r[13] else datetime.now()
                     )
                 except Exception as e:
                     logger.warning(f"Failed to parse structured summary for item {r[0]}: {e}")
+            
+            # Generate fallback summary if no AI summary available
+            fallback_summary = None
+            is_fallback = False
+            
+            # Check if we have any AI-generated summary
+            has_ai_summary = structured_summary is not None or r[7] is not None  # ai_summary field
+            
+            if not has_ai_summary and r[6]:  # content is available
+                # Generate fallback summary from first 2 sentences
+                try:
+                    fallback_summary = extract_first_sentences(r[6], sentence_count=2)
+                    is_fallback = True
+                    
+                    # If we still don't have a fallback, use title or original summary
+                    if not fallback_summary.strip():
+                        fallback_summary = r[4] or r[1] or "Content preview unavailable"
+                except Exception as e:
+                    logger.warning(f"Failed to extract fallback summary for item {r[0]}: {e}")
+                    fallback_summary = r[4] or r[1] or "Content preview unavailable"
+                    is_fallback = True
             
             items.append(ItemOut(
                 id=r[0], 
@@ -92,10 +113,12 @@ def list_items(limit: int = Query(50, le=200)):
                 url=r[2], 
                 published=r[3], 
                 summary=r[4],
-                ai_summary=r[6],
-                ai_model=r[7],
-                ai_generated_at=r[8],
-                structured_summary=structured_summary
+                ai_summary=r[7],  # Updated index
+                ai_model=r[8],    # Updated index
+                ai_generated_at=r[9],  # Updated index
+                structured_summary=structured_summary,
+                fallback_summary=fallback_summary,
+                is_fallback_summary=is_fallback
             ))
         
         return items
@@ -293,7 +316,7 @@ def get_item(item_id: int):
     """Get a specific item with all details including AI summary."""
     with session_scope() as s:
         row = s.execute(text("""
-            SELECT id, title, url, published, summary, content_hash,
+            SELECT id, title, url, published, summary, content_hash, content,
                    ai_summary, ai_model, ai_generated_at,
                    structured_summary_json, structured_summary_model, 
                    structured_summary_content_hash, structured_summary_generated_at
@@ -306,16 +329,37 @@ def get_item(item_id: int):
         
         # Parse structured summary if available
         structured_summary = None
-        if row[9] and row[10]:  # structured_summary_json and model
+        if row[10] and row[11]:  # structured_summary_json and model (indices shifted due to content column)
             try:
                 structured_summary = StructuredSummary.from_json_string(
-                    row[9], 
-                    row[11] or row[5] or "",  # Use structured content_hash, fallback to main content_hash
-                    row[10],
-                    datetime.fromisoformat(row[12]) if row[12] else datetime.now()
+                    row[10], 
+                    row[12] or row[5] or "",  # Use structured content_hash, fallback to main content_hash
+                    row[11],
+                    datetime.fromisoformat(row[13]) if row[13] else datetime.now()
                 )
             except Exception as e:
                 logger.warning(f"Failed to parse structured summary for item {item_id}: {e}")
+        
+        # Generate fallback summary if no AI summary available
+        fallback_summary = None
+        is_fallback = False
+        
+        # Check if we have any AI-generated summary
+        has_ai_summary = structured_summary is not None or row[7] is not None  # ai_summary field
+        
+        if not has_ai_summary and row[6]:  # content is available
+            # Generate fallback summary from first 2 sentences
+            try:
+                fallback_summary = extract_first_sentences(row[6], sentence_count=2)
+                is_fallback = True
+                
+                # If we still don't have a fallback, use title or original summary
+                if not fallback_summary.strip():
+                    fallback_summary = row[4] or row[1] or "Content preview unavailable"
+            except Exception as e:
+                logger.warning(f"Failed to extract fallback summary for item {item_id}: {e}")
+                fallback_summary = row[4] or row[1] or "Content preview unavailable"
+                is_fallback = True
         
         return ItemOut(
             id=row[0],
@@ -323,8 +367,10 @@ def get_item(item_id: int):
             url=row[2],
             published=row[3],
             summary=row[4],
-            ai_summary=row[6],
-            ai_model=row[7],
-            ai_generated_at=row[8],
-            structured_summary=structured_summary
+            ai_summary=row[7],   # Updated index
+            ai_model=row[8],     # Updated index
+            ai_generated_at=row[9],  # Updated index
+            structured_summary=structured_summary,
+            fallback_summary=fallback_summary,
+            is_fallback_summary=is_fallback
         )

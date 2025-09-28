@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Optional, List
 from dataclasses import dataclass
 
-from .models import StructuredSummary, create_content_hash, create_cache_key, TextChunk, ChunkSummary
+from .models import StructuredSummary, create_content_hash, create_cache_key, TextChunk, ChunkSummary, extract_first_sentences
 from .db import session_scope
 from sqlalchemy import text
 
@@ -197,7 +197,7 @@ class LLMService:
     
     def _split_chunk_by_sentences(self, chunk: TextChunk) -> List[TextChunk]:
         """Split a large chunk by sentences."""
-        sentences = re.split(r'(?<=[.!?])\s+', chunk.content)
+        sentences = re.split(r'[.!?]+\s+', chunk.content)
         sub_chunks = []
         current_content = ""
         chunk_index = chunk.chunk_index
@@ -802,26 +802,46 @@ Summary:"""
         )
     
     def _fallback_summary(self, title: str, content: str, error: str, use_structured: bool = False, content_hash: Optional[str] = None) -> SummaryResult:
-        """Generate a fallback summary when LLM fails."""
-        # Simple extractive summary: first few sentences
-        sentences = content.split('. ')
-        if len(sentences) > 3:
-            fallback_text = '. '.join(sentences[:3]) + '.'
-        else:
-            fallback_text = content[:300] + "..." if len(content) > 300 else content
+        """Generate a fallback summary when LLM fails using first 2 sentences."""
+        logger.info(f"Generating fallback summary due to error: {error}")
         
+        # Use intelligent sentence extraction for better fallback summaries
+        fallback_text = extract_first_sentences(content, sentence_count=2)
+        
+        # If no content available, use title as fallback
         if not fallback_text.strip():
-            fallback_text = title
+            fallback_text = title if title else "Content unavailable"
+        
+        # If still empty, provide a minimal fallback
+        if not fallback_text.strip():
+            fallback_text = "Article content could not be processed."
         
         if use_structured and content_hash:
+            # Create intelligent structured fallback using extracted sentences
+            sentences = fallback_text.split('. ')
+            # Create bullets from individual sentences, limited to reasonable length
+            bullets = [
+                sentence.strip() + ('.' if not sentence.strip().endswith(('.', '!', '?')) else '')
+                for sentence in sentences[:3]  # Max 3 bullets
+                if sentence.strip()
+            ]
+            
+            # Ensure we have at least one bullet
+            if not bullets:
+                bullets = [title if title else "Content unavailable"]
+            
             # Create basic structured fallback
             structured_summary = StructuredSummary(
-                bullets=[fallback_text[:80] + "..." if len(fallback_text) > 80 else fallback_text],
-                why_it_matters="Unable to analyze article content due to technical issues.",
-                tags=["article", "news", "error"],
+                bullets=bullets,
+                why_it_matters="AI summarization unavailable. Showing first sentences of article content.",
+                tags=["fallback", "content-preview"],
                 content_hash=content_hash,
                 model="fallback",
-                generated_at=datetime.now()
+                generated_at=datetime.now(),
+                is_chunked=False,
+                chunk_count=None,
+                total_tokens=None,
+                processing_method="fallback-sentences"
             )
             return SummaryResult(
                 summary=fallback_text,
