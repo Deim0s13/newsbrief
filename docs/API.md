@@ -406,6 +406,21 @@ Content-Type: application/json
 | `results[].content_hash` | string or null | **NEW**: Content hash for caching and deduplication |
 | `results[].cache_hit` | boolean | **NEW**: Whether this result came from cache (instant response) |
 
+#### Fallback Summary Fields ⭐ *New in v0.3.3*
+
+When AI services are unavailable or summary generation fails, the API automatically provides intelligent fallback summaries:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `fallback_summary` | string or null | **NEW v0.3.3**: First 2 sentences when AI summary unavailable |
+| `is_fallback_summary` | boolean | **NEW v0.3.3**: Whether the displayed summary is a fallback |
+
+**Fallback Behavior:**
+- Triggered when no AI summary exists (neither structured nor legacy)
+- Uses intelligent sentence extraction from full article content (not RSS summary)
+- Provides first 2 sentences with proper punctuation handling
+- Graceful degradation: article content → title → generic message
+
 #### Behavior
 
 **Structured JSON Summaries (v0.3.2)** ⭐ *ENHANCED*
@@ -557,6 +572,8 @@ GET /items/1 HTTP/1.1
 | `structured_summary.chunk_count` | integer or null | **NEW v0.3.2**: Number of chunks processed |
 | `structured_summary.total_tokens` | integer or null | **NEW v0.3.2**: Total token count of content |
 | `structured_summary.processing_method` | string | **NEW v0.3.2**: Processing method used |
+| `fallback_summary` | string or null | **NEW v0.3.3**: First 2 sentences when AI unavailable |
+| `is_fallback_summary` | boolean | **NEW v0.3.3**: Whether fallback summary is being used |
 
 #### Example
 
@@ -592,6 +609,33 @@ curl "http://localhost:8787/items" | jq '[.[] | select(.structured_summary != nu
   count: length,
   avg_tokens: ([.[].structured_summary.total_tokens | select(. != null)] | add / length | floor)
 })'
+
+# ✨ Fallback Summary Examples ⭐ *New in v0.3.3*
+
+# Check items with fallback summaries (when AI unavailable)
+curl "http://localhost:8787/items" | jq '.[] | select(.is_fallback_summary == true) | {
+  id,
+  title,
+  fallback_summary,
+  fallback_length: (.fallback_summary | length)
+}'
+
+# Test individual item fallback behavior
+curl http://localhost:8787/items/1 | jq '{
+  id,
+  title,
+  has_ai_summary: (.structured_summary != null),
+  using_fallback: .is_fallback_summary,
+  content_preview: .fallback_summary
+}'
+
+# Monitor AI vs fallback summary distribution
+curl "http://localhost:8787/items" | jq '{
+  total_items: length,
+  ai_summaries: [.[] | select(.structured_summary != null)] | length,
+  fallback_summaries: [.[] | select(.is_fallback_summary == true)] | length,
+  percentage_fallback: (([.[] | select(.is_fallback_summary == true)] | length) / length * 100 | round)
+}'
 ```
 
 ---

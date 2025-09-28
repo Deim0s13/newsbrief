@@ -187,7 +187,7 @@ podman run --rm -d \
   -e NEWSBRIEF_LLM_MODEL=llama3.2:3b \
   -e NEWSBRIEF_CHUNKING_THRESHOLD=2000 \
   -e NEWSBRIEF_CHUNK_SIZE=1200 \
-  --name newsbrief newsbrief-api:v0.3.2
+  --name newsbrief newsbrief-api:v0.3.3
 
 # Production: High-capacity configuration + Advanced LLM + Optimized chunking
 podman run --rm -d \
@@ -201,7 +201,7 @@ podman run --rm -d \
   -e NEWSBRIEF_CHUNKING_THRESHOLD=3500 \
   -e NEWSBRIEF_CHUNK_SIZE=1800 \
   -e NEWSBRIEF_MAX_CHUNK_SIZE=2200 \
-  --name newsbrief newsbrief-api:v0.3.2
+  --name newsbrief newsbrief-api:v0.3.3
 ```
 
 ## 🧪 Testing & Debugging
@@ -259,7 +259,7 @@ curl -s -X POST http://localhost:8787/refresh | jq '
 curl -s -X POST http://localhost:8787/refresh | jq '.stats.config'
 ```
 
-#### **AI Summarization Testing** ⭐ *Updated in v0.3.2*
+#### **AI Summarization Testing** ⭐ *Updated in v0.3.3*
 
 ```bash
 # Check LLM service status and available models
@@ -353,6 +353,49 @@ curl -s -X POST http://localhost:8787/summarize \
 
 # Inspect chunking metadata across all summaries
 curl -s "http://localhost:8787/items" | jq '[.[] | select(.structured_summary != null)] | group_by(.structured_summary.processing_method) | map({method: .[0].structured_summary.processing_method, count: length})'
+
+# ✨ Fallback Summary Testing (Offline AI Handling) ⭐ *New in v0.3.3*
+
+# Test fallback behavior when AI services are unavailable
+# Note: This shows first 2 sentences of article content when no AI summary exists
+
+# Check items with and without AI summaries
+curl -s "http://localhost:8787/items?limit=5" | jq '.[] | {
+  id,
+  title,
+  has_ai_summary: (.structured_summary != null or .ai_summary != null),
+  has_fallback: .is_fallback_summary,
+  fallback_preview: (.fallback_summary // "none")[0:80]
+}'
+
+# Test individual item fallback behavior
+curl -s http://localhost:8787/items/1 | jq '{
+  id,
+  title,
+  ai_available: (.structured_summary != null),
+  fallback_used: .is_fallback_summary,
+  fallback_content: .fallback_summary
+}'
+
+# Simulate AI service offline scenario
+# (Stop Ollama service: pkill -f ollama)
+# Then check if new items get fallback summaries automatically
+
+# Test fallback summary extraction quality
+curl -s "http://localhost:8787/items" | jq '[.[] | select(.is_fallback_summary == true)] | map({
+  id,
+  title,
+  fallback_length: (.fallback_summary | length),
+  fallback_preview: (.fallback_summary[0:100] + "...")
+})'
+
+# Monitor fallback vs AI summary distribution
+curl -s "http://localhost:8787/items" | jq '{
+  total_items: length,
+  ai_summaries: [.[] | select(.structured_summary != null)] | length,
+  fallback_summaries: [.[] | select(.is_fallback_summary == true)] | length,
+  no_summary: [.[] | select(.structured_summary == null and .is_fallback_summary == false)] | length
+}'
 ```
 
 ### **Database Inspection**

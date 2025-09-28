@@ -6,11 +6,12 @@ NewsBrief is a self-hosted, privacy-focused RSS feed aggregator that intelligent
 
 ## 🌟 Features
 
-### **Current (v0.3.2)**
+### **Current (v0.3.3)**
 - **RSS Feed Management**: Import feeds from OPML or add individually via API
 - **Intelligent Content Extraction**: Clean article content using Mozilla Readability
 - **Long Article Processing**: Map-reduce summarization for articles exceeding context limits with intelligent chunking
 - **Structured AI Summarization**: Local LLM via Ollama generates structured JSON summaries with bullets, significance analysis, and topic tags
+- **Fallback Summary Display**: Intelligent first-2-sentences extraction when AI services are offline or unavailable
 - **Advanced Caching System**: Hash+model based caching for instant responses and cross-article deduplication
 - **Batch Processing**: Efficient multi-article summarization with comprehensive error handling
 - **Robots.txt Compliance**: Respects robots.txt policies at both feed and article levels
@@ -52,7 +53,7 @@ docker-compose up -d
 
 ```bash
 # Build and run locally
-make clean-release VERSION=v0.3.2
+make clean-release VERSION=v0.3.3
 make run
 
 # Check available commands
@@ -175,7 +176,7 @@ make run                       # Run container locally
 make local-release VERSION=v0.3.2  # Tagged release
 
 # Automated cleanup
-make clean-release VERSION=v0.3.2  # Build + auto-cleanup old images
+make clean-release VERSION=v0.3.3  # Build + auto-cleanup old images
 ```
 
 ### **Project Structure**

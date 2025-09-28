@@ -52,10 +52,15 @@ Modern RSS readers are often cloud-based services that compromise privacy, requi
   - MAP phase: Individual chunk summarization with structured extraction
   - REDUCE phase: Synthesis of chunk summaries into coherent final result
   - Processing transparency with detailed metadata (chunk count, tokens, method)
+- **Fallback Summary System**: Graceful degradation when AI services unavailable
+  - Intelligent sentence extraction from full article content (first 2 sentences)
+  - Smart boundary detection with proper punctuation handling
+  - Graceful degradation chain: content → title → generic message
+  - Clear UX indicators via `is_fallback_summary` flag
 - Comprehensive error handling and graceful degradation
 - Token usage tracking and performance monitoring with tiktoken integration
 - Database persistence of generated summaries with enhanced metadata
-- ✅ Current features (v0.3.2): structured JSON summaries, long article processing, hash+model caching
+- ✅ Current features (v0.3.3): structured JSON summaries, long article processing, hash+model caching, fallback summaries
 - 🚧 Planned features: embeddings, categorization, semantic search
 
 **Containerization**: Podman/Docker with Future Apple Containers
@@ -242,7 +247,7 @@ The following enhancements are organized into epics with detailed user stories a
 The project board breaks development into focused, deliverable epics:
 
 - **epic:ingestion** - Core RSS/feed processing pipeline improvements
-- **epic:summaries** - ✅ Complete: AI summarization with Ollama integration and map-reduce processing (v0.3.2)
+- **epic:summaries** - ✅ Complete: AI summarization with Ollama integration, map-reduce processing, and fallback summaries (v0.3.3)
 - **epic:ranking** - Content scoring, curation, and recommendation algorithms
 - **epic:ui** - Complete web interface using HTMX and progressive enhancement
 - **epic:embeddings** - Vector embeddings for semantic search and clustering
