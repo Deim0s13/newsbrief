@@ -255,16 +255,9 @@ We welcome contributions! Here's how to get started:
 - Update documentation for new features
 - Use semantic versioning for releases
 
-## 📄 License
-
-[Add your license here]
-
 ## 🙏 Acknowledgments
 
 - [Mozilla Readability](https://github.com/mozilla/readability) for content extraction
 - [FastAPI](https://fastapi.tiangolo.com/) for the excellent web framework
 - [Ollama](https://ollama.ai/) for local LLM capabilities
 
----
-
-**Built with ❤️ for privacy-conscious news consumption**
