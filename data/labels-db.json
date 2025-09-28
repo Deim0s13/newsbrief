@@ -1,0 +1,20 @@
+[
+  {"name":"epic:ingestion","color":"1f77b4","description":"Feed ingestion and extraction"},
+  {"name":"epic:summaries","color":"ff7f0e","description":"Summarization with Ollama"},
+  {"name":"epic:ranking","color":"2ca02c","description":"Ranking and topic routing"},
+  {"name":"epic:ui","color":"d62728","description":"Frontend/UI improvements"},
+  {"name":"epic:embeddings","color":"9467bd","description":"Embeddings, clustering, semantic features"},
+  {"name":"epic:search","color":"8c564b","description":"Search and Q&A"},
+  {"name":"epic:ops","color":"e377c2","description":"Ops, health, testing"},
+  {"name":"epic:apple-containers","color":"7f7f7f","description":"Experiment with Apple Containers runtime"},
+  {"name":"epic:database","color":"17becf","description":"Database migration and improvements"},
+  {"name":"in-progress","color":"0052cc","description":"Work has started"},
+  {"name":"priority:P0","color":"d73a4a","description":"Critical / must do"},
+  {"name":"priority:P1","color":"fbca04","description":"High"},
+  {"name":"priority:P2","color":"0e8a16","description":"Medium"},
+  {"name":"priority:P3","color":"c5def5","description":"Low"},
+  {"name":"backend","color":"bcf5db","description":"Backend/API related"},
+  {"name":"task","color":"fef2c0","description":"Individual task"},
+  {"name":"testing","color":"f9d0c4","description":"Testing related"},
+  {"name":"docs","color":"c2e0c6","description":"Documentation"}
+]

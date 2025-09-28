@@ -1,18 +1,103 @@
 # Python
 __pycache__/
-*.pyc
-.venv/
-.env
-.env.*
-# Editor/OS
-.DS_Store
-.idea/
-.vscode/
-# Build/artefacts
-dist/
+*.py[cod]
+*$py.class
+*.so
+.Python
 build/
-# App data
-data/
-app/data/
-# Containers
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Project specific
+data/newsbrief.sqlite3
+data/newsbrief.sqlite3-journal
 *.log
+*.sqlite3
+*.sqlite3-journal
+
+# Development tools
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.bandit
+.pre-commit-config-local.yaml
+
+# Secrets and config
+.secrets.baseline
+.env.local
+.env.development
+.env.production
+config.local.*
+
+# Container/Build artifacts
+.dockerignore
+docker-compose.override.yml
+docker-compose.local.yml
+
+# Documentation build
+site/
+docs/_build/
+
+# Temporary files
+*.tmp
+*.temp
+.temp/
+temp/

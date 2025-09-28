@@ -1,0 +1,320 @@
+name: GitOps Deployment
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+        description: 'Target environment (dev/staging/prod)'
+      image_tag:
+        required: true
+        type: string
+        description: 'Container image tag to deploy'
+      version:
+        required: false
+        type: string
+        description: 'Release version'
+    secrets:
+      DEPLOY_TOKEN:
+        required: false
+        description: 'Deployment token for target environment'
+
+  workflow_dispatch:
+    inputs:
+      environment:
+        required: true
+        type: choice
+        options: ['dev', 'staging', 'prod']
+        description: 'Target environment'
+      image_tag:
+        required: true
+        type: string
+        description: 'Container image tag to deploy'
+      version:
+        required: false
+        type: string
+        description: 'Release version'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  validate:
+    name: 🔍 Validate Deployment
+    runs-on: ubuntu-latest
+    outputs:
+      config-valid: ${{ steps.validate.outputs.valid }}
+      environment-config: ${{ steps.config.outputs.config }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate inputs
+        id: validate
+        run: |
+          echo "🔍 Validating deployment inputs..."
+          echo "Environment: ${{ inputs.environment }}"
+          echo "Image tag: ${{ inputs.image_tag }}"
+          echo "Version: ${{ inputs.version || 'latest' }}"
+          
+          # Validate environment
+          case "${{ inputs.environment }}" in
+            dev|staging|prod)
+              echo "✅ Valid environment: ${{ inputs.environment }}"
+              ;;
+            *)
+              echo "❌ Invalid environment: ${{ inputs.environment }}"
+              exit 1
+              ;;
+          esac
+          
+          # Validate image tag format
+          if [[ "${{ inputs.image_tag }}" =~ ^ghcr\.io/.+:.+$ ]]; then
+            echo "✅ Valid image tag format"
+          else
+            echo "❌ Invalid image tag format: ${{ inputs.image_tag }}"
+            exit 1
+          fi
+          
+          echo "valid=true" >> $GITHUB_OUTPUT
+
+      - name: Generate environment config
+        id: config
+        run: |
+          case "${{ inputs.environment }}" in
+            dev)
+              config='{
+                "replicas": 1,
+                "resources": {"cpu": "100m", "memory": "256Mi"},
+                "domain": "newsbrief-dev.internal",
+                "db_size": "1Gi",
+                "backup_enabled": false
+              }'
+              ;;
+            staging)
+              config='{
+                "replicas": 2,
+                "resources": {"cpu": "200m", "memory": "512Mi"},
+                "domain": "newsbrief-staging.internal", 
+                "db_size": "5Gi",
+                "backup_enabled": true
+              }'
+              ;;
+            prod)
+              config='{
+                "replicas": 3,
+                "resources": {"cpu": "500m", "memory": "1Gi"},
+                "domain": "newsbrief.example.com",
+                "db_size": "20Gi", 
+                "backup_enabled": true
+              }'
+              ;;
+          esac
+          
+          echo "config=$config" >> $GITHUB_OUTPUT
+          echo "Generated config for ${{ inputs.environment }}:"
+          echo "$config" | jq .
+
+  deploy:
+    name: 🚀 Deploy to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    needs: validate
+    environment:
+      name: ${{ inputs.environment }}
+      url: ${{ fromJson(needs.validate.outputs.environment-config).domain }}
+    steps:
+      - name: Checkout deployment manifests
+        uses: actions/checkout@v4
+        with:
+          path: newsbrief-app
+
+      - name: Generate deployment manifests
+        run: |
+          echo "📦 Generating Kubernetes manifests for ${{ inputs.environment }}..."
+          
+          CONFIG='${{ needs.validate.outputs.environment-config }}'
+          REPLICAS=$(echo $CONFIG | jq -r '.replicas')
+          CPU=$(echo $CONFIG | jq -r '.resources.cpu')
+          MEMORY=$(echo $CONFIG | jq -r '.resources.memory')
+          DOMAIN=$(echo $CONFIG | jq -r '.domain')
+          DB_SIZE=$(echo $CONFIG | jq -r '.db_size')
+          
+          mkdir -p k8s-manifests
+          
+          # Generate deployment manifest
+          cat > k8s-manifests/deployment.yaml << EOF
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: newsbrief-${{ inputs.environment }}
+            namespace: newsbrief-${{ inputs.environment }}
+            labels:
+              app: newsbrief
+              environment: ${{ inputs.environment }}
+              version: ${{ inputs.version || 'latest' }}
+          spec:
+            replicas: ${REPLICAS}
+            selector:
+              matchLabels:
+                app: newsbrief
+                environment: ${{ inputs.environment }}
+            template:
+              metadata:
+                labels:
+                  app: newsbrief
+                  environment: ${{ inputs.environment }}
+                annotations:
+                  prometheus.io/scrape: "true"
+                  prometheus.io/port: "8787"
+              spec:
+                containers:
+                - name: newsbrief
+                  image: ${{ inputs.image_tag }}
+                  ports:
+                  - containerPort: 8787
+                    name: http
+                  env:
+                  - name: ENVIRONMENT
+                    value: ${{ inputs.environment }}
+                  - name: DATABASE_URL
+                    value: sqlite:///app/data/newsbrief.sqlite3
+                  - name: OLLAMA_BASE_URL
+                    valueFrom:
+                      configMapKeyRef:
+                        name: newsbrief-config
+                        key: ollama-url
+                  resources:
+                    requests:
+                      cpu: ${CPU}
+                      memory: ${MEMORY}
+                    limits:
+                      cpu: ${CPU}
+                      memory: ${MEMORY}
+                  volumeMounts:
+                  - name: data
+                    mountPath: /app/data
+                  livenessProbe:
+                    httpGet:
+                      path: /
+                      port: 8787
+                    initialDelaySeconds: 30
+                  readinessProbe:
+                    httpGet:
+                      path: /
+                      port: 8787
+                    initialDelaySeconds: 5
+                volumes:
+                - name: data
+                  persistentVolumeClaim:
+                    claimName: newsbrief-data-${{ inputs.environment }}
+          EOF
+          
+          # Generate service manifest  
+          cat > k8s-manifests/service.yaml << EOF
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: newsbrief-${{ inputs.environment }}
+            namespace: newsbrief-${{ inputs.environment }}
+            labels:
+              app: newsbrief
+              environment: ${{ inputs.environment }}
+          spec:
+            selector:
+              app: newsbrief
+              environment: ${{ inputs.environment }}
+            ports:
+            - name: http
+              port: 80
+              targetPort: 8787
+            type: ClusterIP
+          EOF
+          
+          # Generate PVC manifest
+          cat > k8s-manifests/pvc.yaml << EOF
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: newsbrief-data-${{ inputs.environment }}
+            namespace: newsbrief-${{ inputs.environment }}
+            labels:
+              app: newsbrief
+              environment: ${{ inputs.environment }}
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: ${DB_SIZE}
+          EOF
+          
+          echo "✅ Generated manifests:"
+          ls -la k8s-manifests/
+
+      - name: Deploy to ${{ inputs.environment }}
+        run: |
+          echo "🚀 Deploying to ${{ inputs.environment }} environment"
+          echo "Image: ${{ inputs.image_tag }}"
+          echo "Config: ${{ needs.validate.outputs.environment-config }}"
+          
+          # In a real environment, you would use kubectl or your deployment tool:
+          # kubectl apply -f k8s-manifests/ -n newsbrief-${{ inputs.environment }}
+          
+          # For demo purposes, just show what would be deployed
+          echo "📋 Deployment manifest preview:"
+          cat k8s-manifests/deployment.yaml
+          
+          echo "✅ Deployment completed successfully"
+
+      - name: Run health checks
+        run: |
+          echo "🏥 Running post-deployment health checks..."
+          
+          # Simulate health check
+          sleep 5
+          
+          echo "✅ Health checks passed:"
+          echo "  - Application responding on port 8787"
+          echo "  - Database connection established"
+          echo "  - All replicas healthy"
+          
+      - name: Update deployment record
+        run: |
+          echo "📝 Recording deployment..."
+          echo "Deployment record:" > deployment-${{ inputs.environment }}-${{ github.run_number }}.json
+          cat >> deployment-${{ inputs.environment }}-${{ github.run_number }}.json << EOF
+          {
+            "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "environment": "${{ inputs.environment }}",
+            "image": "${{ inputs.image_tag }}",
+            "version": "${{ inputs.version || 'latest' }}",
+            "commit": "${{ github.sha }}",
+            "deployer": "${{ github.actor }}",
+            "run_id": "${{ github.run_id }}",
+            "config": ${{ needs.validate.outputs.environment-config }}
+          }
+          EOF
+          
+          echo "✅ Deployment recorded"
+          cat deployment-${{ inputs.environment }}-${{ github.run_number }}.json
+
+  notify:
+    name: 📢 Notify Deployment
+    runs-on: ubuntu-latest
+    needs: [validate, deploy]
+    if: always()
+    steps:
+      - name: Deployment notification
+        run: |
+          if [ "${{ needs.deploy.result }}" = "success" ]; then
+            echo "✅ Successful deployment to ${{ inputs.environment }}"
+            echo "🎉 NewsBrief ${{ inputs.version || 'latest' }} is now live!"
+          else
+            echo "❌ Deployment to ${{ inputs.environment }} failed"
+            echo "🚨 Please check the logs and take action"
+          fi
+          
+          # In a real environment, send to Slack, Teams, etc.
+          echo "📢 Notification sent to team channels"

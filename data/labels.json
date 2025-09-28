@@ -1,0 +1,10 @@
+[
+    {"name": "epic:ingestion", "color": "1f77b4", "description": "Feed ingestion and extraction"},
+    {"name": "epic:summaries", "color": "ff7f0e", "description": "Summarization with Ollama"},
+    {"name": "epic:ranking", "color": "2ca02c", "description": "Ranking and topic routing"},
+    {"name": "epic:ui", "color": "d62728", "description": "Frontend/UI improvements"},
+    {"name": "epic:embeddings", "color": "9467bd", "description": "Embeddings, clustering, semantic features"},
+    {"name": "epic:search", "color": "8c564b", "description": "Search and Q&A"},
+    {"name": "epic:ops", "color": "e377c2", "description": "Ops, health, testing"},
+    {"name": "epic:apple-containers", "color": "7f7f7f", "description": "Experiment with Apple Containers runtime"}
+  ]

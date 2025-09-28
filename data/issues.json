@@ -1,0 +1,134 @@
+[
+    {
+      "title": "Implement feed ingestion with RSS/Atom",
+      "body": "Fetch RSS/Atom feeds, extract article text using Readability, and dedupe by URL hash.",
+      "labels": ["epic:ingestion"]
+    },
+    {
+      "title": "Add ETag/Last-Modified caching",
+      "body": "Store ETag/Last-Modified headers per feed to reduce bandwidth and respect provider rate limits.",
+      "labels": ["epic:ingestion"]
+    },
+    {
+      "title": "Global fetch cap per refresh",
+      "body": "Limit items per refresh (e.g., 150) to keep runtime predictable.",
+      "labels": ["epic:ingestion"]
+    },
+    {
+      "title": "Robots.txt compliance",
+      "body": "Check robots.txt for each feed host; avoid scraping disallowed paths.",
+      "labels": ["epic:ingestion"]
+    },
+  
+    {
+      "title": "Structured JSON summaries with Ollama",
+      "body": "Generate `bullets`, `why_it_matters`, `tags` for each article. Cache by hash+model.",
+      "labels": ["epic:summaries"]
+    },
+    {
+      "title": "Long article map-reduce summarization",
+      "body": "Chunk long articles into 1–2k tokens, summarize each, then merge into final summary.",
+      "labels": ["epic:summaries"]
+    },
+    {
+      "title": "Fallback summary display",
+      "body": "If Ollama is offline or summary fails, show first 2 sentences instead.",
+      "labels": ["epic:summaries"]
+    },
+  
+    {
+      "title": "Implement ranking score",
+      "body": "Score = recency boost + source weight + keyword match. Store in DB.",
+      "labels": ["epic:ranking"]
+    },
+    {
+      "title": "Topic routing (keywords + LLM fallback)",
+      "body": "Classify articles into topics: AI/ML, Cloud/K8s, Security, DevTools, Chips/Hardware.",
+      "labels": ["epic:ranking"]
+    },
+  
+    {
+      "title": "Skim vs Detail view toggle",
+      "body": "Allow switching between titles-only (skim) and full summaries (detail).",
+      "labels": ["epic:ui"]
+    },
+    {
+      "title": "Keyboard shortcuts",
+      "body": "Implement j/k navigation, r refresh, s star, / search.",
+      "labels": ["epic:ui"]
+    },
+    {
+      "title": "Dark mode toggle",
+      "body": "Add dark mode toggle (store preference in localStorage).",
+      "labels": ["epic:ui"]
+    },
+    {
+      "title": "Feed Manager page",
+      "body": "Add/remove feeds, import OPML, set per-topic source weights.",
+      "labels": ["epic:ui"]
+    },
+  
+    {
+      "title": "Store embeddings with Ollama",
+      "body": "Generate embeddings (`nomic-embed-text`) for each item; store as BLOB in SQLite.",
+      "labels": ["epic:embeddings"]
+    },
+    {
+      "title": "Cluster duplicate articles",
+      "body": "Use cosine similarity > 0.83 to group near-duplicates into one composite item.",
+      "labels": ["epic:embeddings"]
+    },
+    {
+      "title": "Background re-cluster job",
+      "body": "On refresh, re-cluster last 3 days to collapse duplicates.",
+      "labels": ["epic:embeddings"]
+    },
+  
+    {
+      "title": "Hybrid search (FTS + vectors)",
+      "body": "Combine SQLite FTS5 and embeddings to rank results.",
+      "labels": ["epic:search"]
+    },
+    {
+      "title": "Grounded Q&A endpoint",
+      "body": "Implement /ask endpoint: retrieve top snippets, ask LLM to answer only from them.",
+      "labels": ["epic:search"]
+    },
+  
+    {
+      "title": "Health endpoints",
+      "body": "Add /healthz for app and /ollamaz to probe Ollama availability.",
+      "labels": ["epic:ops"]
+    },
+    {
+      "title": "Structured logging",
+      "body": "JSON logs with request timing for refresh and summarization.",
+      "labels": ["epic:ops"]
+    },
+    {
+      "title": "Contract tests for summary JSON",
+      "body": "Unit tests to ensure Ollama summaries return valid JSON with required keys.",
+      "labels": ["epic:ops"]
+    },
+    {
+      "title": "Basic ranking tests",
+      "body": "Unit tests for recency/weight/keyword scoring logic.",
+      "labels": ["epic:ops"]
+    },
+  
+    {
+      "title": "Run image with Apple Containers CLI",
+      "body": "Build OCI image and run with `container run` on macOS Tahoe. Verify port mapping and volume mount.",
+      "labels": ["epic:apple-containers"]
+    },
+    {
+      "title": "Host access to Ollama in Apple Containers",
+      "body": "Confirm networking equivalent of `host.containers.internal` for Ollama.",
+      "labels": ["epic:apple-containers"]
+    },
+    {
+      "title": "Document differences vs Podman",
+      "body": "Write notes in docs/ops/apple-containers-notes.md comparing performance, networking, startup time.",
+      "labels": ["epic:apple-containers"]
+    }
+  ]
