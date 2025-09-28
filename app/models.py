@@ -4,9 +4,28 @@ import hashlib
 from datetime import datetime
 from pydantic import BaseModel, HttpUrl, Field, validator
 from typing import Optional, List, Union
+from dataclasses import dataclass
 
 class FeedIn(BaseModel):
     url: HttpUrl
+
+@dataclass
+class TextChunk:
+    """Represents a chunk of text for processing."""
+    content: str
+    start_pos: int
+    end_pos: int
+    token_count: int
+    chunk_index: int
+
+@dataclass  
+class ChunkSummary:
+    """Summary of a single text chunk."""
+    chunk_index: int
+    bullets: List[str]
+    key_topics: List[str]
+    summary_text: str
+    token_count: int
 
 class StructuredSummary(BaseModel):
     """Structured AI-generated summary with bullets, significance, and tags."""
@@ -16,6 +35,12 @@ class StructuredSummary(BaseModel):
     content_hash: str = Field(..., description="Hash of source content for caching")
     model: str = Field(..., description="LLM model used for generation")
     generated_at: datetime = Field(..., description="When this summary was generated")
+    
+    # Chunking metadata (new in v0.3.2)
+    is_chunked: bool = Field(False, description="Whether this summary was created from chunked content")
+    chunk_count: Optional[int] = Field(None, description="Number of chunks processed (if chunked)")
+    total_tokens: Optional[int] = Field(None, description="Total token count of original content")
+    processing_method: str = Field("direct", description="Processing method: 'direct' or 'map-reduce'")
     
     @validator('bullets')
     def validate_bullets(cls, v):
@@ -49,7 +74,12 @@ class StructuredSummary(BaseModel):
             tags=data['tags'],
             content_hash=content_hash,
             model=model,
-            generated_at=generated_at
+            generated_at=generated_at,
+            # Handle chunking metadata (backward compatible)
+            is_chunked=data.get('is_chunked', False),
+            chunk_count=data.get('chunk_count'),
+            total_tokens=data.get('total_tokens'),
+            processing_method=data.get('processing_method', 'direct')
         )
 
 class ItemOut(BaseModel):

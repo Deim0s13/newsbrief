@@ -2,22 +2,29 @@ from __future__ import annotations
 import os
 import json
 import logging
+import re
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from dataclasses import dataclass
 
-from .models import StructuredSummary, create_content_hash, create_cache_key
+from .models import StructuredSummary, create_content_hash, create_cache_key, TextChunk, ChunkSummary
 from .db import session_scope
 from sqlalchemy import text
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Configuration
+# Configuration  
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 DEFAULT_MODEL = os.getenv("NEWSBRIEF_LLM_MODEL", "llama3.2:3b")
 MAX_CONTENT_LENGTH = int(os.getenv("NEWSBRIEF_MAX_CONTENT_LENGTH", "8000"))
 SUMMARY_MAX_LENGTH = int(os.getenv("NEWSBRIEF_SUMMARY_MAX_LENGTH", "300"))
+
+# Chunking configuration (new in v0.3.2)
+CHUNK_SIZE_TOKENS = int(os.getenv("NEWSBRIEF_CHUNK_SIZE", "1500"))  # Target chunk size in tokens
+MAX_CHUNK_SIZE_TOKENS = int(os.getenv("NEWSBRIEF_MAX_CHUNK_SIZE", "2000"))  # Max chunk size
+CHUNK_OVERLAP_TOKENS = int(os.getenv("NEWSBRIEF_CHUNK_OVERLAP", "200"))  # Overlap between chunks
+CHUNKING_THRESHOLD_TOKENS = int(os.getenv("NEWSBRIEF_CHUNKING_THRESHOLD", "3000"))  # When to trigger chunking
 
 @dataclass
 class SummaryResult:
@@ -87,6 +94,326 @@ class LLMService:
         except Exception as e:
             logger.error(f"Failed to ensure model {model}: {e}")
             return False
+    
+    def _count_tokens(self, text: str, model: str = "cl100k_base") -> int:
+        """Count tokens in text using tiktoken."""
+        try:
+            import tiktoken
+            encoding = tiktoken.get_encoding(model)
+            return len(encoding.encode(text))
+        except ImportError:
+            logger.warning("tiktoken not available, using rough estimate")
+            # Rough estimate: 1 token ≈ 4 characters
+            return len(text) // 4
+        except Exception as e:
+            logger.warning(f"Token counting failed: {e}, using rough estimate")
+            return len(text) // 4
+    
+    def _should_chunk_content(self, content: str) -> bool:
+        """Determine if content should be chunked based on token count."""
+        token_count = self._count_tokens(content)
+        return token_count > CHUNKING_THRESHOLD_TOKENS
+    
+    def _chunk_text(self, title: str, content: str) -> List[TextChunk]:
+        """
+        Intelligently chunk text into segments respecting sentence boundaries.
+        
+        Uses a hierarchical approach:
+        1. Split by paragraphs first
+        2. Split by sentences if paragraphs are too long  
+        3. Split by words if sentences are too long
+        """
+        content = self._clean_content(content)
+        total_tokens = self._count_tokens(f"{title}\n\n{content}")
+        
+        if total_tokens <= CHUNKING_THRESHOLD_TOKENS:
+            return [TextChunk(
+                content=content,
+                start_pos=0,
+                end_pos=len(content),
+                token_count=total_tokens,
+                chunk_index=0
+            )]
+        
+        chunks = []
+        chunk_index = 0
+        
+        # Split by paragraphs
+        paragraphs = [p.strip() for p in content.split('\n\n') if p.strip()]
+        
+        current_chunk = ""
+        current_start = 0
+        
+        for paragraph in paragraphs:
+            # Include title context in first chunk
+            test_content = f"Title: {title}\n\n{current_chunk}\n\n{paragraph}".strip() if chunk_index == 0 and current_chunk == "" else f"{current_chunk}\n\n{paragraph}".strip()
+            test_tokens = self._count_tokens(test_content)
+            
+            if test_tokens <= CHUNK_SIZE_TOKENS or current_chunk == "":
+                # Add paragraph to current chunk
+                if current_chunk == "":
+                    current_chunk = f"Title: {title}\n\n{paragraph}" if chunk_index == 0 else paragraph
+                else:
+                    current_chunk = f"{current_chunk}\n\n{paragraph}"
+            else:
+                # Current chunk is complete, save it
+                if current_chunk:
+                    chunk_tokens = self._count_tokens(current_chunk)
+                    chunks.append(TextChunk(
+                        content=current_chunk,
+                        start_pos=current_start,
+                        end_pos=current_start + len(current_chunk),
+                        token_count=chunk_tokens,
+                        chunk_index=chunk_index
+                    ))
+                    chunk_index += 1
+                    current_start += len(current_chunk) + 2  # +2 for \n\n
+                
+                # Start new chunk with current paragraph
+                current_chunk = paragraph
+        
+        # Add final chunk if any content remains
+        if current_chunk:
+            chunk_tokens = self._count_tokens(current_chunk)
+            chunks.append(TextChunk(
+                content=current_chunk,
+                start_pos=current_start,
+                end_pos=current_start + len(current_chunk),
+                token_count=chunk_tokens,
+                chunk_index=chunk_index
+            ))
+        
+        # Handle chunks that are still too large by sentence splitting
+        final_chunks = []
+        for chunk in chunks:
+            if chunk.token_count > MAX_CHUNK_SIZE_TOKENS:
+                sub_chunks = self._split_chunk_by_sentences(chunk)
+                final_chunks.extend(sub_chunks)
+            else:
+                final_chunks.append(chunk)
+        
+        logger.info(f"Chunked content into {len(final_chunks)} chunks (total tokens: {total_tokens})")
+        return final_chunks
+    
+    def _split_chunk_by_sentences(self, chunk: TextChunk) -> List[TextChunk]:
+        """Split a large chunk by sentences."""
+        sentences = re.split(r'(?<=[.!?])\s+', chunk.content)
+        sub_chunks = []
+        current_content = ""
+        chunk_index = chunk.chunk_index
+        
+        for sentence in sentences:
+            test_content = f"{current_content} {sentence}".strip()
+            test_tokens = self._count_tokens(test_content)
+            
+            if test_tokens <= CHUNK_SIZE_TOKENS or current_content == "":
+                current_content = test_content
+            else:
+                if current_content:
+                    sub_chunks.append(TextChunk(
+                        content=current_content,
+                        start_pos=chunk.start_pos,
+                        end_pos=chunk.start_pos + len(current_content),
+                        token_count=self._count_tokens(current_content),
+                        chunk_index=chunk_index
+                    ))
+                    chunk_index += 1
+                current_content = sentence
+        
+        if current_content:
+            sub_chunks.append(TextChunk(
+                content=current_content,
+                start_pos=chunk.start_pos,
+                end_pos=chunk.start_pos + len(current_content),
+                token_count=self._count_tokens(current_content),
+                chunk_index=chunk_index
+            ))
+        
+        return sub_chunks
+    
+    def _create_chunk_summary_prompt(self, title: str, chunk_content: str, chunk_index: int, total_chunks: int) -> str:
+        """Create prompt for summarizing individual chunks."""
+        prompt = f"""You are analyzing part {chunk_index + 1} of {total_chunks} from a news article.
+
+ARTICLE TITLE: {title}
+
+CONTENT CHUNK {chunk_index + 1}/{total_chunks}:
+{chunk_content}
+
+Extract the key information from this chunk in JSON format:
+
+{{
+  "bullets": ["Key point 1 from this chunk", "Key point 2 from this chunk"],
+  "key_topics": ["topic1", "topic2", "topic3"],
+  "summary_text": "Brief summary of the main content in this chunk"
+}}
+
+INSTRUCTIONS:
+- Focus only on information present in this chunk
+- Create 2-4 bullet points for key facts/developments  
+- Identify 2-5 key topics/themes
+- Write 1-2 sentences summarizing the chunk
+- Output ONLY valid JSON, no additional text
+
+JSON Response:"""
+        return prompt
+    
+    def _create_merge_summary_prompt(self, title: str, chunk_summaries: List[ChunkSummary]) -> str:
+        """Create prompt for merging chunk summaries into final structured summary."""
+        
+        # Combine all bullets and topics from chunks
+        all_bullets = []
+        all_topics = []
+        chunk_texts = []
+        
+        for i, chunk_summary in enumerate(chunk_summaries):
+            all_bullets.extend(chunk_summary.bullets)
+            all_topics.extend(chunk_summary.key_topics)
+            chunk_texts.append(f"Chunk {i+1}: {chunk_summary.summary_text}")
+        
+        combined_chunks = "\n".join(chunk_texts)
+        
+        prompt = f"""You are creating a final comprehensive summary by analyzing summaries from {len(chunk_summaries)} content chunks of a news article.
+
+ARTICLE TITLE: {title}
+
+CHUNK SUMMARIES:
+{combined_chunks}
+
+ALL EXTRACTED BULLETS:
+{chr(10).join(f"- {bullet}" for bullet in all_bullets)}
+
+ALL IDENTIFIED TOPICS:
+{', '.join(set(all_topics))}
+
+Create a comprehensive structured summary by synthesizing all chunk information:
+
+{{
+  "bullets": ["Synthesized key point 1", "Synthesized key point 2", "Synthesized key point 3"],
+  "why_it_matters": "Explanation of overall significance and broader impact",
+  "tags": ["tag1", "tag2", "tag3", "tag4"]
+}}
+
+INSTRUCTIONS:
+- Create 3-5 comprehensive bullets that capture the most important points across all chunks
+- Each bullet should be a complete, specific sentence (max 80 chars)
+- Write why_it_matters explaining the overall significance (50-150 words)
+- Select 3-6 most relevant tags from the identified topics (lowercase, hyphenated)
+- Ensure coherent narrative that connects information from all chunks
+- Output ONLY valid JSON, no additional text
+
+JSON Response:"""
+        return prompt
+    
+    def _summarize_chunk(self, title: str, chunk: TextChunk, model: str) -> ChunkSummary:
+        """Summarize a single content chunk (MAP phase)."""
+        try:
+            prompt = self._create_chunk_summary_prompt(title, chunk.content, chunk.chunk_index, 1)  # Will be updated with actual total
+            
+            response = self.client.generate(
+                model=model,
+                prompt=prompt,
+                options={
+                    'temperature': 0.2,
+                    'top_k': 40,
+                    'top_p': 0.8,
+                    'repeat_penalty': 1.1,
+                }
+            )
+            
+            raw_response = response.get('response', '').strip()
+            
+            # Clean markdown formatting if present
+            if raw_response.startswith('```json'):
+                raw_response = raw_response.replace('```json', '').replace('```', '').strip()
+            elif raw_response.startswith('```'):
+                raw_response = raw_response.replace('```', '').strip()
+            
+            data = json.loads(raw_response)
+            
+            return ChunkSummary(
+                chunk_index=chunk.chunk_index,
+                bullets=data.get('bullets', []),
+                key_topics=data.get('key_topics', []),
+                summary_text=data.get('summary_text', ''),
+                token_count=chunk.token_count
+            )
+            
+        except Exception as e:
+            logger.warning(f"Failed to summarize chunk {chunk.chunk_index}: {e}")
+            # Create fallback summary
+            return ChunkSummary(
+                chunk_index=chunk.chunk_index,
+                bullets=[chunk.content[:80] + "..." if len(chunk.content) > 80 else chunk.content],
+                key_topics=["content"],
+                summary_text=chunk.content[:200] + "..." if len(chunk.content) > 200 else chunk.content,
+                token_count=chunk.token_count
+            )
+    
+    def _merge_chunk_summaries(self, title: str, chunk_summaries: List[ChunkSummary], model: str, content_hash: str) -> StructuredSummary:
+        """Merge chunk summaries into final structured summary (REDUCE phase)."""
+        try:
+            prompt = self._create_merge_summary_prompt(title, chunk_summaries)
+            
+            response = self.client.generate(
+                model=model,
+                prompt=prompt,
+                options={
+                    'temperature': 0.3,
+                    'top_k': 40,
+                    'top_p': 0.8,
+                    'repeat_penalty': 1.1,
+                }
+            )
+            
+            raw_response = response.get('response', '').strip()
+            
+            # Clean markdown formatting if present
+            if raw_response.startswith('```json'):
+                raw_response = raw_response.replace('```json', '').replace('```', '').strip()
+            elif raw_response.startswith('```'):
+                raw_response = raw_response.replace('```', '').strip()
+            
+            data = json.loads(raw_response)
+            
+            # Calculate total tokens across all chunks
+            total_tokens = sum(cs.token_count for cs in chunk_summaries)
+            
+            return StructuredSummary(
+                bullets=data.get('bullets', []),
+                why_it_matters=data.get('why_it_matters', ''),
+                tags=data.get('tags', []),
+                content_hash=content_hash,
+                model=model,
+                generated_at=datetime.now(),
+                # Chunking metadata
+                is_chunked=True,
+                chunk_count=len(chunk_summaries),
+                total_tokens=total_tokens,
+                processing_method="map-reduce"
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to merge chunk summaries: {e}")
+            # Create fallback merged summary
+            all_bullets = []
+            all_topics = []
+            for cs in chunk_summaries:
+                all_bullets.extend(cs.bullets)
+                all_topics.extend(cs.key_topics)
+            
+            return StructuredSummary(
+                bullets=all_bullets[:5],  # Take first 5 bullets
+                why_it_matters="Unable to analyze article significance due to technical issues.",
+                tags=list(set(all_topics))[:5],  # Take unique topics, max 5
+                content_hash=content_hash,
+                model="fallback",
+                generated_at=datetime.now(),
+                is_chunked=True,
+                chunk_count=len(chunk_summaries),
+                total_tokens=sum(cs.token_count for cs in chunk_summaries),
+                processing_method="map-reduce-fallback"
+            )
     
     def _create_structured_summary_prompt(self, title: str, content: str) -> str:
         """Create a structured JSON summarization prompt."""
@@ -305,15 +632,26 @@ JSON Response:"""
             return self._fallback_summary(title, content, str(e), use_structured, content_hash)
     
     def _generate_structured_summary(self, title: str, content: str, model: str, content_hash: str, start_time: datetime) -> SummaryResult:
-        """Generate structured JSON summary."""
+        """Generate structured JSON summary with automatic chunking for long content."""
+        
+        # Check if content should be chunked
+        if self._should_chunk_content(f"{title}\n\n{content}"):
+            logger.info(f"Content requires chunking, using map-reduce approach")
+            return self._generate_chunked_summary(title, content, model, content_hash, start_time)
+        else:
+            logger.info(f"Content fits in single chunk, using direct approach")
+            return self._generate_direct_summary(title, content, model, content_hash, start_time)
+    
+    def _generate_direct_summary(self, title: str, content: str, model: str, content_hash: str, start_time: datetime) -> SummaryResult:
+        """Generate structured summary for content that fits in a single chunk."""
         prompt = self._create_structured_summary_prompt(title, content)
         
-        logger.info(f"Generating structured summary with model {model}")
+        logger.info(f"Generating direct structured summary with model {model}")
         response = self.client.generate(
             model=model,
             prompt=prompt,
             options={
-                'temperature': 0.2,  # Lower temperature for consistent JSON
+                'temperature': 0.2,
                 'top_k': 40,
                 'top_p': 0.8,
                 'repeat_penalty': 1.1,
@@ -324,7 +662,6 @@ JSON Response:"""
         if not raw_response:
             return self._fallback_summary(title, content, "Empty response from LLM", True, content_hash)
         
-        # Parse JSON response
         try:
             # Clean potential markdown formatting
             if raw_response.startswith('```json'):
@@ -340,14 +677,20 @@ JSON Response:"""
                 if field not in json_data:
                     raise ValueError(f"Missing required field: {field}")
             
-            # Create structured summary
+            # Create structured summary (direct processing)
+            total_tokens = self._count_tokens(f"{title}\n\n{content}")
             structured_summary = StructuredSummary(
                 bullets=json_data['bullets'],
                 why_it_matters=json_data['why_it_matters'],
                 tags=json_data['tags'],
                 content_hash=content_hash,
                 model=model,
-                generated_at=datetime.now()
+                generated_at=datetime.now(),
+                # Chunking metadata (not chunked)
+                is_chunked=False,
+                chunk_count=1,
+                total_tokens=total_tokens,
+                processing_method="direct"
             )
             
             # Store in cache
@@ -358,7 +701,7 @@ JSON Response:"""
             tokens_used = len(prompt.split()) + len(raw_response.split())
             
             return SummaryResult(
-                summary=structured_summary.to_json_string(),  # Legacy field
+                summary=structured_summary.to_json_string(),
                 model=model,
                 success=True,
                 tokens_used=tokens_used,
@@ -373,6 +716,48 @@ JSON Response:"""
         except Exception as e:
             logger.error(f"Failed to create structured summary: {e}")
             return self._fallback_summary(title, content, f"Summary creation failed: {e}", True, content_hash)
+    
+    def _generate_chunked_summary(self, title: str, content: str, model: str, content_hash: str, start_time: datetime) -> SummaryResult:
+        """Generate structured summary using map-reduce approach for long content."""
+        try:
+            # MAP PHASE: Chunk the content
+            chunks = self._chunk_text(title, content)
+            logger.info(f"MAP-REDUCE: Processing {len(chunks)} chunks")
+            
+            # MAP PHASE: Summarize each chunk
+            chunk_summaries = []
+            for i, chunk in enumerate(chunks):
+                # Update prompt with correct total count
+                chunk_summary = self._summarize_chunk(title, chunk, model)
+                chunk_summaries.append(chunk_summary)
+                logger.info(f"Completed chunk {i+1}/{len(chunks)}")
+            
+            # REDUCE PHASE: Merge chunk summaries into final summary
+            logger.info(f"REDUCE: Merging {len(chunk_summaries)} chunk summaries")
+            final_summary = self._merge_chunk_summaries(title, chunk_summaries, model, content_hash)
+            
+            # Store in cache
+            self._store_structured_summary(content_hash, final_summary)
+            
+            # Calculate metrics
+            generation_time = (datetime.now() - start_time).total_seconds()
+            total_prompt_tokens = sum(len(self._create_chunk_summary_prompt(title, chunk.content, chunk.chunk_index, len(chunks)).split()) for chunk in chunks)
+            merge_prompt_tokens = len(self._create_merge_summary_prompt(title, chunk_summaries).split())
+            tokens_used = total_prompt_tokens + merge_prompt_tokens
+            
+            return SummaryResult(
+                summary=final_summary.to_json_string(),
+                model=model,
+                success=True,
+                tokens_used=tokens_used,
+                generation_time=generation_time,
+                structured_summary=final_summary,
+                content_hash=content_hash
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to generate chunked summary: {e}")
+            return self._fallback_summary(title, content, f"Map-reduce summarization failed: {e}", True, content_hash)
     
     def _generate_legacy_summary(self, title: str, content: str, model: str, content_hash: str, start_time: datetime) -> SummaryResult:
         """Generate legacy plain text summary."""
