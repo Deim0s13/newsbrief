@@ -116,14 +116,18 @@ def list_items(limit: int = Query(50, le=200)):
                         datetime.fromisoformat(r[13]) if r[13] else datetime.now(),
                     )
                 except Exception as e:
-                    logger.warning(f"Failed to parse structured summary for item {r[0]}: {e}")
+                    logger.warning(
+                        f"Failed to parse structured summary for item {r[0]}: {e}"
+                    )
 
             # Generate fallback summary if no AI summary available
             fallback_summary = None
             is_fallback = False
 
             # Check if we have any AI-generated summary
-            has_ai_summary = structured_summary is not None or r[7] is not None  # ai_summary field
+            has_ai_summary = (
+                structured_summary is not None or r[7] is not None
+            )  # ai_summary field
 
             if not has_ai_summary and r[6]:  # content is available
                 # Generate fallback summary from first 2 sentences
@@ -135,7 +139,9 @@ def list_items(limit: int = Query(50, le=200)):
                     if not fallback_summary.strip():
                         fallback_summary = r[4] or r[1] or "Content preview unavailable"
                 except Exception as e:
-                    logger.warning(f"Failed to extract fallback summary for item {r[0]}: {e}")
+                    logger.warning(
+                        f"Failed to extract fallback summary for item {r[0]}: {e}"
+                    )
                     fallback_summary = r[4] or r[1] or "Content preview unavailable"
                     is_fallback = True
 
@@ -171,7 +177,11 @@ def llm_status():
             try:
                 model_list = service.client.list()
                 if isinstance(model_list, dict) and "models" in model_list:
-                    models = [m.get("name", m.get("model", "")) for m in model_list["models"] if m]
+                    models = [
+                        m.get("name", m.get("model", ""))
+                        for m in model_list["models"]
+                        if m
+                    ]
                 else:
                     models = []
             except Exception as e:
@@ -227,7 +237,9 @@ def generate_summaries(request: SummaryRequest):
 
                 if not row:
                     results.append(
-                        SummaryResultOut(item_id=item_id, success=False, error="Item not found")
+                        SummaryResultOut(
+                            item_id=item_id, success=False, error="Item not found"
+                        )
                     )
                     errors += 1
                     continue
@@ -251,7 +263,11 @@ def generate_summaries(request: SummaryRequest):
                             structured_json,
                             content_hash or "",
                             structured_model,
-                            (datetime.fromisoformat(row[10]) if row[10] else datetime.now()),
+                            (
+                                datetime.fromisoformat(row[10])
+                                if row[10]
+                                else datetime.now()
+                            ),
                         )
                         results.append(
                             SummaryResultOut(
@@ -272,7 +288,9 @@ def generate_summaries(request: SummaryRequest):
 
                 # Check for existing legacy summary (backward compatibility)
                 elif (
-                    not request.use_structured and row[4] and not request.force_regenerate
+                    not request.use_structured
+                    and row[4]
+                    and not request.force_regenerate
                 ):  # ai_summary exists
                     results.append(
                         SummaryResultOut(
@@ -365,7 +383,9 @@ def generate_summaries(request: SummaryRequest):
 
             except Exception as e:
                 logger.error(f"Error processing item {item_id}: {e}")
-                results.append(SummaryResultOut(item_id=item_id, success=False, error=str(e)))
+                results.append(
+                    SummaryResultOut(item_id=item_id, success=False, error=str(e))
+                )
                 errors += 1
 
     return SummaryResponse(
@@ -412,14 +432,18 @@ def get_item(item_id: int):
                     datetime.fromisoformat(row[13]) if row[13] else datetime.now(),
                 )
             except Exception as e:
-                logger.warning(f"Failed to parse structured summary for item {item_id}: {e}")
+                logger.warning(
+                    f"Failed to parse structured summary for item {item_id}: {e}"
+                )
 
         # Generate fallback summary if no AI summary available
         fallback_summary = None
         is_fallback = False
 
         # Check if we have any AI-generated summary
-        has_ai_summary = structured_summary is not None or row[7] is not None  # ai_summary field
+        has_ai_summary = (
+            structured_summary is not None or row[7] is not None
+        )  # ai_summary field
 
         if not has_ai_summary and row[6]:  # content is available
             # Generate fallback summary from first 2 sentences
@@ -431,7 +455,9 @@ def get_item(item_id: int):
                 if not fallback_summary.strip():
                     fallback_summary = row[4] or row[1] or "Content preview unavailable"
             except Exception as e:
-                logger.warning(f"Failed to extract fallback summary for item {item_id}: {e}")
+                logger.warning(
+                    f"Failed to extract fallback summary for item {item_id}: {e}"
+                )
                 fallback_summary = row[4] or row[1] or "Content preview unavailable"
                 is_fallback = True
 

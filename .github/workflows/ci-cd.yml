@@ -41,7 +41,7 @@ jobs:
       - name: Code formatting check
         run: |
           black --check --diff app/
-          isort --check-only --diff app/
+          isort --check-only --diff --profile=black app/
 
       - name: Type checking
         run: mypy app/ --ignore-missing-imports

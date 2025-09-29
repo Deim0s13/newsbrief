@@ -30,9 +30,15 @@ MAX_CONTENT_LENGTH = int(os.getenv("NEWSBRIEF_MAX_CONTENT_LENGTH", "8000"))
 SUMMARY_MAX_LENGTH = int(os.getenv("NEWSBRIEF_SUMMARY_MAX_LENGTH", "300"))
 
 # Chunking configuration (new in v0.3.2)
-CHUNK_SIZE_TOKENS = int(os.getenv("NEWSBRIEF_CHUNK_SIZE", "1500"))  # Target chunk size in tokens
-MAX_CHUNK_SIZE_TOKENS = int(os.getenv("NEWSBRIEF_MAX_CHUNK_SIZE", "2000"))  # Max chunk size
-CHUNK_OVERLAP_TOKENS = int(os.getenv("NEWSBRIEF_CHUNK_OVERLAP", "200"))  # Overlap between chunks
+CHUNK_SIZE_TOKENS = int(
+    os.getenv("NEWSBRIEF_CHUNK_SIZE", "1500")
+)  # Target chunk size in tokens
+MAX_CHUNK_SIZE_TOKENS = int(
+    os.getenv("NEWSBRIEF_MAX_CHUNK_SIZE", "2000")
+)  # Max chunk size
+CHUNK_OVERLAP_TOKENS = int(
+    os.getenv("NEWSBRIEF_CHUNK_OVERLAP", "200")
+)  # Overlap between chunks
 CHUNKING_THRESHOLD_TOKENS = int(
     os.getenv("NEWSBRIEF_CHUNKING_THRESHOLD", "3000")
 )  # When to trigger chunking
@@ -96,7 +102,9 @@ class LLMService:
             models = self.client.list()
             # Handle different response formats
             if isinstance(models, dict) and "models" in models:
-                model_names = [m.get("name", m.get("model", "")) for m in models["models"] if m]
+                model_names = [
+                    m.get("name", m.get("model", "")) for m in models["models"] if m
+                ]
             else:
                 model_names = []
 
@@ -175,7 +183,9 @@ class LLMService:
                 # Add paragraph to current chunk
                 if current_chunk == "":
                     current_chunk = (
-                        f"Title: {title}\n\n{paragraph}" if chunk_index == 0 else paragraph
+                        f"Title: {title}\n\n{paragraph}"
+                        if chunk_index == 0
+                        else paragraph
                     )
                 else:
                     current_chunk = f"{current_chunk}\n\n{paragraph}"
@@ -294,7 +304,9 @@ INSTRUCTIONS:
 JSON Response:"""
         return prompt
 
-    def _create_merge_summary_prompt(self, title: str, chunk_summaries: List[ChunkSummary]) -> str:
+    def _create_merge_summary_prompt(
+        self, title: str, chunk_summaries: List[ChunkSummary]
+    ) -> str:
         """Create prompt for merging chunk summaries into final structured summary."""
 
         # Combine all bullets and topics from chunks
@@ -341,7 +353,9 @@ INSTRUCTIONS:
 JSON Response:"""
         return prompt
 
-    def _summarize_chunk(self, title: str, chunk: TextChunk, model: str) -> ChunkSummary:
+    def _summarize_chunk(
+        self, title: str, chunk: TextChunk, model: str
+    ) -> ChunkSummary:
         """Summarize a single content chunk (MAP phase)."""
         try:
             prompt = self._create_chunk_summary_prompt(
@@ -363,7 +377,9 @@ JSON Response:"""
 
             # Clean markdown formatting if present
             if raw_response.startswith("```json"):
-                raw_response = raw_response.replace("```json", "").replace("```", "").strip()
+                raw_response = (
+                    raw_response.replace("```json", "").replace("```", "").strip()
+                )
             elif raw_response.startswith("```"):
                 raw_response = raw_response.replace("```", "").strip()
 
@@ -382,10 +398,18 @@ JSON Response:"""
             # Create fallback summary
             return ChunkSummary(
                 chunk_index=chunk.chunk_index,
-                bullets=[chunk.content[:80] + "..." if len(chunk.content) > 80 else chunk.content],
+                bullets=[
+                    (
+                        chunk.content[:80] + "..."
+                        if len(chunk.content) > 80
+                        else chunk.content
+                    )
+                ],
                 key_topics=["content"],
                 summary_text=(
-                    chunk.content[:200] + "..." if len(chunk.content) > 200 else chunk.content
+                    chunk.content[:200] + "..."
+                    if len(chunk.content) > 200
+                    else chunk.content
                 ),
                 token_count=chunk.token_count,
             )
@@ -416,7 +440,9 @@ JSON Response:"""
 
             # Clean markdown formatting if present
             if raw_response.startswith("```json"):
-                raw_response = raw_response.replace("```json", "").replace("```", "").strip()
+                raw_response = (
+                    raw_response.replace("```json", "").replace("```", "").strip()
+                )
             elif raw_response.startswith("```"):
                 raw_response = raw_response.replace("```", "").strip()
 
@@ -527,7 +553,9 @@ JSON Response:"""
 
         return content.strip()
 
-    def _check_structured_cache(self, content_hash: str, model: str) -> Optional[StructuredSummary]:
+    def _check_structured_cache(
+        self, content_hash: str, model: str
+    ) -> Optional[StructuredSummary]:
         """Check if structured summary exists in cache/database."""
         try:
             with session_scope() as s:
@@ -547,7 +575,9 @@ JSON Response:"""
 
                 if row and row[0]:
                     # Parse from database
-                    generated_at = datetime.fromisoformat(row[1]) if row[1] else datetime.now()
+                    generated_at = (
+                        datetime.fromisoformat(row[1]) if row[1] else datetime.now()
+                    )
                     return StructuredSummary.from_json_string(
                         row[0], content_hash, model, generated_at
                     )
@@ -722,7 +752,9 @@ JSON Response:"""
 
         except Exception as e:
             logger.error(f"Failed to generate summary: {e}")
-            return self._fallback_summary(title, content, str(e), use_structured, content_hash)
+            return self._fallback_summary(
+                title, content, str(e), use_structured, content_hash
+            )
 
     def _generate_structured_summary(
         self,
@@ -737,10 +769,14 @@ JSON Response:"""
         # Check if content should be chunked
         if self._should_chunk_content(f"{title}\n\n{content}"):
             logger.info(f"Content requires chunking, using map-reduce approach")
-            return self._generate_chunked_summary(title, content, model, content_hash, start_time)
+            return self._generate_chunked_summary(
+                title, content, model, content_hash, start_time
+            )
         else:
             logger.info(f"Content fits in single chunk, using direct approach")
-            return self._generate_direct_summary(title, content, model, content_hash, start_time)
+            return self._generate_direct_summary(
+                title, content, model, content_hash, start_time
+            )
 
     def _generate_direct_summary(
         self,
@@ -774,7 +810,9 @@ JSON Response:"""
         try:
             # Clean potential markdown formatting
             if raw_response.startswith("```json"):
-                raw_response = raw_response.replace("```json", "").replace("```", "").strip()
+                raw_response = (
+                    raw_response.replace("```json", "").replace("```", "").strip()
+                )
             elif raw_response.startswith("```"):
                 raw_response = raw_response.replace("```", "").strip()
 
@@ -820,7 +858,9 @@ JSON Response:"""
             )
 
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse JSON response: {e}. Raw: {raw_response[:200]}")
+            logger.error(
+                f"Failed to parse JSON response: {e}. Raw: {raw_response[:200]}"
+            )
             return self._fallback_summary(
                 title, content, f"Invalid JSON response: {e}", True, content_hash
             )
@@ -854,7 +894,9 @@ JSON Response:"""
 
             # REDUCE PHASE: Merge chunk summaries into final summary
             logger.info(f"REDUCE: Merging {len(chunk_summaries)} chunk summaries")
-            final_summary = self._merge_chunk_summaries(title, chunk_summaries, model, content_hash)
+            final_summary = self._merge_chunk_summaries(
+                title, chunk_summaries, model, content_hash
+            )
 
             # Store in cache
             self._store_structured_summary(content_hash, final_summary)
@@ -972,7 +1014,8 @@ Summary:"""
             sentences = fallback_text.split(". ")
             # Create bullets from individual sentences, limited to reasonable length
             bullets = [
-                sentence.strip() + ("." if not sentence.strip().endswith((".", "!", "?")) else "")
+                sentence.strip()
+                + ("." if not sentence.strip().endswith((".", "!", "?")) else "")
                 for sentence in sentences[:3]  # Max 3 bullets
                 if sentence.strip()
             ]
