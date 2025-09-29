@@ -201,7 +201,60 @@ podman run --rm -d \
   -e NEWSBRIEF_CHUNKING_THRESHOLD=3500 \
   -e NEWSBRIEF_CHUNK_SIZE=1800 \
   -e NEWSBRIEF_MAX_CHUNK_SIZE=2200 \
-  --name newsbrief newsbrief-api:v0.3.3
+  --name newsbrief newsbrief-api:v0.4.0
+```
+
+#### **Article Ranking & Topic Classification** ⭐ *New in v0.4.0*
+
+NewsBrief now includes intelligent article ranking and topic classification to improve content discovery:
+
+```bash
+# Ranking Algorithm Configuration (currently hardcoded weights)
+# These values are defined in app/ranking.py and may become configurable in future versions
+
+# Current ranking formula:
+# final_score = (recency × 0.4) + (source_weight × 0.3) + (keywords × 0.3) × topic_multiplier
+
+# Topic multipliers (defined in app/ranking.py):
+# - AI/ML: 1.2x boost (hot topic)
+# - Security: 1.15x boost (always important)
+# - Cloud/K8s: 1.1x boost
+# - Chips/Hardware: 1.1x boost  
+# - DevTools: 1.0x (baseline)
+```
+
+**Topic Categories:**
+
+NewsBrief automatically classifies articles into these categories:
+
+- **`ai-ml`**: AI/ML, machine learning, neural networks, LLM, GPT, transformers
+- **`cloud-k8s`**: Cloud platforms (AWS, Azure, GCP), Kubernetes, containers, serverless
+- **`security`**: Cybersecurity, vulnerabilities, crypto, blockchain, authentication
+- **`devtools`**: Programming languages, frameworks, development tools, IDEs
+- **`chips-hardware`**: Semiconductors, CPUs, GPUs, hardware manufacturing
+
+**Container Configuration Examples:**
+
+```bash
+# Development: Standard ranking (v0.4.0+)
+podman run --rm -d \
+  -p 8787:8787 \
+  -v ./data:/app/data \
+  -e OLLAMA_BASE_URL=http://host.containers.internal:11434 \
+  -e NEWSBRIEF_LLM_MODEL=llama3.2:3b \
+  --name newsbrief newsbrief-api:v0.4.0
+
+# Production: High-capacity + AI + Ranking (v0.4.0+)
+podman run --rm -d \
+  -p 8787:8787 \
+  -v ./data:/app/data \
+  -e NEWSBRIEF_MAX_ITEMS_PER_REFRESH=1000 \
+  -e NEWSBRIEF_MAX_ITEMS_PER_FEED=200 \
+  -e OLLAMA_BASE_URL=http://ollama-service:11434 \
+  -e NEWSBRIEF_LLM_MODEL=mistral:7b \
+  -e NEWSBRIEF_CHUNKING_THRESHOLD=3500 \
+  -e NEWSBRIEF_CHUNK_SIZE=1800 \
+  --name newsbrief newsbrief-api:v0.4.0
 ```
 
 ## 🧪 Testing & Debugging
@@ -396,6 +449,74 @@ curl -s "http://localhost:8787/items" | jq '{
   fallback_summaries: [.[] | select(.is_fallback_summary == true)] | length,
   no_summary: [.[] | select(.structured_summary == null and .is_fallback_summary == false)] | length
 }'
+
+# ✨ Article Ranking & Topic Testing ⭐ *New in v0.4.0*
+
+# View articles with ranking and topic data
+curl -s "http://localhost:8787/items?limit=5" | jq '.[] | {
+  id,
+  title: .title[0:50],
+  ranking_score,
+  topic,
+  topic_confidence,
+  source_weight
+}'
+
+# Get available topic categories
+curl -s http://localhost:8787/topics | jq .
+
+# Browse articles by topic
+curl -s "http://localhost:8787/items/topic/ai-ml?limit=3" | jq '.items[] | {
+  id,
+  title,
+  ranking_score,
+  topic_confidence
+}'
+
+# Compare ranking scores across topics
+for topic in ai-ml cloud-k8s security devtools chips-hardware; do
+  echo "=== $topic articles ==="
+  curl -s "http://localhost:8787/items/topic/$topic?limit=3" | jq '.items[] | {
+    title: .title[0:40],
+    score: .ranking_score,
+    confidence: .topic_confidence
+  }'
+  echo
+done
+
+# Analyze ranking distribution and topic classification
+curl -s "http://localhost:8787/items?limit=20" | jq '{
+  total_items: length,
+  average_ranking: ([.[] | .ranking_score] | add / length),
+  topic_distribution: (group_by(.topic) | map({topic: .[0].topic, count: length})),
+  high_confidence_topics: [.[] | select(.topic_confidence > 0.8)] | length,
+  unclassified: [.[] | select(.topic == null)] | length
+}'
+
+# Test ranking recalculation
+curl -X POST http://localhost:8787/ranking/recalculate | jq .
+
+# Monitor ranking changes after recalculation
+curl -s "http://localhost:8787/items?limit=5" | jq '.[] | {
+  id,
+  title: .title[0:30],
+  ranking_score,
+  topic
+}'
+
+# Find highest-ranked articles per topic
+for topic in ai-ml security cloud-k8s devtools chips-hardware; do
+  top_article=$(curl -s "http://localhost:8787/items/topic/$topic?limit=1" | jq -r '.items[0] | "\(.title[0:40]) (score: \(.ranking_score))"')
+  echo "$topic top: $top_article"
+done
+
+# Test keyword matching effectiveness
+curl -s "http://localhost:8787/items?limit=50" | jq '[.[] | select(.topic == "ai-ml")] | map({
+  title,
+  score: .ranking_score,
+  confidence: .topic_confidence,
+  ai_related: ((.title | ascii_downcase) | contains("ai") or contains("ml") or contains("gpt") or contains("llm"))
+}) | group_by(.ai_related) | map({has_ai_keywords: .[0].ai_related, count: length, avg_confidence: ([.[].confidence] | add / length)})'
 ```
 
 ### **Database Inspection**
@@ -410,10 +531,26 @@ sqlite3 data/newsbrief.sqlite3
 # Check feeds
 SELECT id, url, robots_allowed, disabled FROM feeds;
 
-# Check recent articles
-SELECT id, title, published, url FROM items 
-ORDER BY COALESCE(published, created_at) DESC 
+# Check recent articles with ranking data ⭐ *Updated in v0.4.0*
+SELECT id, title, published, ranking_score, topic, topic_confidence, source_weight FROM items 
+ORDER BY ranking_score DESC, COALESCE(published, created_at) DESC 
 LIMIT 5;
+
+# Analyze ranking distribution
+SELECT 
+  topic,
+  COUNT(*) as article_count,
+  ROUND(AVG(ranking_score), 3) as avg_ranking,
+  ROUND(AVG(topic_confidence), 3) as avg_confidence
+FROM items 
+WHERE topic IS NOT NULL 
+GROUP BY topic 
+ORDER BY avg_ranking DESC;
+
+# Find top-ranked articles
+SELECT id, title, ranking_score, topic FROM items 
+ORDER BY ranking_score DESC 
+LIMIT 10;
 
 # Exit SQLite
 .quit

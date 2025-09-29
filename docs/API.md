@@ -175,7 +175,7 @@ curl -X POST http://localhost:8787/refresh
 
 ### **GET /items**
 
-Retrieve articles from the database, ordered by publication date.
+Retrieve articles from the database, ordered by relevance ranking (v0.4.0+). Articles are ranked using a combination of recency, source importance, and keyword matching.
 
 #### Request
 
@@ -196,13 +196,31 @@ GET /items?limit=10 HTTP/1.1
 [
   {
     "id": 123,
-    "title": "Breaking: Important News Event",
+    "title": "Breaking: AI Breakthrough in Machine Learning",
     "url": "https://example.com/article/123",
     "published": "2025-09-27T10:30:00Z",
     "summary": "This is a brief summary of the article content...",
-    "ai_summary": "This article covers a significant breaking news event with major implications for the industry, highlighting key developments and their potential impact on stakeholders.",
+    "ai_summary": "This article covers a significant AI breakthrough with major implications for machine learning research, highlighting key developments in neural network architectures.",
     "ai_model": "llama3.2:3b",
-    "ai_generated_at": "2025-09-27T10:35:15Z"
+    "ai_generated_at": "2025-09-27T10:35:15Z",
+    "ranking_score": 1.125,
+    "topic": "ai-ml",
+    "topic_confidence": 0.85,
+    "source_weight": 1.2,
+    "structured_summary": {
+      "bullets": [
+        "Researchers develop new neural network architecture with 40% better performance",
+        "Breakthrough enables more efficient training on smaller datasets",
+        "Technology could revolutionize natural language processing applications"
+      ],
+      "why_it_matters": "This advancement represents a significant leap in AI efficiency, potentially making advanced machine learning accessible to smaller organizations and enabling new applications in fields like healthcare and education.",
+      "tags": ["artificial-intelligence", "machine-learning", "neural-networks", "research", "breakthrough"],
+      "content_hash": "a1b2c3d4e5f6",
+      "model": "llama3.2:3b",
+      "generated_at": "2025-09-27T10:35:15Z"
+    },
+    "fallback_summary": null,
+    "is_fallback_summary": false
   },
   {
     "id": 124,
@@ -212,12 +230,19 @@ GET /items?limit=10 HTTP/1.1
     "summary": "A comprehensive overview of the new features...",
     "ai_summary": null,
     "ai_model": null,
-    "ai_generated_at": null
+    "ai_generated_at": null,
+    "ranking_score": 0.742,
+    "topic": "devtools",
+    "topic_confidence": 0.72,
+    "source_weight": 1.0,
+    "structured_summary": null,
+    "fallback_summary": "A comprehensive overview of the new features in this developer framework. The latest release includes several performance improvements and new APIs.",
+    "is_fallback_summary": true
   }
 ]
 ```
 
-#### Item Object
+#### Item Object ⭐ *Updated in v0.4.0*
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -226,24 +251,197 @@ GET /items?limit=10 HTTP/1.1
 | `url` | string | Original article URL |
 | `published` | string (ISO 8601) or null | Publication timestamp |
 | `summary` | string or null | Article summary or excerpt from RSS feed |
-| `ai_summary` | string or null | AI-generated intelligent summary |
-| `ai_model` | string or null | Model used for AI summary generation |
-| `ai_generated_at` | string (ISO 8601) or null | When AI summary was created |
+| `ai_summary` | string or null | AI-generated intelligent summary (legacy) |
+| `ai_model` | string or null | Model used for AI summary generation (legacy) |
+| `ai_generated_at` | string (ISO 8601) or null | When AI summary was created (legacy) |
+| `structured_summary` | object or null | Structured AI summary with bullets, significance, and tags |
+| `fallback_summary` | string or null | First 2 sentences when AI summary unavailable |
+| `is_fallback_summary` | boolean | Whether the primary summary is a fallback |
+| **`ranking_score`** ⭐ | **number** | **Calculated relevance score for article ranking** |
+| **`topic`** ⭐ | **string or null** | **Classified article topic (ai-ml, cloud-k8s, security, devtools, chips-hardware)** |
+| **`topic_confidence`** ⭐ | **number** | **Classification confidence level (0.0-1.0)** |
+| **`source_weight`** ⭐ | **number** | **Importance weight of the source feed** |
+
+#### Example ⭐ *Enhanced in v0.4.0*
+
+```bash
+# Get top-ranked articles (default behavior in v0.4.0+)
+curl "http://localhost:8787/items?limit=5" | jq .
+
+# Get latest 50 articles (default, ordered by ranking_score)
+curl http://localhost:8787/items
+
+# ⭐ NEW: View article ranking and topic data
+curl "http://localhost:8787/items?limit=5" | jq '.[] | {id, title, ranking_score, topic, topic_confidence}'
+
+# Extract structured summaries from top articles  
+curl "http://localhost:8787/items?limit=5" | jq '.[] | select(.structured_summary != null) | {id, title, ranking_score, bullets: .structured_summary.bullets, tags: .structured_summary.tags}'
+
+# Find high-confidence AI/ML articles
+curl "http://localhost:8787/items?limit=20" | jq '.[] | select(.topic == "ai-ml" and .topic_confidence > 0.8) | {id, title, ranking_score, topic_confidence}'
+
+# Compare ranking scores and topics
+curl "http://localhost:8787/items?limit=10" | jq '.[] | {title: .title[:60], score: .ranking_score, topic, confidence: .topic_confidence}'
+```
+
+---
+
+## 🎯 Article Ranking & Topic Endpoints ⭐ *New in v0.4.0*
+
+### **GET /topics**
+
+Get available article topic categories and their descriptions.
+
+#### Request
+
+```http
+GET /topics HTTP/1.1
+```
+
+#### Response
+
+**Success (200)**
+```json
+{
+  "topics": [
+    {
+      "key": "ai-ml",
+      "name": "AI/ML"
+    },
+    {
+      "key": "cloud-k8s",
+      "name": "Cloud/K8s"
+    },
+    {
+      "key": "security",
+      "name": "Security"
+    },
+    {
+      "key": "devtools",
+      "name": "DevTools"
+    },
+    {
+      "key": "chips-hardware",
+      "name": "Chips/Hardware"
+    }
+  ],
+  "description": "Available topic categories for article classification"
+}
+```
 
 #### Example
 
 ```bash
-# Get latest 5 articles with AI summaries
-curl "http://localhost:8787/items?limit=5" | jq .
+# Get all available topics
+curl http://localhost:8787/topics | jq .
 
-# Get latest 50 articles (default)
-curl http://localhost:8787/items
+# Extract just topic names
+curl http://localhost:8787/topics | jq '.topics[] | .name'
+```
 
-# Extract structured summaries from recent articles  
-curl "http://localhost:8787/items?limit=5" | jq '.[] | select(.structured_summary != null) | {id, title, bullets: .structured_summary.bullets, tags: .structured_summary.tags}'
+---
 
-# Extract just bullet points from articles with structured summaries
-curl "http://localhost:8787/items?limit=5" | jq '.[] | select(.structured_summary != null) | {id, title, bullets: .structured_summary.bullets}'
+### **GET /items/topic/{topic_key}**
+
+Get articles filtered by topic, ordered by ranking score (highest relevance first).
+
+#### Request
+
+```http
+GET /items/topic/ai-ml?limit=10 HTTP/1.1
+```
+
+#### Path Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `topic_key` | string | Yes | Topic key (ai-ml, cloud-k8s, security, devtools, chips-hardware) |
+
+#### Query Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `limit` | integer | No | 50 | Number of items to return (max: 200) |
+
+#### Response
+
+**Success (200)**
+```json
+{
+  "topic": "ai-ml",
+  "display_name": "AI/ML",
+  "count": 15,
+  "items": [
+    {
+      "id": 123,
+      "title": "Revolutionary Neural Network Architecture Breakthrough",
+      "url": "https://example.com/ai-breakthrough",
+      "published": "2025-09-27T10:30:00Z",
+      "ranking_score": 1.245,
+      "topic": "ai-ml",
+      "topic_confidence": 0.92,
+      "source_weight": 1.2,
+      "structured_summary": {
+        "bullets": [
+          "New transformer architecture achieves 40% better performance",
+          "Breakthrough enables training on 70% less data",
+          "Open-source implementation available on GitHub"
+        ],
+        "why_it_matters": "This advancement democratizes access to state-of-the-art AI models, potentially accelerating innovation across industries while reducing computational costs.",
+        "tags": ["neural-networks", "transformers", "efficiency", "open-source"]
+      }
+    }
+  ]
+}
+```
+
+#### Example
+
+```bash
+# Get AI/ML articles
+curl http://localhost:8787/items/topic/ai-ml | jq .
+
+# Get top 5 security articles with rankings
+curl "http://localhost:8787/items/topic/security?limit=5" | jq '.items[] | {title, ranking_score, topic_confidence}'
+
+# Compare topics by article count
+for topic in ai-ml cloud-k8s security devtools chips-hardware; do
+  count=$(curl -s "http://localhost:8787/items/topic/$topic?limit=1" | jq .count)
+  echo "$topic: $count articles"
+done
+```
+
+---
+
+### **POST /ranking/recalculate**
+
+Recalculate ranking scores and topic classifications for all articles. Useful when tuning the ranking algorithm or after bulk data imports.
+
+#### Request
+
+```http
+POST /ranking/recalculate HTTP/1.1
+```
+
+#### Response
+
+**Success (200)**
+```json
+{
+  "success": true,
+  "updated_items": 1247,
+  "message": "Recalculated rankings for 1247 articles"
+}
+```
+
+#### Example
+
+```bash
+# Recalculate all article rankings
+curl -X POST http://localhost:8787/ranking/recalculate | jq .
+
+# Monitor progress (rankings are updated in database immediately)
+curl http://localhost:8787/items?limit=5 | jq '.[] | {id, title, ranking_score}'
 ```
 
 ---

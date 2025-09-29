@@ -125,7 +125,16 @@ Modern RSS readers are often cloud-based services that compromise privacy, requi
 - **Backward compatibility**: Enhanced API maintains existing integrations while adding new capabilities
 - **Performance optimization**: Early exit conditions and efficient limit checking minimize overhead
 
-#### 5. Extensible Architecture
+#### 5. Article Ranking & Topic Classification System ⭐ *Added in v0.4.0*
+- **Multi-factor Relevance Scoring**: Combines recency boost, source weight, and keyword matching for intelligent article prioritization
+- **Automated Topic Classification**: Keyword-based classification into 5 major categories (AI/ML, Cloud/K8s, Security, DevTools, Chips/Hardware)
+- **Performance-First Design**: Keywords-first approach with LLM fallback capability for speed during feed ingestion
+- **Database Integration**: Native ranking fields with performance indexes for fast querying and sorting
+- **Topic-Aware Multipliers**: Content-specific boosts (AI/ML 1.2x, Security 1.15x) reflect current industry importance
+- **Real-Time Calculation**: Rankings calculated during feed ingestion for immediate availability
+- **Configurable Weights**: Algorithm parameters defined in code with future environment variable support planned
+
+#### 6. Extensible Architecture
 - **Plugin-ready**: Clean separation of concerns for future extensions
 - **API-first**: All functionality exposed via REST endpoints
 - **Modular components**: Easy to swap implementations (e.g., database)
@@ -248,7 +257,7 @@ The project board breaks development into focused, deliverable epics:
 
 - **epic:ingestion** - Core RSS/feed processing pipeline improvements
 - **epic:summaries** - ✅ Complete: AI summarization with Ollama integration, map-reduce processing, and fallback summaries (v0.3.3)
-- **epic:ranking** - Content scoring, curation, and recommendation algorithms
+- **epic:ranking** - ✅ Complete: Article relevance scoring and topic classification with multi-factor ranking algorithm (v0.4.0)
 - **epic:ui** - Complete web interface using HTMX and progressive enhancement
 - **epic:embeddings** - Vector embeddings for semantic search and clustering
 - **epic:search** - Full-text search with SQLite FTS5 and advanced filtering
