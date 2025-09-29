@@ -390,21 +390,21 @@ def fetch_and_store() -> RefreshStats:
 
                 # Calculate content hash for AI caching
                 content_hash = create_content_hash(title, content_text or summary or "")
-                
+
                 # Classify article topic (v0.4.0)
                 topic_result = classify_article_topic(
                     title=title or "",
                     content=content_text or summary or "",
-                    use_llm_fallback=False  # Use keywords only for feed ingestion performance
+                    use_llm_fallback=False,  # Use keywords only for feed ingestion performance
                 )
-                
+
                 # Calculate ranking score (v0.4.0)
                 ranking_result = calculate_ranking_score(
                     published=published,
                     source_weight=1.0,  # Default source weight, can be customized per feed later
                     title=title or "",
                     content=content_text or summary or "",
-                    topic=topic_result.topic
+                    topic=topic_result.topic,
                 )
 
                 # Insert item with ranking data

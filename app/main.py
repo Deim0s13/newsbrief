@@ -501,12 +501,13 @@ def get_item(item_id: int):
 
 # New ranking and topic endpoints (v0.4.0)
 
+
 @app.get("/topics")
 def get_topics():
     """Get available article topics."""
     return {
         "topics": get_available_topics(),
-        "description": "Available topic categories for article classification"
+        "description": "Available topic categories for article classification",
     }
 
 
@@ -552,7 +553,7 @@ def get_items_by_topic(topic_key: str, limit: int = Query(50, le=200)):
             fallback_summary = None
             is_fallback = False
             has_ai_summary = structured_summary is not None or r[7] is not None
-            
+
             if not has_ai_summary and r[6]:
                 try:
                     fallback_summary = extract_first_sentences(r[6], sentence_count=2)
@@ -560,7 +561,9 @@ def get_items_by_topic(topic_key: str, limit: int = Query(50, le=200)):
                     if not fallback_summary.strip():
                         fallback_summary = r[4] or r[1] or "Content preview unavailable"
                 except Exception as e:
-                    logger.warning(f"Failed to extract fallback summary for item {r[0]}: {e}")
+                    logger.warning(
+                        f"Failed to extract fallback summary for item {r[0]}: {e}"
+                    )
                     fallback_summary = r[4] or r[1] or "Content preview unavailable"
                     is_fallback = True
 
@@ -588,7 +591,7 @@ def get_items_by_topic(topic_key: str, limit: int = Query(50, le=200)):
             "topic": topic_key,
             "display_name": get_topic_display_name(topic_key),
             "count": len(items),
-            "items": items
+            "items": items,
         }
 
 
@@ -596,7 +599,7 @@ def get_items_by_topic(topic_key: str, limit: int = Query(50, le=200)):
 def recalculate_rankings():
     """Recalculate ranking scores and topic classifications for all articles."""
     updated_count = 0
-    
+
     with session_scope() as s:
         # Get all items that need ranking updates
         rows = s.execute(
@@ -608,40 +611,47 @@ def recalculate_rankings():
         """
             )
         ).all()
-        
+
         for row in rows:
-            item_id, title, published, summary, content, current_source_weight, current_topic = row
-            
+            (
+                item_id,
+                title,
+                published,
+                summary,
+                content,
+                current_source_weight,
+                current_topic,
+            ) = row
+
             # Classify topic if not already classified
             topic_result = None
             if not current_topic and title:
                 topic_result = classify_article_topic(
                     title=title or "",
                     content=content or summary or "",
-                    use_llm_fallback=False  # Use keywords only for bulk operations
+                    use_llm_fallback=False,  # Use keywords only for bulk operations
                 )
-            
+
             # Calculate ranking score
             ranking_result = calculate_ranking_score(
                 published=published,
                 source_weight=current_source_weight or 1.0,
                 title=title or "",
                 content=content or summary or "",
-                topic=topic_result.topic if topic_result else current_topic
+                topic=topic_result.topic if topic_result else current_topic,
             )
-            
+
             # Update database
-            update_data = {
-                "ranking_score": ranking_result.score,
-                "item_id": item_id
-            }
-            
+            update_data = {"ranking_score": ranking_result.score, "item_id": item_id}
+
             if topic_result:
-                update_data.update({
-                    "topic": topic_result.topic,
-                    "topic_confidence": topic_result.confidence
-                })
-                
+                update_data.update(
+                    {
+                        "topic": topic_result.topic,
+                        "topic_confidence": topic_result.confidence,
+                    }
+                )
+
                 s.execute(
                     text(
                         """
@@ -652,7 +662,7 @@ def recalculate_rankings():
                 WHERE id = :item_id
                 """
                     ),
-                    update_data
+                    update_data,
                 )
             else:
                 s.execute(
@@ -663,15 +673,15 @@ def recalculate_rankings():
                 WHERE id = :item_id
                 """
                     ),
-                    update_data
+                    update_data,
                 )
-            
+
             updated_count += 1
-        
+
         s.commit()
-    
+
     return {
         "success": True,
         "updated_items": updated_count,
-        "message": f"Recalculated rankings for {updated_count} articles"
+        "message": f"Recalculated rankings for {updated_count} articles",
     }
