@@ -50,12 +50,8 @@ class StructuredSummary(BaseModel):
     is_chunked: bool = Field(
         False, description="Whether this summary was created from chunked content"
     )
-    chunk_count: Optional[int] = Field(
-        None, description="Number of chunks processed (if chunked)"
-    )
-    total_tokens: Optional[int] = Field(
-        None, description="Total token count of original content"
-    )
+    chunk_count: Optional[int] = Field(None, description="Number of chunks processed (if chunked)")
+    total_tokens: Optional[int] = Field(None, description="Total token count of original content")
     processing_method: str = Field(
         "direct", description="Processing method: 'direct' or 'map-reduce'"
     )
@@ -132,9 +128,7 @@ class SummaryRequest(BaseModel):
 
     item_ids: List[int] = Field(..., description="List of item IDs to summarize")
     model: Optional[str] = Field(None, description="Optional LLM model override")
-    force_regenerate: bool = Field(
-        False, description="Force regenerate even if summary exists"
-    )
+    force_regenerate: bool = Field(False, description="Force regenerate even if summary exists")
     use_structured: bool = Field(
         True, description="Generate structured JSON summaries (default: True)"
     )
@@ -205,11 +199,7 @@ def extract_first_sentences(content: str, sentence_count: int = 2) -> str:
 
     if not sentences:
         # If no sentences found, return first 200 characters as fallback
-        return (
-            cleaned_content[:200] + "..."
-            if len(cleaned_content) > 200
-            else cleaned_content
-        )
+        return cleaned_content[:200] + "..." if len(cleaned_content) > 200 else cleaned_content
 
     # Take first N sentences
     selected_sentences = sentences[:sentence_count]

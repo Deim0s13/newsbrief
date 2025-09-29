@@ -36,9 +36,7 @@ class RefreshStats:
 # Configurable limits (can be overridden by environment variables)
 MAX_ITEMS_PER_REFRESH = int(os.getenv("NEWSBRIEF_MAX_ITEMS_PER_REFRESH", "150"))
 MAX_ITEMS_PER_FEED = int(os.getenv("NEWSBRIEF_MAX_ITEMS_PER_FEED", "50"))
-MAX_REFRESH_TIME_SECONDS = int(
-    os.getenv("NEWSBRIEF_MAX_REFRESH_TIME", "300")
-)  # 5 minutes
+MAX_REFRESH_TIME_SECONDS = int(os.getenv("NEWSBRIEF_MAX_REFRESH_TIME", "300"))  # 5 minutes
 HTTP_TIMEOUT = 20.0  # seconds
 
 # In-memory cache for robots.txt files (cleared each refresh cycle)
@@ -167,18 +165,14 @@ def is_article_url_allowed(article_url: str) -> bool:
         if robots_txt is None:
             return True  # No robots.txt = allowed
 
-        return _check_robots_txt_path(
-            robots_txt, parts.path or "/", user_agent="newsbrief"
-        )
+        return _check_robots_txt_path(robots_txt, parts.path or "/", user_agent="newsbrief")
     except Exception:
         return True  # Error = allow (fail-safe)
 
 
 def ensure_feed(feed_url: str) -> int:
     with session_scope() as s:
-        row = s.execute(
-            text("SELECT id FROM feeds WHERE url=:u"), {"u": feed_url}
-        ).first()
+        row = s.execute(text("SELECT id FROM feeds WHERE url=:u"), {"u": feed_url}).first()
         if row:
             return int(row[0])
         allowed = 1 if is_robot_allowed(feed_url) else 0
@@ -190,18 +184,14 @@ def ensure_feed(feed_url: str) -> int:
             ),
             {"u": feed_url, "allowed": allowed},
         )
-        fid = s.execute(
-            text("SELECT id FROM feeds WHERE url=:u"), {"u": feed_url}
-        ).scalar()
+        fid = s.execute(text("SELECT id FROM feeds WHERE url=:u"), {"u": feed_url}).scalar()
         return int(fid)
 
 
 def list_feeds() -> Iterable[Tuple[int, str, Optional[str], Optional[str], int, int]]:
     with session_scope() as s:
         rows = s.execute(
-            text(
-                "SELECT id, url, etag, last_modified, robots_allowed, disabled FROM feeds"
-            )
+            text("SELECT id, url, etag, last_modified, robots_allowed, disabled FROM feeds")
         ).all()
         for r in rows:
             yield int(r[0]), r[1], r[2], r[3], int(r[4]), int(r[5])
@@ -256,9 +246,7 @@ def fetch_and_store() -> RefreshStats:
         robots_txt_blocked_articles=0,
     )
 
-    with httpx.Client(
-        timeout=HTTP_TIMEOUT, headers={"User-Agent": "newsbrief/0.1"}
-    ) as client:
+    with httpx.Client(timeout=HTTP_TIMEOUT, headers={"User-Agent": "newsbrief/0.1"}) as client:
         for fid, url, etag, last_mod, robots_allowed, disabled in list_feeds():
             # Check time limit
             elapsed = time.time() - start_time
@@ -374,9 +362,7 @@ def fetch_and_store() -> RefreshStats:
                 try:
                     # Check robots.txt before fetching article content
                     if is_article_url_allowed(link):
-                        page = client.get(
-                            link, follow_redirects=True, timeout=HTTP_TIMEOUT
-                        )
+                        page = client.get(link, follow_redirects=True, timeout=HTTP_TIMEOUT)
                         if page.status_code < 400 and page.headers.get(
                             "content-type", ""
                         ).startswith(("text/html", "application/xhtml")):
