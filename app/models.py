@@ -125,6 +125,17 @@ class ItemOut(BaseModel):
     is_fallback_summary: bool = Field(
         False, description="Whether the primary summary is a fallback"
     )
+    # Ranking and topic fields (v0.4.0)
+    ranking_score: float = Field(
+        0.0, description="Calculated relevance score for ranking"
+    )
+    topic: Optional[str] = Field(None, description="Classified article topic")
+    topic_confidence: float = Field(
+        0.0, description="Confidence level of topic classification (0.0-1.0)"
+    )
+    source_weight: float = Field(
+        1.0, description="Importance weight of the source feed"
+    )
 
 
 class SummaryRequest(BaseModel):

@@ -28,6 +28,12 @@ from .models import (
     SummaryResultOut,
     extract_first_sentences,
 )
+from .ranking import (
+    calculate_ranking_score,
+    classify_article_topic,
+    get_available_topics,
+    get_topic_display_name,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -90,9 +96,10 @@ def list_items(limit: int = Query(50, le=200)):
         SELECT id, title, url, published, summary, content_hash, content,
                ai_summary, ai_model, ai_generated_at,
                structured_summary_json, structured_summary_model, 
-               structured_summary_content_hash, structured_summary_generated_at
+               structured_summary_content_hash, structured_summary_generated_at,
+               ranking_score, topic, topic_confidence, source_weight
         FROM items
-        ORDER BY COALESCE(published, created_at) DESC
+        ORDER BY ranking_score DESC, COALESCE(published, created_at) DESC
         LIMIT :lim
         """
             ),
@@ -158,6 +165,11 @@ def list_items(limit: int = Query(50, le=200)):
                     structured_summary=structured_summary,
                     fallback_summary=fallback_summary,
                     is_fallback_summary=is_fallback,
+                    # New ranking fields (v0.4.0)
+                    ranking_score=float(r[14]) if r[14] is not None else 0.0,
+                    topic=r[15],
+                    topic_confidence=float(r[16]) if r[16] is not None else 0.0,
+                    source_weight=float(r[17]) if r[17] is not None else 1.0,
                 )
             )
 
@@ -411,7 +423,8 @@ def get_item(item_id: int):
             SELECT id, title, url, published, summary, content_hash, content,
                    ai_summary, ai_model, ai_generated_at,
                    structured_summary_json, structured_summary_model, 
-                   structured_summary_content_hash, structured_summary_generated_at
+                   structured_summary_content_hash, structured_summary_generated_at,
+                   ranking_score, topic, topic_confidence, source_weight
             FROM items 
             WHERE id = :item_id
         """
@@ -478,4 +491,187 @@ def get_item(item_id: int):
             structured_summary=structured_summary,
             fallback_summary=fallback_summary,
             is_fallback_summary=is_fallback,
+            # New ranking fields (v0.4.0)
+            ranking_score=float(row[14]) if row[14] is not None else 0.0,
+            topic=row[15],
+            topic_confidence=float(row[16]) if row[16] is not None else 0.0,
+            source_weight=float(row[17]) if row[17] is not None else 1.0,
         )
+
+
+# New ranking and topic endpoints (v0.4.0)
+
+@app.get("/topics")
+def get_topics():
+    """Get available article topics."""
+    return {
+        "topics": get_available_topics(),
+        "description": "Available topic categories for article classification"
+    }
+
+
+@app.get("/items/topic/{topic_key}")
+def get_items_by_topic(topic_key: str, limit: int = Query(50, le=200)):
+    """Get articles filtered by topic, ordered by ranking score."""
+    with session_scope() as s:
+        rows = s.execute(
+            text(
+                """
+        SELECT id, title, url, published, summary, content_hash, content,
+               ai_summary, ai_model, ai_generated_at,
+               structured_summary_json, structured_summary_model, 
+               structured_summary_content_hash, structured_summary_generated_at,
+               ranking_score, topic, topic_confidence, source_weight
+        FROM items
+        WHERE topic = :topic_key
+        ORDER BY ranking_score DESC, COALESCE(published, created_at) DESC
+        LIMIT :lim
+        """
+            ),
+            {"topic_key": topic_key, "lim": limit},
+        ).all()
+
+        items = []
+        for r in rows:
+            # Parse structured summary if available (same logic as list_items)
+            structured_summary = None
+            if r[10] and r[11]:
+                try:
+                    structured_summary = StructuredSummary.from_json_string(
+                        r[10],
+                        r[12] or r[5] or "",
+                        r[11],
+                        datetime.fromisoformat(r[13]) if r[13] else datetime.now(),
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to parse structured summary for item {r[0]}: {e}"
+                    )
+
+            # Generate fallback summary if needed (same logic as list_items)
+            fallback_summary = None
+            is_fallback = False
+            has_ai_summary = structured_summary is not None or r[7] is not None
+            
+            if not has_ai_summary and r[6]:
+                try:
+                    fallback_summary = extract_first_sentences(r[6], sentence_count=2)
+                    is_fallback = True
+                    if not fallback_summary.strip():
+                        fallback_summary = r[4] or r[1] or "Content preview unavailable"
+                except Exception as e:
+                    logger.warning(f"Failed to extract fallback summary for item {r[0]}: {e}")
+                    fallback_summary = r[4] or r[1] or "Content preview unavailable"
+                    is_fallback = True
+
+            items.append(
+                ItemOut(
+                    id=r[0],
+                    title=r[1],
+                    url=r[2],
+                    published=r[3],
+                    summary=r[4],
+                    ai_summary=r[7],
+                    ai_model=r[8],
+                    ai_generated_at=r[9],
+                    structured_summary=structured_summary,
+                    fallback_summary=fallback_summary,
+                    is_fallback_summary=is_fallback,
+                    ranking_score=float(r[14]) if r[14] is not None else 0.0,
+                    topic=r[15],
+                    topic_confidence=float(r[16]) if r[16] is not None else 0.0,
+                    source_weight=float(r[17]) if r[17] is not None else 1.0,
+                )
+            )
+
+        return {
+            "topic": topic_key,
+            "display_name": get_topic_display_name(topic_key),
+            "count": len(items),
+            "items": items
+        }
+
+
+@app.post("/ranking/recalculate")
+def recalculate_rankings():
+    """Recalculate ranking scores and topic classifications for all articles."""
+    updated_count = 0
+    
+    with session_scope() as s:
+        # Get all items that need ranking updates
+        rows = s.execute(
+            text(
+                """
+        SELECT id, title, published, summary, content, source_weight, topic
+        FROM items 
+        ORDER BY id
+        """
+            )
+        ).all()
+        
+        for row in rows:
+            item_id, title, published, summary, content, current_source_weight, current_topic = row
+            
+            # Classify topic if not already classified
+            topic_result = None
+            if not current_topic and title:
+                topic_result = classify_article_topic(
+                    title=title or "",
+                    content=content or summary or "",
+                    use_llm_fallback=False  # Use keywords only for bulk operations
+                )
+            
+            # Calculate ranking score
+            ranking_result = calculate_ranking_score(
+                published=published,
+                source_weight=current_source_weight or 1.0,
+                title=title or "",
+                content=content or summary or "",
+                topic=topic_result.topic if topic_result else current_topic
+            )
+            
+            # Update database
+            update_data = {
+                "ranking_score": ranking_result.score,
+                "item_id": item_id
+            }
+            
+            if topic_result:
+                update_data.update({
+                    "topic": topic_result.topic,
+                    "topic_confidence": topic_result.confidence
+                })
+                
+                s.execute(
+                    text(
+                        """
+                UPDATE items 
+                SET ranking_score = :ranking_score,
+                    topic = :topic,
+                    topic_confidence = :topic_confidence
+                WHERE id = :item_id
+                """
+                    ),
+                    update_data
+                )
+            else:
+                s.execute(
+                    text(
+                        """
+                UPDATE items 
+                SET ranking_score = :ranking_score
+                WHERE id = :item_id
+                """
+                    ),
+                    update_data
+                )
+            
+            updated_count += 1
+        
+        s.commit()
+    
+    return {
+        "success": True,
+        "updated_items": updated_count,
+        "message": f"Recalculated rankings for {updated_count} articles"
+    }

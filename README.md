@@ -6,7 +6,7 @@ NewsBrief is a self-hosted, privacy-focused RSS feed aggregator that intelligent
 
 ## 🌟 Features
 
-### **Current (v0.3.4)**
+### **Current (v0.4.0)**
 - **RSS Feed Management**: Import feeds from OPML or add individually via API
 - **Intelligent Content Extraction**: Clean article content using Mozilla Readability
 - **Long Article Processing**: Map-reduce summarization for articles exceeding context limits with intelligent chunking
@@ -23,6 +23,12 @@ NewsBrief is a self-hosted, privacy-focused RSS feed aggregator that intelligent
 - **Content Deduplication**: SHA256-based hashing with intelligent cache invalidation  
 - **RESTful API**: Enhanced JSON endpoints with structured summary support and backward compatibility
 - **Container Ready**: Docker/Podman support with optimized builds and environment configuration
+
+### **🎯 Article Ranking & Topics (v0.4.0)**
+- **Smart Ranking Algorithm**: Recency boost + source weight + keyword matching for relevance scoring
+- **Topic Classification**: AI/ML, Cloud/K8s, Security, DevTools, Chips/Hardware with keyword-based classification
+- **Topic-Based Browsing**: Filter and explore articles by topic categories
+- **Ranking API**: Recalculate rankings and manage topic classifications
 
 ### **🚀 DevOps & CI/CD (v0.3.4)**
 - **Modern CI/CD Pipeline**: Automated testing, building, security scanning, and multi-environment deployment
@@ -62,7 +68,7 @@ docker-compose up -d
 
 ```bash
 # Build and run locally
-make clean-release VERSION=v0.3.4
+make clean-release VERSION=v0.4.0
 make run
 
 # Check available commands
@@ -192,7 +198,7 @@ git push origin feature-branch                 # Triggers full CI/CD pipeline
 # 📦 Container Development
 make build                      # Build container locally
 make run                       # Run container with live reload
-make local-release VERSION=v0.3.4  # Tagged release with cleanup
+make local-release VERSION=v0.4.0  # Tagged release with cleanup
 
 # 🔍 Manual Quality Checks
 black app/ && isort app/        # Format code

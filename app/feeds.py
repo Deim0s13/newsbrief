@@ -13,6 +13,7 @@ from sqlalchemy import text
 
 from .db import session_scope
 from .models import create_content_hash
+from .ranking import calculate_ranking_score, classify_article_topic
 from .readability import extract_readable
 
 
@@ -389,14 +390,32 @@ def fetch_and_store() -> RefreshStats:
 
                 # Calculate content hash for AI caching
                 content_hash = create_content_hash(title, content_text or summary or "")
+                
+                # Classify article topic (v0.4.0)
+                topic_result = classify_article_topic(
+                    title=title or "",
+                    content=content_text or summary or "",
+                    use_llm_fallback=False  # Use keywords only for feed ingestion performance
+                )
+                
+                # Calculate ranking score (v0.4.0)
+                ranking_result = calculate_ranking_score(
+                    published=published,
+                    source_weight=1.0,  # Default source weight, can be customized per feed later
+                    title=title or "",
+                    content=content_text or summary or "",
+                    topic=topic_result.topic
+                )
 
-                # Insert item
+                # Insert item with ranking data
                 with session_scope() as s:
                     s.execute(
                         text(
                             """
-                    INSERT INTO items(feed_id, title, url, url_hash, published, author, summary, content, content_hash)
-                    VALUES(:feed_id, :title, :url, :url_hash, :published, :author, :summary, :content, :content_hash)
+                    INSERT INTO items(feed_id, title, url, url_hash, published, author, summary, content, content_hash,
+                                     ranking_score, topic, topic_confidence, source_weight)
+                    VALUES(:feed_id, :title, :url, :url_hash, :published, :author, :summary, :content, :content_hash,
+                           :ranking_score, :topic, :topic_confidence, :source_weight)
                     """
                         ),
                         {
@@ -409,6 +428,11 @@ def fetch_and_store() -> RefreshStats:
                             "summary": summary,
                             "content": content_text,
                             "content_hash": content_hash,
+                            # New ranking fields (v0.4.0)
+                            "ranking_score": ranking_result.score,
+                            "topic": topic_result.topic,
+                            "topic_confidence": topic_result.confidence,
+                            "source_weight": 1.0,
                         },
                     )
 

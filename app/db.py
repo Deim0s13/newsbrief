@@ -67,6 +67,10 @@ def init_db() -> None:
           structured_summary_model TEXT,
           structured_summary_content_hash TEXT,
           structured_summary_generated_at DATETIME,
+          ranking_score REAL DEFAULT 0.0,
+          topic TEXT,
+          topic_confidence REAL DEFAULT 0.0,
+          source_weight REAL DEFAULT 1.0,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY(feed_id) REFERENCES feeds(id)
         );
@@ -84,6 +88,11 @@ def init_db() -> None:
             "ALTER TABLE items ADD COLUMN structured_summary_model TEXT;",
             "ALTER TABLE items ADD COLUMN structured_summary_content_hash TEXT;",
             "ALTER TABLE items ADD COLUMN structured_summary_generated_at DATETIME;",
+            # New ranking and topic columns (v0.4.0)
+            "ALTER TABLE items ADD COLUMN ranking_score REAL DEFAULT 0.0;",
+            "ALTER TABLE items ADD COLUMN topic TEXT;",
+            "ALTER TABLE items ADD COLUMN topic_confidence REAL DEFAULT 0.0;",
+            "ALTER TABLE items ADD COLUMN source_weight REAL DEFAULT 1.0;",
         ]
 
         for migration_sql in migration_columns:
@@ -106,5 +115,22 @@ def init_db() -> None:
             """
         CREATE INDEX IF NOT EXISTS idx_structured_summary_cache 
         ON items(structured_summary_content_hash, structured_summary_model);
+        """
+        )
+        # New ranking and topic indexes (v0.4.0)
+        conn.exec_driver_sql(
+            """
+        CREATE INDEX IF NOT EXISTS idx_items_ranking_score ON items(ranking_score DESC);
+        """
+        )
+        conn.exec_driver_sql(
+            """
+        CREATE INDEX IF NOT EXISTS idx_items_topic ON items(topic);
+        """
+        )
+        conn.exec_driver_sql(
+            """
+        CREATE INDEX IF NOT EXISTS idx_items_ranking_composite 
+        ON items(topic, ranking_score DESC, published DESC);
         """
         )
