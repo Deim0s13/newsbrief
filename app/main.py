@@ -238,7 +238,10 @@ def generate_summaries(request: SummaryRequest):
                 if not row:
                     results.append(
                         SummaryResultOut(
-                            item_id=item_id, success=False, error="Item not found"
+                            item_id=item_id,
+                            success=False,
+                            error="Item not found",
+                            cache_hit=False,
                         )
                     )
                     errors += 1
@@ -384,7 +387,9 @@ def generate_summaries(request: SummaryRequest):
             except Exception as e:
                 logger.error(f"Error processing item {item_id}: {e}")
                 results.append(
-                    SummaryResultOut(item_id=item_id, success=False, error=str(e))
+                    SummaryResultOut(
+                        item_id=item_id, success=False, error=str(e), cache_hit=False
+                    )
                 )
                 errors += 1
 

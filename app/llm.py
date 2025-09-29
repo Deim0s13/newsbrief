@@ -703,6 +703,10 @@ JSON Response:"""
                     content_hash=content_hash,
                     model="fallback",
                     generated_at=datetime.now(),
+                    is_chunked=False,
+                    chunk_count=None,
+                    total_tokens=None,
+                    processing_method="direct",
                 )
                 return SummaryResult(
                     summary=fallback_summary,
