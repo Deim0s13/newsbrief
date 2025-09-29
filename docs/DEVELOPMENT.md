@@ -464,7 +464,7 @@ print(f"Inserted {inserted} new articles")
 
 ## 🏗️ Development Workflow
 
-NewsBrief uses **enterprise-grade CI/CD** with automated quality gates and security scanning.
+NewsBrief uses **modern CI/CD practices** with automated quality gates and security scanning.
 
 ### **🚀 First-Time Setup**
 

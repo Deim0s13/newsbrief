@@ -25,7 +25,7 @@ NewsBrief is a self-hosted, privacy-focused RSS feed aggregator that intelligent
 - **Container Ready**: Docker/Podman support with optimized builds and environment configuration
 
 ### **🚀 DevOps & CI/CD (v0.3.4)**
-- **Enterprise CI/CD Pipeline**: Automated testing, building, security scanning, and multi-environment deployment
+- **Modern CI/CD Pipeline**: Automated testing, building, security scanning, and multi-environment deployment
 - **Security-First Approach**: Multi-layer vulnerability scanning with Trivy, Safety, Bandit, and Super-Linter
 - **Pre-commit Quality Gates**: Automated code formatting, linting, security checks, and secrets detection
 - **Multi-Architecture Builds**: Automated container builds for amd64/arm64 with GitHub Container Registry
@@ -174,7 +174,7 @@ uvicorn app.main:app --reload --port 8787
 
 ### **Development Workflow**
 
-NewsBrief uses **enterprise-grade CI/CD** with automated testing, security scanning, and deployment:
+NewsBrief uses **modern CI/CD practices** with automated testing, security scanning, and deployment:
 
 ```bash
 # 🚀 Quick Setup (First Time)
