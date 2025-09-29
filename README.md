@@ -6,7 +6,7 @@ NewsBrief is a self-hosted, privacy-focused RSS feed aggregator that intelligent
 
 ## 🌟 Features
 
-### **Current (v0.3.3)**
+### **Current (v0.3.4)**
 - **RSS Feed Management**: Import feeds from OPML or add individually via API
 - **Intelligent Content Extraction**: Clean article content using Mozilla Readability
 - **Long Article Processing**: Map-reduce summarization for articles exceeding context limits with intelligent chunking
@@ -23,6 +23,15 @@ NewsBrief is a self-hosted, privacy-focused RSS feed aggregator that intelligent
 - **Content Deduplication**: SHA256-based hashing with intelligent cache invalidation  
 - **RESTful API**: Enhanced JSON endpoints with structured summary support and backward compatibility
 - **Container Ready**: Docker/Podman support with optimized builds and environment configuration
+
+### **🚀 DevOps & CI/CD (v0.3.4)**
+- **Enterprise CI/CD Pipeline**: Automated testing, building, security scanning, and multi-environment deployment
+- **Security-First Approach**: Multi-layer vulnerability scanning with Trivy, Safety, Bandit, and Super-Linter
+- **Pre-commit Quality Gates**: Automated code formatting, linting, security checks, and secrets detection
+- **Multi-Architecture Builds**: Automated container builds for amd64/arm64 with GitHub Container Registry
+- **GitOps-Ready Deployments**: Environment-specific Kubernetes manifests with health checks and rollback support
+- **Automated Dependency Management**: Weekly security audits, dependency updates, and base image maintenance
+- **Comprehensive Documentation**: Complete CI/CD guides, API documentation, and architecture decision records
 
 ### **Planned (Roadmap)**
 - **Enhanced AI Features**: Advanced categorization, sentiment analysis, and content recommendations
@@ -53,7 +62,7 @@ docker-compose up -d
 
 ```bash
 # Build and run locally
-make clean-release VERSION=v0.3.3
+make clean-release VERSION=v0.3.4
 make run
 
 # Check available commands
@@ -165,41 +174,66 @@ uvicorn app.main:app --reload --port 8787
 
 ### **Development Workflow**
 
+NewsBrief uses **enterprise-grade CI/CD** with automated testing, security scanning, and deployment:
+
 ```bash
-# Code quality
-python -m py_compile app/*.py   # Syntax check
-# (Linting via IDE/editor integration)
+# 🚀 Quick Setup (First Time)
+pip install -r requirements.txt -r requirements-dev.txt
+pip install pre-commit && pre-commit install
 
-# Container development
-make build                      # Build container
-make run                       # Run container locally
-make local-release VERSION=v0.3.2  # Tagged release
+# 🔧 Development with Quality Gates  
+# Pre-commit hooks run automatically on commit:
+# ✅ Black formatting, isort imports, security scanning
+# ✅ Secrets detection, YAML validation, Dockerfile linting
 
-# Automated cleanup
-make clean-release VERSION=v0.3.3  # Build + auto-cleanup old images
+git add . && git commit -m "feat: new feature"  # Triggers quality checks
+git push origin feature-branch                 # Triggers full CI/CD pipeline
+
+# 📦 Container Development
+make build                      # Build container locally
+make run                       # Run container with live reload
+make local-release VERSION=v0.3.4  # Tagged release with cleanup
+
+# 🔍 Manual Quality Checks
+black app/ && isort app/        # Format code
+mypy app/ --ignore-missing-imports  # Type checking
+safety check -r requirements.txt    # Security audit
 ```
+
+**🚀 Automated Pipeline**: Push to `dev` → Testing & Security Scan → Multi-arch Build → Deploy to Development
+
+**📚 Complete CI/CD Guide**: See [`docs/CI-CD.md`](docs/CI-CD.md) for comprehensive workflow documentation.
 
 ### **Project Structure**
 
 ```
 newsbrief/
 ├── app/                    # Application code
-│   ├── main.py            # FastAPI app and routes
+│   ├── main.py            # FastAPI app and routes  
 │   ├── db.py              # Database connection and schema
 │   ├── feeds.py           # RSS fetching and processing
 │   ├── models.py          # Pydantic models
 │   ├── readability.py     # Content extraction
-│   ├── llm.py             # LLM integration with Ollama
-│   ├── embed.py           # Embeddings (planned)
-│   └── templates/         # HTML templates
+│   └── llm.py             # LLM integration with Ollama
+├── .github/workflows/      # CI/CD automation
+│   ├── ci-cd.yml          # Main pipeline (test, build, deploy)
+│   ├── dependencies.yml   # Automated dependency updates
+│   ├── project-automation.yml  # GitHub project sync
+│   └── gitops-deploy.yml  # GitOps deployment workflows
+├── docs/                   # Documentation
+│   ├── CI-CD.md           # Complete CI/CD guide
+│   ├── DEVELOPMENT.md     # Development setup and workflow
+│   ├── API.md             # API reference
+│   └── adr/               # Architecture decision records
 ├── data/                   # Persistent data
-│   ├── newsbrief.sqlite3  # Database
-│   └── feeds.opml         # Feed imports
+│   └── newsbrief.sqlite3  # Database (generated)
 ├── scripts/               # Automation scripts
 ├── Dockerfile            # Container definition
 ├── compose.yaml          # Multi-service setup
 ├── Makefile             # Build automation
-└── requirements.txt     # Python dependencies
+├── requirements.txt     # Production dependencies
+├── requirements-dev.txt  # Development dependencies
+└── .pre-commit-config.yaml # Code quality automation
 ```
 
 ## 🎯 Roadmap
@@ -255,16 +289,9 @@ We welcome contributions! Here's how to get started:
 - Update documentation for new features
 - Use semantic versioning for releases
 
-## 📄 License
-
-[Add your license here]
-
 ## 🙏 Acknowledgments
 
 - [Mozilla Readability](https://github.com/mozilla/readability) for content extraction
 - [FastAPI](https://fastapi.tiangolo.com/) for the excellent web framework
 - [Ollama](https://ollama.ai/) for local LLM capabilities
 
----
-
-**Built with ❤️ for privacy-conscious news consumption**

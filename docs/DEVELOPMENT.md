@@ -464,33 +464,123 @@ print(f"Inserted {inserted} new articles")
 
 ## 🏗️ Development Workflow
 
-### **Making Changes**
+NewsBrief uses **enterprise-grade CI/CD** with automated quality gates and security scanning.
 
-1. **Create feature branch**
-   ```bash
-   git checkout -b feature/improve-feed-parsing
-   ```
+### **🚀 First-Time Setup**
 
-2. **Make changes and test**
-   ```bash
-   # Test syntax
-   python3 -m py_compile app/feeds.py
-   
-   # Test locally
-   uvicorn app.main:app --reload
-   ```
+```bash
+# Install all dependencies
+pip install -r requirements.txt -r requirements-dev.txt
 
-3. **Build and test container**
-   ```bash
-   make build
-   make run
-   ```
+# Set up pre-commit hooks (IMPORTANT!)
+pip install pre-commit
+pre-commit install
 
-4. **Commit changes**
-   ```bash
-   git add .
-   git commit -m "Improve feed parsing error handling"
-   ```
+# Verify pre-commit setup
+pre-commit run --all-files
+```
+
+### **📋 Development Process**
+
+#### **1. Create Feature Branch**
+```bash
+git checkout dev
+git pull origin dev
+git checkout -b feature/improve-feed-parsing
+```
+
+#### **2. Development with Quality Gates**
+```bash
+# Make your changes
+# Pre-commit hooks automatically run on commit:
+# ✅ Code formatting (Black, isort)
+# ✅ Linting (Flake8, mypy)
+# ✅ Security scanning (Bandit)
+# ✅ Secrets detection
+# ✅ YAML/JSON validation
+
+# Commit triggers automatic checks
+git add .
+git commit -m "feat: improve feed parsing error handling"
+
+# Push triggers full CI/CD pipeline
+git push origin feature/improve-feed-parsing
+```
+
+#### **3. CI/CD Pipeline (Automatic)**
+```yaml
+🧪 Test & Quality:
+  ✅ Code formatting validation
+  ✅ Type checking with mypy
+  ✅ Security scanning
+  ✅ Dependency vulnerability checks
+
+🔨 Container Build:
+  ✅ Multi-architecture builds (amd64/arm64)
+  ✅ Push to GitHub Container Registry
+  ✅ Generate deployment tags
+
+🔒 Security Scan:
+  ✅ Container vulnerability scanning (Trivy)
+  ✅ Upload results to GitHub Security tab
+  ✅ Block deployment if critical issues found
+```
+
+#### **4. Manual Testing (Optional)**
+```bash
+# Local development
+uvicorn app.main:app --reload --port 8787
+
+# Container testing
+make build && make run
+
+# Manual quality checks
+black app/ && isort app/
+mypy app/ --ignore-missing-imports
+safety check -r requirements.txt
+```
+
+### **🔗 CI/CD Integration**
+
+#### **Branch Strategy**
+```
+main (production)
+ ├── staging (pre-production) 
+ └── dev (development)
+     ├── feature/new-feature
+     └── bugfix/fix-issue
+```
+
+#### **Deployment Flow**
+- **Push to `dev`** → Deploy to Development environment
+- **Push to `main`** → Deploy to Staging environment  
+- **Create Release** → Deploy to Production environment
+
+#### **Monitoring Your Pipeline**
+```bash
+# Check workflow status
+gh run list --workflow=ci-cd.yml --limit 5
+
+# View detailed logs
+gh run view <run-id> --log
+
+# Check security scan results
+# → GitHub → Security tab → Code scanning
+```
+
+#### **Troubleshooting**
+```bash
+# Pre-commit hook failures
+pre-commit run --all-files  # Fix all issues at once
+
+# CI/CD pipeline failures
+gh run rerun <run-id>       # Retry failed workflow
+
+# Container build issues
+make build                  # Test locally first
+```
+
+**📚 Complete Guide**: See [`docs/CI-CD.md`](CI-CD.md) for comprehensive CI/CD documentation, security features, and deployment strategies.
 
 ### **Code Quality**
 

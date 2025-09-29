@@ -1,0 +1,42 @@
+[
+    {
+      "title": "Epic: Migrate database from SQLite to Postgres",
+      "body": "Replace the current SQLite storage with a Postgres service running in its own container, enabling scalability, concurrency, and easier integration with external tools.",
+      "labels": ["epic:database", "backend"]
+    },
+    {
+      "title": "Add Postgres service to compose.yaml",
+      "body": "Define a `db` service using `postgres:16` with persistent volumes and a healthcheck. Ensure API service depends_on DB readiness.",
+      "labels": ["task", "epic:database"]
+    },
+    {
+      "title": "Update db.py to support DATABASE_URL",
+      "body": "Make the database connection configurable via environment variable. Default to SQLite; override with Postgres URL.",
+      "labels": ["task", "epic:database"]
+    },
+    {
+      "title": "Add psycopg to requirements",
+      "body": "Add `psycopg[binary]` to requirements.txt to enable Postgres connectivity.",
+      "labels": ["task", "epic:database"]
+    },
+    {
+      "title": "Refactor schema creation with SQLAlchemy models",
+      "body": "Replace raw CREATE TABLE SQL with portable SQLAlchemy models to support both SQLite and Postgres.",
+      "labels": ["task", "epic:database"]
+    },
+    {
+      "title": "Add migration tooling",
+      "body": "Integrate Alembic for schema migrations. Seed with initial schema reflecting current tables.",
+      "labels": ["task", "epic:database"]
+    },
+    {
+      "title": "Test ingestion with Postgres backend",
+      "body": "Run end-to-end ingestion cycle against Postgres container to verify inserts, dedup, and queries work.",
+      "labels": ["task", "epic:database", "testing"]
+    },
+    {
+      "title": "Update docs & Makefile",
+      "body": "Update docs with DATABASE_URL usage. Add Makefile targets for db-up, db-down. Document migration process.",
+      "labels": ["task", "epic:database", "docs"]
+    }
+  ]
