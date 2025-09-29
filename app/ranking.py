@@ -445,7 +445,11 @@ def classify_article_topic(
 def get_topic_display_name(topic_key: str) -> str:
     """Get human-readable name for a topic."""
     topic_config = TOPICS.get(topic_key, {})
-    return topic_config.get("name", topic_key) if isinstance(topic_config, dict) else topic_key
+    return (
+        topic_config.get("name", topic_key)
+        if isinstance(topic_config, dict)
+        else topic_key
+    )
 
 
 def get_available_topics() -> List[Dict[str, str]]:
