@@ -3,9 +3,45 @@
 
 document.addEventListener('DOMContentLoaded', function() {
     loadArticles();
+    setupEventListeners();
 });
 
-async function loadArticles() {
+// Setup all event listeners
+function setupEventListeners() {
+    // Topic filter dropdown
+    const topicSelect = document.querySelector('select');
+    if (topicSelect) {
+        topicSelect.addEventListener('change', function() {
+            const selectedTopic = this.value;
+            loadArticles(selectedTopic);
+        });
+    }
+    
+    // View toggle buttons (skim/detail)
+    const viewButtons = document.querySelectorAll('.flex.bg-gray-100 button');
+    viewButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            // Remove active class from all buttons
+            viewButtons.forEach(btn => {
+                btn.className = 'px-3 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white';
+            });
+            // Add active class to clicked button
+            this.className = 'px-3 py-1 text-sm font-medium bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm rounded-md';
+            
+            // TODO: Implement view switching logic
+            const isSkimView = this.textContent.trim() === 'Skim';
+            console.log('View switched to:', isSkimView ? 'Skim' : 'Detailed');
+        });
+    });
+    
+    // Load more button
+    const loadMoreBtn = document.getElementById('load-more-btn');
+    if (loadMoreBtn) {
+        loadMoreBtn.addEventListener('click', loadMoreArticles);
+    }
+}
+
+async function loadArticles(selectedTopic = '') {
     const container = document.getElementById('articles-container');
     const loading = document.getElementById('loading');
     
@@ -13,8 +49,28 @@ async function loadArticles() {
         loading.classList.remove('hidden');
         container.innerHTML = '';
         
-        const response = await fetch('/items?limit=20');
-        const articles = await response.json();
+        // Use topic-specific endpoint if topic is selected
+        let apiUrl = '/items?limit=20';
+        if (selectedTopic) {
+            apiUrl = `/items/topic/${selectedTopic}?limit=20`;
+        }
+        
+        console.log('Loading articles from:', apiUrl);
+        const response = await fetch(apiUrl);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        let articles;
+        if (selectedTopic) {
+            // Topic endpoint returns {topic, display_name, count, items}
+            const data = await response.json();
+            articles = data.items || [];
+        } else {
+            // Main endpoint returns array directly
+            articles = await response.json();
+        }
         
         loading.classList.add('hidden');
         
@@ -42,10 +98,43 @@ async function loadArticles() {
         loading.classList.add('hidden');
         container.innerHTML = `
             <div class="text-center py-12 text-red-500">
-                <p>Error loading articles. Please try again.</p>
-                <button onclick="loadArticles()" class="text-blue-600 hover:text-blue-800 mt-2">Retry</button>
+                <p>Error loading articles: ${error.message}</p>
+                <button onclick="loadArticles()" class="text-blue-600 hover:text-blue-800 mt-2 underline">Retry</button>
             </div>
         `;
+        console.error('Error loading articles:', error);
+    }
+}
+
+// Load more articles (pagination)
+async function loadMoreArticles() {
+    const container = document.getElementById('articles-container');
+    const loadMoreBtn = document.getElementById('load-more-btn');
+    const currentArticles = container.querySelectorAll('article').length;
+    
+    try {
+        loadMoreBtn.textContent = 'Loading...';
+        loadMoreBtn.disabled = true;
+        
+        const response = await fetch(`/items?limit=20&offset=${currentArticles}`);
+        const articles = await response.json();
+        
+        articles.forEach(article => {
+            const articleElement = createArticleElement(article);
+            container.appendChild(articleElement);
+        });
+        
+        if (articles.length < 20) {
+            loadMoreBtn.style.display = 'none';
+        } else {
+            loadMoreBtn.textContent = 'Load More Articles';
+            loadMoreBtn.disabled = false;
+        }
+        
+    } catch (error) {
+        loadMoreBtn.textContent = 'Error - Try Again';
+        loadMoreBtn.disabled = false;
+        showNotification('Failed to load more articles', 'error');
     }
 }
 
@@ -162,7 +251,14 @@ function formatDate(dateString) {
 
 // Refresh functionality
 async function refreshFeeds() {
+    console.log('refreshFeeds() called');
     const refreshBtn = document.querySelector('button[onclick="refreshFeeds()"]');
+    
+    if (!refreshBtn) {
+        console.error('Refresh button not found');
+        return;
+    }
+    
     const originalText = refreshBtn.innerHTML;
     
     refreshBtn.innerHTML = `
@@ -172,19 +268,30 @@ async function refreshFeeds() {
     refreshBtn.disabled = true;
     
     try {
+        console.log('Calling /refresh API...');
         const response = await fetch('/refresh', { method: 'POST' });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
         const result = await response.json();
+        console.log('Refresh result:', result);
         
         // Show success notification
         showNotification(`Refreshed! Added ${result.items_added || 0} new articles`, 'success');
         
-        // Reload articles
+        // Reload articles with current topic filter
+        const topicSelect = document.querySelector('select');
+        const currentTopic = topicSelect ? topicSelect.value : '';
+        
         setTimeout(() => {
-            loadArticles();
+            loadArticles(currentTopic);
         }, 1000);
         
     } catch (error) {
-        showNotification('Failed to refresh feeds', 'error');
+        console.error('Refresh error:', error);
+        showNotification(`Failed to refresh feeds: ${error.message}`, 'error');
     } finally {
         refreshBtn.innerHTML = originalText;
         refreshBtn.disabled = false;
