@@ -4,7 +4,10 @@ import logging
 from datetime import datetime
 from typing import List
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from sqlalchemy import text
 
 from .db import init_db, session_scope
@@ -39,12 +42,23 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="NewsBrief")
 
+# Template and static file setup
+templates = Jinja2Templates(directory="app/templates")
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
 
 @app.on_event("startup")
 def _startup() -> None:
     init_db()
     # seed from OPML if present (one-time harmless)
     import_opml("data/feeds.opml")
+
+
+# Web Interface Routes
+@app.get("/", response_class=HTMLResponse)
+def home_page(request: Request):
+    """Main web interface page."""
+    return templates.TemplateResponse("index.html", {"request": request})
 
 
 @app.post("/feeds")
