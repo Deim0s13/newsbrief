@@ -860,9 +860,35 @@ def get_item(item_id: int):
 # New ranking and topic endpoints (v0.4.0)
 
 
-@app.get("/topics")
-def get_topics():
-    """Get available article topics."""
+@app.get("/topics", response_class=HTMLResponse)
+def topics_page(request: Request):
+    """Topics overview page."""
+    topics = get_available_topics()
+    
+    # Get article counts per topic
+    topic_stats = []
+    with session_scope() as s:
+        for topic in topics:
+            count_result = s.execute(
+                text("SELECT COUNT(*) as count FROM items WHERE topic = :topic"),
+                {"topic": topic["key"]}
+            ).fetchone()
+            
+            topic_stats.append({
+                "key": topic["key"],
+                "name": topic["name"],
+                "article_count": count_result[0] if count_result else 0
+            })
+    
+    return templates.TemplateResponse("topics.html", {
+        "request": request,
+        "topics": topic_stats
+    })
+
+
+@app.get("/api/topics")
+def get_topics_api():
+    """Get available article topics (API endpoint)."""
     return {
         "topics": get_available_topics(),
         "description": "Available topic categories for article classification",

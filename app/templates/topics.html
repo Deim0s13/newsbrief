@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+
+{% block title %}Article Topics - NewsBrief{% endblock %}
+
+{% block head %}
+<style>
+    .topic-card {
+        transition: all 0.2s ease-in-out;
+    }
+    .topic-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+    }
+    .dark .topic-card:hover {
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+    }
+    
+    /* Topic-specific colors */
+    .topic-ai-ml { @apply bg-purple-50 border-purple-200 dark:bg-purple-900/20 dark:border-purple-800; }
+    .topic-ai-ml .topic-icon { @apply text-purple-600 dark:text-purple-400; }
+    .topic-ai-ml .topic-badge { @apply bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200; }
+    
+    .topic-cloud-k8s { @apply bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800; }
+    .topic-cloud-k8s .topic-icon { @apply text-blue-600 dark:text-blue-400; }
+    .topic-cloud-k8s .topic-badge { @apply bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200; }
+    
+    .topic-security { @apply bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800; }
+    .topic-security .topic-icon { @apply text-red-600 dark:text-red-400; }
+    .topic-security .topic-badge { @apply bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200; }
+    
+    .topic-devtools { @apply bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800; }
+    .topic-devtools .topic-icon { @apply text-green-600 dark:text-green-400; }
+    .topic-devtools .topic-badge { @apply bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200; }
+    
+    .topic-chips-hardware { @apply bg-yellow-50 border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800; }
+    .topic-chips-hardware .topic-icon { @apply text-yellow-600 dark:text-yellow-400; }
+    .topic-chips-hardware .topic-badge { @apply bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Header -->
+    <div class="mb-8">
+        <div class="flex items-center justify-between">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Article Topics</h1>
+                <p class="mt-2 text-gray-600 dark:text-gray-300">Browse articles by topic category using our AI-powered classification system</p>
+            </div>
+            <div class="flex items-center space-x-4">
+                <a href="/" class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
+                    ← Back to Articles
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Topics Overview Stats -->
+    <div class="mb-8">
+        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
+            <div class="p-6">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <svg class="h-8 w-8 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
+                        </svg>
+                    </div>
+                    <div class="ml-5">
+                        <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+                            AI Topic Classification
+                        </h3>
+                        <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                            Our AI system automatically categorizes articles into {{ topics|length }} topic areas based on content analysis. 
+                            {% set total_articles = topics|sum(attribute='article_count') %}
+                            Currently tracking <strong>{{ total_articles }}</strong> classified articles.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Topics Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 mb-8">
+        {% for topic in topics %}
+        <div class="topic-card topic-{{ topic.key }} bg-white dark:bg-gray-800 border-2 rounded-lg p-6 cursor-pointer"
+             onclick="window.location.href='/items/topic/{{ topic.key }}'">
+            <div class="flex items-center justify-between mb-4">
+                <div class="topic-icon">
+                    {% if topic.key == 'ai-ml' %}
+                    <svg class="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+                    </svg>
+                    {% elif topic.key == 'cloud-k8s' %}
+                    <svg class="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"></path>
+                    </svg>
+                    {% elif topic.key == 'security' %}
+                    <svg class="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+                    </svg>
+                    {% elif topic.key == 'devtools' %}
+                    <svg class="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path>
+                    </svg>
+                    {% elif topic.key == 'chips-hardware' %}
+                    <svg class="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"></path>
+                    </svg>
+                    {% else %}
+                    <svg class="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
+                    </svg>
+                    {% endif %}
+                </div>
+                <span class="topic-badge inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium">
+                    {{ topic.article_count }} articles
+                </span>
+            </div>
+            
+            <div class="mb-4">
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                    {{ topic.name }}
+                </h3>
+                <p class="text-sm text-gray-600 dark:text-gray-300">
+                    {% if topic.key == 'ai-ml' %}
+                    Artificial Intelligence, Machine Learning, Deep Learning, Neural Networks, and AI applications
+                    {% elif topic.key == 'cloud-k8s' %}
+                    Cloud computing, Kubernetes, containers, serverless, microservices, and cloud-native technologies
+                    {% elif topic.key == 'security' %}
+                    Cybersecurity, data protection, vulnerabilities, encryption, privacy, and security best practices
+                    {% elif topic.key == 'devtools' %}
+                    Developer tools, programming languages, frameworks, IDEs, version control, and development workflows
+                    {% elif topic.key == 'chips-hardware' %}
+                    Computer hardware, processors, semiconductors, chips, IoT devices, and embedded systems
+                    {% else %}
+                    General technology articles and miscellaneous topics
+                    {% endif %}
+                </p>
+            </div>
+            
+            <div class="flex items-center justify-between">
+                <div class="flex items-center text-sm text-gray-500 dark:text-gray-400">
+                    <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                    </svg>
+                    Ranked by relevance
+                </div>
+                <div class="flex items-center text-blue-600 dark:text-blue-400">
+                    <span class="text-sm font-medium">Browse articles</span>
+                    <svg class="h-4 w-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                    </svg>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Additional Information -->
+    <div class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-6">
+        <div class="flex items-start">
+            <div class="flex-shrink-0">
+                <svg class="h-6 w-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+            </div>
+            <div class="ml-3">
+                <h3 class="text-sm font-medium text-blue-900 dark:text-blue-100">
+                    How Topic Classification Works
+                </h3>
+                <div class="mt-2 text-sm text-blue-800 dark:text-blue-200">
+                    <p>
+                        Our AI system analyzes article content, titles, and metadata to automatically categorize articles into relevant topics. 
+                        Articles are ranked within each topic based on relevance, recency, and source authority. 
+                        Click any topic card above to explore articles in that category.
+                    </p>
+                </div>
+                <div class="mt-4">
+                    <div class="flex items-center space-x-6 text-xs text-blue-700 dark:text-blue-300">
+                        <div class="flex items-center">
+                            <svg class="h-3 w-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+                            </svg>
+                            AI Powered
+                        </div>
+                        <div class="flex items-center">
+                            <svg class="h-3 w-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                            </svg>
+                            Auto-Updated
+                        </div>
+                        <div class="flex items-center">
+                            <svg class="h-3 w-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                            </svg>
+                            Relevance Ranked
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
