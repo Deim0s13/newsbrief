@@ -5,10 +5,16 @@
 {% block head %}
 <style>
     .skim-mode .article-full-content {
-        display: none;
+        display: none !important;
+    }
+    .skim-mode .article-summary-only {
+        display: block !important;
     }
     .detail-mode .article-summary-only {
-        display: none;
+        display: none !important;
+    }
+    .detail-mode .article-full-content {
+        display: block !important;
     }
     .article-content img {
         max-width: 100%;

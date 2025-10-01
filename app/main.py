@@ -73,7 +73,7 @@ def article_detail_page(request: Request, item_id: int):
                        structured_summary_json, structured_summary_model, 
                        structured_summary_content_hash, structured_summary_generated_at,
                        ranking_score, topic, topic_confidence, source_weight,
-                       fallback_summary, is_fallback_summary, created_at
+                       created_at
                 FROM items 
                 WHERE id = :item_id
             """),
@@ -109,9 +109,12 @@ def article_detail_page(request: Request, item_id: int):
     else:
         article["structured_summary"] = None
     
-    # Handle fallback summary
+    # Handle fallback summary (generate on-the-fly since not stored in DB)
+    article["fallback_summary"] = None
+    article["is_fallback_summary"] = False
+    
     if not article["structured_summary"] and not article["ai_summary"]:
-        if article["content"] and not article.get("fallback_summary"):
+        if article["content"]:
             from .models import extract_first_sentences
             try:
                 article["fallback_summary"] = extract_first_sentences(article["content"])
@@ -119,10 +122,68 @@ def article_detail_page(request: Request, item_id: int):
             except Exception:
                 article["fallback_summary"] = article.get("summary", "No summary available")
                 article["is_fallback_summary"] = True
+        else:
+            article["fallback_summary"] = article.get("summary", "No summary available")
+            article["is_fallback_summary"] = True
     
     return templates.TemplateResponse("article_detail.html", {
         "request": request, 
         "article": article
+    })
+
+
+@app.get("/search", response_class=HTMLResponse)
+def search_page(request: Request, q: str = ""):
+    """Search results page."""
+    articles = []
+    search_query = q.strip()
+    
+    if search_query:
+        # Perform basic search on title and summary
+        with session_scope() as s:
+            results = s.execute(
+                text("""
+                    SELECT id, title, url, published, author, summary, 
+                           ai_summary, ai_model, ai_generated_at,
+                           structured_summary_json, structured_summary_model,
+                           structured_summary_content_hash, structured_summary_generated_at,
+                           ranking_score, topic, topic_confidence, source_weight,
+                           created_at
+                    FROM items 
+                    WHERE title LIKE :query OR summary LIKE :query OR ai_summary LIKE :query
+                    ORDER BY ranking_score DESC, COALESCE(published, created_at) DESC
+                    LIMIT 50
+                """),
+                {"query": f"%{search_query}%"}
+            ).fetchall()
+            
+            # Convert to list of dicts for template
+            for row in results:
+                article_dict = dict(row._mapping)
+                
+                # Parse structured summary if available
+                if article_dict["structured_summary_json"]:
+                    try:
+                        import json
+                        from .models import StructuredSummary
+                        structured_data = json.loads(article_dict["structured_summary_json"])
+                        article_dict["structured_summary"] = {
+                            "bullets": structured_data.get("bullets", []),
+                            "why_it_matters": structured_data.get("why_it_matters", ""),
+                            "tags": structured_data.get("tags", []),
+                        }
+                    except (json.JSONDecodeError, ValueError):
+                        article_dict["structured_summary"] = None
+                else:
+                    article_dict["structured_summary"] = None
+                
+                articles.append(article_dict)
+    
+    return templates.TemplateResponse("search_results.html", {
+        "request": request,
+        "articles": articles,
+        "search_query": search_query,
+        "result_count": len(articles)
     })
 
 

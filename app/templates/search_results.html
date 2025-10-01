@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+
+{% block title %}Search Results{% if search_query %}: {{ search_query }}{% endif %} - NewsBrief{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Search Header -->
+    <div class="mb-8">
+        <div class="flex items-center space-x-4 mb-4">
+            <a href="/" class="inline-flex items-center text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
+                <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                </svg>
+                Back to Articles
+            </a>
+        </div>
+        
+        {% if search_query %}
+        <h1 class="text-3xl font-bold text-gray-900 dark:text-white">
+            Search Results for "{{ search_query }}"
+        </h1>
+        <p class="mt-2 text-gray-600 dark:text-gray-300">
+            Found {{ result_count }} article{{ "s" if result_count != 1 else "" }}
+        </p>
+        {% else %}
+        <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Search Articles</h1>
+        <p class="mt-2 text-gray-600 dark:text-gray-300">Enter a search term to find articles</p>
+        {% endif %}
+    </div>
+    
+    <!-- Search Form -->
+    <div class="mb-8">
+        <form action="/search" method="GET" class="flex space-x-4">
+            <div class="flex-1">
+                <input type="search" 
+                       name="q" 
+                       value="{{ search_query }}"
+                       placeholder="Search articles..." 
+                       class="w-full px-4 py-3 text-lg border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400">
+            </div>
+            <button type="submit" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg flex items-center space-x-2">
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m21 21-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                </svg>
+                <span>Search</span>
+            </button>
+        </form>
+    </div>
+    
+    <!-- Search Results -->
+    {% if search_query %}
+        {% if articles %}
+        <div class="space-y-6">
+            {% for article in articles %}
+            <article class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 hover:shadow-md transition-shadow">
+                <!-- Article Header -->
+                <div class="flex items-start justify-between mb-3">
+                    <div class="flex items-center space-x-3">
+                        {% if article.topic %}
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium topic-badge-{{ article.topic }}">
+                            {{ article.topic|replace('ai-ml', 'AI/ML')|replace('cloud-k8s', 'Cloud/K8s')|replace('devtools', 'DevTools')|replace('chips-hardware', 'Chips/Hardware')|title }}
+                        </span>
+                        {% endif %}
+                        {% if article.ranking_score %}
+                        <span class="text-xs text-gray-500 dark:text-gray-400 font-mono">
+                            Score: {{ "%.3f"|format(article.ranking_score) }}
+                        </span>
+                        {% endif %}
+                    </div>
+                    <time class="text-sm text-gray-500 dark:text-gray-400">
+                        {{ article.published.strftime('%B %d, %Y') if article.published else 'No date' }}
+                    </time>
+                </div>
+                
+                <!-- Article Title -->
+                <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-3 line-clamp-2">
+                    <a href="/article/{{ article.id }}" class="hover:text-blue-600 dark:hover:text-blue-400">
+                        {{ article.title or "Untitled Article" }}
+                    </a>
+                </h2>
+                
+                <!-- Article Content -->
+                <div class="mb-4">
+                    {% if article.structured_summary %}
+                    <div class="space-y-3">
+                        {% if article.structured_summary.bullets %}
+                        <div>
+                            <h4 class="font-medium text-gray-900 dark:text-white mb-2">Key Points:</h4>
+                            <ul class="list-disc list-inside space-y-1 text-gray-700 dark:text-gray-300 text-sm">
+                                {% for bullet in article.structured_summary.bullets[:3] %}
+                                <li>{{ bullet }}</li>
+                                {% endfor %}
+                                {% if article.structured_summary.bullets|length > 3 %}
+                                <li class="text-gray-500 dark:text-gray-400 italic">and {{ article.structured_summary.bullets|length - 3 }} more...</li>
+                                {% endif %}
+                            </ul>
+                        </div>
+                        {% endif %}
+                        {% if article.structured_summary.why_it_matters %}
+                        <div>
+                            <h4 class="font-medium text-gray-900 dark:text-white mb-2">Why it matters:</h4>
+                            <p class="text-gray-700 dark:text-gray-300 text-sm">{{ article.structured_summary.why_it_matters[:200] }}{% if article.structured_summary.why_it_matters|length > 200 %}...{% endif %}</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% elif article.ai_summary %}
+                    <p class="text-gray-700 dark:text-gray-300">{{ article.ai_summary[:300] }}{% if article.ai_summary|length > 300 %}...{% endif %}</p>
+                    {% elif article.summary %}
+                    <p class="text-gray-700 dark:text-gray-300">{{ article.summary[:300] }}{% if article.summary|length > 300 %}...{% endif %}</p>
+                    {% else %}
+                    <p class="text-gray-500 dark:text-gray-400 italic">No summary available</p>
+                    {% endif %}
+                </div>
+                
+                <!-- Article Footer -->
+                <div class="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+                    <div class="flex items-center space-x-2">
+                        {% if article.author %}
+                        <span>By {{ article.author }}</span>
+                        {% endif %}
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        {% if article.structured_summary or article.ai_summary %}
+                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                            <svg class="h-3 w-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+                            </svg>
+                            AI Summary
+                        </span>
+                        {% endif %}
+                        <div class="flex items-center space-x-3">
+                            <a href="/article/{{ article.id }}" class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 flex items-center space-x-1">
+                                <span>View Detail</span>
+                                <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                </svg>
+                            </a>
+                            <a href="{{ article.url }}" target="_blank" class="text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-300 flex items-center space-x-1">
+                                <span>Original</span>
+                                <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                                </svg>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-12 text-gray-500 dark:text-gray-400">
+            <svg class="mx-auto h-12 w-12 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m21 21-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+            </svg>
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">No articles found</h3>
+            <p class="mb-4">Try a different search term or check your spelling.</p>
+            <div class="text-sm">
+                <p>Search tips:</p>
+                <ul class="mt-2 space-y-1">
+                    <li>• Use broader terms like "AI" instead of "artificial intelligence"</li>
+                    <li>• Try searching for topics, technologies, or company names</li>
+                    <li>• Search works on article titles and summaries</li>
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+/* Topic badge colors */
+.topic-badge-ai-ml { @apply bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200; }
+.topic-badge-cloud-k8s { @apply bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200; }
+.topic-badge-security { @apply bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200; }
+.topic-badge-devtools { @apply bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200; }
+.topic-badge-chips-hardware { @apply bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200; }
+</style>
+{% endblock %}
