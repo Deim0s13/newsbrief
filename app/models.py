@@ -12,6 +12,54 @@ from pydantic import BaseModel, Field, HttpUrl, validator
 
 class FeedIn(BaseModel):
     url: HttpUrl
+    name: Optional[str] = Field(None, description="Custom name for the feed")
+    description: Optional[str] = Field(None, description="Description of the feed")
+    category: Optional[str] = Field(None, description="Feed category/tag")
+    priority: int = Field(1, description="Feed priority (1-5, higher = more important)", ge=1, le=5)
+    disabled: bool = Field(False, description="Whether the feed is disabled")
+
+
+class FeedOut(BaseModel):
+    id: int
+    url: str
+    name: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    priority: int = 1
+    disabled: bool = False
+    robots_allowed: bool = True
+    etag: Optional[str] = None
+    last_modified: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    # Statistics
+    total_articles: int = Field(0, description="Total articles from this feed")
+    last_fetch_at: Optional[datetime] = Field(None, description="Last successful fetch timestamp")
+    last_error: Optional[str] = Field(None, description="Last error message if any")
+    fetch_count: int = Field(0, description="Total number of fetch attempts")
+    success_count: int = Field(0, description="Total number of successful fetches")
+
+
+class FeedUpdate(BaseModel):
+    name: Optional[str] = Field(None, description="Custom name for the feed")
+    description: Optional[str] = Field(None, description="Description of the feed")
+    category: Optional[str] = Field(None, description="Feed category/tag")
+    priority: Optional[int] = Field(None, description="Feed priority (1-5)", ge=1, le=5)
+    disabled: Optional[bool] = Field(None, description="Whether the feed is disabled")
+
+
+class FeedStats(BaseModel):
+    """Detailed statistics for a specific feed."""
+    feed_id: int
+    total_articles: int
+    articles_last_24h: int
+    articles_last_7d: int
+    articles_last_30d: int
+    avg_articles_per_day: float
+    last_fetch_at: Optional[datetime]
+    last_error: Optional[str]
+    success_rate: float  # percentage
+    avg_response_time_ms: float
 
 
 @dataclass

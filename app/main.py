@@ -23,6 +23,9 @@ from .feeds import (
 from .llm import DEFAULT_MODEL, OLLAMA_BASE_URL, get_llm_service, is_llm_available
 from .models import (
     FeedIn,
+    FeedOut,
+    FeedUpdate,
+    FeedStats,
     ItemOut,
     LLMStatusOut,
     StructuredSummary,
@@ -132,6 +135,12 @@ def article_detail_page(request: Request, item_id: int):
     })
 
 
+@app.get("/feeds-manage", response_class=HTMLResponse)
+def feeds_management_page(request: Request):
+    """Feed management interface page."""
+    return templates.TemplateResponse("feed_management.html", {"request": request})
+
+
 @app.get("/search", response_class=HTMLResponse)
 def search_page(request: Request, q: str = ""):
     """Search results page."""
@@ -187,10 +196,219 @@ def search_page(request: Request, q: str = ""):
     })
 
 
-@app.post("/feeds")
+@app.get("/feeds", response_model=List[FeedOut])
+def list_feeds():
+    """List all feeds with their statistics."""
+    feeds = []
+    with session_scope() as s:
+        results = s.execute(
+            text("""
+                SELECT f.*, 
+                       COUNT(i.id) as total_articles,
+                       MAX(i.created_at) as last_fetch_at
+                FROM feeds f
+                LEFT JOIN items i ON f.id = i.feed_id
+                GROUP BY f.id
+                ORDER BY f.priority DESC, f.created_at DESC
+            """)
+        ).fetchall()
+        
+        for row in results:
+            feed_data = dict(row._mapping)
+            # Convert database booleans
+            feed_data["disabled"] = bool(feed_data["disabled"])
+            feed_data["robots_allowed"] = bool(feed_data["robots_allowed"])
+            feeds.append(FeedOut(**feed_data))
+    
+    return feeds
+
+
+@app.get("/feeds/{feed_id}", response_model=FeedOut)
+def get_feed(feed_id: int):
+    """Get detailed information about a specific feed."""
+    with session_scope() as s:
+        result = s.execute(
+            text("""
+                SELECT f.*, 
+                       COUNT(i.id) as total_articles,
+                       MAX(i.created_at) as last_fetch_at
+                FROM feeds f
+                LEFT JOIN items i ON f.id = i.feed_id
+                WHERE f.id = :feed_id
+                GROUP BY f.id
+            """),
+            {"feed_id": feed_id}
+        ).fetchone()
+        
+        if not result:
+            raise HTTPException(status_code=404, detail="Feed not found")
+        
+        feed_data = dict(result._mapping)
+        feed_data["disabled"] = bool(feed_data["disabled"])
+        feed_data["robots_allowed"] = bool(feed_data["robots_allowed"])
+        return FeedOut(**feed_data)
+
+
+@app.post("/feeds", response_model=FeedOut)
 def add_feed_endpoint(feed: FeedIn):
+    """Add a new RSS/Atom feed."""
+    # Use the existing add_feed function but with enhanced data
     fid = add_feed(str(feed.url))
-    return {"ok": True, "feed_id": fid}
+    
+    # Update the feed with additional metadata if provided
+    if any([feed.name, feed.description, feed.category, feed.priority != 1, feed.disabled]):
+        with session_scope() as s:
+            s.execute(
+                text("""
+                    UPDATE feeds 
+                    SET name = :name, description = :description, category = :category,
+                        priority = :priority, disabled = :disabled, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = :feed_id
+                """),
+                {
+                    "name": feed.name,
+                    "description": feed.description,
+                    "category": feed.category,
+                    "priority": feed.priority,
+                    "disabled": int(feed.disabled),
+                    "feed_id": fid
+                }
+            )
+    
+    # Return the created feed
+    return get_feed(fid)
+
+
+@app.put("/feeds/{feed_id}", response_model=FeedOut)
+def update_feed(feed_id: int, feed_update: FeedUpdate):
+    """Update an existing feed."""
+    with session_scope() as s:
+        # Check if feed exists
+        existing = s.execute(
+            text("SELECT id FROM feeds WHERE id = :feed_id"),
+            {"feed_id": feed_id}
+        ).fetchone()
+        
+        if not existing:
+            raise HTTPException(status_code=404, detail="Feed not found")
+        
+        # Build update query dynamically
+        update_fields = []
+        params = {"feed_id": feed_id}
+        
+        if feed_update.name is not None:
+            update_fields.append("name = :name")
+            params["name"] = feed_update.name
+        
+        if feed_update.description is not None:
+            update_fields.append("description = :description")
+            params["description"] = feed_update.description
+        
+        if feed_update.category is not None:
+            update_fields.append("category = :category")
+            params["category"] = feed_update.category
+        
+        if feed_update.priority is not None:
+            update_fields.append("priority = :priority")
+            params["priority"] = feed_update.priority
+        
+        if feed_update.disabled is not None:
+            update_fields.append("disabled = :disabled")
+            params["disabled"] = int(feed_update.disabled)
+        
+        if update_fields:
+            update_fields.append("updated_at = CURRENT_TIMESTAMP")
+            sql = f"UPDATE feeds SET {', '.join(update_fields)} WHERE id = :feed_id"
+            s.execute(text(sql), params)
+    
+    return get_feed(feed_id)
+
+
+@app.delete("/feeds/{feed_id}")
+def delete_feed(feed_id: int):
+    """Delete a feed and all its articles."""
+    with session_scope() as s:
+        # Check if feed exists
+        existing = s.execute(
+            text("SELECT id FROM feeds WHERE id = :feed_id"),
+            {"feed_id": feed_id}
+        ).fetchone()
+        
+        if not existing:
+            raise HTTPException(status_code=404, detail="Feed not found")
+        
+        # Delete articles first (due to foreign key constraint)
+        articles_deleted = s.execute(
+            text("DELETE FROM items WHERE feed_id = :feed_id"),
+            {"feed_id": feed_id}
+        ).rowcount
+        
+        # Delete the feed
+        s.execute(
+            text("DELETE FROM feeds WHERE id = :feed_id"),
+            {"feed_id": feed_id}
+        )
+    
+    return {"ok": True, "articles_deleted": articles_deleted}
+
+
+@app.get("/feeds/{feed_id}/stats", response_model=FeedStats)
+def get_feed_stats(feed_id: int):
+    """Get detailed statistics for a specific feed."""
+    with session_scope() as s:
+        # Check if feed exists
+        feed_check = s.execute(
+            text("SELECT id FROM feeds WHERE id = :feed_id"),
+            {"feed_id": feed_id}
+        ).fetchone()
+        
+        if not feed_check:
+            raise HTTPException(status_code=404, detail="Feed not found")
+        
+        # Get article counts by time period
+        stats_result = s.execute(
+            text("""
+                SELECT 
+                    COUNT(*) as total_articles,
+                    COUNT(CASE WHEN created_at >= datetime('now', '-1 day') THEN 1 END) as articles_last_24h,
+                    COUNT(CASE WHEN created_at >= datetime('now', '-7 days') THEN 1 END) as articles_last_7d,
+                    COUNT(CASE WHEN created_at >= datetime('now', '-30 days') THEN 1 END) as articles_last_30d,
+                    MAX(created_at) as last_fetch_at
+                FROM items 
+                WHERE feed_id = :feed_id
+            """),
+            {"feed_id": feed_id}
+        ).fetchone()
+        
+        # Get feed info for error tracking
+        feed_info = s.execute(
+            text("SELECT last_error, fetch_count, success_count FROM feeds WHERE id = :feed_id"),
+            {"feed_id": feed_id}
+        ).fetchone()
+        
+        stats_data = dict(stats_result._mapping)
+        feed_data = dict(feed_info._mapping)
+        
+        # Calculate derived statistics
+        total_articles = stats_data["total_articles"]
+        fetch_count = feed_data["fetch_count"] or 0
+        success_count = feed_data["success_count"] or 0
+        
+        success_rate = (success_count / fetch_count * 100) if fetch_count > 0 else 0.0
+        avg_articles_per_day = total_articles / 30.0 if total_articles > 0 else 0.0  # Simple 30-day average
+        
+        return FeedStats(
+            feed_id=feed_id,
+            total_articles=total_articles,
+            articles_last_24h=stats_data["articles_last_24h"],
+            articles_last_7d=stats_data["articles_last_7d"],
+            articles_last_30d=stats_data["articles_last_30d"],
+            avg_articles_per_day=round(avg_articles_per_day, 2),
+            last_fetch_at=stats_data["last_fetch_at"],
+            last_error=feed_data["last_error"],
+            success_rate=round(success_rate, 1),
+            avg_response_time_ms=0.0  # TODO: Implement response time tracking
+        )
 
 
 @app.post("/refresh")

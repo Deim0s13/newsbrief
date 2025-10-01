@@ -79,6 +79,7 @@ def init_db() -> None:
 
         # Migration: Add AI summary columns if they don't exist
         migration_columns = [
+            # Items table migrations
             "ALTER TABLE items ADD COLUMN ai_summary TEXT;",
             "ALTER TABLE items ADD COLUMN ai_model TEXT;",
             "ALTER TABLE items ADD COLUMN ai_generated_at DATETIME;",
@@ -93,6 +94,15 @@ def init_db() -> None:
             "ALTER TABLE items ADD COLUMN topic TEXT;",
             "ALTER TABLE items ADD COLUMN topic_confidence REAL DEFAULT 0.0;",
             "ALTER TABLE items ADD COLUMN source_weight REAL DEFAULT 1.0;",
+            # Feeds table migrations (v0.5.3)
+            "ALTER TABLE feeds ADD COLUMN name TEXT;",
+            "ALTER TABLE feeds ADD COLUMN description TEXT;",
+            "ALTER TABLE feeds ADD COLUMN category TEXT;",
+            "ALTER TABLE feeds ADD COLUMN priority INTEGER DEFAULT 1;",
+            "ALTER TABLE feeds ADD COLUMN last_fetch_at DATETIME;",
+            "ALTER TABLE feeds ADD COLUMN last_error TEXT;",
+            "ALTER TABLE feeds ADD COLUMN fetch_count INTEGER DEFAULT 0;",
+            "ALTER TABLE feeds ADD COLUMN success_count INTEGER DEFAULT 0;",
         ]
 
         for migration_sql in migration_columns:
