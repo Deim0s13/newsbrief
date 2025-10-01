@@ -117,7 +117,7 @@
                 <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
                 </svg>
-                <time>{{ article.published.strftime('%B %d, %Y at %I:%M %p') if article.published else 'No date' }}</time>
+                <time>{{ article.published if article.published else 'No date' }}</time>
             </div>
             {% endif %}
             
@@ -266,7 +266,7 @@
             
             <div class="text-sm text-gray-500 dark:text-gray-400">
                 {% if article.ai_generated_at %}
-                AI Summary generated {{ article.ai_generated_at.strftime('%B %d, %Y') if article.ai_generated_at else 'recently' }}
+                AI Summary generated {{ article.ai_generated_at if article.ai_generated_at else 'recently' }}
                 {% endif %}
             </div>
         </div>
@@ -300,6 +300,7 @@ function setViewMode(mode) {
     }
     
     console.log('View mode changed to:', mode);
+    console.log('Container classes:', container.className);
 }
 
 function shareArticle() {
@@ -339,6 +340,10 @@ function showNotification(message, type = 'info') {
 
 // Initialize detail mode on load
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('Article detail page loaded, initializing detail mode');
+    console.log('Container element found:', document.getElementById('article-container'));
+    console.log('Skim button found:', document.getElementById('skim-btn'));
+    console.log('Detail button found:', document.getElementById('detail-btn'));
     setViewMode('detail');
 });
 </script>
