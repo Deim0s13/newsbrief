@@ -61,6 +61,71 @@ def home_page(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
+@app.get("/article/{item_id}", response_class=HTMLResponse)
+def article_detail_page(request: Request, item_id: int):
+    """Individual article detail page."""
+    # Get article details
+    with session_scope() as s:
+        result = s.execute(
+            text("""
+                SELECT id, title, url, published, author, summary, content, content_hash,
+                       ai_summary, ai_model, ai_generated_at,
+                       structured_summary_json, structured_summary_model, 
+                       structured_summary_content_hash, structured_summary_generated_at,
+                       ranking_score, topic, topic_confidence, source_weight,
+                       fallback_summary, is_fallback_summary, created_at
+                FROM items 
+                WHERE id = :item_id
+            """),
+            {"item_id": item_id}
+        ).fetchone()
+    
+    if not result:
+        raise HTTPException(status_code=404, detail="Article not found")
+    
+    # Convert to dict for template
+    article = dict(result._mapping)
+    
+    # Parse structured summary if available
+    if article["structured_summary_json"]:
+        try:
+            from .models import StructuredSummary
+            import json
+            structured_data = json.loads(article["structured_summary_json"])
+            article["structured_summary"] = StructuredSummary(
+                bullets=structured_data.get("bullets", []),
+                why_it_matters=structured_data.get("why_it_matters", ""),
+                tags=structured_data.get("tags", []),
+                content_hash=article["structured_summary_content_hash"] or "",
+                model=article["structured_summary_model"] or "",
+                generated_at=article["structured_summary_generated_at"] or article["created_at"],
+                is_chunked=structured_data.get("is_chunked", False),
+                chunk_count=structured_data.get("chunk_count"),
+                total_tokens=structured_data.get("total_tokens"),
+                processing_method=structured_data.get("processing_method", "direct")
+            )
+        except (json.JSONDecodeError, ValueError):
+            article["structured_summary"] = None
+    else:
+        article["structured_summary"] = None
+    
+    # Handle fallback summary
+    if not article["structured_summary"] and not article["ai_summary"]:
+        if article["content"] and not article.get("fallback_summary"):
+            from .models import extract_first_sentences
+            try:
+                article["fallback_summary"] = extract_first_sentences(article["content"])
+                article["is_fallback_summary"] = True
+            except Exception:
+                article["fallback_summary"] = article.get("summary", "No summary available")
+                article["is_fallback_summary"] = True
+    
+    return templates.TemplateResponse("article_detail.html", {
+        "request": request, 
+        "article": article
+    })
+
+
 @app.post("/feeds")
 def add_feed_endpoint(feed: FeedIn):
     fid = add_feed(str(feed.url))

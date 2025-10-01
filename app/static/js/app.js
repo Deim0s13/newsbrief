@@ -163,9 +163,10 @@ function createArticleElement(article) {
         publishedDate.textContent = 'No date';
     }
     
-    // Set title
-    const title = element.querySelector('.article-title');
-    title.textContent = article.title || 'Untitled';
+    // Set title with link to detail page
+    const titleLink = element.querySelector('.article-title-link');
+    titleLink.textContent = article.title || 'Untitled';
+    titleLink.href = `/article/${article.id}`;
     
     // Set content (AI summary or fallback)
     const content = element.querySelector('.article-content');
@@ -201,13 +202,14 @@ function createArticleElement(article) {
         content.innerHTML = `<p class="text-gray-500 dark:text-gray-400 italic">No summary available</p>`;
     }
     
-    // Set article link
-    const articleLink = element.querySelector('.article-link');
-    articleLink.href = article.url;
-    articleLink.target = '_blank';
+    // Set article detail link
+    const articleDetailLink = element.querySelector('.article-detail-link');
+    articleDetailLink.href = `/article/${article.id}`;
     
-    // Make title clickable too
-    title.onclick = () => window.open(article.url, '_blank');
+    // Set external article link
+    const articleExternalLink = element.querySelector('.article-external-link');
+    articleExternalLink.href = article.url;
+    articleExternalLink.target = '_blank';
     
     return element;
 }
