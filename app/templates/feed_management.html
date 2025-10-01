@@ -90,12 +90,21 @@
                     <span>Refresh All</span>
                 </button>
                 
-                <button id="export-opml-btn" class="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white font-medium rounded-lg flex items-center space-x-2">
-                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                    </svg>
-                    <span>Export OPML</span>
-                </button>
+                <div class="flex items-center space-x-2">
+                    <button id="import-opml-btn" class="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg flex items-center space-x-2">
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                        </svg>
+                        <span>Import OPML</span>
+                    </button>
+                    
+                    <button id="export-opml-btn" class="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white font-medium rounded-lg flex items-center space-x-2">
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                        <span>Export OPML</span>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -224,6 +233,87 @@
     </div>
 </div>
 
+<!-- OPML Import Modal -->
+<div id="opml-import-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-lg w-full mx-4">
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Import OPML File</h3>
+            <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                Upload an OPML file to import RSS/Atom feeds with their categories and metadata.
+            </p>
+        </div>
+        <div class="px-6 py-4">
+            <div class="space-y-4">
+                <!-- File Upload Area -->
+                <div class="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center hover:border-purple-400 transition-colors">
+                    <input type="file" id="opml-file-input" accept=".opml,.xml" class="hidden">
+                    <div id="opml-upload-area" class="cursor-pointer" onclick="document.getElementById('opml-file-input').click()">
+                        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                        </svg>
+                        <div class="mt-4">
+                            <p class="text-sm text-gray-600 dark:text-gray-300">
+                                <span class="font-medium text-purple-600 hover:text-purple-500">Click to upload</span>
+                                or drag and drop
+                            </p>
+                            <p class="text-xs text-gray-500">OPML files only (*.opml, *.xml)</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Selected File Display -->
+                    <div id="selected-file-info" class="hidden mt-4 p-3 bg-purple-50 dark:bg-purple-900/20 rounded-md">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center">
+                                <svg class="h-5 w-5 text-purple-600 dark:text-purple-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                </svg>
+                                <span id="selected-file-name" class="text-sm font-medium text-purple-900 dark:text-purple-100"></span>
+                            </div>
+                            <button onclick="clearSelectedFile()" class="text-purple-600 hover:text-purple-800 dark:text-purple-400 dark:hover:text-purple-300">
+                                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Import Options -->
+                <div class="space-y-3">
+                    <div class="flex items-center">
+                        <input type="checkbox" id="opml-update-existing" checked 
+                               class="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 dark:border-gray-600 rounded">
+                        <label for="opml-update-existing" class="ml-2 block text-sm text-gray-700 dark:text-gray-300">
+                            Update existing feeds with new metadata
+                        </label>
+                    </div>
+                    <div class="flex items-center">
+                        <input type="checkbox" id="opml-preserve-categories" checked 
+                               class="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 dark:border-gray-600 rounded">
+                        <label for="opml-preserve-categories" class="ml-2 block text-sm text-gray-700 dark:text-gray-300">
+                            Import feed categories and organize by folders
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end space-x-3">
+            <button id="cancel-opml-import-btn" class="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700">
+                Cancel
+            </button>
+            <button id="start-opml-import-btn" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                <span class="flex items-center">
+                    <svg id="import-spinner" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white hidden" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span id="import-btn-text">Import OPML</span>
+                </span>
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- Notification Area -->
 <div id="notification-area" class="fixed top-4 right-4 z-50 space-y-2"></div>
 {% endblock %}
@@ -257,8 +347,14 @@ function setupEventListeners() {
     // Refresh feeds
     document.getElementById('refresh-feeds-btn').addEventListener('click', () => refreshAllFeeds());
     
-    // Export OPML
+    // Import/Export OPML
+    document.getElementById('import-opml-btn').addEventListener('click', () => showOPMLImportModal());
     document.getElementById('export-opml-btn').addEventListener('click', () => exportOPML());
+    
+    // OPML Import Modal
+    document.getElementById('cancel-opml-import-btn').addEventListener('click', () => hideOPMLImportModal());
+    document.getElementById('start-opml-import-btn').addEventListener('click', () => startOPMLImport());
+    document.getElementById('opml-file-input').addEventListener('change', handleOPMLFileSelection);
     
     // Filters
     document.getElementById('category-filter').addEventListener('change', () => applyFilters());
@@ -619,14 +715,137 @@ async function refreshAllFeeds() {
     }
 }
 
+// OPML Import/Export Functions
+let selectedOPMLFile = null;
+
+function showOPMLImportModal() {
+    document.getElementById('opml-import-modal').classList.remove('hidden');
+    document.getElementById('opml-import-modal').classList.add('flex');
+}
+
+function hideOPMLImportModal() {
+    document.getElementById('opml-import-modal').classList.add('hidden');
+    document.getElementById('opml-import-modal').classList.remove('flex');
+    clearSelectedFile();
+}
+
+function handleOPMLFileSelection(event) {
+    const file = event.target.files[0];
+    if (file) {
+        selectedOPMLFile = file;
+        
+        // Show selected file info
+        document.getElementById('selected-file-name').textContent = file.name;
+        document.getElementById('selected-file-info').classList.remove('hidden');
+        document.getElementById('start-opml-import-btn').disabled = false;
+    }
+}
+
+function clearSelectedFile() {
+    selectedOPMLFile = null;
+    document.getElementById('opml-file-input').value = '';
+    document.getElementById('selected-file-info').classList.add('hidden');
+    document.getElementById('start-opml-import-btn').disabled = true;
+}
+
+async function startOPMLImport() {
+    if (!selectedOPMLFile) {
+        showNotification('Please select an OPML file first', 'error');
+        return;
+    }
+    
+    // Show loading state
+    const importBtn = document.getElementById('start-opml-import-btn');
+    const importSpinner = document.getElementById('import-spinner');
+    const importBtnText = document.getElementById('import-btn-text');
+    
+    importBtn.disabled = true;
+    importSpinner.classList.remove('hidden');
+    importBtnText.textContent = 'Importing...';
+    
+    try {
+        // Create FormData for file upload
+        const formData = new FormData();
+        formData.append('file', selectedOPMLFile);
+        
+        const response = await fetch('/feeds/import/opml/upload', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok && result.success) {
+            hideOPMLImportModal();
+            await loadFeeds(); // Reload feeds to show imported ones
+            
+            // Show detailed success message
+            const details = result.details;
+            let message = result.message;
+            
+            if (details.categories_found && details.categories_found.length > 0) {
+                message += `\nCategories found: ${details.categories_found.join(', ')}`;
+            }
+            
+            if (details.errors && details.errors.length > 0) {
+                message += `\n⚠️ ${details.errors.length} error(s) occurred during import`;
+                console.warn('OPML Import errors:', details.errors);
+            }
+            
+            showNotification(message, 'success');
+        } else {
+            throw new Error(result.message || 'Import failed');
+        }
+    } catch (error) {
+        console.error('Error importing OPML:', error);
+        showNotification(`Import failed: ${error.message}`, 'error');
+    } finally {
+        // Reset button state
+        importBtn.disabled = false;
+        importSpinner.classList.add('hidden');
+        importBtnText.textContent = 'Import OPML';
+    }
+}
+
 async function exportOPML() {
     try {
-        // For now, just show a placeholder message
-        // TODO: Implement OPML export endpoint
-        showNotification('OPML export feature coming soon!', 'info');
+        showNotification('Generating OPML export...', 'info');
+        
+        // Trigger download
+        const response = await fetch('/feeds/export/opml');
+        
+        if (!response.ok) {
+            throw new Error(`Export failed: ${response.statusText}`);
+        }
+        
+        // Get filename from headers or create default
+        const contentDisposition = response.headers.get('Content-Disposition');
+        let filename = 'newsbrief_feeds.opml';
+        
+        if (contentDisposition) {
+            const filenameMatch = contentDisposition.match(/filename="?([^";]+)"?/);
+            if (filenameMatch) {
+                filename = filenameMatch[1];
+            }
+        }
+        
+        // Create download link
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        
+        // Trigger download
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        
+        showNotification('OPML export completed successfully', 'success');
     } catch (error) {
         console.error('Error exporting OPML:', error);
-        showNotification('Error exporting OPML', 'error');
+        showNotification(`Export failed: ${error.message}`, 'error');
     }
 }
 

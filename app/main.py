@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from typing import List
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, File, UploadFile
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -19,6 +19,8 @@ from .feeds import (
     add_feed,
     fetch_and_store,
     import_opml,
+    import_opml_content,
+    export_opml,
 )
 from .llm import DEFAULT_MODEL, OLLAMA_BASE_URL, get_llm_service, is_llm_available
 from .models import (
@@ -417,6 +419,80 @@ def get_feed_stats(feed_id: int):
             success_rate=round(success_rate, 1),
             avg_response_time_ms=0.0  # TODO: Implement response time tracking
         )
+
+
+@app.get("/feeds/export/opml")
+def export_feeds_opml():
+    """Export all feeds as OPML file."""
+    from fastapi.responses import Response
+    
+    opml_content = export_opml()
+    
+    return Response(
+        content=opml_content,
+        media_type="application/xml",
+        headers={
+            "Content-Disposition": f"attachment; filename=newsbrief_feeds_{datetime.now().strftime('%Y%m%d_%H%M%S')}.opml"
+        }
+    )
+
+
+@app.post("/feeds/import/opml")
+def import_feeds_opml(file: bytes = None):
+    """Import feeds from OPML file upload or raw content."""
+    
+    if not file:
+        raise HTTPException(status_code=400, detail="No file content provided")
+    
+    try:
+        # Decode file content
+        opml_content = file.decode('utf-8')
+        
+        # Process OPML import
+        result = import_opml_content(opml_content)
+        
+        return {
+            "success": True,
+            "message": f"Import completed: {result['feeds_added']} added, {result['feeds_updated']} updated, {result['feeds_skipped']} skipped",
+            "details": result
+        }
+        
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid file encoding. Please upload a valid OPML file.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
+
+
+@app.post("/feeds/import/opml/upload")
+async def import_feeds_opml_upload(file: UploadFile = File(...)):
+    """Import feeds from OPML file upload (multipart form)."""
+    
+    if not file:
+        raise HTTPException(status_code=400, detail="No file provided")
+    
+    # Check file type
+    if not file.filename.endswith('.opml') and not file.content_type in ['application/xml', 'text/xml']:
+        raise HTTPException(status_code=400, detail="File must be an OPML file (.opml)")
+    
+    try:
+        # Read file content
+        file_content = await file.read()
+        opml_content = file_content.decode('utf-8')
+        
+        # Process OPML import
+        result = import_opml_content(opml_content)
+        
+        return {
+            "success": True,
+            "filename": file.filename,
+            "message": f"Import completed: {result['feeds_added']} added, {result['feeds_updated']} updated, {result['feeds_skipped']} skipped",
+            "details": result
+        }
+        
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid file encoding. Please upload a valid UTF-8 encoded OPML file.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
 
 
 @app.post("/refresh")

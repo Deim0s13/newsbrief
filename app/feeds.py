@@ -213,6 +213,7 @@ def add_feed(url: str) -> int:
 
 
 def import_opml(path: str) -> int:
+    """Simple OPML import for startup initialization.""" 
     # super light OPML import: look for xmlUrl attributes
     import re
 
@@ -229,6 +230,201 @@ def import_opml(path: str) -> int:
     except FileNotFoundError:
         pass
     return added
+
+
+def import_opml_content(opml_content: str) -> dict:
+    """Enhanced OPML import with detailed parsing and metadata extraction."""
+    import xml.etree.ElementTree as ET
+    from urllib.parse import urlparse
+    
+    result = {
+        "feeds_added": 0,
+        "feeds_updated": 0, 
+        "feeds_skipped": 0,
+        "errors": [],
+        "categories_found": []
+    }
+    
+    try:
+        # Parse XML content
+        root = ET.fromstring(opml_content)
+        
+        # Find all outline elements with xmlUrl (feed entries)
+        feed_outlines = root.findall(".//outline[@xmlUrl]")
+        categories = set()
+        
+        with session_scope() as s:
+            for outline in feed_outlines:
+                try:
+                    xml_url = outline.get("xmlUrl")
+                    html_url = outline.get("htmlUrl", "")
+                    title = outline.get("title", outline.get("text", ""))
+                    description = outline.get("description", "")
+                    category = outline.get("category", "")
+                    
+                    # Extract category from parent outline if not set
+                    if not category:
+                        parent = outline.getparent()
+                        if parent is not None and parent.get("text"):
+                            category = parent.get("text")
+                            
+                    if category:
+                        categories.add(category)
+                    
+                    # Check if feed already exists
+                    existing = s.execute(
+                        text("SELECT id FROM feeds WHERE url = :url"),
+                        {"url": xml_url}
+                    ).fetchone()
+                    
+                    if existing:
+                        # Update existing feed with metadata if available
+                        if title or description or category:
+                            s.execute(
+                                text("""
+                                    UPDATE feeds 
+                                    SET name = COALESCE(:name, name),
+                                        description = COALESCE(:description, description),
+                                        category = COALESCE(:category, category),
+                                        updated_at = CURRENT_TIMESTAMP
+                                    WHERE url = :url
+                                """),
+                                {
+                                    "name": title if title else None,
+                                    "description": description if description else None,
+                                    "category": category if category else None,
+                                    "url": xml_url
+                                }
+                            )
+                            result["feeds_updated"] += 1
+                        else:
+                            result["feeds_skipped"] += 1
+                    else:
+                        # Add new feed
+                        feed_id = ensure_feed(xml_url)
+                        
+                        # Update with metadata
+                        if title or description or category:
+                            s.execute(
+                                text("""
+                                    UPDATE feeds 
+                                    SET name = :name, description = :description, 
+                                        category = :category, updated_at = CURRENT_TIMESTAMP
+                                    WHERE id = :feed_id
+                                """),
+                                {
+                                    "name": title if title else None,
+                                    "description": description if description else None,
+                                    "category": category if category else None,
+                                    "feed_id": feed_id
+                                }
+                            )
+                        
+                        result["feeds_added"] += 1
+                        
+                except Exception as e:
+                    result["errors"].append(f"Error processing feed {xml_url}: {str(e)}")
+                    continue
+        
+        result["categories_found"] = sorted(list(categories))
+        
+    except ET.ParseError as e:
+        result["errors"].append(f"Invalid OPML format: {str(e)}")
+    except Exception as e:
+        result["errors"].append(f"Import error: {str(e)}")
+    
+    return result
+
+
+def export_opml() -> str:
+    """Generate OPML export of all feeds with metadata."""
+    from datetime import datetime
+    import xml.etree.ElementTree as ET
+    
+    # Create OPML structure
+    opml = ET.Element("opml", version="2.0")
+    
+    # Head section
+    head = ET.SubElement(opml, "head")
+    ET.SubElement(head, "title").text = "NewsBrief Feed Export"
+    ET.SubElement(head, "dateCreated").text = datetime.now().strftime("%a, %d %b %Y %H:%M:%S %z")
+    ET.SubElement(head, "generator").text = "NewsBrief RSS Reader"
+    
+    # Body section
+    body = ET.SubElement(opml, "body")
+    
+    # Get all feeds organized by category
+    with session_scope() as s:
+        # Get feeds grouped by category
+        feeds_result = s.execute(
+            text("""
+                SELECT url, name, description, category, disabled, created_at,
+                       COUNT(i.id) as article_count
+                FROM feeds f
+                LEFT JOIN items i ON f.id = i.feed_id  
+                ORDER BY category, name, url
+            """)
+        ).fetchall()
+        
+        feeds_by_category = {}
+        uncategorized_feeds = []
+        
+        for feed in feeds_result:
+            category = feed.category if feed.category else None
+            feed_data = dict(feed._mapping)
+            
+            if category:
+                if category not in feeds_by_category:
+                    feeds_by_category[category] = []
+                feeds_by_category[category].append(feed_data)
+            else:
+                uncategorized_feeds.append(feed_data)
+        
+        # Add categorized feeds
+        for category, feeds in feeds_by_category.items():
+            category_outline = ET.SubElement(body, "outline", text=category, title=category)
+            
+            for feed in feeds:
+                feed_attrs = {
+                    "type": "rss",
+                    "xmlUrl": feed["url"],
+                    "text": feed["name"] if feed["name"] else feed["url"],
+                    "title": feed["name"] if feed["name"] else feed["url"]
+                }
+                
+                if feed["description"]:
+                    feed_attrs["description"] = feed["description"]
+                    
+                # Add metadata as custom attributes
+                feed_attrs["nb:articleCount"] = str(feed["article_count"])
+                feed_attrs["nb:disabled"] = str(bool(feed["disabled"])).lower()
+                feed_attrs["nb:added"] = feed["created_at"].isoformat() if feed["created_at"] else ""
+                
+                ET.SubElement(category_outline, "outline", **feed_attrs)
+        
+        # Add uncategorized feeds
+        if uncategorized_feeds:
+            for feed in uncategorized_feeds:
+                feed_attrs = {
+                    "type": "rss", 
+                    "xmlUrl": feed["url"],
+                    "text": feed["name"] if feed["name"] else feed["url"],
+                    "title": feed["name"] if feed["name"] else feed["url"]
+                }
+                
+                if feed["description"]:
+                    feed_attrs["description"] = feed["description"]
+                    
+                # Add metadata
+                feed_attrs["nb:articleCount"] = str(feed["article_count"])
+                feed_attrs["nb:disabled"] = str(bool(feed["disabled"])).lower()
+                feed_attrs["nb:added"] = feed["created_at"].isoformat() if feed["created_at"] else ""
+                
+                ET.SubElement(body, "outline", **feed_attrs)
+    
+    # Convert to string with pretty formatting
+    ET.indent(opml, space="  ", level=0)
+    return ET.tostring(opml, encoding="unicode", xml_declaration=True)
 
 
 def fetch_and_store() -> RefreshStats:
