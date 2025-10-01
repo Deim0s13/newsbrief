@@ -61,7 +61,10 @@ def _startup() -> None:
 @app.get("/", response_class=HTMLResponse)
 def home_page(request: Request):
     """Main web interface page."""
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse("index.html", {
+        "request": request, 
+        "current_page": "articles"
+    })
 
 
 @app.get("/article/{item_id}", response_class=HTMLResponse)
@@ -131,14 +134,18 @@ def article_detail_page(request: Request, item_id: int):
     
     return templates.TemplateResponse("article_detail.html", {
         "request": request, 
-        "article": article
+        "article": article,
+        "current_page": "articles"
     })
 
 
 @app.get("/feeds-manage", response_class=HTMLResponse)
 def feeds_management_page(request: Request):
     """Feed management interface page."""
-    return templates.TemplateResponse("feed_management.html", {"request": request})
+    return templates.TemplateResponse("feed_management.html", {
+        "request": request,
+        "current_page": "feed-management"
+    })
 
 
 @app.get("/search", response_class=HTMLResponse)
@@ -192,7 +199,8 @@ def search_page(request: Request, q: str = ""):
         "request": request,
         "articles": articles,
         "search_query": search_query,
-        "result_count": len(articles)
+        "result_count": len(articles),
+        "current_page": "articles"
     })
 
 
@@ -882,7 +890,8 @@ def topics_page(request: Request):
     
     return templates.TemplateResponse("topics.html", {
         "request": request,
-        "topics": topic_stats
+        "topics": topic_stats,
+        "current_page": "topics"
     })
 
 
