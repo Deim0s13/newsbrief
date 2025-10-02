@@ -6,7 +6,7 @@ NewsBrief is a self-hosted, privacy-focused RSS feed aggregator that intelligent
 
 ## 🌟 Features
 
-### **Current (v0.4.0)**
+### **Current (v0.5.3)**
 - **RSS Feed Management**: Import feeds from OPML or add individually via API
 - **Intelligent Content Extraction**: Clean article content using Mozilla Readability
 - **Long Article Processing**: Map-reduce summarization for articles exceeding context limits with intelligent chunking
@@ -30,6 +30,16 @@ NewsBrief is a self-hosted, privacy-focused RSS feed aggregator that intelligent
 - **Topic-Based Browsing**: Filter and explore articles by topic categories
 - **Ranking API**: Recalculate rankings and manage topic classifications
 
+### **🎨 Web Interface & Feed Management (v0.5.x)**
+- **Responsive Web UI**: Professional Tailwind CSS interface with dark mode support
+- **Article Browsing**: Skim/Detail view modes, topic filtering, and smart search functionality
+- **Advanced Feed Management**: Professional dashboard with CRUD operations, health monitoring, and bulk operations
+- **Real-time Health Monitoring**: Multi-factor health scoring (response time, success rate, failure tracking)
+- **OPML Import/Export**: Comprehensive XML parsing with metadata preservation and category organization
+- **Bulk Operations**: Multi-select management with category assignment, priority setting, and organizational tools
+- **Performance Insights**: Visual health indicators, trend analysis, and top/bottom performer identification
+- **Category Management**: Predefined categories, bulk assignment, and advanced filtering with statistics
+
 ### **🚀 DevOps & CI/CD (v0.3.4)**
 - **Modern CI/CD Pipeline**: Automated testing, building, security scanning, and multi-environment deployment
 - **Security-First Approach**: Multi-layer vulnerability scanning with Trivy, Safety, Bandit, and Super-Linter
@@ -41,11 +51,11 @@ NewsBrief is a self-hosted, privacy-focused RSS feed aggregator that intelligent
 
 ### **Planned (Roadmap)**
 - **Enhanced AI Features**: Advanced categorization, sentiment analysis, and content recommendations
-- **Web Interface**: HTMX-powered responsive UI for browsing and management
 - **Semantic Search**: Vector embeddings for content discovery and similarity matching
 - **Full-Text Search**: SQLite FTS5 integration for fast text search
 - **Smart Categorization**: Automatic topic clustering and intelligent feeds organization
-- **Export/Import**: Data portability and backup features
+- **HTTPS & Security**: SSL/TLS support, authentication, and secure deployment
+- **Mobile Optimizations**: PWA support, offline reading, and mobile-first design improvements
 
 ## 🚀 Quick Start
 
@@ -68,7 +78,7 @@ docker-compose up -d
 
 ```bash
 # Build and run locally
-make clean-release VERSION=v0.4.0
+make clean-release VERSION=v0.5.3
 make run
 
 # Check available commands

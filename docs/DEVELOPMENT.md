@@ -1081,6 +1081,104 @@ Optional longer description explaining the change.
 
 Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
 
+## 🎨 **Feed Management Testing (v0.5.3)** ⭐ *NEW*
+
+NewsBrief v0.5.3 introduces comprehensive feed management capabilities. Here's how to test the new features:
+
+### **Web Interface Testing**
+
+```bash
+# Start the application
+make run VERSION=v0.5.3
+
+# Open the Feed Management interface
+open http://localhost:8787/feeds-manage
+```
+
+### **OPML Import/Export Testing**
+
+```bash
+# Export current feeds
+curl -o "export_$(date +%Y%m%d).opml" http://localhost:8787/feeds/export/opml
+
+# Test import (using form upload)
+curl -X POST http://localhost:8787/feeds/import/opml/upload \
+  -F "file=@your_feeds.opml"
+```
+
+### **Bulk Operations Testing**
+
+```bash
+# Get all feeds with IDs
+curl http://localhost:8787/feeds | jq '.[] | {id, name, category}'
+
+# Bulk assign category
+curl -X POST http://localhost:8787/feeds/categories/bulk-assign \
+  -H "Content-Type: application/json" \
+  -d '{"feed_ids": [1, 2, 3], "category": "Technology"}'
+
+# Bulk assign priority
+curl -X POST http://localhost:8787/feeds/categories/bulk-priority \
+  -H "Content-Type: application/json" \
+  -d '{"feed_ids": [1, 2], "priority": 5}'
+```
+
+### **Health Monitoring Testing**
+
+```bash
+# View feed health data
+curl http://localhost:8787/feeds | jq '.[] | {
+  name, 
+  health_score, 
+  consecutive_failures, 
+  avg_response_time_ms,
+  last_success_at
+}'
+
+# Check category statistics
+curl http://localhost:8787/feeds/categories | jq '.categories[] | {
+  name, 
+  feed_count, 
+  avg_health, 
+  total_articles
+}'
+
+# View detailed feed statistics
+curl http://localhost:8787/feeds/1/stats | jq
+```
+
+### **Performance Testing**
+
+```bash
+# Test feed refresh and monitor response times
+time curl -X POST http://localhost:8787/refresh
+
+# Monitor health score changes after refresh
+curl http://localhost:8787/feeds | jq '.[] | select(.health_score < 90) | {
+  name, 
+  health_score, 
+  consecutive_failures, 
+  last_error
+}'
+```
+
+### **Category Management Testing**
+
+```bash
+# List all available categories
+curl http://localhost:8787/feeds/categories | jq '.categories'
+
+# Filter feeds by category (web interface)
+open http://localhost:8787/feeds-manage
+
+# Test category filtering with statistics
+curl http://localhost:8787/feeds | jq 'group_by(.category) | map({
+  category: .[0].category // "Uncategorized",
+  count: length,
+  avg_health: (map(.health_score // 100) | add / length)
+})'
+```
+
 ## 📞 Getting Help
 
 - **Issues**: Check existing GitHub issues

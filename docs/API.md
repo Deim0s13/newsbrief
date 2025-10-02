@@ -72,6 +72,242 @@ curl -X POST http://localhost:8787/feeds \
 
 ---
 
+## 🎨 **Feed Management Endpoints (v0.5.3)** ⭐ *NEW*
+
+### **GET /feeds**
+
+List all feeds with metadata, statistics, and health monitoring data.
+
+#### Request
+
+```http
+GET /feeds HTTP/1.1
+```
+
+#### Response
+
+**Success (200)**
+```json
+[
+  {
+    "id": 1,
+    "url": "https://feeds.bbci.co.uk/news/rss.xml",
+    "name": "BBC News",
+    "description": "Latest news from BBC",
+    "category": "News",
+    "priority": 4,
+    "disabled": false,
+    "robots_allowed": true,
+    "etag": "\"abc123\"",
+    "last_modified": "Wed, 21 Oct 2025 07:28:00 GMT",
+    "created_at": "2025-10-01T10:00:00Z",
+    "updated_at": "2025-10-02T14:30:00Z",
+    "total_articles": 156,
+    "last_fetch_at": "2025-10-02T14:30:00Z",
+    "last_success_at": "2025-10-02T14:30:00Z",
+    "last_error": null,
+    "fetch_count": 48,
+    "success_count": 47,
+    "consecutive_failures": 0,
+    "avg_response_time_ms": 345.2,
+    "last_response_time_ms": 312.1,
+    "health_score": 95.5,
+    "last_modified_check": "2025-10-02T14:30:00Z",
+    "etag_check": "2025-10-02T14:30:00Z"
+  }
+]
+```
+
+### **GET /feeds/{feed_id}**
+
+Get detailed information about a specific feed.
+
+#### Response
+
+**Success (200)** - Same structure as individual feed in `GET /feeds`
+
+**Not Found (404)**
+```json
+{"detail": "Feed not found"}
+```
+
+### **PUT /feeds/{feed_id}**
+
+Update an existing feed's metadata.
+
+#### Request Body
+
+```json
+{
+  "name": "Updated Feed Name",
+  "description": "Updated description",
+  "category": "Technology", 
+  "priority": 5,
+  "disabled": false
+}
+```
+
+### **DELETE /feeds/{feed_id}**
+
+Delete a feed and all its associated articles.
+
+#### Response
+
+**Success (200)**
+```json
+{"message": "Feed deleted successfully"}
+```
+
+### **GET /feeds/{feed_id}/stats**
+
+Get comprehensive statistics for a specific feed.
+
+#### Response
+
+**Success (200)**
+```json
+{
+  "feed_id": 1,
+  "total_articles": 156,
+  "articles_last_24h": 8,
+  "articles_last_7d": 42,
+  "articles_last_30d": 134,
+  "avg_articles_per_day": 4.47,
+  "last_fetch_at": "2025-10-02T14:30:00Z",
+  "last_error": null,
+  "success_rate": 97.9,
+  "avg_response_time_ms": 345.2
+}
+```
+
+### **GET /feeds/categories**
+
+Get all available categories with statistics.
+
+#### Response
+
+**Success (200)**
+```json
+{
+  "categories": [
+    {
+      "name": "Technology",
+      "feed_count": 12,
+      "active_count": 11,
+      "avg_health": 89.3,
+      "total_articles": 467
+    },
+    {
+      "name": "News",
+      "feed_count": 0,
+      "active_count": 0,
+      "avg_health": 100.0,
+      "total_articles": 0,
+      "is_predefined": true
+    }
+  ]
+}
+```
+
+### **POST /feeds/categories/bulk-assign**
+
+Assign a category to multiple feeds at once.
+
+#### Request Body
+
+```json
+{
+  "feed_ids": [1, 2, 3],
+  "category": "Technology"
+}
+```
+
+#### Response
+
+**Success (200)**
+```json
+{
+  "success": true,
+  "message": "Updated 3 feeds",
+  "category": "Technology",
+  "updated_feed_ids": [1, 2, 3]
+}
+```
+
+### **POST /feeds/categories/bulk-priority**
+
+Assign priority to multiple feeds at once.
+
+#### Request Body
+
+```json
+{
+  "feed_ids": [1, 2, 3],
+  "priority": 4
+}
+```
+
+## 📤📥 **OPML Management Endpoints (v0.5.3)** ⭐ *NEW*
+
+### **GET /feeds/export/opml**
+
+Export all feeds as an OPML file with metadata and categories.
+
+#### Response
+
+**Success (200)** - Returns OPML XML file with `Content-Disposition` header for download
+
+```xml
+<?xml version='1.0' encoding='UTF-8'?>
+<opml version="2.0">
+  <head>
+    <title>NewsBrief Feed Export</title>
+    <dateCreated>Thu, 02 Oct 2025 14:30:15 +0000</dateCreated>
+    <generator>NewsBrief RSS Reader</generator>
+  </head>
+  <body>
+    <outline text="Technology" title="Technology">
+      <outline type="rss" xmlUrl="https://example.com/tech.xml" text="Tech News" 
+               title="Tech News" description="Latest technology news"
+               nb:articleCount="45" nb:disabled="false" nb:added="2025-10-01T10:00:00"/>
+    </outline>
+  </body>
+</opml>
+```
+
+### **POST /feeds/import/opml/upload**
+
+Import feeds from an uploaded OPML file.
+
+#### Request
+
+```http
+POST /feeds/import/opml/upload HTTP/1.1
+Content-Type: multipart/form-data
+
+file: [OPML file content]
+```
+
+#### Response
+
+**Success (200)**
+```json
+{
+  "success": true,
+  "filename": "my_feeds.opml",
+  "message": "Import completed: 8 added, 2 updated, 1 skipped",
+  "details": {
+    "feeds_added": 8,
+    "feeds_updated": 2,
+    "feeds_skipped": 1,
+    "errors": [],
+    "categories_found": ["Technology", "News", "Science"]
+  }
+}
+```
+
+---
+
 ### **POST /refresh**
 
 Fetch latest articles from all configured feeds. Only processes feeds that comply with robots.txt policies. For each article, respects robots.txt before extracting full content.
