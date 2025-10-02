@@ -108,6 +108,45 @@
             </div>
         </div>
     </div>
+    
+    <!-- Bulk Actions Bar -->
+    <div id="bulk-actions-bar" class="hidden mb-6">
+        <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <span id="selection-count" class="text-sm font-medium text-blue-900 dark:text-blue-100">0 feeds selected</span>
+                    <button id="select-all-btn" class="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-medium">Select All</button>
+                    <button id="clear-selection-btn" class="text-sm text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-300">Clear Selection</button>
+                </div>
+                <div class="flex items-center space-x-3">
+                    <div class="flex items-center space-x-2">
+                        <label class="text-sm text-gray-700 dark:text-gray-300">Category:</label>
+                        <select id="bulk-category-select" class="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm px-3 py-1">
+                            <option value="">Choose...</option>
+                        </select>
+                        <button id="bulk-assign-category-btn" class="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-md font-medium">
+                            Assign
+                        </button>
+                    </div>
+                    
+                    <div class="flex items-center space-x-2">
+                        <label class="text-sm text-gray-700 dark:text-gray-300">Priority:</label>
+                        <select id="bulk-priority-select" class="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm px-3 py-1">
+                            <option value="">Choose...</option>
+                            <option value="1">★ 1 (Low)</option>
+                            <option value="2">★ 2</option>
+                            <option value="3">★ 3 (Normal)</option>
+                            <option value="4">★ 4</option>
+                            <option value="5">★ 5 (High)</option>
+                        </select>
+                        <button id="bulk-assign-priority-btn" class="px-3 py-1 bg-orange-600 hover:bg-orange-700 text-white text-sm rounded-md font-medium">
+                            Assign
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Feed List Table -->
     <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
@@ -115,6 +154,9 @@
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead class="bg-gray-50 dark:bg-gray-700">
                     <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                            <input type="checkbox" id="select-all-checkbox" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-600 rounded">
+                        </th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                             Feed
                         </th>
@@ -359,6 +401,13 @@ function setupEventListeners() {
     document.getElementById('start-opml-import-btn').addEventListener('click', () => startOPMLImport());
     document.getElementById('opml-file-input').addEventListener('change', handleOPMLFileSelection);
     
+    // Bulk Operations
+    document.getElementById('select-all-checkbox').addEventListener('change', handleSelectAllToggle);
+    document.getElementById('select-all-btn').addEventListener('click', selectAllFeeds);
+    document.getElementById('clear-selection-btn').addEventListener('click', clearSelection);
+    document.getElementById('bulk-assign-category-btn').addEventListener('click', bulkAssignCategory);
+    document.getElementById('bulk-assign-priority-btn').addEventListener('click', bulkAssignPriority);
+    
     // Filters
     document.getElementById('category-filter').addEventListener('change', () => applyFilters());
     document.getElementById('status-filter').addEventListener('change', () => applyFilters());
@@ -377,7 +426,7 @@ async function loadFeeds() {
         
         renderFeeds();
         renderStats();
-        populateFilters();
+        await populateFilters();
         loading.classList.add('hidden');
     } catch (error) {
         console.error('Error loading feeds:', error);
@@ -419,6 +468,10 @@ function createFeedRow(feed) {
                       feed.last_error ? 'Error' : 'Active';
     
     row.innerHTML = `
+        <td class="px-6 py-4 whitespace-nowrap">
+            <input type="checkbox" class="feed-checkbox h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-600 rounded" 
+                   data-feed-id="${feed.id}" onchange="handleFeedSelection()">
+        </td>
         <td class="px-6 py-4 whitespace-nowrap">
             <div class="flex items-center">
                 <div>
@@ -548,74 +601,299 @@ function renderStats() {
     const disabledFeeds = feeds.filter(f => f.disabled).length;
     const totalArticles = feeds.reduce((sum, f) => sum + f.total_articles, 0);
     
+    // Enhanced health statistics
+    const healthyFeeds = feeds.filter(f => (f.health_score || 100) >= 80).length;
+    const problematicFeeds = feeds.filter(f => (f.health_score || 100) < 60).length;
+    const avgHealthScore = feeds.length > 0 ? 
+        feeds.reduce((sum, f) => sum + (f.health_score || 100), 0) / feeds.length : 100;
+    
+    // Performance statistics
+    const avgResponseTime = feeds.filter(f => f.avg_response_time_ms > 0)
+        .reduce((sum, f, _, arr) => sum + f.avg_response_time_ms / arr.length, 0);
+    
+    // Category breakdown
+    const categories = {};
+    feeds.forEach(f => {
+        const cat = f.category || 'Uncategorized';
+        if (!categories[cat]) categories[cat] = { count: 0, articles: 0, health: [] };
+        categories[cat].count++;
+        categories[cat].articles += f.total_articles;
+        categories[cat].health.push(f.health_score || 100);
+    });
+    
+    // Top performers
+    const topPerformers = [...feeds]
+        .filter(f => !f.disabled && f.total_articles > 0)
+        .sort((a, b) => (b.health_score || 100) - (a.health_score || 100))
+        .slice(0, 3);
+    
+    // Problem feeds
+    const problemFeeds = [...feeds]
+        .filter(f => (f.consecutive_failures || 0) > 0 || (f.health_score || 100) < 60)
+        .sort((a, b) => (a.health_score || 100) - (b.health_score || 100))
+        .slice(0, 3);
+    
     statsContainer.innerHTML = `
-        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
-            <div class="p-5">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <svg class="h-6 w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
-                        </svg>
+        <!-- Primary Statistics Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
+                <div class="p-5">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <svg class="h-6 w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+                            </svg>
+                        </div>
+                        <div class="ml-5 w-0 flex-1">
+                            <dl>
+                                <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Total Feeds</dt>
+                                <dd class="text-lg font-medium text-gray-900 dark:text-white">${totalFeeds}</dd>
+                            </dl>
+                        </div>
                     </div>
-                    <div class="ml-5 w-0 flex-1">
-                        <dl>
-                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Total Feeds</dt>
-                            <dd class="text-lg font-medium text-gray-900 dark:text-white">${totalFeeds}</dd>
-                        </dl>
+                </div>
+            </div>
+            
+            <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
+                <div class="p-5">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <svg class="h-6 w-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                        <div class="ml-5 w-0 flex-1">
+                            <dl>
+                                <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Healthy Feeds</dt>
+                                <dd class="text-lg font-medium text-gray-900 dark:text-white">${healthyFeeds}</dd>
+                                <dd class="text-xs text-gray-500 dark:text-gray-400">≥80% health score</dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
+                <div class="p-5">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <svg class="h-6 w-6 ${problematicFeeds > 0 ? 'text-red-400' : 'text-green-400'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                            </svg>
+                        </div>
+                        <div class="ml-5 w-0 flex-1">
+                            <dl>
+                                <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Issues</dt>
+                                <dd class="text-lg font-medium text-gray-900 dark:text-white">${problematicFeeds}</dd>
+                                <dd class="text-xs text-gray-500 dark:text-gray-400"><60% health score</dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
+                <div class="p-5">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <svg class="h-6 w-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                            </svg>
+                        </div>
+                        <div class="ml-5 w-0 flex-1">
+                            <dl>
+                                <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Total Articles</dt>
+                                <dd class="text-lg font-medium text-gray-900 dark:text-white">${totalArticles}</dd>
+                            </dl>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
         
-        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
+        <!-- Overall Health Indicator -->
+        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg mb-6">
             <div class="p-5">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <svg class="h-6 w-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                        </svg>
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">System Health Overview</h3>
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <div class="w-12 h-12 rounded-full bg-gradient-to-br ${avgHealthScore >= 80 ? 'from-green-400 to-green-600' : avgHealthScore >= 60 ? 'from-yellow-400 to-yellow-600' : 'from-red-400 to-red-600'} flex items-center justify-center text-white font-bold text-lg">
+                                ${Math.round(avgHealthScore)}
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <div class="text-sm font-medium text-gray-900 dark:text-white">Average Health Score</div>
+                            <div class="text-sm text-gray-500 dark:text-gray-400">
+                                ${avgResponseTime > 0 ? `Avg response: ${Math.round(avgResponseTime)}ms` : 'No performance data'}
+                            </div>
+                        </div>
                     </div>
-                    <div class="ml-5 w-0 flex-1">
-                        <dl>
-                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Active</dt>
-                            <dd class="text-lg font-medium text-gray-900 dark:text-white">${activeFeeds}</dd>
-                        </dl>
+                    <div class="text-right">
+                        <div class="text-sm text-gray-500 dark:text-gray-400">Health Distribution</div>
+                        <div class="flex space-x-2 mt-1">
+                            <span class="px-2 py-1 text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded">${healthyFeeds} Excellent</span>
+                            ${problematicFeeds > 0 ? `<span class="px-2 py-1 text-xs bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 rounded">${problematicFeeds} Issues</span>` : ''}
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
         
-        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
+        <!-- Category Breakdown -->
+        ${Object.keys(categories).length > 1 ? `
+        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg mb-6">
             <div class="p-5">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <svg class="h-6 w-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                        </svg>
-                    </div>
-                    <div class="ml-5 w-0 flex-1">
-                        <dl>
-                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Disabled</dt>
-                            <dd class="text-lg font-medium text-gray-900 dark:text-white">${disabledFeeds}</dd>
-                        </dl>
-                    </div>
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Category Breakdown</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    ${Object.entries(categories).map(([cat, data]) => {
+                        const avgCatHealth = data.health.reduce((sum, h) => sum + h, 0) / data.health.length;
+                        const healthColor = avgCatHealth >= 80 ? 'text-green-600 dark:text-green-400' : 
+                                          avgCatHealth >= 60 ? 'text-yellow-600 dark:text-yellow-400' : 
+                                          'text-red-600 dark:text-red-400';
+                        return `
+                            <div class="p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+                                <div class="flex justify-between items-start">
+                                    <div>
+                                        <div class="font-medium text-gray-900 dark:text-white">${cat}</div>
+                                        <div class="text-sm text-gray-500 dark:text-gray-400">${data.count} feeds</div>
+                                        <div class="text-sm text-gray-500 dark:text-gray-400">${data.articles} articles</div>
+                                    </div>
+                                    <div class="text-right">
+                                        <div class="text-sm font-medium ${healthColor}">${Math.round(avgCatHealth)}%</div>
+                                        <div class="text-xs text-gray-500 dark:text-gray-400">health</div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
                 </div>
             </div>
         </div>
+        ` : ''}
         
+        <!-- Performance Insights -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            ${topPerformers.length > 0 ? `
+            <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
+                <div class="p-5">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4 flex items-center">
+                        <svg class="h-5 w-5 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                        </svg>
+                        Top Performers
+                    </h3>
+                    <div class="space-y-3">
+                        ${topPerformers.map((feed, index) => `
+                            <div class="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                                <div class="flex items-center">
+                                    <div class="w-6 h-6 rounded-full bg-green-500 text-white text-xs flex items-center justify-center font-bold">
+                                        ${index + 1}
+                                    </div>
+                                    <div class="ml-3">
+                                        <div class="text-sm font-medium text-gray-900 dark:text-white">
+                                            ${feed.name || feed.url.substring(0, 30) + '...'}
+                                        </div>
+                                        <div class="text-xs text-gray-500 dark:text-gray-400">
+                                            ${feed.total_articles} articles
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-sm font-medium text-green-600 dark:text-green-400">
+                                        ${Math.round(feed.health_score || 100)}%
+                                    </div>
+                                    <div class="text-xs text-gray-500 dark:text-gray-400">
+                                        ${feed.avg_response_time_ms ? Math.round(feed.avg_response_time_ms) + 'ms' : '-'}
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+            ` : ''}
+            
+            ${problemFeeds.length > 0 ? `
+            <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
+                <div class="p-5">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4 flex items-center">
+                        <svg class="h-5 w-5 text-red-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                        </svg>
+                        Attention Needed
+                    </h3>
+                    <div class="space-y-3">
+                        ${problemFeeds.map(feed => `
+                            <div class="flex items-center justify-between p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
+                                <div class="flex items-center">
+                                    <div class="w-6 h-6 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">
+                                        ⚠️
+                                    </div>
+                                    <div class="ml-3">
+                                        <div class="text-sm font-medium text-gray-900 dark:text-white">
+                                            ${feed.name || feed.url.substring(0, 30) + '...'}
+                                        </div>
+                                        <div class="text-xs text-red-500 dark:text-red-400">
+                                            ${feed.consecutive_failures > 0 ? `${feed.consecutive_failures} consecutive failures` : 'Low health score'}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-sm font-medium text-red-600 dark:text-red-400">
+                                        ${Math.round(feed.health_score || 100)}%
+                                    </div>
+                                    <button onclick="editFeed(${feed.id})" class="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
+                                        Fix →
+                                    </button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+            ` : `
+            <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
+                <div class="p-5">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <svg class="h-6 w-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                        <div class="ml-5 w-0 flex-1">
+                            <dl>
+                                <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">System Status</dt>
+                                <dd class="text-lg font-medium text-green-600 dark:text-green-400">All Feeds Healthy</dd>
+                                <dd class="text-xs text-gray-500 dark:text-gray-400">No issues detected</dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            `}
+        </div>
+        
+        <!-- Performance Summary -->
         <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
             <div class="p-5">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <svg class="h-6 w-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                        </svg>
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance Summary</h3>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div class="text-center">
+                        <div class="text-2xl font-bold text-gray-900 dark:text-white">${Math.round(avgHealthScore)}%</div>
+                        <div class="text-sm text-gray-500 dark:text-gray-400">Avg Health</div>
                     </div>
-                    <div class="ml-5 w-0 flex-1">
-                        <dl>
-                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Total Articles</dt>
-                            <dd class="text-lg font-medium text-gray-900 dark:text-white">${totalArticles}</dd>
-                        </dl>
+                    <div class="text-center">
+                        <div class="text-2xl font-bold text-gray-900 dark:text-white">${avgResponseTime > 0 ? Math.round(avgResponseTime) + 'ms' : '-'}</div>
+                        <div class="text-sm text-gray-500 dark:text-gray-400">Avg Response</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-2xl font-bold text-gray-900 dark:text-white">${totalArticles}</div>
+                        <div class="text-sm text-gray-500 dark:text-gray-400">Total Articles</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-2xl font-bold text-gray-900 dark:text-white">${Object.keys(categories).length}</div>
+                        <div class="text-sm text-gray-500 dark:text-gray-400">Categories</div>
                     </div>
                 </div>
             </div>
@@ -623,21 +901,77 @@ function renderStats() {
     `;
 }
 
-function populateFilters() {
-    const categories = [...new Set(feeds.map(f => f.category).filter(c => c))].sort();
-    const categoryFilter = document.getElementById('category-filter');
-    
-    // Clear existing options except first
-    while (categoryFilter.children.length > 1) {
-        categoryFilter.removeChild(categoryFilter.lastChild);
+async function populateFilters() {
+    try {
+        // Load categories from API with statistics
+        const response = await fetch('/feeds/categories');
+        const data = await response.json();
+        const categories = data.categories || [];
+        
+        // Populate main category filter
+        const categoryFilter = document.getElementById('category-filter');
+        
+        // Clear existing options except first
+        while (categoryFilter.children.length > 1) {
+            categoryFilter.removeChild(categoryFilter.lastChild);
+        }
+        
+        // Add category options with feed counts
+        categories.forEach(category => {
+            if (category.feed_count > 0) {  // Only show categories with actual feeds
+                const option = document.createElement('option');
+                option.value = category.name;
+                option.textContent = `${category.name} (${category.feed_count})`;
+                categoryFilter.appendChild(option);
+            }
+        });
+        
+        // Populate bulk category dropdown
+        const bulkCategorySelect = document.getElementById('bulk-category-select');
+        
+        // Clear existing options except first
+        while (bulkCategorySelect.children.length > 1) {
+            bulkCategorySelect.removeChild(bulkCategorySelect.lastChild);
+        }
+        
+        // Add all categories (including predefined ones)
+        categories.forEach(category => {
+            const option = document.createElement('option');
+            option.value = category.name;
+            option.textContent = category.name;
+            if (category.is_predefined && category.feed_count === 0) {
+                option.classList.add('text-gray-500', 'dark:text-gray-400');
+                option.textContent += ' (suggested)';
+            }
+            bulkCategorySelect.appendChild(option);
+        });
+        
+        // Add option to clear category
+        const clearOption = document.createElement('option');
+        clearOption.value = '__CLEAR__';
+        clearOption.textContent = '(Remove Category)';
+        clearOption.classList.add('text-gray-500', 'dark:text-gray-400');
+        bulkCategorySelect.appendChild(clearOption);
+        
+    } catch (error) {
+        console.error('Error loading categories:', error);
+        // Fallback to existing category extraction
+        const categories = [...new Set(feeds.map(f => f.category).filter(c => c))].sort();
+        const categoryFilter = document.getElementById('category-filter');
+        
+        // Clear existing options except first
+        while (categoryFilter.children.length > 1) {
+            categoryFilter.removeChild(categoryFilter.lastChild);
+        }
+        
+        // Add category options
+        categories.forEach(category => {
+            const option = document.createElement('option');
+            option.value = category;
+            option.textContent = category;
+            categoryFilter.appendChild(option);
+        });
     }
-    
-    categories.forEach(category => {
-        const option = document.createElement('option');
-        option.value = category;
-        option.textContent = category;
-        categoryFilter.appendChild(option);
-    });
 }
 
 function getFilteredFeeds() {
@@ -933,6 +1267,153 @@ async function exportOPML() {
     } catch (error) {
         console.error('Error exporting OPML:', error);
         showNotification(`Export failed: ${error.message}`, 'error');
+    }
+}
+
+// Bulk Operations Management
+let selectedFeedIds = new Set();
+
+function handleFeedSelection() {
+    // Update selected feed IDs
+    selectedFeedIds.clear();
+    document.querySelectorAll('.feed-checkbox:checked').forEach(checkbox => {
+        selectedFeedIds.add(parseInt(checkbox.dataset.feedId));
+    });
+    
+    updateBulkActionsBar();
+}
+
+function handleSelectAllToggle(event) {
+    const isChecked = event.target.checked;
+    const visibleCheckboxes = document.querySelectorAll('.feed-checkbox');
+    
+    visibleCheckboxes.forEach(checkbox => {
+        checkbox.checked = isChecked;
+    });
+    
+    handleFeedSelection();
+}
+
+function selectAllFeeds() {
+    document.querySelectorAll('.feed-checkbox').forEach(checkbox => {
+        checkbox.checked = true;
+    });
+    handleFeedSelection();
+}
+
+function clearSelection() {
+    document.querySelectorAll('.feed-checkbox').forEach(checkbox => {
+        checkbox.checked = false;
+    });
+    selectedFeedIds.clear();
+    updateBulkActionsBar();
+}
+
+function updateBulkActionsBar() {
+    const bulkActionsBar = document.getElementById('bulk-actions-bar');
+    const selectionCount = document.getElementById('selection-count');
+    const selectAllCheckbox = document.getElementById('select-all-checkbox');
+    
+    if (selectedFeedIds.size > 0) {
+        bulkActionsBar.classList.remove('hidden');
+        selectionCount.textContent = `${selectedFeedIds.size} feed${selectedFeedIds.size !== 1 ? 's' : ''} selected`;
+        
+        // Update select-all checkbox state
+        const totalCheckboxes = document.querySelectorAll('.feed-checkbox').length;
+        const checkedCheckboxes = document.querySelectorAll('.feed-checkbox:checked').length;
+        
+        if (checkedCheckboxes === 0) {
+            selectAllCheckbox.indeterminate = false;
+            selectAllCheckbox.checked = false;
+        } else if (checkedCheckboxes === totalCheckboxes) {
+            selectAllCheckbox.indeterminate = false;
+            selectAllCheckbox.checked = true;
+        } else {
+            selectAllCheckbox.indeterminate = true;
+        }
+    } else {
+        bulkActionsBar.classList.add('hidden');
+        selectAllCheckbox.indeterminate = false;
+        selectAllCheckbox.checked = false;
+    }
+}
+
+async function bulkAssignCategory() {
+    const category = document.getElementById('bulk-category-select').value;
+    
+    if (selectedFeedIds.size === 0) {
+        showNotification('Please select feeds first', 'error');
+        return;
+    }
+    
+    if (!category) {
+        showNotification('Please select a category', 'error');
+        return;
+    }
+    
+    // Handle special clear category option
+    const actualCategory = category === '__CLEAR__' ? '' : category;
+    
+    try {
+        const response = await fetch('/feeds/categories/bulk-assign', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                feed_ids: Array.from(selectedFeedIds),
+                category: actualCategory
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok && result.success) {
+            await loadFeeds(); // Reload to show changes
+            clearSelection();
+            showNotification(result.message, 'success');
+        } else {
+            throw new Error(result.detail || result.message || 'Bulk assignment failed');
+        }
+    } catch (error) {
+        console.error('Error in bulk category assignment:', error);
+        showNotification(`Bulk assignment failed: ${error.message}`, 'error');
+    }
+}
+
+async function bulkAssignPriority() {
+    const priority = document.getElementById('bulk-priority-select').value;
+    
+    if (selectedFeedIds.size === 0) {
+        showNotification('Please select feeds first', 'error');
+        return;
+    }
+    
+    if (!priority) {
+        showNotification('Please select a priority', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/feeds/categories/bulk-priority', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                feed_ids: Array.from(selectedFeedIds),
+                priority: parseInt(priority)
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok && result.success) {
+            await loadFeeds(); // Reload to show changes
+            clearSelection();
+            showNotification(result.message, 'success');
+        } else {
+            throw new Error(result.detail || result.message || 'Bulk assignment failed');
+        }
+    } catch (error) {
+        console.error('Error in bulk priority assignment:', error);
+        showNotification(`Bulk assignment failed: ${error.message}`, 'error');
     }
 }
 

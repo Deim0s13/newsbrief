@@ -495,6 +495,144 @@ async def import_feeds_opml_upload(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
 
 
+@app.get("/feeds/categories")
+def get_feed_categories():
+    """Get all available feed categories with statistics."""
+    with session_scope() as s:
+        results = s.execute(
+            text("""
+                SELECT category, 
+                       COUNT(*) as feed_count,
+                       SUM(CASE WHEN disabled = 0 THEN 1 ELSE 0 END) as active_count,
+                       AVG(health_score) as avg_health,
+                       SUM((SELECT COUNT(*) FROM items WHERE feed_id = feeds.id)) as total_articles
+                FROM feeds 
+                WHERE category IS NOT NULL AND category != ''
+                GROUP BY category
+                ORDER BY feed_count DESC, category
+            """)
+        ).fetchall()
+        
+        categories = []
+        for row in results:
+            categories.append({
+                "name": row[0],
+                "feed_count": row[1], 
+                "active_count": row[2],
+                "avg_health": round(row[3] or 100, 1),
+                "total_articles": row[4] or 0
+            })
+        
+        # Add predefined categories that might not exist yet
+        existing_names = {cat["name"] for cat in categories}
+        predefined = [
+            "News", "Technology", "Business", "Science", "Sports", 
+            "Entertainment", "Health", "Politics", "Opinion", "Personal"
+        ]
+        
+        for pred_cat in predefined:
+            if pred_cat not in existing_names:
+                categories.append({
+                    "name": pred_cat,
+                    "feed_count": 0,
+                    "active_count": 0, 
+                    "avg_health": 100.0,
+                    "total_articles": 0,
+                    "is_predefined": True
+                })
+        
+        return {"categories": categories}
+
+
+@app.post("/feeds/categories/bulk-assign")
+def bulk_assign_category(feed_ids: List[int], category: str):
+    """Assign a category to multiple feeds at once."""
+    if not feed_ids:
+        raise HTTPException(status_code=400, detail="No feed IDs provided")
+    
+    # Validate category name
+    if not category or len(category.strip()) == 0:
+        category = None
+    else:
+        category = category.strip()
+    
+    with session_scope() as s:
+        # Verify all feed IDs exist
+        existing_feeds = s.execute(
+            text("SELECT id FROM feeds WHERE id IN :feed_ids"),
+            {"feed_ids": tuple(feed_ids)}
+        ).fetchall()
+        
+        existing_ids = {row[0] for row in existing_feeds}
+        invalid_ids = [fid for fid in feed_ids if fid not in existing_ids]
+        
+        if invalid_ids:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Feed IDs not found: {invalid_ids}"
+            )
+        
+        # Update categories
+        s.execute(
+            text("""
+                UPDATE feeds 
+                SET category = :category, updated_at = CURRENT_TIMESTAMP
+                WHERE id IN :feed_ids
+            """),
+            {"category": category, "feed_ids": tuple(feed_ids)}
+        )
+        
+        return {
+            "success": True,
+            "message": f"Updated {len(feed_ids)} feeds",
+            "category": category,
+            "updated_feed_ids": feed_ids
+        }
+
+
+@app.post("/feeds/categories/bulk-priority")
+def bulk_assign_priority(feed_ids: List[int], priority: int):
+    """Assign priority to multiple feeds at once."""
+    if not feed_ids:
+        raise HTTPException(status_code=400, detail="No feed IDs provided")
+    
+    if priority < 1 or priority > 5:
+        raise HTTPException(status_code=400, detail="Priority must be between 1 and 5")
+    
+    with session_scope() as s:
+        # Verify all feed IDs exist
+        existing_feeds = s.execute(
+            text("SELECT id FROM feeds WHERE id IN :feed_ids"),
+            {"feed_ids": tuple(feed_ids)}
+        ).fetchall()
+        
+        existing_ids = {row[0] for row in existing_feeds}
+        invalid_ids = [fid for fid in feed_ids if fid not in existing_ids]
+        
+        if invalid_ids:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Feed IDs not found: {invalid_ids}"
+            )
+        
+        # Update priorities
+        s.execute(
+            text("""
+                UPDATE feeds 
+                SET priority = :priority, updated_at = CURRENT_TIMESTAMP
+                WHERE id IN :feed_ids
+            """),
+            {"priority": priority, "feed_ids": tuple(feed_ids)}
+        )
+        
+        return {
+            "success": True,
+            "message": f"Updated priority for {len(feed_ids)} feeds",
+            "priority": priority,
+            "updated_feed_ids": feed_ids
+        }
+
+
 @app.post("/refresh")
 def refresh_endpoint():
     stats = fetch_and_store()
