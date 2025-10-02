@@ -122,6 +122,9 @@
                             Status
                         </th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                            Health
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                             Category
                         </th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
@@ -131,7 +134,7 @@
                             Articles
                         </th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                            Last Updated
+                            Performance
                         </th>
                         <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                             Actions
@@ -433,6 +436,9 @@ function createFeedRow(feed) {
                 ${statusText}
             </span>
         </td>
+        <td class="px-6 py-4 whitespace-nowrap">
+            ${renderHealthIndicator(feed)}
+        </td>
         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
             ${feed.category || '-'}
         </td>
@@ -443,7 +449,7 @@ function createFeedRow(feed) {
             ${feed.total_articles}
         </td>
         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-            ${feed.last_fetch_at ? formatDate(feed.last_fetch_at) : 'Never'}
+            ${renderPerformanceMetrics(feed)}
         </td>
         <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
             <button onclick="editFeed(${feed.id})" class="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300">Edit</button>
@@ -453,6 +459,87 @@ function createFeedRow(feed) {
     `;
     
     return row;
+}
+
+function renderHealthIndicator(feed) {
+    const healthScore = feed.health_score || 100;
+    const consecutiveFailures = feed.consecutive_failures || 0;
+    
+    let healthClass, healthText, healthIcon;
+    
+    if (healthScore >= 80) {
+        healthClass = 'text-green-600 dark:text-green-400';
+        healthText = 'Excellent';
+        healthIcon = `<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+        </svg>`;
+    } else if (healthScore >= 60) {
+        healthClass = 'text-yellow-600 dark:text-yellow-400';
+        healthText = 'Good';
+        healthIcon = `<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+        </svg>`;
+    } else if (healthScore >= 40) {
+        healthClass = 'text-orange-600 dark:text-orange-400';
+        healthText = 'Poor';
+        healthIcon = `<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+        </svg>`;
+    } else {
+        healthClass = 'text-red-600 dark:text-red-400';
+        healthText = 'Critical';
+        healthIcon = `<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+        </svg>`;
+    }
+    
+    const failureWarning = consecutiveFailures > 3 ? 
+        `<div class="text-xs text-red-500 dark:text-red-400">⚠️ ${consecutiveFailures} failures</div>` : '';
+    
+    return `
+        <div class="flex items-center ${healthClass}">
+            ${healthIcon}
+            <div class="ml-2">
+                <div class="text-sm font-medium">${healthText}</div>
+                <div class="text-xs text-gray-500 dark:text-gray-400">${Math.round(healthScore)}%</div>
+                ${failureWarning}
+            </div>
+        </div>
+    `;
+}
+
+function renderPerformanceMetrics(feed) {
+    const avgResponseTime = feed.avg_response_time_ms || 0;
+    const lastResponseTime = feed.last_response_time_ms || 0;
+    const lastFetchAt = feed.last_fetch_at;
+    const lastSuccessAt = feed.last_success_at;
+    
+    let responseTimeClass = 'text-gray-500 dark:text-gray-400';
+    let responseTimeText = 'No data';
+    
+    if (avgResponseTime > 0) {
+        if (avgResponseTime < 500) {
+            responseTimeClass = 'text-green-600 dark:text-green-400';
+        } else if (avgResponseTime < 2000) {
+            responseTimeClass = 'text-yellow-600 dark:text-yellow-400';
+        } else {
+            responseTimeClass = 'text-red-600 dark:text-red-400';
+        }
+        responseTimeText = `${Math.round(avgResponseTime)}ms avg`;
+    }
+    
+    const lastFetchText = lastFetchAt ? formatDate(lastFetchAt) : 'Never';
+    const lastSuccessText = lastSuccessAt ? formatDate(lastSuccessAt) : 'Never';
+    
+    return `
+        <div class="text-sm">
+            <div class="${responseTimeClass} font-medium">${responseTimeText}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">
+                <div>Last: ${lastFetchText}</div>
+                <div>Success: ${lastSuccessText}</div>
+            </div>
+        </div>
+    `;
 }
 
 function renderStats() {

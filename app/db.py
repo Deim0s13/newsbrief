@@ -103,6 +103,14 @@ def init_db() -> None:
             "ALTER TABLE feeds ADD COLUMN last_error TEXT;",
             "ALTER TABLE feeds ADD COLUMN fetch_count INTEGER DEFAULT 0;",
             "ALTER TABLE feeds ADD COLUMN success_count INTEGER DEFAULT 0;",
+            # Enhanced health monitoring (v0.5.3 polish)
+            "ALTER TABLE feeds ADD COLUMN last_success_at DATETIME;",
+            "ALTER TABLE feeds ADD COLUMN consecutive_failures INTEGER DEFAULT 0;",
+            "ALTER TABLE feeds ADD COLUMN avg_response_time_ms REAL DEFAULT 0.0;",
+            "ALTER TABLE feeds ADD COLUMN last_response_time_ms REAL DEFAULT 0.0;",
+            "ALTER TABLE feeds ADD COLUMN health_score REAL DEFAULT 100.0;",
+            "ALTER TABLE feeds ADD COLUMN last_modified_check DATETIME;",
+            "ALTER TABLE feeds ADD COLUMN etag_check DATETIME;",
         ]
 
         for migration_sql in migration_columns:

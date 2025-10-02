@@ -212,6 +212,94 @@ def add_feed(url: str) -> int:
     return ensure_feed(url)
 
 
+def calculate_health_score(fetch_count: int, success_count: int, consecutive_failures: int, avg_response_time_ms: float) -> float:
+    """Calculate a health score (0-100) based on various metrics."""
+    if fetch_count == 0:
+        return 100.0
+    
+    # Base success rate (0-70 points)
+    success_rate = success_count / fetch_count
+    success_points = success_rate * 70
+    
+    # Consecutive failures penalty (0-20 point deduction)
+    failure_penalty = min(consecutive_failures * 5, 20)
+    
+    # Response time scoring (0-10 points)
+    # Fast: <500ms = 10pts, Medium: 500-2000ms = 5pts, Slow: >2000ms = 0pts
+    if avg_response_time_ms < 500:
+        response_points = 10
+    elif avg_response_time_ms < 2000:
+        response_points = 5
+    else:
+        response_points = 0
+    
+    health_score = success_points - failure_penalty + response_points
+    return max(0, min(100, health_score))
+
+
+def update_feed_health_metrics(feed_id: int, success: bool, response_time_ms: float, error_message: str = None):
+    """Update feed health metrics after a fetch attempt."""
+    with session_scope() as s:
+        # Get current metrics
+        current = s.execute(
+            text("""
+                SELECT fetch_count, success_count, consecutive_failures, 
+                       avg_response_time_ms, last_success_at
+                FROM feeds WHERE id = :feed_id
+            """),
+            {"feed_id": feed_id}
+        ).fetchone()
+        
+        if not current:
+            return
+        
+        fetch_count = (current[0] or 0) + 1
+        success_count = (current[1] or 0) + (1 if success else 0)
+        consecutive_failures = 0 if success else (current[2] or 0) + 1
+        
+        # Update moving average for response time (weighted towards recent)
+        current_avg = current[3] or 0.0
+        if fetch_count == 1:
+            new_avg = response_time_ms
+        else:
+            # Exponential moving average with 0.2 weight for new value
+            new_avg = (current_avg * 0.8) + (response_time_ms * 0.2)
+        
+        # Calculate new health score
+        health_score = calculate_health_score(fetch_count, success_count, consecutive_failures, new_avg)
+        
+        # Update metrics
+        update_fields = [
+            "fetch_count = :fetch_count",
+            "success_count = :success_count", 
+            "consecutive_failures = :consecutive_failures",
+            "avg_response_time_ms = :avg_response_time_ms",
+            "last_response_time_ms = :last_response_time_ms",
+            "health_score = :health_score",
+            "last_fetch_at = CURRENT_TIMESTAMP"
+        ]
+        
+        update_params = {
+            "feed_id": feed_id,
+            "fetch_count": fetch_count,
+            "success_count": success_count,
+            "consecutive_failures": consecutive_failures,
+            "avg_response_time_ms": new_avg,
+            "last_response_time_ms": response_time_ms,
+            "health_score": health_score
+        }
+        
+        if success:
+            update_fields.append("last_success_at = CURRENT_TIMESTAMP")
+            update_fields.append("last_error = NULL")
+        elif error_message:
+            update_fields.append("last_error = :last_error")
+            update_params["last_error"] = error_message[:500]  # Limit error message length
+        
+        sql = f"UPDATE feeds SET {', '.join(update_fields)} WHERE id = :feed_id"
+        s.execute(text(sql), update_params)
+
+
 def import_opml(path: str) -> int:
     """Simple OPML import for startup initialization.""" 
     # super light OPML import: look for xmlUrl attributes
@@ -483,21 +571,40 @@ def fetch_and_store() -> RefreshStats:
             if last_mod:
                 headers["If-Modified-Since"] = last_mod
 
-            # Fetch feed
+            # Fetch feed with response time tracking
+            fetch_start_time = time.time()
+            fetch_success = False
+            error_message = None
+            
             try:
                 resp = client.get(url, headers=headers)
-            except Exception:
+                response_time_ms = (time.time() - fetch_start_time) * 1000
+                
+                # Handle cached response (still considered successful)
+                if resp.status_code == 304:
+                    stats.feeds_cached_304 += 1
+                    fetch_success = True
+                    update_feed_health_metrics(fid, True, response_time_ms)
+                    continue
+                
+                # Handle error responses
+                if resp.status_code >= 400:
+                    stats.feeds_error += 1
+                    fetch_success = False
+                    error_message = f"HTTP {resp.status_code}: {resp.reason_phrase}"
+                    update_feed_health_metrics(fid, False, response_time_ms, error_message)
+                    continue
+                    
+                # Success case
+                fetch_success = True
+                update_feed_health_metrics(fid, True, response_time_ms)
+                
+            except Exception as e:
+                response_time_ms = (time.time() - fetch_start_time) * 1000
                 stats.feeds_error += 1
-                continue
-
-            # Handle cached response
-            if resp.status_code == 304:
-                stats.feeds_cached_304 += 1
-                continue
-
-            # Handle error responses
-            if resp.status_code >= 400:
-                stats.feeds_error += 1
+                fetch_success = False
+                error_message = f"Connection error: {str(e)}"
+                update_feed_health_metrics(fid, False, response_time_ms, error_message)
                 continue
 
             # Successfully fetched feed

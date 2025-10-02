@@ -34,10 +34,18 @@ class FeedOut(BaseModel):
     updated_at: datetime
     # Statistics
     total_articles: int = Field(0, description="Total articles from this feed")
-    last_fetch_at: Optional[datetime] = Field(None, description="Last successful fetch timestamp")
+    last_fetch_at: Optional[datetime] = Field(None, description="Last fetch attempt timestamp")
     last_error: Optional[str] = Field(None, description="Last error message if any")
     fetch_count: int = Field(0, description="Total number of fetch attempts")
     success_count: int = Field(0, description="Total number of successful fetches")
+    # Enhanced health monitoring
+    last_success_at: Optional[datetime] = Field(None, description="Last successful fetch timestamp")
+    consecutive_failures: int = Field(0, description="Number of consecutive failures")
+    avg_response_time_ms: float = Field(0.0, description="Average response time in milliseconds")
+    last_response_time_ms: float = Field(0.0, description="Last response time in milliseconds")
+    health_score: float = Field(100.0, description="Overall health score (0-100)")
+    last_modified_check: Optional[datetime] = Field(None, description="Last time we checked Last-Modified")
+    etag_check: Optional[datetime] = Field(None, description="Last time we checked ETag")
 
 
 class FeedUpdate(BaseModel):

@@ -215,7 +215,7 @@ def list_feeds():
             text("""
                 SELECT f.*, 
                        COUNT(i.id) as total_articles,
-                       MAX(i.created_at) as last_fetch_at
+                       MAX(i.created_at) as last_article_at
                 FROM feeds f
                 LEFT JOIN items i ON f.id = i.feed_id
                 GROUP BY f.id
@@ -241,7 +241,7 @@ def get_feed(feed_id: int):
             text("""
                 SELECT f.*, 
                        COUNT(i.id) as total_articles,
-                       MAX(i.created_at) as last_fetch_at
+                       MAX(i.created_at) as last_article_at
                 FROM feeds f
                 LEFT JOIN items i ON f.id = i.feed_id
                 WHERE f.id = :feed_id
