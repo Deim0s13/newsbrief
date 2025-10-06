@@ -339,7 +339,7 @@ async function loadArticles(selectedTopic = '') {
         
         // Use topic-specific endpoint if topic is selected
         let apiUrl = `/items?limit=${articlesPerPage}&offset=${offset}`;
-        if (selectedTopic) {
+        if (selectedTopic && selectedTopic.trim() !== '') {
             apiUrl = `/items/topic/${selectedTopic}?limit=${articlesPerPage}&offset=${offset}`;
         }
         
@@ -350,7 +350,7 @@ async function loadArticles(selectedTopic = '') {
         }
         
         let articles;
-        if (selectedTopic) {
+        if (selectedTopic && selectedTopic.trim() !== '') {
             // Topic endpoint returns {topic, display_name, count, items}
             const data = await response.json();
             articles = data.items || [];
