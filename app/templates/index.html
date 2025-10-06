@@ -145,6 +145,7 @@ function setupEventListeners() {
     if (topicFilter) {
         topicFilter.addEventListener('change', function() {
             const selectedTopic = this.value;
+            console.log('Topic filter changed to:', selectedTopic);
             loadArticles(selectedTopic);
         });
     }
@@ -218,6 +219,28 @@ function formatArticleContent(content) {
     }
     
     return plainText;
+}
+
+function formatArticleSummary(article) {
+    // Priority: AI summary > structured summary > fallback summary > original summary
+    if (article.ai_summary) {
+        return formatArticleContent(article.ai_summary);
+    }
+    
+    if (article.structured_summary && article.structured_summary.bullets) {
+        const bullets = article.structured_summary.bullets.slice(0, 3); // Show first 3 bullets
+        return bullets.map(bullet => `• ${bullet}`).join('<br>');
+    }
+    
+    if (article.fallback_summary) {
+        return formatArticleContent(article.fallback_summary);
+    }
+    
+    if (article.summary) {
+        return formatArticleContent(article.summary);
+    }
+    
+    return 'No summary available. Click "Read Full Article" to view the complete content.';
 }
 
 function getTopicDisplayName(topic) {
@@ -295,7 +318,7 @@ function updateArticlesDisplay(articles) {
                     </a>
                 </h3>
                 <div class="flex items-center space-x-2 ml-4">
-                    ${article.topic ? `<span class="topic-badge inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getTopicBadgeClasses(article.topic)}">${getTopicDisplayName(article.topic)}</span>` : ''}
+                    ${article.topic ? `<span class="topic-badge inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getTopicBadgeClasses(article.topic)}">${getTopicDisplayName(article.topic)}</span>` : '<span class="topic-badge inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200">Unclassified</span>'}
                     <span class="text-xs text-gray-500 dark:text-gray-400">
                         ${article.published ? new Date(article.published).toLocaleDateString() : 'No date'}
                     </span>
@@ -303,7 +326,7 @@ function updateArticlesDisplay(articles) {
             </div>
             
             <div class="article-content text-gray-700 dark:text-gray-300 mb-4">
-                ${formatArticleContent(article.summary || article.ai_summary || 'No summary available')}
+                ${formatArticleSummary(article)}
             </div>
             
             <div class="flex justify-between items-center">

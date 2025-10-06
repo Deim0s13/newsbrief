@@ -209,9 +209,10 @@ def list_items(limit: int = Query(50, le=200)):
         SELECT id, title, url, published, summary, content_hash, content,
                ai_summary, ai_model, ai_generated_at,
                structured_summary_json, structured_summary_model, 
-               structured_summary_content_hash, structured_summary_generated_at
+               structured_summary_content_hash, structured_summary_generated_at,
+               ranking_score, topic, topic_confidence, source_weight
         FROM items
-        ORDER BY COALESCE(published, created_at) DESC
+        ORDER BY ranking_score DESC, COALESCE(published, created_at) DESC
         LIMIT :lim
         """
             ),
@@ -277,6 +278,11 @@ def list_items(limit: int = Query(50, le=200)):
                     structured_summary=structured_summary,
                     fallback_summary=fallback_summary,
                     is_fallback_summary=is_fallback,
+                    # New ranking fields (v0.4.0)
+                    ranking_score=float(r[14]) if r[14] is not None else 0.0,
+                    topic=r[15],
+                    topic_confidence=float(r[16]) if r[16] is not None else 0.0,
+                    source_weight=float(r[17]) if r[17] is not None else 1.0,
                 )
             )
 
