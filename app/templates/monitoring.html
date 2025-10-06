@@ -1,0 +1,319 @@
+{% extends "base.html" %}
+
+{% block title %}System Monitoring - NewsBrief{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 dark:bg-gray-900 py-6">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900 dark:text-white">System Monitoring</h1>
+            <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                Real-time system status, feed health, and performance metrics
+            </p>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loading-state" class="flex items-center justify-center py-12">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <span class="ml-3 text-gray-600 dark:text-gray-400">Loading monitoring data...</span>
+        </div>
+
+        <!-- Main Monitoring Content -->
+        <div id="monitoring-content" class="hidden space-y-8">
+            
+            <!-- System Overview Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div class="stats-card">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <div class="w-8 h-8 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
+                                <svg class="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 00-2-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v4"></path>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Feeds</div>
+                            <div id="total-feeds" class="text-2xl font-bold text-gray-900 dark:text-white">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="stats-card">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <div class="w-8 h-8 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
+                                <svg class="w-5 h-5 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Healthy Feeds</div>
+                            <div id="healthy-feeds" class="text-2xl font-bold text-gray-900 dark:text-white">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="stats-card">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <div class="w-8 h-8 bg-yellow-100 dark:bg-yellow-900 rounded-lg flex items-center justify-center">
+                                <svg class="w-5 h-5 text-yellow-600 dark:text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Issues</div>
+                            <div id="feeds-with-issues" class="text-2xl font-bold text-gray-900 dark:text-white">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="stats-card">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <div class="w-8 h-8 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center">
+                                <svg class="w-5 h-5 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"></path>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Articles</div>
+                            <div id="total-articles" class="text-2xl font-bold text-gray-900 dark:text-white">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Performance Metrics -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                
+                <!-- System Health -->
+                <div class="stats-card">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">System Health</h3>
+                    <div class="space-y-4">
+                        <div class="flex justify-between items-center">
+                            <span class="monitoring-text">Average Health Score</span>
+                            <span id="avg-health-score" class="font-semibold">-</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="monitoring-text">Average Response Time</span>
+                            <span id="avg-response-time" class="font-semibold">-</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="monitoring-text">Last Refresh</span>
+                            <span id="last-refresh" class="font-semibold">-</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="monitoring-text">System Uptime</span>
+                            <span id="system-uptime" class="font-semibold">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Activity -->
+                <div class="stats-card">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Recent Activity</h3>
+                    <div class="space-y-4">
+                        <div class="flex justify-between items-center">
+                            <span class="monitoring-text">Articles Today</span>
+                            <span id="articles-today" class="font-semibold">-</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="monitoring-text">Articles This Week</span>
+                            <span id="articles-week" class="font-semibold">-</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="monitoring-text">Refresh Rate</span>
+                            <span id="refresh-rate" class="font-semibold">Manual</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="monitoring-text">Cache Hit Rate</span>
+                            <span id="cache-hit-rate" class="font-semibold">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detailed Feed Health -->
+            <div class="stats-card">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-white">Feed Health Details</h3>
+                    <button id="refresh-monitoring" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                        <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                        Refresh Data
+                    </button>
+                </div>
+                
+                <!-- Feed Health Table -->
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                        <thead class="bg-gray-50 dark:bg-gray-800">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Feed</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Health</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Response Time</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Last Success</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Failures</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Articles</th>
+                            </tr>
+                        </thead>
+                        <tbody id="feed-health-table" class="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+                            <!-- Table rows will be populated by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Error Logs -->
+            <div class="stats-card">
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Recent Errors</h3>
+                <div id="error-logs" class="space-y-2 max-h-64 overflow-y-auto">
+                    <!-- Error logs will be populated by JavaScript -->
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+</div>
+
+<script>
+// Monitoring page JavaScript
+document.addEventListener('DOMContentLoaded', function() {
+    loadMonitoringData();
+    
+    // Refresh button
+    document.getElementById('refresh-monitoring').addEventListener('click', function() {
+        loadMonitoringData();
+    });
+    
+    // Auto-refresh every 30 seconds
+    setInterval(loadMonitoringData, 30000);
+});
+
+async function loadMonitoringData() {
+    try {
+        console.log('Loading monitoring data...');
+        
+        // Show loading state
+        document.getElementById('loading-state').classList.remove('hidden');
+        document.getElementById('monitoring-content').classList.add('hidden');
+        
+        // Fetch feeds data
+        const feedsResponse = await fetch('/feeds');
+        const feeds = await feedsResponse.json();
+        
+        // Calculate statistics
+        const totalFeeds = feeds.length;
+        const healthyFeeds = feeds.filter(f => f.health_score >= 80).length;
+        const feedsWithIssues = feeds.filter(f => f.health_score < 80).length;
+        const avgHealthScore = feeds.length > 0 ? 
+            (feeds.reduce((sum, f) => sum + f.health_score, 0) / feeds.length).toFixed(1) : 0;
+        const avgResponseTime = feeds.length > 0 ?
+            (feeds.reduce((sum, f) => sum + (f.avg_response_time_ms || 0), 0) / feeds.length).toFixed(0) : 0;
+        
+        // Update overview cards
+        document.getElementById('total-feeds').textContent = totalFeeds;
+        document.getElementById('healthy-feeds').textContent = healthyFeeds;
+        document.getElementById('feeds-with-issues').textContent = feedsWithIssues;
+        document.getElementById('avg-health-score').textContent = avgHealthScore + '%';
+        document.getElementById('avg-response-time').textContent = avgResponseTime + 'ms';
+        
+        // Update system info
+        document.getElementById('last-refresh').textContent = new Date().toLocaleTimeString();
+        document.getElementById('system-uptime').textContent = 'Running';
+        
+        // Update feed health table
+        updateFeedHealthTable(feeds);
+        
+        // Calculate total articles
+        const totalArticles = feeds.reduce((sum, f) => sum + (f.total_articles || 0), 0);
+        document.getElementById('total-articles').textContent = totalArticles.toLocaleString();
+        
+        // Show content
+        document.getElementById('loading-state').classList.add('hidden');
+        document.getElementById('monitoring-content').classList.remove('hidden');
+        
+    } catch (error) {
+        console.error('Error loading monitoring data:', error);
+        showError('Failed to load monitoring data');
+    }
+}
+
+function updateFeedHealthTable(feeds) {
+    const tbody = document.getElementById('feed-health-table');
+    tbody.innerHTML = '';
+    
+    // Sort feeds by health score (worst first for attention)
+    feeds.sort((a, b) => a.health_score - b.health_score);
+    
+    feeds.forEach(feed => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td class="px-6 py-4 whitespace-nowrap">
+                <div class="text-sm font-medium text-gray-900 dark:text-white">${escapeHtml(feed.name || 'Unnamed Feed')}</div>
+                <div class="text-sm text-gray-500 dark:text-gray-400">${escapeHtml(feed.url)}</div>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+                <span class="health-indicator ${getHealthClass(feed.health_score)}">${feed.health_score.toFixed(1)}%</span>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                ${feed.avg_response_time_ms ? feed.avg_response_time_ms.toFixed(0) + 'ms' : 'N/A'}
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                ${feed.last_success_at ? formatTimestamp(feed.last_success_at) : 'Never'}
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                ${feed.consecutive_failures || 0}
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                ${(feed.total_articles || 0).toLocaleString()}
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+function getHealthClass(score) {
+    if (score >= 90) return 'health-excellent';
+    if (score >= 70) return 'health-good';
+    return 'health-poor';
+}
+
+function formatTimestamp(timestamp) {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    
+    if (diffHours < 1) return 'Just now';
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return date.toLocaleDateString();
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function showError(message) {
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded';
+    errorDiv.textContent = message;
+    
+    const container = document.querySelector('.max-w-7xl');
+    container.insertBefore(errorDiv, container.firstChild);
+    
+    setTimeout(() => errorDiv.remove(), 5000);
+}
+</script>
+{% endblock %}

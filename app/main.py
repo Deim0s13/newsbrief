@@ -4,7 +4,10 @@ import logging
 from datetime import datetime
 from typing import List
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from sqlalchemy import text
 
 from .db import init_db, session_scope
@@ -16,6 +19,7 @@ from .feeds import (
     add_feed,
     fetch_and_store,
     import_opml,
+    list_feeds,
 )
 from .llm import DEFAULT_MODEL, OLLAMA_BASE_URL, get_llm_service, is_llm_available
 from .models import (
@@ -33,12 +37,61 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="NewsBrief")
 
+# Template and static file setup
+templates = Jinja2Templates(directory="app/templates")
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
 
 @app.on_event("startup")
 def _startup() -> None:
     init_db()
     # seed from OPML if present (one-time harmless)
     import_opml("data/feeds.opml")
+
+
+@app.get("/", response_class=HTMLResponse)
+def home_page(request: Request):
+    """Main web interface page."""
+    return templates.TemplateResponse("index.html", {
+        "request": request, 
+        "current_page": "articles"
+    })
+
+
+@app.get("/monitoring", response_class=HTMLResponse)
+def monitoring_page(request: Request):
+    """System monitoring dashboard page."""
+    return templates.TemplateResponse("monitoring.html", {
+        "request": request,
+        "current_page": "monitoring"
+    })
+
+
+@app.get("/feeds")
+def list_feeds_endpoint():
+    """List all feeds with their statistics."""
+    feeds = []
+    with session_scope() as s:
+        results = s.execute(
+            text("""
+                SELECT f.*, 
+                       COUNT(i.id) as total_articles,
+                       MAX(i.created_at) as last_article_at
+                FROM feeds f
+                LEFT JOIN items i ON f.id = i.feed_id
+                GROUP BY f.id
+                ORDER BY f.created_at DESC
+            """)
+        ).fetchall()
+        
+        for row in results:
+            feed_data = dict(row._mapping)
+            # Convert database booleans
+            feed_data["disabled"] = bool(feed_data["disabled"])
+            feed_data["robots_allowed"] = bool(feed_data["robots_allowed"])
+            feeds.append(feed_data)
+    
+    return feeds
 
 
 @app.post("/feeds")

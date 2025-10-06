@@ -1,1 +1,213 @@
-<html><body><h1>NewsBrief</h1></body></html>
+{% extends "base.html" %}
+
+{% block title %}NewsBrief - Intelligent RSS Aggregator{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 dark:bg-gray-900 py-6">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900 dark:text-white">NewsBrief</h1>
+            <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                Intelligent RSS Aggregator with AI-powered content curation
+            </p>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="stats-card">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-8 h-8 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
+                            <svg class="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-4">
+                        <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Articles</div>
+                        <div id="total-articles" class="text-2xl font-bold text-gray-900 dark:text-white">Loading...</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stats-card">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-8 h-8 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
+                            <svg class="w-5 h-5 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 00-2-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v4"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-4">
+                        <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Active Feeds</div>
+                        <div id="active-feeds" class="text-2xl font-bold text-gray-900 dark:text-white">Loading...</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stats-card">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-8 h-8 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center">
+                            <svg class="w-5 h-5 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-4">
+                        <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Last Refresh</div>
+                        <div id="last-refresh" class="text-2xl font-bold text-gray-900 dark:text-white">Never</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex flex-col sm:flex-row gap-4 mb-8">
+            <button onclick="refreshFeeds()" class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                Refresh Feeds
+            </button>
+            
+            <a href="/monitoring" class="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors flex items-center justify-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 00-2-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v4"></path>
+                </svg>
+                View Monitoring
+            </a>
+            
+            <a href="/docs" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                </svg>
+                API Documentation
+            </a>
+        </div>
+
+        <!-- Recent Articles -->
+        <div class="stats-card">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Recent Articles</h3>
+            <div id="articles-container" class="space-y-4">
+                <div class="text-center py-8 text-gray-500 dark:text-gray-400">
+                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                    <p>Loading articles...</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+// Load dashboard data
+document.addEventListener('DOMContentLoaded', function() {
+    loadDashboardData();
+});
+
+async function loadDashboardData() {
+    try {
+        // Load feeds data
+        const feedsResponse = await fetch('/feeds');
+        const feeds = await feedsResponse.json();
+        
+        // Load articles data
+        const articlesResponse = await fetch('/items?limit=10');
+        const articles = await articlesResponse.json();
+        
+        // Update stats
+        const totalArticles = feeds.reduce((sum, f) => sum + (f.total_articles || 0), 0);
+        const activeFeeds = feeds.filter(f => !f.disabled).length;
+        
+        document.getElementById('total-articles').textContent = totalArticles.toLocaleString();
+        document.getElementById('active-feeds').textContent = activeFeeds;
+        
+        // Update articles display
+        updateArticlesDisplay(articles);
+        
+    } catch (error) {
+        console.error('Error loading dashboard data:', error);
+        document.getElementById('total-articles').textContent = 'Error';
+        document.getElementById('active-feeds').textContent = 'Error';
+    }
+}
+
+function updateArticlesDisplay(articles) {
+    const container = document.getElementById('articles-container');
+    
+    if (articles.length === 0) {
+        container.innerHTML = `
+            <div class="text-center py-8 text-gray-500 dark:text-gray-400">
+                <p>No articles found. Try refreshing feeds!</p>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = articles.map(article => `
+        <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+            <div class="flex justify-between items-start mb-2">
+                <h4 class="font-medium text-gray-900 dark:text-white line-clamp-2">
+                    ${escapeHtml(article.title || 'Untitled')}
+                </h4>
+                <span class="text-xs text-gray-500 dark:text-gray-400 ml-4">
+                    ${article.published ? new Date(article.published).toLocaleDateString() : 'No date'}
+                </span>
+            </div>
+            <p class="text-sm text-gray-600 dark:text-gray-300 line-clamp-3 mb-3">
+                ${escapeHtml(article.summary || article.ai_summary || 'No summary available')}
+            </p>
+            <div class="flex justify-between items-center">
+                <a href="${article.url}" target="_blank" class="text-blue-600 hover:text-blue-800 dark:text-blue-400 text-sm">
+                    Read Original →
+                </a>
+                <span class="text-xs text-gray-500 dark:text-gray-400">
+                    Score: ${article.ranking_score ? article.ranking_score.toFixed(3) : 'N/A'}
+                </span>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Refresh functionality
+async function refreshFeeds() {
+    const refreshBtn = document.querySelector('button[onclick="refreshFeeds()"]');
+    const originalText = refreshBtn.innerHTML;
+    
+    refreshBtn.innerHTML = `
+        <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+        <span>Refreshing...</span>
+    `;
+    refreshBtn.disabled = true;
+    
+    try {
+        const response = await fetch('/refresh', { method: 'POST' });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const result = await response.json();
+        
+        // Show success notification
+        showNotification(`Refreshed! Added ${result.ingested || 0} new articles`, 'success');
+        
+        // Reload dashboard data
+        setTimeout(() => {
+            loadDashboardData();
+        }, 1000);
+        
+    } catch (error) {
+        console.error('Refresh error:', error);
+        showNotification(`Failed to refresh feeds: ${error.message}`, 'error');
+    } finally {
+        refreshBtn.innerHTML = originalText;
+        refreshBtn.disabled = false;
+    }
+}
+</script>
+{% endblock %}
