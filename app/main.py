@@ -520,6 +520,90 @@ def generate_summaries(request: SummaryRequest):
     )
 
 
+@app.get("/items/topic/{topic_key}")
+def get_items_by_topic(topic_key: str, limit: int = Query(50, le=200)):
+    """Get articles filtered by topic, ordered by ranking score."""
+    with session_scope() as s:
+        rows = s.execute(
+            text(
+                """
+        SELECT id, title, url, published, summary, content_hash, content,
+               ai_summary, ai_model, ai_generated_at,
+               structured_summary_json, structured_summary_model, 
+               structured_summary_content_hash, structured_summary_generated_at,
+               ranking_score, topic, topic_confidence, source_weight
+        FROM items
+        WHERE topic = :topic_key
+        ORDER BY ranking_score DESC, COALESCE(published, created_at) DESC
+        LIMIT :lim
+        """
+            ),
+            {"topic_key": topic_key, "lim": limit},
+        ).all()
+
+        items = []
+        for r in rows:
+            # Parse structured summary if available
+            structured_summary = None
+            if r[10] and r[11]:
+                try:
+                    structured_summary = StructuredSummary.from_json_string(
+                        r[10],
+                        r[12] or r[5] or "",
+                        r[11],
+                        datetime.fromisoformat(r[13]) if r[13] else datetime.now(),
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to parse structured summary for item {r[0]}: {e}"
+                    )
+
+            # Generate fallback summary if needed
+            fallback_summary = None
+            is_fallback = False
+            has_ai_summary = structured_summary is not None or r[7] is not None
+
+            if not has_ai_summary and r[6]:
+                try:
+                    fallback_summary = extract_first_sentences(r[6], sentence_count=2)
+                    is_fallback = True
+                    if not fallback_summary.strip():
+                        fallback_summary = r[4] or r[1] or "Content preview unavailable"
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to extract fallback summary for item {r[0]}: {e}"
+                    )
+                    fallback_summary = r[4] or r[1] or "Content preview unavailable"
+                    is_fallback = True
+
+            items.append(
+                ItemOut(
+                    id=r[0],
+                    title=r[1],
+                    url=r[2],
+                    published=r[3],
+                    summary=r[4],
+                    ai_summary=r[7],
+                    ai_model=r[8],
+                    ai_generated_at=r[9],
+                    structured_summary=structured_summary,
+                    fallback_summary=fallback_summary,
+                    is_fallback_summary=is_fallback,
+                    ranking_score=float(r[14]) if r[14] is not None else 0.0,
+                    topic=r[15],
+                    topic_confidence=float(r[16]) if r[16] is not None else 0.0,
+                    source_weight=float(r[17]) if r[17] is not None else 1.0,
+                )
+            )
+
+        return {
+            "topic": topic_key,
+            "display_name": topic_key.replace('-', '/').title(),
+            "count": len(items),
+            "items": items,
+        }
+
+
 @app.get("/items/{item_id}", response_model=ItemOut)
 def get_item(item_id: int):
     """Get a specific item with all details including AI summary."""

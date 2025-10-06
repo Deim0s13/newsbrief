@@ -127,6 +127,44 @@
     color: #fecaca;
 }
 
+/* Skim view styles */
+.skim-view .article-card {
+    padding: 1rem;
+}
+
+.skim-view .article-content {
+    display: none;
+}
+
+.skim-view .article-card h3 {
+    font-size: 1rem;
+    line-height: 1.4;
+}
+
+.skim-view .article-card .flex.justify-between.items-center {
+    margin-top: 0.5rem;
+}
+
+/* Topic badge styles */
+.topic-badge {
+    font-variant: small-caps;
+    letter-spacing: 0.025em;
+}
+
+/* Article content formatting */
+.article-content h4 {
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.article-content ul {
+    margin-left: 1rem;
+}
+
+.article-content li {
+    margin-bottom: 0.25rem;
+}
+
 @media (max-width: 640px) {
     .monitoring-text {
         font-size: 0.75rem;

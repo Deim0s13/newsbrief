@@ -14,6 +14,35 @@
             </p>
         </div>
 
+        <!-- Filters and Controls -->
+        <div class="flex flex-col sm:flex-row gap-4 mb-8">
+            <!-- Topic Filter -->
+            <div class="flex-1">
+                <label for="topic-filter" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Filter by Topic</label>
+                <select id="topic-filter" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                    <option value="">All Topics</option>
+                    <option value="ai-ml">AI/ML</option>
+                    <option value="cloud-k8s">Cloud/K8s</option>
+                    <option value="security">Security</option>
+                    <option value="devtools">DevTools</option>
+                    <option value="chips-hardware">Chips/Hardware</option>
+                </select>
+            </div>
+            
+            <!-- View Toggle -->
+            <div class="flex items-end">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">View Mode</label>
+                <div class="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
+                    <button id="skim-view" class="px-3 py-1 text-sm font-medium bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm rounded-md">
+                        Skim
+                    </button>
+                    <button id="full-view" class="px-3 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">
+                        Full
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <!-- Quick Actions -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div class="stats-card">
@@ -107,17 +136,56 @@
 // Load dashboard data
 document.addEventListener('DOMContentLoaded', function() {
     loadDashboardData();
+    setupEventListeners();
 });
+
+function setupEventListeners() {
+    // Topic filter
+    const topicFilter = document.getElementById('topic-filter');
+    if (topicFilter) {
+        topicFilter.addEventListener('change', function() {
+            const selectedTopic = this.value;
+            loadArticles(selectedTopic);
+        });
+    }
+    
+    // View toggle buttons
+    const skimViewBtn = document.getElementById('skim-view');
+    const fullViewBtn = document.getElementById('full-view');
+    
+    if (skimViewBtn && fullViewBtn) {
+        skimViewBtn.addEventListener('click', function() {
+            toggleViewMode('skim');
+        });
+        
+        fullViewBtn.addEventListener('click', function() {
+            toggleViewMode('full');
+        });
+    }
+}
+
+function toggleViewMode(mode) {
+    const skimBtn = document.getElementById('skim-view');
+    const fullBtn = document.getElementById('full-view');
+    
+    if (mode === 'skim') {
+        skimBtn.className = 'px-3 py-1 text-sm font-medium bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm rounded-md';
+        fullBtn.className = 'px-3 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white';
+        // Apply skim view styles
+        document.body.classList.add('skim-view');
+    } else {
+        fullBtn.className = 'px-3 py-1 text-sm font-medium bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm rounded-md';
+        skimBtn.className = 'px-3 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white';
+        // Apply full view styles
+        document.body.classList.remove('skim-view');
+    }
+}
 
 async function loadDashboardData() {
     try {
         // Load feeds data
         const feedsResponse = await fetch('/feeds');
         const feeds = await feedsResponse.json();
-        
-        // Load articles data
-        const articlesResponse = await fetch('/items?limit=10');
-        const articles = await articlesResponse.json();
         
         // Update stats
         const totalArticles = feeds.reduce((sum, f) => sum + (f.total_articles || 0), 0);
@@ -126,8 +194,8 @@ async function loadDashboardData() {
         document.getElementById('total-articles').textContent = totalArticles.toLocaleString();
         document.getElementById('active-feeds').textContent = activeFeeds;
         
-        // Update articles display
-        updateArticlesDisplay(articles);
+        // Load articles
+        await loadArticles();
         
     } catch (error) {
         console.error('Error loading dashboard data:', error);
@@ -152,6 +220,60 @@ function formatArticleContent(content) {
     return plainText;
 }
 
+function getTopicDisplayName(topic) {
+    const topics = {
+        'ai-ml': 'AI/ML',
+        'cloud-k8s': 'Cloud/K8s',
+        'security': 'Security',
+        'devtools': 'DevTools',
+        'chips-hardware': 'Chips/Hardware'
+    };
+    return topics[topic] || topic;
+}
+
+function getTopicBadgeClasses(topic) {
+    const classes = {
+        'ai-ml': 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
+        'cloud-k8s': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+        'security': 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+        'devtools': 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+        'chips-hardware': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+    };
+    return classes[topic] || 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
+}
+
+async function loadArticles(selectedTopic = '') {
+    try {
+        // Use topic-specific endpoint if topic is selected
+        let apiUrl = '/items?limit=20';
+        if (selectedTopic) {
+            apiUrl = `/items/topic/${selectedTopic}?limit=20`;
+        }
+        
+        const response = await fetch(apiUrl);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        let articles;
+        if (selectedTopic) {
+            // Topic endpoint returns {topic, display_name, count, items}
+            const data = await response.json();
+            articles = data.items || [];
+        } else {
+            // Main endpoint returns array directly
+            articles = await response.json();
+        }
+        
+        updateArticlesDisplay(articles);
+        
+    } catch (error) {
+        console.error('Error loading articles:', error);
+        showNotification('Failed to load articles', 'error');
+    }
+}
+
 function updateArticlesDisplay(articles) {
     const container = document.getElementById('articles-container');
     
@@ -165,27 +287,42 @@ function updateArticlesDisplay(articles) {
     }
     
     container.innerHTML = articles.map(article => `
-        <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-            <div class="flex justify-between items-start mb-2">
-                <h4 class="font-medium text-gray-900 dark:text-white line-clamp-2">
-                    ${escapeHtml(article.title || 'Untitled')}
-                </h4>
-                <span class="text-xs text-gray-500 dark:text-gray-400 ml-4">
-                    ${article.published ? new Date(article.published).toLocaleDateString() : 'No date'}
-                </span>
+        <article class="article-card border border-gray-200 dark:border-gray-700 rounded-lg p-6 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+            <div class="flex justify-between items-start mb-3">
+                <h3 class="font-semibold text-lg text-gray-900 dark:text-white line-clamp-2 flex-1">
+                    <a href="/article/${article.id}" class="article-title-link hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                        ${escapeHtml(article.title || 'Untitled')}
+                    </a>
+                </h3>
+                <div class="flex items-center space-x-2 ml-4">
+                    ${article.topic ? `<span class="topic-badge inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getTopicBadgeClasses(article.topic)}">${getTopicDisplayName(article.topic)}</span>` : ''}
+                    <span class="text-xs text-gray-500 dark:text-gray-400">
+                        ${article.published ? new Date(article.published).toLocaleDateString() : 'No date'}
+                    </span>
+                </div>
             </div>
-            <div class="text-sm text-gray-600 dark:text-gray-300 line-clamp-3 mb-3">
+            
+            <div class="article-content text-gray-700 dark:text-gray-300 mb-4">
                 ${formatArticleContent(article.summary || article.ai_summary || 'No summary available')}
             </div>
+            
             <div class="flex justify-between items-center">
-                <a href="${article.url}" target="_blank" class="text-blue-600 hover:text-blue-800 dark:text-blue-400 text-sm">
-                    Read Original →
-                </a>
-                <span class="text-xs text-gray-500 dark:text-gray-400">
-                    Score: ${article.ranking_score ? article.ranking_score.toFixed(3) : 'N/A'}
-                </span>
+                <div class="flex space-x-4">
+                    <a href="/article/${article.id}" class="article-detail-link text-blue-600 hover:text-blue-800 dark:text-blue-400 text-sm font-medium">
+                        Read Full Article →
+                    </a>
+                    <a href="${article.url}" target="_blank" class="article-external-link text-gray-600 hover:text-gray-800 dark:text-gray-400 text-sm">
+                        Original Source
+                    </a>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <span class="text-xs text-gray-500 dark:text-gray-400">
+                        Score: ${article.ranking_score ? article.ranking_score.toFixed(3) : 'N/A'}
+                    </span>
+                    ${article.ai_summary ? '<span class="ai-indicator text-xs bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 px-2 py-1 rounded">AI Summary</span>' : ''}
+                </div>
             </div>
-        </div>
+        </article>
     `).join('');
 }
 
