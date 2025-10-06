@@ -671,6 +671,113 @@ def get_items_by_topic(topic_key: str, limit: int = Query(50, le=200)):
         }
 
 
+@app.get("/article/{item_id}", response_class=HTMLResponse)
+def get_article_page(request: Request, item_id: int):
+    """Get article detail page."""
+    with session_scope() as s:
+        row = s.execute(
+            text(
+                """
+        SELECT id, title, url, published, summary, content_hash, content,
+               ai_summary, ai_model, ai_generated_at,
+               structured_summary_json, structured_summary_model, 
+               structured_summary_content_hash, structured_summary_generated_at,
+               ranking_score, topic, topic_confidence, source_weight
+        FROM items
+        WHERE id = :item_id
+        """
+            ),
+            {"item_id": item_id},
+        ).fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="Article not found")
+
+        # Parse structured summary if available
+        structured_summary = None
+        if row[10] and row[11]:  # structured_summary_json and model
+            try:
+                structured_summary = StructuredSummary.from_json_string(
+                    row[10],
+                    row[12] or row[5] or "",  # structured content_hash, fallback to main content_hash
+                    row[11],
+                    datetime.fromisoformat(row[13]) if row[13] else datetime.now(),
+                )
+            except Exception as e:
+                logger.warning(f"Failed to parse structured summary for item {item_id}: {e}")
+
+        # Generate fallback summary if no AI summary available
+        fallback_summary = None
+        is_fallback = False
+
+        # Check if we have any AI-generated summary
+        has_ai_summary = structured_summary is not None or row[7] is not None
+
+        if not has_ai_summary and row[6]:  # content is available
+            try:
+                from .models import extract_first_sentences
+                fallback_summary = extract_first_sentences(row[6], sentence_count=2)
+                is_fallback = True
+
+                if not fallback_summary.strip():
+                    fallback_summary = row[4] or row[1] or "Content preview unavailable"
+            except Exception as e:
+                logger.warning(f"Failed to extract fallback summary for item {item_id}: {e}")
+                fallback_summary = row[4] or row[1] or "Content preview unavailable"
+                is_fallback = True
+
+        article = ItemOut(
+            id=row[0],
+            title=row[1],
+            url=row[2],
+            published=row[3],
+            summary=row[4],
+            ai_summary=row[7],
+            ai_model=row[8],
+            ai_generated_at=row[9],
+            structured_summary=structured_summary,
+            fallback_summary=fallback_summary,
+            is_fallback_summary=is_fallback,
+            ranking_score=float(row[14]) if row[14] is not None else 0.0,
+            topic=row[15],
+            topic_confidence=float(row[16]) if row[16] is not None else 0.0,
+            source_weight=float(row[17]) if row[17] is not None else 1.0,
+        )
+
+        # Get topic display info
+        topic_display_name = "Unclassified"
+        topic_badge_classes = "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200"
+        
+        if article.topic:
+            topic_map = {
+                'ai-ml': 'AI/ML',
+                'cloud-k8s': 'Cloud/K8s',
+                'security': 'Security',
+                'devtools': 'DevTools',
+                'chips-hardware': 'Chips/Hardware'
+            }
+            topic_display_name = topic_map.get(article.topic, article.topic)
+            
+            badge_classes = {
+                'ai-ml': 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
+                'cloud-k8s': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+                'security': 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+                'devtools': 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+                'chips-hardware': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+            }
+            topic_badge_classes = badge_classes.get(article.topic, topic_badge_classes)
+
+        return templates.TemplateResponse(
+            "article_detail.html",
+            {
+                "request": Request,
+                "article": article,
+                "topic_display_name": topic_display_name,
+                "topic_badge_classes": topic_badge_classes,
+            }
+        )
+
+
 @app.get("/items/{item_id}", response_model=ItemOut)
 def get_item(item_id: int):
     """Get a specific item with all details including AI summary."""
