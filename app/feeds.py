@@ -392,11 +392,23 @@ def fetch_and_store() -> RefreshStats:
 
                 # Insert item
                 with session_scope() as s:
+                    # Calculate ranking and topic classification
+                    article_data = {
+                        'title': title,
+                        'content': content_text,
+                        'summary': summary,
+                        'published': published.isoformat() if published else None,
+                        'url': link
+                    }
+                    
+                    ranking_score = calculate_ranking_score(article_data, source_weight=1.0)
+                    topic, topic_confidence = classify_topic(article_data)
+                    
                     s.execute(
                         text(
                             """
-                    INSERT INTO items(feed_id, title, url, url_hash, published, author, summary, content, content_hash)
-                    VALUES(:feed_id, :title, :url, :url_hash, :published, :author, :summary, :content, :content_hash)
+                    INSERT INTO items(feed_id, title, url, url_hash, published, author, summary, content, content_hash, ranking_score, topic, topic_confidence, source_weight)
+                    VALUES(:feed_id, :title, :url, :url_hash, :published, :author, :summary, :content, :content_hash, :ranking_score, :topic, :topic_confidence, :source_weight)
                     """
                         ),
                         {
@@ -409,6 +421,10 @@ def fetch_and_store() -> RefreshStats:
                             "summary": summary,
                             "content": content_text,
                             "content_hash": content_hash,
+                            "ranking_score": ranking_score,
+                            "topic": topic,
+                            "topic_confidence": topic_confidence,
+                            "source_weight": 1.0,
                         },
                     )
 
@@ -472,3 +488,180 @@ def export_opml() -> str:
 </opml>'''
     
     return opml_content
+
+
+def calculate_ranking_score(article_data: dict, source_weight: float = 1.0) -> float:
+    """Calculate ranking score for an article."""
+    score = 0.0
+    
+    # Base score from source weight
+    score += source_weight
+    
+    # Recency boost (newer articles get higher scores)
+    if article_data.get('published'):
+        try:
+            from datetime import datetime, timezone
+            published = datetime.fromisoformat(article_data['published'].replace('Z', '+00:00'))
+            now = datetime.now(timezone.utc)
+            days_old = (now - published).days
+            
+            # Exponential decay: newer articles get much higher scores
+            if days_old <= 1:
+                score += 10.0
+            elif days_old <= 7:
+                score += 5.0
+            elif days_old <= 30:
+                score += 2.0
+            else:
+                score += 0.5
+        except:
+            pass
+    
+    # Title length boost (longer titles often indicate more detailed articles)
+    title = article_data.get('title', '')
+    if len(title) > 50:
+        score += 1.0
+    elif len(title) > 100:
+        score += 2.0
+    
+    # Content length boost
+    content = article_data.get('content', '')
+    if len(content) > 1000:
+        score += 1.0
+    elif len(content) > 2000:
+        score += 2.0
+    
+    return score
+
+
+def classify_topic(article_data: dict) -> tuple[str, float]:
+    """Classify article topic based on keywords and content."""
+    title = (article_data.get('title', '') or '').lower()
+    content = (article_data.get('content', '') or '').lower()
+    summary = (article_data.get('summary', '') or '').lower()
+    
+    # Combine all text for analysis
+    text = f"{title} {content} {summary}"
+    
+    # Topic keywords mapping
+    topic_keywords = {
+        'ai-ml': [
+            'artificial intelligence', 'machine learning', 'ai', 'ml', 'neural network',
+            'deep learning', 'llm', 'gpt', 'chatgpt', 'claude', 'ollama', 'tensorflow',
+            'pytorch', 'openai', 'anthropic', 'hugging face', 'transformer', 'nlp',
+            'computer vision', 'reinforcement learning', 'data science', 'algorithm'
+        ],
+        'cloud-k8s': [
+            'kubernetes', 'k8s', 'docker', 'container', 'cloud', 'aws', 'azure',
+            'google cloud', 'gcp', 'microservices', 'serverless', 'lambda',
+            'terraform', 'helm', 'istio', 'prometheus', 'grafana', 'jenkins',
+            'ci/cd', 'devops', 'infrastructure', 'scaling', 'load balancer'
+        ],
+        'security': [
+            'security', 'cybersecurity', 'vulnerability', 'exploit', 'malware',
+            'phishing', 'ransomware', 'firewall', 'encryption', 'ssl', 'tls',
+            'authentication', 'authorization', 'oauth', 'jwt', 'penetration test',
+            'zero-day', 'cve', 'breach', 'privacy', 'gdpr', 'compliance'
+        ],
+        'devtools': [
+            'development', 'programming', 'coding', 'software', 'api', 'sdk',
+            'framework', 'library', 'git', 'github', 'gitlab', 'vscode',
+            'ide', 'debugger', 'testing', 'unit test', 'integration test',
+            'code review', 'refactoring', 'agile', 'scrum', 'javascript',
+            'python', 'java', 'typescript', 'react', 'vue', 'angular'
+        ],
+        'chips-hardware': [
+            'hardware', 'chip', 'cpu', 'gpu', 'processor', 'intel', 'amd',
+            'nvidia', 'arm', 'risc-v', 'semiconductor', 'silicon', 'fabrication',
+            'transistor', 'memory', 'ram', 'ssd', 'storage', 'motherboard',
+            'circuit', 'electronics', 'quantum', 'photonics', 'neuromorphic'
+        ]
+    }
+    
+    # Calculate confidence scores for each topic
+    topic_scores = {}
+    for topic, keywords in topic_keywords.items():
+        score = 0
+        for keyword in keywords:
+            if keyword in text:
+                # Weight by keyword length (longer keywords are more specific)
+                score += len(keyword) * text.count(keyword)
+        topic_scores[topic] = score
+    
+    # Find the topic with highest score
+    if not topic_scores or max(topic_scores.values()) == 0:
+        return None, 0.0
+    
+    best_topic = max(topic_scores, key=topic_scores.get)
+    max_score = topic_scores[best_topic]
+    
+    # Calculate confidence (0.0 to 1.0)
+    total_keywords = sum(len(keywords) for keywords in topic_keywords.values())
+    confidence = min(max_score / (total_keywords * 0.1), 1.0)  # Normalize
+    
+    return best_topic, confidence
+
+
+def recalculate_rankings_and_topics() -> dict:
+    """Recalculate ranking scores and topic classifications for all existing articles."""
+    from .db import session_scope
+    from sqlalchemy import text
+    
+    stats = {
+        'articles_processed': 0,
+        'topics_assigned': 0,
+        'rankings_updated': 0
+    }
+    
+    with session_scope() as s:
+        # Get all articles that need ranking/topic updates
+        rows = s.execute(
+            text("""
+                SELECT id, title, url, published, summary, content, ranking_score, topic, topic_confidence
+                FROM items
+                ORDER BY created_at DESC
+            """)
+        ).all()
+        
+        for row in rows:
+            article_id, title, url, published, summary, content, current_ranking, current_topic, current_confidence = row
+            
+            # Prepare article data
+            article_data = {
+                'title': title or '',
+                'content': content or '',
+                'summary': summary or '',
+                'published': published.isoformat() if published and hasattr(published, 'isoformat') else str(published) if published else None,
+                'url': url
+            }
+            
+            # Calculate new ranking and topic
+            new_ranking = calculate_ranking_score(article_data, source_weight=1.0)
+            new_topic, new_confidence = classify_topic(article_data)
+            
+            # Update the article
+            s.execute(
+                text("""
+                    UPDATE items 
+                    SET ranking_score = :ranking_score, 
+                        topic = :topic, 
+                        topic_confidence = :topic_confidence,
+                        source_weight = :source_weight
+                    WHERE id = :article_id
+                """),
+                {
+                    'article_id': article_id,
+                    'ranking_score': new_ranking,
+                    'topic': new_topic,
+                    'topic_confidence': new_confidence,
+                    'source_weight': 1.0
+                }
+            )
+            
+            stats['articles_processed'] += 1
+            if new_topic:
+                stats['topics_assigned'] += 1
+            if new_ranking != current_ranking:
+                stats['rankings_updated'] += 1
+    
+    return stats

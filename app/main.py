@@ -22,6 +22,7 @@ from .feeds import (
     import_opml,
     import_opml_content,
     list_feeds,
+    recalculate_rankings_and_topics,
 )
 from .llm import DEFAULT_MODEL, OLLAMA_BASE_URL, get_llm_service, is_llm_available
 from .models import (
@@ -229,6 +230,20 @@ def refresh_endpoint():
             },
         },
     }
+
+
+@app.post("/recalculate-rankings")
+def recalculate_rankings_endpoint():
+    """Recalculate ranking scores and topic classifications for all articles."""
+    try:
+        stats = recalculate_rankings_and_topics()
+        return {
+            "ok": True,
+            "message": f"Recalculated rankings and topics for {stats['articles_processed']} articles",
+            "stats": stats
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to recalculate rankings: {str(e)}")
 
 
 @app.get("/items", response_model=List[ItemOut])
@@ -569,6 +584,13 @@ def generate_summaries(request: SummaryRequest):
 def get_items_by_topic(topic_key: str, limit: int = Query(50, le=200)):
     """Get articles filtered by topic, ordered by ranking score."""
     with session_scope() as s:
+        # Get total count for this topic
+        count_result = s.execute(
+            text("SELECT COUNT(*) FROM items WHERE topic = :topic_key"),
+            {"topic_key": topic_key}
+        ).fetchone()
+        total_count = count_result[0]
+        
         rows = s.execute(
             text(
                 """
@@ -644,7 +666,7 @@ def get_items_by_topic(topic_key: str, limit: int = Query(50, le=200)):
         return {
             "topic": topic_key,
             "display_name": topic_key.replace('-', '/').title(),
-            "count": len(items),
+            "count": total_count,
             "items": items,
         }
 
