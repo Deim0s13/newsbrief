@@ -126,6 +126,10 @@ def update_feed(feed_id: int, feed_update: dict):
         update_fields = []
         params = {"feed_id": feed_id}
         
+        if "url" in feed_update:
+            update_fields.append("url = :url")
+            params["url"] = feed_update["url"]
+        
         if "disabled" in feed_update:
             update_fields.append("disabled = :disabled")
             params["disabled"] = int(feed_update["disabled"])
