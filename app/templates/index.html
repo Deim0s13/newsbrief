@@ -190,8 +190,10 @@ function setupEventListeners() {
     const perPageSelector = document.getElementById('per-page-selector');
     if (perPageSelector) {
         perPageSelector.addEventListener('change', function() {
+            console.log('Per page selector changed to:', this.value);
             articlesPerPage = parseInt(this.value);
             currentPage = 1; // Reset to first page
+            console.log('Loading articles with:', { articlesPerPage, currentPage, currentTopic });
             loadArticles(currentTopic);
         });
     }
@@ -335,7 +337,9 @@ function getTopicBadgeClasses(topic) {
 
 async function loadArticles(selectedTopic = '') {
     try {
+        console.log('loadArticles called with:', { selectedTopic, currentPage, articlesPerPage });
         const offset = (currentPage - 1) * articlesPerPage;
+        console.log('Calculated offset:', offset);
         
         // Use topic-specific endpoint if topic is selected
         let apiUrl = `/items?limit=${articlesPerPage}&offset=${offset}`;
