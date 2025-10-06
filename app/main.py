@@ -205,7 +205,7 @@ def refresh_endpoint():
 
 
 @app.get("/items", response_model=List[ItemOut])
-def list_items(limit: int = Query(50, le=200)):
+def list_items(limit: int = Query(50, le=200), offset: int = Query(0, ge=0)):
     with session_scope() as s:
         rows = s.execute(
             text(
@@ -217,10 +217,10 @@ def list_items(limit: int = Query(50, le=200)):
                ranking_score, topic, topic_confidence, source_weight
         FROM items
         ORDER BY ranking_score DESC, COALESCE(published, created_at) DESC
-        LIMIT :lim
+        LIMIT :lim OFFSET :off
         """
             ),
-            {"lim": limit},
+            {"lim": limit, "off": offset},
         ).all()
 
         items = []
@@ -291,6 +291,14 @@ def list_items(limit: int = Query(50, le=200)):
             )
 
         return items
+
+
+@app.get("/items/count")
+def get_items_count():
+    """Get total count of items for pagination."""
+    with session_scope() as s:
+        result = s.execute(text("SELECT COUNT(*) as count FROM items")).fetchone()
+        return {"count": result[0]}
 
 
 @app.get("/llm/status", response_model=LLMStatusOut)

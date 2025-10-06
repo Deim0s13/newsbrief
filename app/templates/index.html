@@ -29,6 +29,16 @@
                 </select>
             </div>
             
+            <!-- Articles Per Page -->
+            <div class="sm:w-32">
+                <label for="per-page-selector" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Per Page</label>
+                <select id="per-page-selector" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                    <option value="20">20</option>
+                    <option value="50" selected>50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+            
             <!-- View Toggle -->
             <div class="flex items-end">
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">View Mode</label>
@@ -127,12 +137,37 @@
                     <p>Loading articles...</p>
                 </div>
             </div>
+            
+            <!-- Pagination Controls -->
+            <div id="pagination-container" class="mt-6 flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <button id="prev-page" class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-600">
+                        Previous
+                    </button>
+                    <span id="page-info" class="text-sm text-gray-700 dark:text-gray-300">
+                        Page 1 of 1
+                    </span>
+                    <button id="next-page" class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-600">
+                        Next
+                    </button>
+                </div>
+                <div class="text-sm text-gray-500 dark:text-gray-400">
+                    <span id="articles-count">0</span> articles total
+                </div>
+            </div>
         </div>
 
     </div>
 </div>
 
 <script>
+// Pagination state
+let currentPage = 1;
+let articlesPerPage = 50;
+let totalPages = 1;
+let totalArticles = 0;
+let currentTopic = ''; // Track current topic filter
+
 // Load dashboard data
 document.addEventListener('DOMContentLoaded', function() {
     loadDashboardData();
@@ -144,9 +179,42 @@ function setupEventListeners() {
     const topicFilter = document.getElementById('topic-filter');
     if (topicFilter) {
         topicFilter.addEventListener('change', function() {
-            const selectedTopic = this.value;
-            console.log('Topic filter changed to:', selectedTopic);
-            loadArticles(selectedTopic);
+            currentTopic = this.value;
+            console.log('Topic filter changed to:', currentTopic);
+            currentPage = 1; // Reset to first page
+            loadArticles(currentTopic);
+        });
+    }
+    
+    // Per page selector
+    const perPageSelector = document.getElementById('per-page-selector');
+    if (perPageSelector) {
+        perPageSelector.addEventListener('change', function() {
+            articlesPerPage = parseInt(this.value);
+            currentPage = 1; // Reset to first page
+            loadArticles(currentTopic);
+        });
+    }
+    
+    // Pagination buttons
+    const prevPageBtn = document.getElementById('prev-page');
+    const nextPageBtn = document.getElementById('next-page');
+    
+    if (prevPageBtn) {
+        prevPageBtn.addEventListener('click', function() {
+            if (currentPage > 1) {
+                currentPage--;
+                loadArticles(currentTopic);
+            }
+        });
+    }
+    
+    if (nextPageBtn) {
+        nextPageBtn.addEventListener('click', function() {
+            if (currentPage < totalPages) {
+                currentPage++;
+                loadArticles(currentTopic);
+            }
         });
     }
     
@@ -196,7 +264,7 @@ async function loadDashboardData() {
         document.getElementById('active-feeds').textContent = activeFeeds;
         
         // Load articles
-        await loadArticles();
+        await loadArticles(currentTopic);
         
     } catch (error) {
         console.error('Error loading dashboard data:', error);
@@ -267,10 +335,12 @@ function getTopicBadgeClasses(topic) {
 
 async function loadArticles(selectedTopic = '') {
     try {
+        const offset = (currentPage - 1) * articlesPerPage;
+        
         // Use topic-specific endpoint if topic is selected
-        let apiUrl = '/items?limit=20';
+        let apiUrl = `/items?limit=${articlesPerPage}&offset=${offset}`;
         if (selectedTopic) {
-            apiUrl = `/items/topic/${selectedTopic}?limit=20`;
+            apiUrl = `/items/topic/${selectedTopic}?limit=${articlesPerPage}&offset=${offset}`;
         }
         
         const response = await fetch(apiUrl);
@@ -284,12 +354,24 @@ async function loadArticles(selectedTopic = '') {
             // Topic endpoint returns {topic, display_name, count, items}
             const data = await response.json();
             articles = data.items || [];
+            totalArticles = data.count || 0;
         } else {
             // Main endpoint returns array directly
             articles = await response.json();
+            
+            // Get total count for pagination
+            const countResponse = await fetch('/items/count');
+            if (countResponse.ok) {
+                const countData = await countResponse.json();
+                totalArticles = countData.count || 0;
+            }
         }
         
+        // Calculate total pages
+        totalPages = Math.ceil(totalArticles / articlesPerPage);
+        
         updateArticlesDisplay(articles);
+        updatePaginationControls();
         
     } catch (error) {
         console.error('Error loading articles:', error);
@@ -347,6 +429,38 @@ function updateArticlesDisplay(articles) {
             </div>
         </article>
     `).join('');
+}
+
+function updatePaginationControls() {
+    const prevBtn = document.getElementById('prev-page');
+    const nextBtn = document.getElementById('next-page');
+    const pageInfo = document.getElementById('page-info');
+    const articlesCount = document.getElementById('articles-count');
+    
+    // Update button states
+    if (prevBtn) {
+        prevBtn.disabled = currentPage <= 1;
+    }
+    
+    if (nextBtn) {
+        nextBtn.disabled = currentPage >= totalPages;
+    }
+    
+    // Update page info
+    if (pageInfo) {
+        pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+    }
+    
+    // Update articles count
+    if (articlesCount) {
+        articlesCount.textContent = totalArticles.toLocaleString();
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 // Refresh functionality
