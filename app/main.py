@@ -67,6 +67,15 @@ def monitoring_page(request: Request):
     })
 
 
+@app.get("/feeds-manage", response_class=HTMLResponse)
+def feeds_management_page(request: Request):
+    """Feed management interface page."""
+    return templates.TemplateResponse("feed_management.html", {
+        "request": request,
+        "current_page": "feed-management"
+    })
+
+
 @app.get("/feeds")
 def list_feeds_endpoint():
     """List all feeds with their statistics."""
@@ -98,6 +107,63 @@ def list_feeds_endpoint():
 def add_feed_endpoint(feed: FeedIn):
     fid = add_feed(str(feed.url))
     return {"ok": True, "feed_id": fid}
+
+
+@app.put("/feeds/{feed_id}")
+def update_feed(feed_id: int, feed_update: dict):
+    """Update an existing feed."""
+    with session_scope() as s:
+        # Check if feed exists
+        existing = s.execute(
+            text("SELECT id FROM feeds WHERE id = :feed_id"),
+            {"feed_id": feed_id}
+        ).fetchone()
+        
+        if not existing:
+            raise HTTPException(status_code=404, detail="Feed not found")
+        
+        # Build update query dynamically
+        update_fields = []
+        params = {"feed_id": feed_id}
+        
+        if "disabled" in feed_update:
+            update_fields.append("disabled = :disabled")
+            params["disabled"] = int(feed_update["disabled"])
+        
+        if update_fields:
+            update_fields.append("updated_at = CURRENT_TIMESTAMP")
+            sql = f"UPDATE feeds SET {', '.join(update_fields)} WHERE id = :feed_id"
+            s.execute(text(sql), params)
+    
+    return {"ok": True, "message": "Feed updated successfully"}
+
+
+@app.delete("/feeds/{feed_id}")
+def delete_feed(feed_id: int):
+    """Delete a feed and all its articles."""
+    with session_scope() as s:
+        # Check if feed exists
+        existing = s.execute(
+            text("SELECT id FROM feeds WHERE id = :feed_id"),
+            {"feed_id": feed_id}
+        ).fetchone()
+        
+        if not existing:
+            raise HTTPException(status_code=404, detail="Feed not found")
+        
+        # Delete articles first (due to foreign key constraint)
+        articles_deleted = s.execute(
+            text("DELETE FROM items WHERE feed_id = :feed_id"),
+            {"feed_id": feed_id}
+        ).rowcount
+        
+        # Delete the feed
+        s.execute(
+            text("DELETE FROM feeds WHERE id = :feed_id"),
+            {"feed_id": feed_id}
+        )
+    
+    return {"ok": True, "articles_deleted": articles_deleted}
 
 
 @app.post("/refresh")

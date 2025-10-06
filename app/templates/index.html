@@ -136,6 +136,22 @@ async function loadDashboardData() {
     }
 }
 
+function formatArticleContent(content) {
+    if (!content) return 'No content available';
+    
+    // If content contains HTML tags, strip them and return plain text
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = content;
+    const plainText = tempDiv.textContent || tempDiv.innerText || '';
+    
+    // Truncate if too long
+    if (plainText.length > 200) {
+        return plainText.substring(0, 200) + '...';
+    }
+    
+    return plainText;
+}
+
 function updateArticlesDisplay(articles) {
     const container = document.getElementById('articles-container');
     
@@ -158,9 +174,9 @@ function updateArticlesDisplay(articles) {
                     ${article.published ? new Date(article.published).toLocaleDateString() : 'No date'}
                 </span>
             </div>
-            <p class="text-sm text-gray-600 dark:text-gray-300 line-clamp-3 mb-3">
-                ${escapeHtml(article.summary || article.ai_summary || 'No summary available')}
-            </p>
+            <div class="text-sm text-gray-600 dark:text-gray-300 line-clamp-3 mb-3">
+                ${formatArticleContent(article.summary || article.ai_summary || 'No summary available')}
+            </div>
             <div class="flex justify-between items-center">
                 <a href="${article.url}" target="_blank" class="text-blue-600 hover:text-blue-800 dark:text-blue-400 text-sm">
                     Read Original →
