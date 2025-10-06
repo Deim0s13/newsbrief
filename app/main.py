@@ -23,6 +23,7 @@ from .feeds import (
     import_opml_content,
     list_feeds,
     recalculate_rankings_and_topics,
+    update_feed_names,
 )
 from .llm import DEFAULT_MODEL, OLLAMA_BASE_URL, get_llm_service, is_llm_available
 from .models import (
@@ -230,6 +231,20 @@ def refresh_endpoint():
             },
         },
     }
+
+
+@app.post("/update-feed-names")
+def update_feed_names_endpoint():
+    """Update existing feeds with proper names from their RSS feeds."""
+    try:
+        stats = update_feed_names()
+        return {
+            "ok": True,
+            "message": f"Updated {stats['feeds_updated']} feed names",
+            "stats": stats
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update feed names: {str(e)}")
 
 
 @app.post("/recalculate-rankings")

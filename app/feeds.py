@@ -181,14 +181,31 @@ def ensure_feed(feed_url: str) -> int:
         ).first()
         if row:
             return int(row[0])
+        
+        # Try to get feed name from RSS feed
+        feed_name = None
+        try:
+            import feedparser
+            feed_data = feedparser.parse(feed_url)
+            if feed_data.feed and hasattr(feed_data.feed, 'title'):
+                feed_name = feed_data.feed.title
+        except Exception:
+            # If we can't parse the feed, use domain name as fallback
+            try:
+                from urllib.parse import urlparse
+                domain = urlparse(feed_url).netloc
+                feed_name = domain
+            except Exception:
+                feed_name = "Unnamed Feed"
+        
         allowed = 1 if is_robot_allowed(feed_url) else 0
         s.execute(
             text(
                 """
-        INSERT INTO feeds(url, robots_allowed) VALUES(:u, :allowed)
+        INSERT INTO feeds(url, name, robots_allowed) VALUES(:u, :name, :allowed)
         """
             ),
-            {"u": feed_url, "allowed": allowed},
+            {"u": feed_url, "name": feed_name, "allowed": allowed},
         )
         fid = s.execute(
             text("SELECT id FROM feeds WHERE url=:u"), {"u": feed_url}
@@ -663,5 +680,62 @@ def recalculate_rankings_and_topics() -> dict:
                 stats['topics_assigned'] += 1
             if new_ranking != current_ranking:
                 stats['rankings_updated'] += 1
+    
+    return stats
+
+
+def update_feed_names() -> dict:
+    """Update existing feeds with proper names from their RSS feeds."""
+    from .db import session_scope
+    from sqlalchemy import text
+    
+    stats = {
+        'feeds_updated': 0,
+        'feeds_failed': 0
+    }
+    
+    with session_scope() as s:
+        # Get all feeds without names
+        rows = s.execute(
+            text("SELECT id, url FROM feeds WHERE name IS NULL OR name = ''")
+        ).all()
+        
+        for row in rows:
+            feed_id, feed_url = row
+            
+            # Try to get feed name from RSS feed
+            feed_name = None
+            try:
+                import feedparser
+                feed_data = feedparser.parse(feed_url)
+                if feed_data.feed and hasattr(feed_data.feed, 'title'):
+                    feed_name = feed_data.feed.title
+            except Exception:
+                # If we can't parse the feed, use domain name as fallback
+                try:
+                    from urllib.parse import urlparse
+                    domain = urlparse(feed_url).netloc
+                    feed_name = domain
+                except Exception:
+                    feed_name = "Unnamed Feed"
+            
+            # If still no name, use a more descriptive fallback
+            if not feed_name or feed_name.strip() == "":
+                try:
+                    from urllib.parse import urlparse
+                    domain = urlparse(feed_url).netloc
+                    feed_name = f"Feed from {domain}"
+                except Exception:
+                    feed_name = "Unnamed Feed"
+            
+            # Update the feed with the name
+            try:
+                s.execute(
+                    text("UPDATE feeds SET name = :name WHERE id = :feed_id"),
+                    {"name": feed_name, "feed_id": feed_id}
+                )
+                stats['feeds_updated'] += 1
+            except Exception:
+                stats['feeds_failed'] += 1
     
     return stats
