@@ -4,8 +4,8 @@ import logging
 from datetime import datetime
 from typing import List
 
-from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException, Query, Request, UploadFile, File
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import text
@@ -17,8 +17,10 @@ from .feeds import (
     MAX_REFRESH_TIME_SECONDS,
     RefreshStats,
     add_feed,
+    export_opml,
     fetch_and_store,
     import_opml,
+    import_opml_content,
     list_feeds,
 )
 from .llm import DEFAULT_MODEL, OLLAMA_BASE_URL, get_llm_service, is_llm_available
@@ -168,6 +170,31 @@ def delete_feed(feed_id: int):
         )
     
     return {"ok": True, "articles_deleted": articles_deleted}
+
+
+@app.post("/feeds/import/opml/upload")
+def import_opml_upload(file: UploadFile = File(...)):
+    """Import feeds from uploaded OPML file."""
+    try:
+        content = file.file.read().decode('utf-8')
+        added = import_opml_content(content)
+        return {"ok": True, "message": f"Successfully imported {added} feeds from OPML file"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to import OPML: {str(e)}")
+
+
+@app.get("/feeds/export/opml")
+def export_opml_endpoint():
+    """Export all feeds as OPML file."""
+    try:
+        opml_content = export_opml()
+        return Response(
+            content=opml_content,
+            media_type="application/xml",
+            headers={"Content-Disposition": "attachment; filename=newsbrief_feeds.opml"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to export OPML: {str(e)}")
 
 
 @app.post("/refresh")

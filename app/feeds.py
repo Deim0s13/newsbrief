@@ -422,3 +422,53 @@ def fetch_and_store() -> RefreshStats:
     # Record final timing
     stats.refresh_time_seconds = time.time() - start_time
     return stats
+
+
+def import_opml_content(content: str) -> int:
+    """Import OPML content from string."""
+    import re
+    
+    added = 0
+    try:
+        for m in re.finditer(r'xmlUrl="([^"]+)"', content):
+            try:
+                ensure_feed(m.group(1))
+                added += 1
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return added
+
+
+def export_opml() -> str:
+    """Export all feeds as OPML content."""
+    feeds = list_feeds()
+    
+    opml_content = '''<?xml version="1.0" encoding="UTF-8"?>
+<opml version="1.0">
+    <head>
+        <title>NewsBrief Feeds</title>
+        <dateCreated>{}</dateCreated>
+    </head>
+    <body>
+'''.format(datetime.now().strftime('%a, %d %b %Y %H:%M:%S GMT'))
+    
+    for feed in feeds:
+        # feed is a tuple: (id, url, etag, last_modified, robots_allowed, disabled)
+        feed_id, url, etag, last_modified, robots_allowed, disabled = feed
+        if not disabled:
+            # Use URL domain as feed name if no name available
+            from urllib.parse import urlparse
+            domain = urlparse(url).netloc
+            feed_name = domain or 'Unnamed Feed'
+            opml_content += f'''        <outline text="{feed_name}" 
+            title="{feed_name}" 
+            type="rss" 
+            xmlUrl="{url}" />
+'''
+    
+    opml_content += '''    </body>
+</opml>'''
+    
+    return opml_content
