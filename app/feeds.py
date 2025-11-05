@@ -374,9 +374,23 @@ def fetch_and_store() -> RefreshStats:
                     )
                 continue
 
-            # Handle cached response
+            # Handle cached response (304 Not Modified)
             if resp.status_code == 304:
                 stats.feeds_cached_304 += 1
+                # Update last_fetch_at even for cached responses
+                with session_scope() as s:
+                    s.execute(
+                        text(
+                            """
+                        UPDATE feeds SET 
+                            last_fetch_at=CURRENT_TIMESTAMP,
+                            fetch_count=fetch_count + 1,
+                            last_response_time_ms=:response_time
+                        WHERE id=:id
+                    """
+                        ),
+                        {"id": fid, "response_time": response_time_ms},
+                    )
                 continue
 
             # Handle error responses
