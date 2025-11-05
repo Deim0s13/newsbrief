@@ -180,8 +180,29 @@ def import_opml_upload(file: UploadFile = File(...)):
     """Import feeds from uploaded OPML file."""
     try:
         content = file.file.read().decode('utf-8')
-        added = import_opml_content(content)
-        return {"ok": True, "message": f"Successfully imported {added} feeds from OPML file"}
+        result = import_opml_content(content)
+        
+        # Build informative message
+        message_parts = []
+        if result['added'] > 0:
+            message_parts.append(f"{result['added']} feed(s) added")
+        if result['skipped'] > 0:
+            message_parts.append(f"{result['skipped']} already existed")
+        if result['errors'] > 0:
+            message_parts.append(f"{result['errors']} failed")
+        
+        if message_parts:
+            message = "Import complete: " + ", ".join(message_parts)
+        elif result['error_details']:
+            message = result['error_details'][0]  # Show first error detail
+        else:
+            message = "No feeds found in OPML file"
+        
+        return {
+            "ok": True,
+            "message": message,
+            "stats": result
+        }
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to import OPML: {str(e)}")
 
