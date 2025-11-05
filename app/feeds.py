@@ -341,10 +341,13 @@ def fetch_and_store() -> RefreshStats:
             if last_mod:
                 headers["If-Modified-Since"] = last_mod
 
-            # Fetch feed
+            # Fetch feed (track response time)
+            feed_start_time = time.time()
             try:
                 resp = client.get(url, headers=headers)
+                response_time_ms = int((time.time() - feed_start_time) * 1000)
             except Exception as e:
+                response_time_ms = int((time.time() - feed_start_time) * 1000)
                 stats.feeds_error += 1
                 # Update failure statistics
                 with session_scope() as s:
@@ -355,11 +358,12 @@ def fetch_and_store() -> RefreshStats:
                             last_fetch_at=CURRENT_TIMESTAMP,
                             fetch_count=fetch_count + 1,
                             consecutive_failures=consecutive_failures + 1,
+                            last_response_time_ms=:response_time,
                             last_error=:error
                         WHERE id=:id
                     """
                         ),
-                        {"id": fid, "error": str(e)[:500]},  # Truncate error message
+                        {"id": fid, "error": str(e)[:500], "response_time": response_time_ms},
                     )
                 continue
 
@@ -380,11 +384,12 @@ def fetch_and_store() -> RefreshStats:
                             last_fetch_at=CURRENT_TIMESTAMP,
                             fetch_count=fetch_count + 1,
                             consecutive_failures=consecutive_failures + 1,
+                            last_response_time_ms=:response_time,
                             last_error=:error
                         WHERE id=:id
                     """
                         ),
-                        {"id": fid, "error": f"HTTP {resp.status_code}: {resp.reason_phrase}"},
+                        {"id": fid, "error": f"HTTP {resp.status_code}: {resp.reason_phrase}", "response_time": response_time_ms},
                     )
                 continue
 
@@ -399,7 +404,22 @@ def fetch_and_store() -> RefreshStats:
             parsed = feedparser.parse(resp.content)
 
             # Store headers and update feed statistics
+            # Calculate rolling average response time: new_avg = (old_avg * count + new_value) / (count + 1)
             with session_scope() as s:
+                # Get current average for rolling calculation
+                current_data = s.execute(
+                    text("SELECT success_count, avg_response_time_ms FROM feeds WHERE id = :id"),
+                    {"id": fid}
+                ).first()
+                
+                if current_data:
+                    prev_success_count = current_data[0] or 0
+                    prev_avg = current_data[1] or 0
+                    # Calculate new rolling average
+                    new_avg = int((prev_avg * prev_success_count + response_time_ms) / (prev_success_count + 1))
+                else:
+                    new_avg = response_time_ms
+                
                 s.execute(
                     text(
                         """
@@ -413,7 +433,7 @@ def fetch_and_store() -> RefreshStats:
                         last_success_at=CURRENT_TIMESTAMP,
                         consecutive_failures=0,
                         last_response_time_ms=:response_time,
-                        avg_response_time_ms=:avg_response_time_ms
+                        avg_response_time_ms=:avg_response_time
                     WHERE id=:id
                 """
                     ),
@@ -421,8 +441,8 @@ def fetch_and_store() -> RefreshStats:
                         "e": new_etag, 
                         "lm": new_last_mod, 
                         "id": fid,
-                        "response_time": int((time.time() - start_time) * 1000),  # Approximate response time
-                        "avg_response_time_ms": int((time.time() - start_time) * 1000)  # Will be updated with proper calculation
+                        "response_time": response_time_ms,
+                        "avg_response_time": new_avg
                     },
                 )
 
@@ -539,6 +559,16 @@ def fetch_and_store() -> RefreshStats:
 
     # Record final timing
     stats.refresh_time_seconds = time.time() - start_time
+    
+    # Update health scores for all feeds after refresh
+    try:
+        update_feed_health_scores()
+    except Exception as e:
+        # Don't fail the entire refresh if health score update fails
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Failed to update health scores: {e}")
+    
     return stats
 
 
@@ -807,6 +837,92 @@ def recalculate_rankings_and_topics() -> dict:
                 stats['topics_assigned'] += 1
             if new_ranking != current_ranking:
                 stats['rankings_updated'] += 1
+    
+    return stats
+
+
+def calculate_health_score(
+    fetch_count: int,
+    success_count: int,
+    consecutive_failures: int,
+    avg_response_time_ms: int | None
+) -> float:
+    """
+    Calculate a health score (0-100) for a feed based on various metrics.
+    
+    Args:
+        fetch_count: Total number of fetch attempts
+        success_count: Number of successful fetches
+        consecutive_failures: Number of consecutive recent failures
+        avg_response_time_ms: Average response time in milliseconds
+    
+    Returns:
+        Health score from 0.0 to 100.0
+    """
+    if fetch_count == 0:
+        return 100.0  # New feeds start with perfect health
+    
+    # Base score from success rate (0-70 points)
+    success_rate = success_count / fetch_count if fetch_count > 0 else 1.0
+    base_score = success_rate * 70.0
+    
+    # Penalty for consecutive failures (up to -50 points)
+    failure_penalty = min(consecutive_failures * 10.0, 50.0)
+    
+    # Bonus for good response time (0-30 points)
+    response_bonus = 30.0
+    if avg_response_time_ms is not None:
+        if avg_response_time_ms > 5000:  # > 5 seconds
+            response_bonus = 0.0
+        elif avg_response_time_ms > 3000:  # > 3 seconds
+            response_bonus = 10.0
+        elif avg_response_time_ms > 1000:  # > 1 second
+            response_bonus = 20.0
+        # else: keeps full 30 points
+    
+    final_score = base_score - failure_penalty + response_bonus
+    return max(0.0, min(100.0, final_score))
+
+
+def update_feed_health_scores() -> dict:
+    """Update health scores for all feeds based on their metrics."""
+    from .db import session_scope
+    from sqlalchemy import text
+    
+    stats = {
+        'feeds_updated': 0,
+        'avg_health_score': 0.0
+    }
+    
+    with session_scope() as s:
+        rows = s.execute(
+            text("""
+                SELECT id, fetch_count, success_count, consecutive_failures, avg_response_time_ms
+                FROM feeds
+            """)
+        ).all()
+        
+        total_health = 0.0
+        for row in rows:
+            feed_id, fetch_count, success_count, consecutive_failures, avg_response_time_ms = row
+            
+            health_score = calculate_health_score(
+                fetch_count or 0,
+                success_count or 0,
+                consecutive_failures or 0,
+                avg_response_time_ms
+            )
+            
+            s.execute(
+                text("UPDATE feeds SET health_score = :health_score WHERE id = :feed_id"),
+                {"health_score": health_score, "feed_id": feed_id}
+            )
+            
+            stats['feeds_updated'] += 1
+            total_health += health_score
+        
+        if stats['feeds_updated'] > 0:
+            stats['avg_health_score'] = total_health / stats['feeds_updated']
     
     return stats
 

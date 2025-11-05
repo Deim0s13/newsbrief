@@ -23,6 +23,7 @@ from .feeds import (
     import_opml_content,
     list_feeds,
     recalculate_rankings_and_topics,
+    update_feed_health_scores,
     update_feed_names,
 )
 from .llm import DEFAULT_MODEL, OLLAMA_BASE_URL, get_llm_service, is_llm_available
@@ -259,6 +260,20 @@ def recalculate_rankings_endpoint():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to recalculate rankings: {str(e)}")
+
+
+@app.post("/update-feed-health")
+def update_feed_health_endpoint():
+    """Update health scores for all feeds based on their metrics."""
+    try:
+        stats = update_feed_health_scores()
+        return {
+            "ok": True,
+            "message": f"Updated health scores for {stats['feeds_updated']} feeds",
+            "stats": stats
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update health scores: {str(e)}")
 
 
 @app.get("/items", response_model=List[ItemOut])
