@@ -4,7 +4,10 @@ import logging
 from datetime import datetime
 from typing import List
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request, UploadFile, File
+from fastapi.responses import HTMLResponse, Response
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from sqlalchemy import text
 
 from .db import init_db, session_scope
@@ -14,8 +17,14 @@ from .feeds import (
     MAX_REFRESH_TIME_SECONDS,
     RefreshStats,
     add_feed,
+    export_opml,
     fetch_and_store,
     import_opml,
+    import_opml_content,
+    list_feeds,
+    recalculate_rankings_and_topics,
+    update_feed_health_scores,
+    update_feed_names,
 )
 from .llm import DEFAULT_MODEL, OLLAMA_BASE_URL, get_llm_service, is_llm_available
 from .models import (
@@ -33,6 +42,10 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="NewsBrief")
 
+# Template and static file setup
+templates = Jinja2Templates(directory="app/templates")
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
 
 @app.on_event("startup")
 def _startup() -> None:
@@ -41,10 +54,150 @@ def _startup() -> None:
     import_opml("data/feeds.opml")
 
 
+@app.get("/", response_class=HTMLResponse)
+def home_page(request: Request):
+    """Main web interface page."""
+    return templates.TemplateResponse("index.html", {
+        "request": request, 
+        "current_page": "articles"
+    })
+
+
+@app.get("/monitoring", response_class=HTMLResponse)
+def monitoring_page(request: Request):
+    """System monitoring dashboard page."""
+    return templates.TemplateResponse("monitoring.html", {
+        "request": request,
+        "current_page": "monitoring"
+    })
+
+
+@app.get("/feeds-manage", response_class=HTMLResponse)
+def feeds_management_page(request: Request):
+    """Feed management interface page."""
+    return templates.TemplateResponse("feed_management.html", {
+        "request": request,
+        "current_page": "feed-management"
+    })
+
+
+@app.get("/feeds")
+def list_feeds_endpoint():
+    """List all feeds with their statistics."""
+    feeds = []
+    with session_scope() as s:
+        results = s.execute(
+            text("""
+                SELECT f.*, 
+                       COUNT(i.id) as total_articles,
+                       MAX(i.created_at) as last_article_at
+                FROM feeds f
+                LEFT JOIN items i ON f.id = i.feed_id
+                GROUP BY f.id
+                ORDER BY f.created_at DESC
+            """)
+        ).fetchall()
+        
+        for row in results:
+            feed_data = dict(row._mapping)
+            # Convert database booleans
+            feed_data["disabled"] = bool(feed_data["disabled"])
+            feed_data["robots_allowed"] = bool(feed_data["robots_allowed"])
+            feeds.append(feed_data)
+    
+    return feeds
+
+
 @app.post("/feeds")
 def add_feed_endpoint(feed: FeedIn):
     fid = add_feed(str(feed.url))
     return {"ok": True, "feed_id": fid}
+
+
+@app.put("/feeds/{feed_id}")
+def update_feed(feed_id: int, feed_update: dict):
+    """Update an existing feed."""
+    with session_scope() as s:
+        # Check if feed exists
+        existing = s.execute(
+            text("SELECT id FROM feeds WHERE id = :feed_id"),
+            {"feed_id": feed_id}
+        ).fetchone()
+        
+        if not existing:
+            raise HTTPException(status_code=404, detail="Feed not found")
+        
+        # Build update query dynamically
+        update_fields = []
+        params = {"feed_id": feed_id}
+        
+        if "url" in feed_update:
+            update_fields.append("url = :url")
+            params["url"] = feed_update["url"]
+        
+        if "disabled" in feed_update:
+            update_fields.append("disabled = :disabled")
+            params["disabled"] = int(feed_update["disabled"])
+        
+        if update_fields:
+            update_fields.append("updated_at = CURRENT_TIMESTAMP")
+            sql = f"UPDATE feeds SET {', '.join(update_fields)} WHERE id = :feed_id"
+            s.execute(text(sql), params)
+    
+    return {"ok": True, "message": "Feed updated successfully"}
+
+
+@app.delete("/feeds/{feed_id}")
+def delete_feed(feed_id: int):
+    """Delete a feed and all its articles."""
+    with session_scope() as s:
+        # Check if feed exists
+        existing = s.execute(
+            text("SELECT id FROM feeds WHERE id = :feed_id"),
+            {"feed_id": feed_id}
+        ).fetchone()
+        
+        if not existing:
+            raise HTTPException(status_code=404, detail="Feed not found")
+        
+        # Delete articles first (due to foreign key constraint)
+        articles_deleted = s.execute(
+            text("DELETE FROM items WHERE feed_id = :feed_id"),
+            {"feed_id": feed_id}
+        ).rowcount
+        
+        # Delete the feed
+        s.execute(
+            text("DELETE FROM feeds WHERE id = :feed_id"),
+            {"feed_id": feed_id}
+        )
+    
+    return {"ok": True, "articles_deleted": articles_deleted}
+
+
+@app.post("/feeds/import/opml/upload")
+def import_opml_upload(file: UploadFile = File(...)):
+    """Import feeds from uploaded OPML file."""
+    try:
+        content = file.file.read().decode('utf-8')
+        added = import_opml_content(content)
+        return {"ok": True, "message": f"Successfully imported {added} feeds from OPML file"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to import OPML: {str(e)}")
+
+
+@app.get("/feeds/export/opml")
+def export_opml_endpoint():
+    """Export all feeds as OPML file."""
+    try:
+        opml_content = export_opml()
+        return Response(
+            content=opml_content,
+            media_type="application/xml",
+            headers={"Content-Disposition": "attachment; filename=newsbrief_feeds.opml"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to export OPML: {str(e)}")
 
 
 @app.post("/refresh")
@@ -81,8 +234,50 @@ def refresh_endpoint():
     }
 
 
+@app.post("/update-feed-names")
+def update_feed_names_endpoint():
+    """Update existing feeds with proper names from their RSS feeds."""
+    try:
+        stats = update_feed_names()
+        return {
+            "ok": True,
+            "message": f"Updated {stats['feeds_updated']} feed names",
+            "stats": stats
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update feed names: {str(e)}")
+
+
+@app.post("/recalculate-rankings")
+def recalculate_rankings_endpoint():
+    """Recalculate ranking scores and topic classifications for all articles."""
+    try:
+        stats = recalculate_rankings_and_topics()
+        return {
+            "ok": True,
+            "message": f"Recalculated rankings and topics for {stats['articles_processed']} articles",
+            "stats": stats
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to recalculate rankings: {str(e)}")
+
+
+@app.post("/update-feed-health")
+def update_feed_health_endpoint():
+    """Update health scores for all feeds based on their metrics."""
+    try:
+        stats = update_feed_health_scores()
+        return {
+            "ok": True,
+            "message": f"Updated health scores for {stats['feeds_updated']} feeds",
+            "stats": stats
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update health scores: {str(e)}")
+
+
 @app.get("/items", response_model=List[ItemOut])
-def list_items(limit: int = Query(50, le=200)):
+def list_items(limit: int = Query(50, le=200), offset: int = Query(0, ge=0)):
     with session_scope() as s:
         rows = s.execute(
             text(
@@ -90,13 +285,14 @@ def list_items(limit: int = Query(50, le=200)):
         SELECT id, title, url, published, summary, content_hash, content,
                ai_summary, ai_model, ai_generated_at,
                structured_summary_json, structured_summary_model, 
-               structured_summary_content_hash, structured_summary_generated_at
+               structured_summary_content_hash, structured_summary_generated_at,
+               ranking_score, topic, topic_confidence, source_weight, feed_id
         FROM items
-        ORDER BY COALESCE(published, created_at) DESC
-        LIMIT :lim
+        ORDER BY ranking_score DESC, COALESCE(published, created_at) DESC
+        LIMIT :lim OFFSET :off
         """
             ),
-            {"lim": limit},
+            {"lim": limit, "off": offset},
         ).all()
 
         items = []
@@ -152,16 +348,30 @@ def list_items(limit: int = Query(50, le=200)):
                     url=r[2],
                     published=r[3],
                     summary=r[4],
+                    feed_id=r[18],  # feed_id field
                     ai_summary=r[7],  # Updated index
                     ai_model=r[8],  # Updated index
                     ai_generated_at=r[9],  # Updated index
                     structured_summary=structured_summary,
                     fallback_summary=fallback_summary,
                     is_fallback_summary=is_fallback,
+                    # New ranking fields (v0.4.0)
+                    ranking_score=float(r[14]) if r[14] is not None else 0.0,
+                    topic=r[15],
+                    topic_confidence=float(r[16]) if r[16] is not None else 0.0,
+                    source_weight=float(r[17]) if r[17] is not None else 1.0,
                 )
             )
 
         return items
+
+
+@app.get("/items/count")
+def get_items_count():
+    """Get total count of items for pagination."""
+    with session_scope() as s:
+        result = s.execute(text("SELECT COUNT(*) as count FROM items")).fetchone()
+        return {"count": result[0]}
 
 
 @app.get("/llm/status", response_model=LLMStatusOut)
@@ -399,6 +609,205 @@ def generate_summaries(request: SummaryRequest):
         errors=errors,
         results=results,
     )
+
+
+@app.get("/items/topic/{topic_key}")
+def get_items_by_topic(topic_key: str, limit: int = Query(50, le=200)):
+    """Get articles filtered by topic, ordered by ranking score."""
+    with session_scope() as s:
+        # Get total count for this topic
+        count_result = s.execute(
+            text("SELECT COUNT(*) FROM items WHERE topic = :topic_key"),
+            {"topic_key": topic_key}
+        ).fetchone()
+        total_count = count_result[0]
+        
+        rows = s.execute(
+            text(
+                """
+        SELECT id, title, url, published, summary, content_hash, content,
+               ai_summary, ai_model, ai_generated_at,
+               structured_summary_json, structured_summary_model, 
+               structured_summary_content_hash, structured_summary_generated_at,
+               ranking_score, topic, topic_confidence, source_weight, feed_id
+        FROM items
+        WHERE topic = :topic_key
+        ORDER BY ranking_score DESC, COALESCE(published, created_at) DESC
+        LIMIT :lim
+        """
+            ),
+            {"topic_key": topic_key, "lim": limit},
+        ).all()
+
+        items = []
+        for r in rows:
+            # Parse structured summary if available
+            structured_summary = None
+            if r[10] and r[11]:
+                try:
+                    structured_summary = StructuredSummary.from_json_string(
+                        r[10],
+                        r[12] or r[5] or "",
+                        r[11],
+                        datetime.fromisoformat(r[13]) if r[13] else datetime.now(),
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to parse structured summary for item {r[0]}: {e}"
+                    )
+
+            # Generate fallback summary if needed
+            fallback_summary = None
+            is_fallback = False
+            has_ai_summary = structured_summary is not None or r[7] is not None
+
+            if not has_ai_summary and r[6]:
+                try:
+                    fallback_summary = extract_first_sentences(r[6], sentence_count=2)
+                    is_fallback = True
+                    if not fallback_summary.strip():
+                        fallback_summary = r[4] or r[1] or "Content preview unavailable"
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to extract fallback summary for item {r[0]}: {e}"
+                    )
+                    fallback_summary = r[4] or r[1] or "Content preview unavailable"
+                    is_fallback = True
+
+            items.append(
+                ItemOut(
+                    id=r[0],
+                    title=r[1],
+                    url=r[2],
+                    published=r[3],
+                    summary=r[4],
+                    feed_id=r[18],  # feed_id field
+                    ai_summary=r[7],
+                    ai_model=r[8],
+                    ai_generated_at=r[9],
+                    structured_summary=structured_summary,
+                    fallback_summary=fallback_summary,
+                    is_fallback_summary=is_fallback,
+                    ranking_score=float(r[14]) if r[14] is not None else 0.0,
+                    topic=r[15],
+                    topic_confidence=float(r[16]) if r[16] is not None else 0.0,
+                    source_weight=float(r[17]) if r[17] is not None else 1.0,
+                )
+            )
+
+        return {
+            "topic": topic_key,
+            "display_name": topic_key.replace('-', '/').title(),
+            "count": total_count,
+            "items": items,
+        }
+
+
+@app.get("/article/{item_id}", response_class=HTMLResponse)
+def get_article_page(request: Request, item_id: int):
+    """Get article detail page."""
+    with session_scope() as s:
+        row = s.execute(
+            text(
+                """
+        SELECT id, title, url, published, summary, content_hash, content,
+               ai_summary, ai_model, ai_generated_at,
+               structured_summary_json, structured_summary_model, 
+               structured_summary_content_hash, structured_summary_generated_at,
+               ranking_score, topic, topic_confidence, source_weight
+        FROM items
+        WHERE id = :item_id
+        """
+            ),
+            {"item_id": item_id},
+        ).fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="Article not found")
+
+        # Parse structured summary if available
+        structured_summary = None
+        if row[10] and row[11]:  # structured_summary_json and model
+            try:
+                structured_summary = StructuredSummary.from_json_string(
+                    row[10],
+                    row[12] or row[5] or "",  # structured content_hash, fallback to main content_hash
+                    row[11],
+                    datetime.fromisoformat(row[13]) if row[13] else datetime.now(),
+                )
+            except Exception as e:
+                logger.warning(f"Failed to parse structured summary for item {item_id}: {e}")
+
+        # Generate fallback summary if no AI summary available
+        fallback_summary = None
+        is_fallback = False
+
+        # Check if we have any AI-generated summary
+        has_ai_summary = structured_summary is not None or row[7] is not None
+
+        if not has_ai_summary and row[6]:  # content is available
+            try:
+                from .models import extract_first_sentences
+                fallback_summary = extract_first_sentences(row[6], sentence_count=2)
+                is_fallback = True
+
+                if not fallback_summary.strip():
+                    fallback_summary = row[4] or row[1] or "Content preview unavailable"
+            except Exception as e:
+                logger.warning(f"Failed to extract fallback summary for item {item_id}: {e}")
+                fallback_summary = row[4] or row[1] or "Content preview unavailable"
+                is_fallback = True
+
+        article = ItemOut(
+            id=row[0],
+            title=row[1],
+            url=row[2],
+            published=row[3],
+            summary=row[4],
+            ai_summary=row[7],
+            ai_model=row[8],
+            ai_generated_at=row[9],
+            structured_summary=structured_summary,
+            fallback_summary=fallback_summary,
+            is_fallback_summary=is_fallback,
+            ranking_score=float(row[14]) if row[14] is not None else 0.0,
+            topic=row[15],
+            topic_confidence=float(row[16]) if row[16] is not None else 0.0,
+            source_weight=float(row[17]) if row[17] is not None else 1.0,
+        )
+
+        # Get topic display info
+        topic_display_name = "Unclassified"
+        topic_badge_classes = "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200"
+        
+        if article.topic:
+            topic_map = {
+                'ai-ml': 'AI/ML',
+                'cloud-k8s': 'Cloud/K8s',
+                'security': 'Security',
+                'devtools': 'DevTools',
+                'chips-hardware': 'Chips/Hardware'
+            }
+            topic_display_name = topic_map.get(article.topic, article.topic)
+            
+            badge_classes = {
+                'ai-ml': 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
+                'cloud-k8s': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+                'security': 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+                'devtools': 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+                'chips-hardware': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+            }
+            topic_badge_classes = badge_classes.get(article.topic, topic_badge_classes)
+
+        return templates.TemplateResponse(
+            "article_detail.html",
+            {
+                "request": Request,
+                "article": article,
+                "topic_display_name": topic_display_name,
+                "topic_badge_classes": topic_badge_classes,
+            }
+        )
 
 
 @app.get("/items/{item_id}", response_model=ItemOut)

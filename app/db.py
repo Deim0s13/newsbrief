@@ -38,12 +38,22 @@ def init_db() -> None:
         CREATE TABLE IF NOT EXISTS feeds (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           url TEXT UNIQUE NOT NULL,
+          name TEXT,
           etag TEXT,
           last_modified TEXT,
           robots_allowed INTEGER DEFAULT 1,
           disabled INTEGER DEFAULT 0,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          last_fetch_at DATETIME,
+          last_success_at DATETIME,
+          fetch_count INTEGER DEFAULT 0,
+          success_count INTEGER DEFAULT 0,
+          consecutive_failures INTEGER DEFAULT 0,
+          last_response_time_ms INTEGER,
+          avg_response_time_ms INTEGER,
+          last_error TEXT,
+          health_score REAL DEFAULT 100.0
         );
         """
         )
@@ -67,23 +77,42 @@ def init_db() -> None:
           structured_summary_model TEXT,
           structured_summary_content_hash TEXT,
           structured_summary_generated_at DATETIME,
+          ranking_score REAL DEFAULT 0.0,
+          topic TEXT,
+          topic_confidence REAL DEFAULT 0.0,
+          source_weight REAL DEFAULT 1.0,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY(feed_id) REFERENCES feeds(id)
         );
         """
         )
 
-        # Migration: Add AI summary columns if they don't exist
+        # Migration: Add columns if they don't exist (for existing databases)
         migration_columns = [
+            # Items table migrations
             "ALTER TABLE items ADD COLUMN ai_summary TEXT;",
             "ALTER TABLE items ADD COLUMN ai_model TEXT;",
             "ALTER TABLE items ADD COLUMN ai_generated_at DATETIME;",
-            # New structured summary columns
             "ALTER TABLE items ADD COLUMN content_hash TEXT;",
             "ALTER TABLE items ADD COLUMN structured_summary_json TEXT;",
             "ALTER TABLE items ADD COLUMN structured_summary_model TEXT;",
             "ALTER TABLE items ADD COLUMN structured_summary_content_hash TEXT;",
             "ALTER TABLE items ADD COLUMN structured_summary_generated_at DATETIME;",
+            "ALTER TABLE items ADD COLUMN ranking_score REAL DEFAULT 0.0;",
+            "ALTER TABLE items ADD COLUMN topic TEXT;",
+            "ALTER TABLE items ADD COLUMN topic_confidence REAL DEFAULT 0.0;",
+            "ALTER TABLE items ADD COLUMN source_weight REAL DEFAULT 1.0;",
+            # Feeds table migrations
+            "ALTER TABLE feeds ADD COLUMN name TEXT;",
+            "ALTER TABLE feeds ADD COLUMN last_fetch_at DATETIME;",
+            "ALTER TABLE feeds ADD COLUMN last_success_at DATETIME;",
+            "ALTER TABLE feeds ADD COLUMN fetch_count INTEGER DEFAULT 0;",
+            "ALTER TABLE feeds ADD COLUMN success_count INTEGER DEFAULT 0;",
+            "ALTER TABLE feeds ADD COLUMN consecutive_failures INTEGER DEFAULT 0;",
+            "ALTER TABLE feeds ADD COLUMN last_response_time_ms INTEGER;",
+            "ALTER TABLE feeds ADD COLUMN avg_response_time_ms INTEGER;",
+            "ALTER TABLE feeds ADD COLUMN last_error TEXT;",
+            "ALTER TABLE feeds ADD COLUMN health_score REAL DEFAULT 100.0;",
         ]
 
         for migration_sql in migration_columns:
@@ -106,5 +135,20 @@ def init_db() -> None:
             """
         CREATE INDEX IF NOT EXISTS idx_structured_summary_cache 
         ON items(structured_summary_content_hash, structured_summary_model);
+        """
+        )
+        conn.exec_driver_sql(
+            """
+        CREATE INDEX IF NOT EXISTS idx_items_ranking_score ON items(ranking_score DESC);
+        """
+        )
+        conn.exec_driver_sql(
+            """
+        CREATE INDEX IF NOT EXISTS idx_items_topic ON items(topic);
+        """
+        )
+        conn.exec_driver_sql(
+            """
+        CREATE INDEX IF NOT EXISTS idx_feeds_health_score ON feeds(health_score DESC);
         """
         )

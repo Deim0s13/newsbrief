@@ -1,1 +1,164 @@
-<html><body><h1>NewsBrief</h1></body></html>
+{% extends "base.html" %}
+
+{% block title %}NewsBrief - Intelligent RSS Aggregator{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 dark:bg-gray-900 py-6">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900 dark:text-white">NewsBrief</h1>
+            <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                Intelligent RSS Aggregator with AI-powered content curation
+            </p>
+        </div>
+
+        <!-- Filters and Controls -->
+        <div class="flex flex-col sm:flex-row gap-4 mb-8">
+            <!-- Topic Filter -->
+            <div class="flex-1">
+                <label for="topic-filter" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Filter by Topic</label>
+                <select id="topic-filter" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                    <option value="">All Topics</option>
+                    <option value="ai-ml">AI/ML</option>
+                    <option value="cloud-k8s">Cloud/K8s</option>
+                    <option value="security">Security</option>
+                    <option value="devtools">DevTools</option>
+                    <option value="chips-hardware">Chips/Hardware</option>
+                    <option value="general">General News</option>
+                </select>
+            </div>
+            
+            <!-- Articles Per Page -->
+            <div class="sm:w-32">
+                <label for="per-page-selector" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Per Page</label>
+                <select id="per-page-selector" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                    <option value="20">20</option>
+                    <option value="50" selected>50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+            
+            <!-- View Toggle -->
+            <div class="flex items-end">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">View Mode</label>
+                <div class="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
+                    <button id="skim-view" class="px-3 py-1 text-sm font-medium bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm rounded-md">
+                        Skim
+                    </button>
+                    <button id="full-view" class="px-3 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">
+                        Full
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="stats-card">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-8 h-8 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
+                            <svg class="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-4">
+                        <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Articles</div>
+                        <div id="total-articles" class="text-2xl font-bold text-gray-900 dark:text-white">Loading...</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stats-card">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-8 h-8 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
+                            <svg class="w-5 h-5 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 00-2-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v4"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-4">
+                        <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Active Feeds</div>
+                        <div id="active-feeds" class="text-2xl font-bold text-gray-900 dark:text-white">Loading...</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stats-card">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-8 h-8 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center">
+                            <svg class="w-5 h-5 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-4">
+                        <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Last Refresh</div>
+                        <div id="last-refresh" class="text-2xl font-bold text-gray-900 dark:text-white">Never</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex flex-col sm:flex-row gap-4 mb-8">
+            <button onclick="refreshFeeds()" class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                Refresh Feeds
+            </button>
+            
+            <a href="/monitoring" class="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors flex items-center justify-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 00-2-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v4"></path>
+                </svg>
+                View Monitoring
+            </a>
+            
+            <a href="/docs" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                </svg>
+                API Documentation
+            </a>
+        </div>
+
+        <!-- Recent Articles -->
+        <div class="stats-card">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Recent Articles</h3>
+            <div id="articles-container" class="space-y-4">
+                <div class="text-center py-8 text-gray-500 dark:text-gray-400">
+                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                    <p>Loading articles...</p>
+                </div>
+            </div>
+            
+            <!-- Pagination Controls -->
+            <div id="pagination-container" class="mt-6 flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <button id="prev-page" class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-600">
+                        Previous
+                    </button>
+                    <span id="page-info" class="text-sm text-gray-700 dark:text-gray-300">
+                        Page 1 of 1
+                    </span>
+                    <button id="next-page" class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-600">
+                        Next
+                    </button>
+                </div>
+                <div class="text-sm text-gray-500 dark:text-gray-400">
+                    <span id="articles-count">0</span> articles total
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+{% endblock %}

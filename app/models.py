@@ -112,6 +112,7 @@ class ItemOut(BaseModel):
     url: str
     published: Optional[datetime] = None
     summary: Optional[str] = None
+    feed_id: Optional[int] = Field(None, description="ID of the feed this article belongs to")
     # Legacy plain text AI summary (for backward compatibility)
     ai_summary: Optional[str] = None
     ai_model: Optional[str] = None
@@ -125,6 +126,11 @@ class ItemOut(BaseModel):
     is_fallback_summary: bool = Field(
         False, description="Whether the primary summary is a fallback"
     )
+    # Ranking and topic classification fields (v0.4.0)
+    ranking_score: Optional[float] = Field(None, description="Article ranking score")
+    topic: Optional[str] = Field(None, description="Classified topic")
+    topic_confidence: Optional[float] = Field(None, description="Topic classification confidence")
+    source_weight: Optional[float] = Field(None, description="Source weight multiplier")
 
 
 class SummaryRequest(BaseModel):

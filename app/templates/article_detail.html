@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}{{ article.title or 'Article' }} - NewsBrief{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 dark:bg-gray-900 py-6">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        
+        <!-- Back Button -->
+        <div class="mb-6">
+            <a href="/" class="inline-flex items-center text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                </svg>
+                Back to Articles
+            </a>
+        </div>
+
+        <!-- Article Header -->
+        <div class="stats-card mb-8">
+            <div class="flex justify-between items-start mb-4">
+                <h1 class="text-3xl font-bold text-gray-900 dark:text-white flex-1">
+                    {{ article.title or 'Untitled' }}
+                </h1>
+                <div class="flex items-center space-x-2 ml-4">
+                    {% if article.topic %}
+                    <span class="topic-badge inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {{ topic_badge_classes }}">
+                        {{ topic_display_name }}
+                    </span>
+                    {% endif %}
+                    <span class="text-xs text-gray-500 dark:text-gray-400">
+                        {{ article.published.strftime('%B %d, %Y') if article.published else 'No date' }}
+                    </span>
+                </div>
+            </div>
+            
+            <div class="flex justify-between items-center mb-6">
+                <div class="flex space-x-4">
+                    <a href="{{ article.url }}" target="_blank" class="text-blue-600 hover:text-blue-800 dark:text-blue-400 text-sm font-medium">
+                        Read Original Article →
+                    </a>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <span class="text-xs text-gray-500 dark:text-gray-400">
+                        Score: {{ "%.3f"|format(article.ranking_score) if article.ranking_score else 'N/A' }}
+                    </span>
+                    {% if article.ai_summary %}
+                    <span class="ai-indicator text-xs bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 px-2 py-1 rounded">AI Summary</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Article Content -->
+        <div class="stats-card">
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Article Summary</h2>
+            
+            {% if article.ai_summary %}
+            <div class="prose dark:prose-invert max-w-none">
+                {{ article.ai_summary|safe }}
+            </div>
+            {% elif article.structured_summary %}
+            <div class="space-y-4">
+                {% if article.structured_summary.bullets %}
+                <div>
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Key Points</h3>
+                    <ul class="list-disc list-inside space-y-1 text-gray-700 dark:text-gray-300">
+                        {% for bullet in article.structured_summary.bullets %}
+                        <li>{{ bullet }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+                
+                {% if article.structured_summary.why_it_matters %}
+                <div>
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Why It Matters</h3>
+                    <p class="text-gray-700 dark:text-gray-300">{{ article.structured_summary.why_it_matters }}</p>
+                </div>
+                {% endif %}
+                
+                {% if article.structured_summary.tags %}
+                <div>
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Tags</h3>
+                    <div class="flex flex-wrap gap-2">
+                        {% for tag in article.structured_summary.tags %}
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200">
+                            {{ tag }}
+                        </span>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+            {% elif article.fallback_summary %}
+            <div class="prose dark:prose-invert max-w-none">
+                <p class="text-gray-700 dark:text-gray-300">{{ article.fallback_summary }}</p>
+            </div>
+            {% elif article.summary %}
+            <div class="prose dark:prose-invert max-w-none">
+                {{ article.summary|safe }}
+            </div>
+            {% else %}
+            <div class="text-center py-8 text-gray-500 dark:text-gray-400">
+                <p>No summary available for this article.</p>
+                <a href="{{ article.url }}" target="_blank" class="text-blue-600 hover:text-blue-800 dark:text-blue-400 mt-2 inline-block">
+                    Read the original article →
+                </a>
+            </div>
+            {% endif %}
+        </div>
+
+    </div>
+</div>
+{% endblock %}
