@@ -103,6 +103,18 @@ def list_feeds_endpoint():
             # Convert database booleans
             feed_data["disabled"] = bool(feed_data["disabled"])
             feed_data["robots_allowed"] = bool(feed_data["robots_allowed"])
+            
+            # Convert timestamps to ISO 8601 with UTC indicator for proper browser parsing
+            for field in ['created_at', 'updated_at', 'last_fetch_at', 'last_success_at', 'last_article_at']:
+                if field in feed_data and feed_data[field]:
+                    # Add 'Z' to indicate UTC timezone
+                    ts = str(feed_data[field])
+                    if 'T' not in ts:
+                        ts = ts.replace(' ', 'T')
+                    if not ts.endswith('Z'):
+                        ts = ts + 'Z'
+                    feed_data[field] = ts
+            
             feeds.append(feed_data)
     
     return feeds
