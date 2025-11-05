@@ -112,6 +112,7 @@ class ItemOut(BaseModel):
     url: str
     published: Optional[datetime] = None
     summary: Optional[str] = None
+    feed_id: Optional[int] = Field(None, description="ID of the feed this article belongs to")
     # Legacy plain text AI summary (for backward compatibility)
     ai_summary: Optional[str] = None
     ai_model: Optional[str] = None

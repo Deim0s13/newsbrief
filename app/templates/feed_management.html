@@ -54,11 +54,17 @@
         <div class="stats-card">
             <div class="flex justify-between items-center mb-6">
                 <h3 class="text-lg font-medium text-gray-900 dark:text-white">Your Feeds</h3>
-                <button onclick="refreshFeedsList()" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors">
+                <button onclick="refreshAllFeeds()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
                     <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                     </svg>
-                    Refresh
+                    Refresh All Feeds
+                </button>
+                <button onclick="refreshFeedsList()" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors ml-2">
+                    <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    Reload List
                 </button>
             </div>
             
@@ -92,17 +98,33 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function setupEventListeners() {
+    console.log('Setting up event listeners');
+    
     // Add feed form
-    document.getElementById('add-feed-form').addEventListener('submit', function(e) {
-        e.preventDefault();
-        addFeed();
-    });
+    const addFeedForm = document.getElementById('add-feed-form');
+    if (addFeedForm) {
+        console.log('Found add-feed-form, adding event listener');
+        addFeedForm.addEventListener('submit', function(e) {
+            console.log('Add feed form submitted');
+            e.preventDefault();
+            addFeed();
+        });
+    } else {
+        console.error('Could not find add-feed-form element');
+    }
     
     // Import OPML form
-    document.getElementById('import-opml-form').addEventListener('submit', function(e) {
-        e.preventDefault();
-        importOPML();
-    });
+    const importForm = document.getElementById('import-opml-form');
+    if (importForm) {
+        console.log('Found import-opml-form, adding event listener');
+        importForm.addEventListener('submit', function(e) {
+            console.log('Import OPML form submitted');
+            e.preventDefault();
+            importOPML();
+        });
+    } else {
+        console.error('Could not find import-opml-form element');
+    }
 }
 
 async function loadFeedsList() {
@@ -165,12 +187,22 @@ function updateFeedsTable(feeds) {
 }
 
 async function addFeed() {
+    console.log('addFeed function called');
     const urlInput = document.getElementById('feed-url');
     const url = urlInput.value.trim();
     
-    if (!url) return;
+    console.log('URL input value:', url);
+    
+    if (!url) {
+        console.log('No URL provided');
+        showNotification('Please enter a feed URL', 'error');
+        return;
+    }
     
     try {
+        console.log('Sending request to add feed:', url);
+        showNotification('Adding feed...', 'info');
+        
         const response = await fetch('/feeds', {
             method: 'POST',
             headers: {
@@ -179,11 +211,16 @@ async function addFeed() {
             body: JSON.stringify({ url: url })
         });
         
+        console.log('Response status:', response.status);
+        
         if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Response error:', errorText);
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
         
         const result = await response.json();
+        console.log('Feed added successfully:', result);
         showNotification(`Feed added successfully! ID: ${result.feed_id}`, 'success');
         
         // Clear form and reload list
@@ -306,6 +343,30 @@ async function deleteFeed(feedId) {
 
 function refreshFeedsList() {
     loadFeedsList();
+}
+
+async function refreshAllFeeds() {
+    try {
+        showNotification('Refreshing all feeds... This may take a few minutes.', 'info');
+        
+        const response = await fetch('/refresh', {
+            method: 'POST'
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const result = await response.json();
+        showNotification(`Successfully refreshed feeds! Processed ${result.stats.items.total} articles from ${result.stats.feeds.processed} feeds.`, 'success');
+        
+        // Reload the feeds list to show updated status
+        loadFeedsList();
+        
+    } catch (error) {
+        console.error('Error refreshing feeds:', error);
+        showNotification(`Failed to refresh feeds: ${error.message}`, 'error');
+    }
 }
 
 // Status indicator styles

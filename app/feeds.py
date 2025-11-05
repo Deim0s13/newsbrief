@@ -184,17 +184,55 @@ def ensure_feed(feed_url: str) -> int:
         
         # Try to get feed name from RSS feed
         feed_name = None
+        feed_status = "active"  # Track feed status
+        
         try:
             import feedparser
             feed_data = feedparser.parse(feed_url)
-            if feed_data.feed and hasattr(feed_data.feed, 'title'):
-                feed_name = feed_data.feed.title
-        except Exception:
-            # If we can't parse the feed, use domain name as fallback
+            
+            # Check if feed is valid and has content
+            if feed_data.feed and not feed_data.bozo:
+                # Try multiple attributes for feed name
+                if hasattr(feed_data.feed, 'title') and feed_data.feed.title:
+                    feed_name = feed_data.feed.title
+                elif hasattr(feed_data.feed, 'subtitle') and feed_data.feed.subtitle:
+                    feed_name = feed_data.feed.subtitle
+                elif hasattr(feed_data.feed, 'description') and feed_data.feed.description:
+                    # Use first part of description as name
+                    desc = feed_data.feed.description
+                    feed_name = desc[:50] + "..." if len(desc) > 50 else desc
+                elif feed_data.entries and len(feed_data.entries) > 0:
+                    # Try to infer name from first entry's source
+                    first_entry = feed_data.entries[0]
+                    if hasattr(first_entry, 'source') and first_entry.source:
+                        feed_name = first_entry.source
+                    elif hasattr(first_entry, 'author') and first_entry.author:
+                        feed_name = first_entry.author
+            else:
+                # Feed is malformed or invalid
+                feed_status = "invalid"
+        except Exception as e:
+            # Check if it's a network error (404, etc.)
+            if "404" in str(e) or "Not Found" in str(e):
+                feed_status = "not_found"
+            else:
+                feed_status = "error"
+        
+        # If we still don't have a name, use domain name as fallback
+        if not feed_name or feed_name.strip() == "":
             try:
                 from urllib.parse import urlparse
                 domain = urlparse(feed_url).netloc
-                feed_name = domain
+                # Create a more descriptive name from domain
+                if domain:
+                    if feed_status == "not_found":
+                        feed_name = f"[DISCONTINUED] Feed from {domain}"
+                    elif feed_status == "invalid":
+                        feed_name = f"[INVALID] Feed from {domain}"
+                    else:
+                        feed_name = f"Feed from {domain}"
+                else:
+                    feed_name = "Unnamed Feed"
             except Exception:
                 feed_name = "Unnamed Feed"
         
@@ -306,8 +344,23 @@ def fetch_and_store() -> RefreshStats:
             # Fetch feed
             try:
                 resp = client.get(url, headers=headers)
-            except Exception:
+            except Exception as e:
                 stats.feeds_error += 1
+                # Update failure statistics
+                with session_scope() as s:
+                    s.execute(
+                        text(
+                            """
+                        UPDATE feeds SET 
+                            last_fetch_at=CURRENT_TIMESTAMP,
+                            fetch_count=fetch_count + 1,
+                            consecutive_failures=consecutive_failures + 1,
+                            last_error=:error
+                        WHERE id=:id
+                    """
+                        ),
+                        {"id": fid, "error": str(e)[:500]},  # Truncate error message
+                    )
                 continue
 
             # Handle cached response
@@ -318,6 +371,21 @@ def fetch_and_store() -> RefreshStats:
             # Handle error responses
             if resp.status_code >= 400:
                 stats.feeds_error += 1
+                # Update failure statistics
+                with session_scope() as s:
+                    s.execute(
+                        text(
+                            """
+                        UPDATE feeds SET 
+                            last_fetch_at=CURRENT_TIMESTAMP,
+                            fetch_count=fetch_count + 1,
+                            consecutive_failures=consecutive_failures + 1,
+                            last_error=:error
+                        WHERE id=:id
+                    """
+                        ),
+                        {"id": fid, "error": f"HTTP {resp.status_code}: {resp.reason_phrase}"},
+                    )
                 continue
 
             # Successfully fetched feed
@@ -330,15 +398,32 @@ def fetch_and_store() -> RefreshStats:
             # Parse feed
             parsed = feedparser.parse(resp.content)
 
-            # Store headers
+            # Store headers and update feed statistics
             with session_scope() as s:
                 s.execute(
                     text(
                         """
-                    UPDATE feeds SET etag=:e, last_modified=:lm, updated_at=CURRENT_TIMESTAMP WHERE id=:id
+                    UPDATE feeds SET 
+                        etag=:e, 
+                        last_modified=:lm, 
+                        updated_at=CURRENT_TIMESTAMP,
+                        last_fetch_at=CURRENT_TIMESTAMP,
+                        fetch_count=fetch_count + 1,
+                        success_count=success_count + 1,
+                        last_success_at=CURRENT_TIMESTAMP,
+                        consecutive_failures=0,
+                        last_response_time_ms=:response_time,
+                        avg_response_time_ms=:avg_response_time_ms
+                    WHERE id=:id
                 """
                     ),
-                    {"e": new_etag, "lm": new_last_mod, "id": fid},
+                    {
+                        "e": new_etag, 
+                        "lm": new_last_mod, 
+                        "id": fid,
+                        "response_time": int((time.time() - start_time) * 1000),  # Approximate response time
+                        "avg_response_time_ms": int((time.time() - start_time) * 1000)  # Will be updated with proper calculation
+                    },
                 )
 
             # Process feed entries with per-feed limit for fairness
@@ -462,15 +547,22 @@ def import_opml_content(content: str) -> int:
     import re
     
     added = 0
+    errors = 0
     try:
         for m in re.finditer(r'xmlUrl="([^"]+)"', content):
             try:
                 ensure_feed(m.group(1))
                 added += 1
-            except Exception:
-                pass
-    except Exception:
-        pass
+            except Exception as e:
+                errors += 1
+                # Log the error for debugging
+                print(f"Failed to import feed {m.group(1)}: {e}")
+    except Exception as e:
+        print(f"Error parsing OPML content: {e}")
+    
+    if errors > 0:
+        print(f"OPML import completed: {added} feeds added, {errors} errors")
+    
     return added
 
 
@@ -514,7 +606,7 @@ def calculate_ranking_score(article_data: dict, source_weight: float = 1.0) -> f
     # Base score from source weight
     score += source_weight
     
-    # Recency boost (newer articles get higher scores)
+    # Recency boost (newer articles get much higher scores)
     if article_data.get('published'):
         try:
             from datetime import datetime, timezone
@@ -522,33 +614,50 @@ def calculate_ranking_score(article_data: dict, source_weight: float = 1.0) -> f
             now = datetime.now(timezone.utc)
             days_old = (now - published).days
             
-            # Exponential decay: newer articles get much higher scores
-            if days_old <= 1:
+            # More aggressive recency scoring for better differentiation
+            if days_old <= 0:  # Today
+                score += 20.0
+            elif days_old <= 1:  # Yesterday
+                score += 15.0
+            elif days_old <= 3:  # Last 3 days
                 score += 10.0
-            elif days_old <= 7:
+            elif days_old <= 7:  # Last week
                 score += 5.0
-            elif days_old <= 30:
+            elif days_old <= 30:  # Last month
                 score += 2.0
-            else:
+            else:  # Older
                 score += 0.5
         except:
             pass
     
-    # Title length boost (longer titles often indicate more detailed articles)
+    # Title quality boost (longer, more descriptive titles)
     title = article_data.get('title', '')
-    if len(title) > 50:
-        score += 1.0
-    elif len(title) > 100:
+    if len(title) > 100:
         score += 2.0
-    
-    # Content length boost
-    content = article_data.get('content', '')
-    if len(content) > 1000:
+    elif len(title) > 50:
         score += 1.0
+    elif len(title) < 20:
+        score -= 0.5  # Penalty for very short titles
+    
+    # Content quality boost
+    content = article_data.get('content', '') or ''
+    if len(content) > 5000:
+        score += 3.0
     elif len(content) > 2000:
         score += 2.0
+    elif len(content) > 1000:
+        score += 1.0
+    elif len(content) < 200:
+        score -= 1.0  # Penalty for very short content
     
-    return score
+    # Source quality boost (some sources are more reliable)
+    url = article_data.get('url', '')
+    if any(domain in url.lower() for domain in ['github.com', 'stackoverflow.com', 'arstechnica.com', 'techcrunch.com']):
+        score += 2.0
+    elif any(domain in url.lower() for domain in ['bbc.co.uk', 'cnn.com', 'npr.org']):
+        score += 1.0
+    
+    return max(score, 0.1)  # Ensure minimum positive score
 
 
 def classify_topic(article_data: dict) -> tuple[str, float]:
@@ -560,61 +669,79 @@ def classify_topic(article_data: dict) -> tuple[str, float]:
     # Combine all text for analysis
     text = f"{title} {content} {summary}"
     
-    # Topic keywords mapping
-    topic_keywords = {
+    # More specific and contextual tech keywords
+    tech_keywords = {
         'ai-ml': [
-            'artificial intelligence', 'machine learning', 'ai', 'ml', 'neural network',
+            'artificial intelligence', 'machine learning', 'neural network',
             'deep learning', 'llm', 'gpt', 'chatgpt', 'claude', 'ollama', 'tensorflow',
             'pytorch', 'openai', 'anthropic', 'hugging face', 'transformer', 'nlp',
-            'computer vision', 'reinforcement learning', 'data science', 'algorithm'
+            'computer vision', 'reinforcement learning', 'data science', 'algorithm',
+            'generative ai', 'large language model', 'prompt engineering', 'fine-tuning',
+            'deepmind', 'stability ai', 'midjourney', 'dall-e', 'gemini', 'bard',
+            'machine learning model', 'ai model', 'neural network', 'deep learning model'
         ],
         'cloud-k8s': [
-            'kubernetes', 'k8s', 'docker', 'container', 'cloud', 'aws', 'azure',
+            'kubernetes', 'k8s', 'docker', 'container', 'aws', 'azure',
             'google cloud', 'gcp', 'microservices', 'serverless', 'lambda',
             'terraform', 'helm', 'istio', 'prometheus', 'grafana', 'jenkins',
-            'ci/cd', 'devops', 'infrastructure', 'scaling', 'load balancer'
+            'ci/cd', 'devops', 'infrastructure', 'scaling', 'load balancer',
+            'dockerfile', 'pod', 'namespace', 'deployment', 'service mesh',
+            'ec2', 's3', 'rds', 'elastic beanstalk', 'cloudflare', 'kubernetes cluster'
         ],
         'security': [
-            'security', 'cybersecurity', 'vulnerability', 'exploit', 'malware',
+            'cybersecurity', 'vulnerability', 'exploit', 'malware',
             'phishing', 'ransomware', 'firewall', 'encryption', 'ssl', 'tls',
             'authentication', 'authorization', 'oauth', 'jwt', 'penetration test',
-            'zero-day', 'cve', 'breach', 'privacy', 'gdpr', 'compliance'
+            'zero-day', 'cve', 'breach', 'privacy', 'gdpr', 'compliance',
+            'security audit', 'threat detection', 'intrusion detection', 'vpn',
+            'sql injection', 'xss', 'csrf', 'ddos', 'hacker', 'hacking',
+            'security vulnerability', 'data breach', 'cyber attack'
         ],
         'devtools': [
-            'development', 'programming', 'coding', 'software', 'api', 'sdk',
+            'programming', 'coding', 'software development', 'api', 'sdk',
             'framework', 'library', 'git', 'github', 'gitlab', 'vscode',
             'ide', 'debugger', 'testing', 'unit test', 'integration test',
             'code review', 'refactoring', 'agile', 'scrum', 'javascript',
-            'python', 'java', 'typescript', 'react', 'vue', 'angular'
+            'python', 'java', 'typescript', 'react', 'vue', 'angular',
+            'node.js', 'npm', 'yarn', 'webpack', 'babel', 'eslint',
+            'github actions', 'pull request', 'merge conflict', 'repository',
+            'software engineering', 'programming language', 'development tool'
         ],
         'chips-hardware': [
-            'hardware', 'chip', 'cpu', 'gpu', 'processor', 'intel', 'amd',
-            'nvidia', 'arm', 'risc-v', 'semiconductor', 'silicon', 'fabrication',
-            'transistor', 'memory', 'ram', 'ssd', 'storage', 'motherboard',
-            'circuit', 'electronics', 'quantum', 'photonics', 'neuromorphic'
+            'semiconductor', 'silicon', 'fabrication', 'transistor', 'intel', 'amd',
+            'nvidia', 'arm', 'risc-v', 'cpu', 'gpu', 'processor', 'chip',
+            'memory', 'ram', 'ssd', 'storage', 'motherboard', 'circuit',
+            'electronics', 'quantum', 'photonics', 'neuromorphic', 'asic',
+            'tsmc', 'samsung', 'micron', 'qualcomm', 'broadcom', 'apple silicon',
+            'microprocessor', 'semiconductor industry', 'chip manufacturing'
         ]
     }
     
     # Calculate confidence scores for each topic
     topic_scores = {}
-    for topic, keywords in topic_keywords.items():
+    for topic, keywords in tech_keywords.items():
         score = 0
         for keyword in keywords:
             if keyword in text:
-                # Weight by keyword length (longer keywords are more specific)
-                score += len(keyword) * text.count(keyword)
+                # Weight by keyword length and specificity
+                weight = len(keyword) * 3  # Reduced weight to be less aggressive
+                score += weight * text.count(keyword)
         topic_scores[topic] = score
     
     # Find the topic with highest score
     if not topic_scores or max(topic_scores.values()) == 0:
-        return None, 0.0
+        return 'general', 0.0
     
-    best_topic = max(topic_scores, key=topic_scores.get)
+    best_topic = max(topic_scores.keys(), key=lambda k: topic_scores[k])
     max_score = topic_scores[best_topic]
     
-    # Calculate confidence (0.0 to 1.0)
-    total_keywords = sum(len(keywords) for keywords in topic_keywords.values())
-    confidence = min(max_score / (total_keywords * 0.1), 1.0)  # Normalize
+    # Much higher threshold to avoid false positives
+    # Require multiple keyword matches or very specific terms
+    if max_score < 75:  # Even higher threshold for precision
+        return 'general', 0.0
+    
+    # Calculate confidence (0.0 to 1.0) - more conservative
+    confidence = min(max_score / 200.0, 1.0)  # Higher normalization factor
     
     return best_topic, confidence
 
@@ -695,47 +822,63 @@ def update_feed_names() -> dict:
     }
     
     with session_scope() as s:
-        # Get all feeds without names
+        # Get all feeds without names or with generic names
         rows = s.execute(
-            text("SELECT id, url FROM feeds WHERE name IS NULL OR name = ''")
+            text("SELECT id, url, name FROM feeds WHERE name IS NULL OR name = '' OR name LIKE 'Feed from %' OR name = 'Unnamed Feed'")
         ).all()
         
         for row in rows:
-            feed_id, feed_url = row
+            feed_id, feed_url, current_name = row
             
             # Try to get feed name from RSS feed
             feed_name = None
             try:
                 import feedparser
                 feed_data = feedparser.parse(feed_url)
-                if feed_data.feed and hasattr(feed_data.feed, 'title'):
-                    feed_name = feed_data.feed.title
+                
+                # Check if feed is valid and has content
+                if feed_data.feed and not feed_data.bozo:
+                    # Try multiple attributes for feed name
+                    if hasattr(feed_data.feed, 'title') and feed_data.feed.title:
+                        feed_name = feed_data.feed.title
+                    elif hasattr(feed_data.feed, 'subtitle') and feed_data.feed.subtitle:
+                        feed_name = feed_data.feed.subtitle
+                    elif hasattr(feed_data.feed, 'description') and feed_data.feed.description:
+                        # Use first part of description as name
+                        desc = feed_data.feed.description
+                        feed_name = desc[:50] + "..." if len(desc) > 50 else desc
+                    elif feed_data.entries and len(feed_data.entries) > 0:
+                        # Try to infer name from first entry's source
+                        first_entry = feed_data.entries[0]
+                        if hasattr(first_entry, 'source') and first_entry.source:
+                            feed_name = first_entry.source
+                        elif hasattr(first_entry, 'author') and first_entry.author:
+                            feed_name = first_entry.author
             except Exception:
-                # If we can't parse the feed, use domain name as fallback
-                try:
-                    from urllib.parse import urlparse
-                    domain = urlparse(feed_url).netloc
-                    feed_name = domain
-                except Exception:
-                    feed_name = "Unnamed Feed"
+                pass  # Will fall back to domain name below
             
-            # If still no name, use a more descriptive fallback
+            # If we still don't have a name, use domain name as fallback
             if not feed_name or feed_name.strip() == "":
                 try:
                     from urllib.parse import urlparse
                     domain = urlparse(feed_url).netloc
-                    feed_name = f"Feed from {domain}"
+                    # Create a more descriptive name from domain
+                    if domain:
+                        feed_name = f"Feed from {domain}"
+                    else:
+                        feed_name = "Unnamed Feed"
                 except Exception:
                     feed_name = "Unnamed Feed"
             
-            # Update the feed with the name
-            try:
-                s.execute(
-                    text("UPDATE feeds SET name = :name WHERE id = :feed_id"),
-                    {"name": feed_name, "feed_id": feed_id}
-                )
-                stats['feeds_updated'] += 1
-            except Exception:
-                stats['feeds_failed'] += 1
+            # Only update if we have a different name
+            if feed_name and feed_name != current_name:
+                try:
+                    s.execute(
+                        text("UPDATE feeds SET name = :name WHERE id = :feed_id"),
+                        {"name": feed_name, "feed_id": feed_id}
+                    )
+                    stats['feeds_updated'] += 1
+                except Exception:
+                    stats['feeds_failed'] += 1
     
     return stats

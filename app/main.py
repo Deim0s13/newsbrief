@@ -271,7 +271,7 @@ def list_items(limit: int = Query(50, le=200), offset: int = Query(0, ge=0)):
                ai_summary, ai_model, ai_generated_at,
                structured_summary_json, structured_summary_model, 
                structured_summary_content_hash, structured_summary_generated_at,
-               ranking_score, topic, topic_confidence, source_weight
+               ranking_score, topic, topic_confidence, source_weight, feed_id
         FROM items
         ORDER BY ranking_score DESC, COALESCE(published, created_at) DESC
         LIMIT :lim OFFSET :off
@@ -333,6 +333,7 @@ def list_items(limit: int = Query(50, le=200), offset: int = Query(0, ge=0)):
                     url=r[2],
                     published=r[3],
                     summary=r[4],
+                    feed_id=r[18],  # feed_id field
                     ai_summary=r[7],  # Updated index
                     ai_model=r[8],  # Updated index
                     ai_generated_at=r[9],  # Updated index
@@ -613,7 +614,7 @@ def get_items_by_topic(topic_key: str, limit: int = Query(50, le=200)):
                ai_summary, ai_model, ai_generated_at,
                structured_summary_json, structured_summary_model, 
                structured_summary_content_hash, structured_summary_generated_at,
-               ranking_score, topic, topic_confidence, source_weight
+               ranking_score, topic, topic_confidence, source_weight, feed_id
         FROM items
         WHERE topic = :topic_key
         ORDER BY ranking_score DESC, COALESCE(published, created_at) DESC
@@ -665,6 +666,7 @@ def get_items_by_topic(topic_key: str, limit: int = Query(50, le=200)):
                     url=r[2],
                     published=r[3],
                     summary=r[4],
+                    feed_id=r[18],  # feed_id field
                     ai_summary=r[7],
                     ai_model=r[8],
                     ai_generated_at=r[9],
