@@ -267,22 +267,29 @@ def add_feed(url: str) -> int:
 
 
 def import_opml(path: str) -> int:
-    # super light OPML import: look for xmlUrl attributes
-    import re
-
-    added = 0
+    """
+    Import OPML file from filesystem path.
+    Used for auto-import on startup from data/feeds.opml.
+    
+    Returns: Number of feeds added
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     try:
         with open(path, "r", encoding="utf-8") as f:
-            txt = f.read()
-        for m in re.finditer(r'xmlUrl="([^"]+)"', txt):
-            try:
-                ensure_feed(m.group(1))
-                added += 1
-            except Exception:
-                pass
+            content = f.read()
+        
+        result = import_opml_content(content)
+        logger.info(f"Auto-import from {path}: {result['added']} added, {result['skipped']} skipped, {result['errors']} errors")
+        return result['added']
+        
     except FileNotFoundError:
-        pass
-    return added
+        # Silently ignore if file doesn't exist (normal on first run)
+        return 0
+    except Exception as e:
+        logger.error(f"Failed to import OPML from {path}: {e}")
+        return 0
 
 
 def fetch_and_store() -> RefreshStats:
@@ -367,9 +374,23 @@ def fetch_and_store() -> RefreshStats:
                     )
                 continue
 
-            # Handle cached response
+            # Handle cached response (304 Not Modified)
             if resp.status_code == 304:
                 stats.feeds_cached_304 += 1
+                # Update last_fetch_at even for cached responses
+                with session_scope() as s:
+                    s.execute(
+                        text(
+                            """
+                        UPDATE feeds SET 
+                            last_fetch_at=CURRENT_TIMESTAMP,
+                            fetch_count=fetch_count + 1,
+                            last_response_time_ms=:response_time
+                        WHERE id=:id
+                    """
+                        ),
+                        {"id": fid, "response_time": response_time_ms},
+                    )
                 continue
 
             # Handle error responses
@@ -572,28 +593,79 @@ def fetch_and_store() -> RefreshStats:
     return stats
 
 
-def import_opml_content(content: str) -> int:
-    """Import OPML content from string."""
+def import_opml_content(content: str) -> dict:
+    """
+    Import OPML content from string.
+    
+    Returns:
+        dict with 'added', 'skipped', 'errors', and 'error_details'
+    """
     import re
+    import logging
+    
+    logger = logging.getLogger(__name__)
     
     added = 0
+    skipped = 0
     errors = 0
+    error_details = []
+    
     try:
-        for m in re.finditer(r'xmlUrl="([^"]+)"', content):
+        # Find all xmlUrl attributes in the OPML
+        feed_urls = re.findall(r'xmlUrl="([^"]+)"', content)
+        
+        if not feed_urls:
+            logger.warning("No feeds found in OPML content")
+            return {
+                "added": 0,
+                "skipped": 0,
+                "errors": 0,
+                "error_details": ["No feed URLs found in OPML file"]
+            }
+        
+        logger.info(f"Found {len(feed_urls)} feeds in OPML")
+        
+        for url in feed_urls:
             try:
-                ensure_feed(m.group(1))
+                # Check if feed already exists
+                with session_scope() as s:
+                    existing = s.execute(
+                        text("SELECT id FROM feeds WHERE url=:u"), {"u": url}
+                    ).first()
+                    
+                    if existing:
+                        skipped += 1
+                        logger.debug(f"Feed already exists: {url}")
+                        continue
+                
+                # Add new feed
+                ensure_feed(url)
                 added += 1
+                logger.info(f"Added feed: {url}")
+                
             except Exception as e:
                 errors += 1
-                # Log the error for debugging
-                print(f"Failed to import feed {m.group(1)}: {e}")
+                error_msg = f"{url}: {str(e)}"
+                error_details.append(error_msg)
+                logger.error(f"Failed to import feed {url}: {e}")
+                
     except Exception as e:
-        print(f"Error parsing OPML content: {e}")
+        logger.error(f"Error parsing OPML content: {e}")
+        return {
+            "added": 0,
+            "skipped": 0,
+            "errors": 1,
+            "error_details": [f"OPML parsing error: {str(e)}"]
+        }
     
-    if errors > 0:
-        print(f"OPML import completed: {added} feeds added, {errors} errors")
+    logger.info(f"OPML import completed: {added} added, {skipped} skipped (already exist), {errors} errors")
     
-    return added
+    return {
+        "added": added,
+        "skipped": skipped,
+        "errors": errors,
+        "error_details": error_details[:5]  # Limit to first 5 errors
+    }
 
 
 def export_opml() -> str:

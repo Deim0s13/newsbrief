@@ -1,8 +1,10 @@
 # NewsBrief
 
-> **Local-first RSS aggregator with AI-powered content curation**
+> **AI-powered news aggregator that synthesizes multiple sources into daily story briefs**
 
-NewsBrief is a self-hosted, privacy-focused RSS feed aggregator that intelligently curates and summarizes your news sources. Built with modern technologies for speed, reliability, and offline capability.
+NewsBrief is a self-hosted, privacy-focused news aggregator that replaces reading 50+ article summaries with 5-10 synthesized stories. Using local AI, it clusters related articles, extracts key insights, and presents "what happened today" in 2 minutes. Built with modern technologies for speed, reliability, and offline capability.
+
+**Think**: TLDR newsletter, but personalized to your feeds and generated locally.
 
 ## 🌟 Features
 
@@ -33,12 +35,20 @@ NewsBrief is a self-hosted, privacy-focused RSS feed aggregator that intelligent
 - **Automated Dependency Management**: Weekly security audits, dependency updates, and base image maintenance
 - **Comprehensive Documentation**: Complete CI/CD guides, API documentation, and architecture decision records
 
-### **Planned (Roadmap)**
-- **Enhanced AI Features**: Advanced categorization, sentiment analysis, and content recommendations
-- **Web Interface**: HTMX-powered responsive UI for browsing and management
-- **Semantic Search**: Vector embeddings for content discovery and similarity matching
-- **Full-Text Search**: SQLite FTS5 integration for fast text search
-- **Smart Categorization**: Automatic topic clustering and intelligent feeds organization
+### **In Development (v0.5.0 - Story Architecture)**
+- **Story-Based Aggregation**: Cluster related articles into unified narratives
+- **Multi-Document Synthesis**: AI-powered synthesis of multiple sources into coherent stories
+- **Daily Story Briefs**: Auto-generate 5-10 curated stories daily
+- **Entity Extraction**: Identify companies, products, and people for intelligent clustering
+- **Story-First UI**: Landing page shows stories, not individual articles
+- **Manual Refresh**: On-demand story regeneration
+- **Interest-Based Filtering**: Surface relevant stories based on topics
+
+### **Future Enhancements**
+- **Configurable Time Windows**: 12h, 24h, 48h, 1w story generation
+- **Topic Grouping**: Group stories by Security, AI, DevTools, etc.
+- **Advanced Embeddings**: Vector-based semantic clustering
+- **Full-Text Search**: SQLite FTS5 integration
 - **Export/Import**: Data portability and backup features
 
 ## 🚀 Quick Start
@@ -85,67 +95,90 @@ podman run --rm -it \
 
 ## 📖 Usage
 
-### **Add RSS Feeds**
+### **Story-Based Workflow** (v0.5.0+)
 
 ```bash
-# Add a feed
+# 1. Add your RSS feeds
 curl -X POST http://localhost:8787/feeds \
   -H "Content-Type: application/json" \
   -d '{"url": "https://feeds.example.com/rss"}'
 
-# Import from OPML (place feeds.opml in ./data/)
+# Or import from OPML (place feeds.opml in ./data/)
 # Feeds are automatically imported on startup
+
+# 2. Fetch articles from feeds
+curl -X POST http://localhost:8787/refresh
+
+# 3. Generate daily story brief (5-10 synthesized stories)
+curl -X POST http://localhost:8787/stories/generate | jq .
+
+# 4. View today's stories
+curl http://localhost:8787/stories | jq .
+
+# 5. Get specific story with supporting articles
+curl http://localhost:8787/stories/1 | jq .
 ```
 
-### **Fetch Latest Articles**
+### **Current Workflow** (v0.3.4 - Article-Based)
 
 ```bash
 # Refresh all feeds
 curl -X POST http://localhost:8787/refresh
 
-# Get latest articles
+# Get latest articles (to be replaced by stories)
 curl "http://localhost:8787/items?limit=10" | jq .
 ```
 
 ### **API Endpoints**
 
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/feeds` | POST | Add new RSS feed |
-| `/refresh` | POST | Fetch latest articles from all feeds |
-| `/items` | GET | List articles (supports `?limit=N`) |
-| `/docs` | GET | Interactive API documentation |
+| Endpoint | Method | Purpose | Status |
+|----------|--------|---------|--------|
+| `/feeds` | POST | Add new RSS feed | ✅ Available |
+| `/refresh` | POST | Fetch latest articles from all feeds | ✅ Available |
+| `/stories` | GET | List synthesized stories | 🚧 v0.5.0 |
+| `/stories/{id}` | GET | Get story with supporting articles | 🚧 v0.5.0 |
+| `/stories/generate` | POST | Generate/refresh stories | 🚧 v0.5.0 |
+| `/items` | GET | List articles (secondary feature) | ✅ Available |
+| `/docs` | GET | Interactive API documentation | ✅ Available |
 
 ## 🏗️ Architecture
 
-NewsBrief follows **local-first principles** with a clean, scalable architecture:
+NewsBrief follows **local-first principles** with story-first aggregation:
 
 ```
 ┌─────────────────────────────────────────────┐
-│                Frontend                     │
+│           Story-First Frontend              │
 │            (HTMX + Jinja2)                 │
-│                [Planned]                    │
+│     Landing: Stories → Story Detail         │
+│              [v0.5.0]                       │
 ├─────────────────────────────────────────────┤
 │              FastAPI Server                 │
 │         (REST API + Templates)              │
 ├─────────────────────────────────────────────┤
 │             Business Logic                  │
-│    ┌─────────┬─────────┬─────────────────┐   │
-│    │  Feeds  │ Content │   Future: LLM   │   │
-│    │ Manager │Extract. │  Summarization  │   │
-│    └─────────┴─────────┴─────────────────┘   │
+│  ┌──────────┬──────────┬─────────────────┐  │
+│  │  Story   │  Entity  │ Multi-Document  │  │
+│  │Clustering│Extraction│   Synthesis     │  │
+│  ├──────────┼──────────┼─────────────────┤  │
+│  │  Feeds   │ Content  │  LLM (Ollama)   │  │
+│  │ Manager  │ Extract  │  Llama 3.1 8B   │  │
+│  └──────────┴──────────┴─────────────────┘  │
 ├─────────────────────────────────────────────┤
 │              SQLite Database                │
-│        (Articles + Feeds + Metadata)       │
+│  Stories + Story-Articles + Articles        │
+│              + Feeds + Cache                │
 └─────────────────────────────────────────────┘
 ```
 
 **Key Design Decisions:**
+- **Story-First**: Aggregate articles into synthesized narratives, not individual summaries
+- **Local LLM**: Ollama (Llama 3.1 8B) for entity extraction and multi-doc synthesis
+- **Intelligent Clustering**: Entity overlap + text similarity + time proximity
+- **Daily Generation**: Auto-generate 5-10 stories daily + manual refresh
 - **SQLite**: Simple, fast, no external dependencies
 - **FastAPI**: Modern Python web framework with automatic OpenAPI docs
-- **Readability**: Clean content extraction from web articles
 - **Container-first**: Podman/Docker for easy deployment
-- **Local LLM**: Ollama integration for privacy-preserving AI features
+- **Privacy-First**: All AI processing runs locally
 
 ## 🛠️ Development
 
@@ -241,31 +274,53 @@ newsbrief/
 > **📋 Live Project Board**: Track detailed progress and epic breakdowns at  
 > **[GitHub Project Board](https://github.com/users/Deim0s13/projects/7/views/1?layout=board)**
 
-### **v0.4.0 - Web Interface**
-- [ ] HTMX-powered web UI
-- [ ] Article reading interface with AI summaries
-- [ ] Feed management dashboard
-- [ ] Search and filtering functionality
+### **v0.5.0 - Story Architecture** 🚀 **In Development**
+Transform from article-centric to story-based aggregation
 
-### **v0.5.0 - Advanced Features**
-- [ ] Vector embeddings for semantic search
-- [ ] Enhanced content classification and categorization
-- [ ] Intelligent content recommendations
-- [ ] Sentiment analysis and topic clustering
-- [ ] Export/import functionality and data portability
-- [ ] Advanced filtering and rules engine
+**Phase 1-3: Core Engine** (26-37 hours)
+- [ ] Story database schema and models
+- [ ] Entity extraction (companies, products, people)
+- [ ] Intelligent article clustering (entity + text similarity)
+- [ ] Multi-document synthesis (AI-powered story generation)
+- [ ] Quality scoring (importance + freshness)
+
+**Phase 4: Automation** (4-6 hours)
+- [ ] Daily auto-generation (6 AM)
+- [ ] Manual refresh API endpoint
+- [ ] Story archiving (7+ days)
+
+**Phase 5-6: Story-First UI** (10-14 hours)
+- [ ] Landing page with story cards (5-10 stories)
+- [ ] Story detail page (synthesis + supporting articles)
+- [ ] Topic filters and manual refresh button
+- [ ] Article view as secondary feature
+
+**Phase 7-8: Refinement** (7-10 hours)
+- [ ] Story API endpoints
+- [ ] Interest-based filtering
+- [ ] Source quality weighting
+
+**See**: [Implementation Plan](docs/IMPLEMENTATION_PLAN.md) | [Detailed Backlog](docs/STORY_ARCHITECTURE_BACKLOG.md)
+
+### **v0.6.0 - Enhanced Intelligence**
+- [ ] Configurable time windows (12h, 24h, 48h, 1w)
+- [ ] Topic grouping (Security, AI, DevTools sections)
+- [ ] Dynamic story generation (quality-based)
+- [ ] Vector embeddings for better clustering
+- [ ] Full-text search (SQLite FTS5)
 
 ### **Epic Organization**
 
 The roadmap above represents high-level milestones. For detailed epic breakdowns, user stories, and current development status, see the **[GitHub Project Board](https://github.com/users/Deim0s13/projects/7/views/1?layout=board)** which includes:
 
-- **Epic: Ingestion** - Feed processing and content extraction improvements
+- **Epic: Stories** - 🚀 Story-based aggregation and synthesis (NEW)
+- **Epic: Ingestion** - Feed processing and content extraction
 - **Epic: Summaries** - AI-powered content summarization with Ollama
 - **Epic: Ranking** - Content scoring and intelligent curation
 - **Epic: UI** - Web interface and user experience enhancements  
-- **Epic: Embeddings** - Semantic search and content clustering
-- **Epic: Search** - Full-text and semantic search capabilities
 - **Epic: Operations** - DevOps, monitoring, and deployment tooling
+- **Epic: Embeddings** - Semantic search and advanced clustering (Future)
+- **Epic: Search** - Full-text and semantic search capabilities (Future)
 
 ## 🤝 Contributing
 

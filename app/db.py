@@ -86,6 +86,50 @@ def init_db() -> None:
         );
         """
         )
+        
+        # Stories table - aggregated/synthesized news stories
+        conn.exec_driver_sql(
+            """
+        CREATE TABLE IF NOT EXISTS stories (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          title TEXT NOT NULL,
+          synthesis TEXT NOT NULL,
+          key_points_json TEXT,
+          why_it_matters TEXT,
+          topics_json TEXT,
+          entities_json TEXT,
+          article_count INTEGER DEFAULT 0,
+          importance_score REAL DEFAULT 0.0,
+          freshness_score REAL DEFAULT 0.0,
+          cluster_method TEXT,
+          story_hash TEXT UNIQUE,
+          generated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          first_seen DATETIME,
+          last_updated DATETIME,
+          time_window_start DATETIME,
+          time_window_end DATETIME,
+          model TEXT,
+          status TEXT DEFAULT 'active'
+        );
+        """
+        )
+        
+        # Story-Article junction table
+        conn.exec_driver_sql(
+            """
+        CREATE TABLE IF NOT EXISTS story_articles (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          story_id INTEGER NOT NULL,
+          article_id INTEGER NOT NULL,
+          relevance_score REAL DEFAULT 1.0,
+          is_primary BOOLEAN DEFAULT 0,
+          added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(story_id) REFERENCES stories(id) ON DELETE CASCADE,
+          FOREIGN KEY(article_id) REFERENCES items(id) ON DELETE CASCADE,
+          UNIQUE(story_id, article_id)
+        );
+        """
+        )
 
         # Migration: Add columns if they don't exist (for existing databases)
         migration_columns = [
@@ -150,5 +194,31 @@ def init_db() -> None:
         conn.exec_driver_sql(
             """
         CREATE INDEX IF NOT EXISTS idx_feeds_health_score ON feeds(health_score DESC);
+        """
+        )
+        # Story indexes
+        conn.exec_driver_sql(
+            """
+        CREATE INDEX IF NOT EXISTS idx_stories_generated_at ON stories(generated_at DESC);
+        """
+        )
+        conn.exec_driver_sql(
+            """
+        CREATE INDEX IF NOT EXISTS idx_stories_importance ON stories(importance_score DESC);
+        """
+        )
+        conn.exec_driver_sql(
+            """
+        CREATE INDEX IF NOT EXISTS idx_stories_status ON stories(status);
+        """
+        )
+        conn.exec_driver_sql(
+            """
+        CREATE INDEX IF NOT EXISTS idx_story_articles_story ON story_articles(story_id);
+        """
+        )
+        conn.exec_driver_sql(
+            """
+        CREATE INDEX IF NOT EXISTS idx_story_articles_article ON story_articles(article_id);
         """
         )

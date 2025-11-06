@@ -103,6 +103,18 @@ def list_feeds_endpoint():
             # Convert database booleans
             feed_data["disabled"] = bool(feed_data["disabled"])
             feed_data["robots_allowed"] = bool(feed_data["robots_allowed"])
+            
+            # Convert timestamps to ISO 8601 with UTC indicator for proper browser parsing
+            for field in ['created_at', 'updated_at', 'last_fetch_at', 'last_success_at', 'last_article_at']:
+                if field in feed_data and feed_data[field]:
+                    # Add 'Z' to indicate UTC timezone
+                    ts = str(feed_data[field])
+                    if 'T' not in ts:
+                        ts = ts.replace(' ', 'T')
+                    if not ts.endswith('Z'):
+                        ts = ts + 'Z'
+                    feed_data[field] = ts
+            
             feeds.append(feed_data)
     
     return feeds
@@ -180,8 +192,29 @@ def import_opml_upload(file: UploadFile = File(...)):
     """Import feeds from uploaded OPML file."""
     try:
         content = file.file.read().decode('utf-8')
-        added = import_opml_content(content)
-        return {"ok": True, "message": f"Successfully imported {added} feeds from OPML file"}
+        result = import_opml_content(content)
+        
+        # Build informative message
+        message_parts = []
+        if result['added'] > 0:
+            message_parts.append(f"{result['added']} feed(s) added")
+        if result['skipped'] > 0:
+            message_parts.append(f"{result['skipped']} already existed")
+        if result['errors'] > 0:
+            message_parts.append(f"{result['errors']} failed")
+        
+        if message_parts:
+            message = "Import complete: " + ", ".join(message_parts)
+        elif result['error_details']:
+            message = result['error_details'][0]  # Show first error detail
+        else:
+            message = "No feeds found in OPML file"
+        
+        return {
+            "ok": True,
+            "message": message,
+            "stats": result
+        }
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to import OPML: {str(e)}")
 
