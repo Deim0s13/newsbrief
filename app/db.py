@@ -1,12 +1,15 @@
 # sqlite db utils
 from __future__ import annotations
 
+import logging
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
+logger = logging.getLogger(__name__)
 
 DATA_DIR = Path("data")
 DATA_DIR.mkdir(exist_ok=True, parents=True)
@@ -32,7 +35,26 @@ def session_scope() -> Iterator:
 
 
 def init_db() -> None:
+    """
+    Initialize database with all required tables and indexes.
+    
+    Handles both:
+    - New databases: Creates all tables from scratch
+    - Existing databases: Adds missing tables/columns (migration)
+    
+    Uses CREATE TABLE IF NOT EXISTS for idempotent migrations.
+    """
     with engine.begin() as conn:
+        # Check if this is a migration (stories table doesn't exist yet)
+        result = conn.exec_driver_sql(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='stories'"
+        )
+        is_migration = len(result.fetchall()) == 0
+        
+        if is_migration:
+            logger.info("🔄 Migrating database to v0.5.0 (story architecture)...")
+        else:
+            logger.info("✅ Database already has story tables, verifying schema...")
         conn.exec_driver_sql(
             """
         CREATE TABLE IF NOT EXISTS feeds (
@@ -130,6 +152,9 @@ def init_db() -> None:
         );
         """
         )
+        
+        if is_migration:
+            logger.info("✅ Story tables created successfully")
 
         # Migration: Add columns if they don't exist (for existing databases)
         migration_columns = [
@@ -222,3 +247,8 @@ def init_db() -> None:
         CREATE INDEX IF NOT EXISTS idx_story_articles_article ON story_articles(article_id);
         """
         )
+        
+        if is_migration:
+            logger.info("🎉 Database migration to v0.5.0 complete!")
+        else:
+            logger.info("✅ Database schema verification complete")
