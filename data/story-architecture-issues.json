@@ -1,0 +1,148 @@
+[
+  {
+    "title": "PIVOT: Story-based architecture - Planning & Documentation",
+    "body": "Complete planning phase for story-based architecture.\n\n**Tasks:**\n- [x] Create comprehensive backlog document\n- [ ] Review and approve backlog\n- [ ] Update README.md to reflect story-first vision\n- [ ] Archive/document deprecated features (skim/detail toggle for articles)\n\n**Epic**: Stories\n**Phase**: 0 - Planning\n**Effort**: 2 hours\n**Priority**: P0 (Blocking)",
+    "labels": ["epic:stories", "priority:p0", "phase:planning"]
+  },
+  {
+    "title": "Story database schema and migrations",
+    "body": "Add database tables for story-based architecture.\n\n**Tasks:**\n- [x] Create `stories` table schema\n- [x] Create `story_articles` junction table\n- [x] Add indexes for story queries\n- [ ] Create migration path for existing databases\n- [ ] Test schema with sample data\n\n**Files**: `app/db.py`\n**Epic**: Stories\n**Phase**: 1 - Infrastructure\n**Effort**: 2 hours\n**Priority**: P0 (Blocking)",
+    "labels": ["epic:stories", "priority:p0", "phase:infrastructure"]
+  },
+  {
+    "title": "Story data models and validation",
+    "body": "Create Pydantic models for story operations.\n\n**Tasks:**\n- [x] `StoryOut` model\n- [x] `StoryGenerationRequest/Response` models\n- [ ] Validation logic for story data\n- [ ] JSON field serialization helpers\n\n**Files**: `app/models.py`\n**Epic**: Stories\n**Phase**: 1 - Infrastructure\n**Effort**: 1 hour\n**Priority**: P0 (Blocking)",
+    "labels": ["epic:stories", "priority:p0", "phase:infrastructure"]
+  },
+  {
+    "title": "Story CRUD operations",
+    "body": "Implement basic create, read, update, delete operations for stories.\n\n**Tasks:**\n- [ ] Create story (insert)\n- [ ] Link articles to story (junction table)\n- [ ] Retrieve story with articles (joins)\n- [ ] Update story\n- [ ] Delete/archive story\n- [ ] Query stories by date/importance\n\n**Files**: New `app/stories.py`\n**Epic**: Stories\n**Phase**: 1 - Infrastructure\n**Effort**: 2 hours\n**Priority**: P0 (Blocking)",
+    "labels": ["epic:stories", "priority:p0", "phase:infrastructure"]
+  },
+  {
+    "title": "Simple story generation pipeline",
+    "body": "Create basic story generation (naive clustering).\n\n**Tasks:**\n- [ ] Get articles from last N hours\n- [ ] Group by topic/similarity (simple heuristic)\n- [ ] Create one story per group\n- [ ] Store stories in database\n- [ ] Add basic error handling\n\n**Files**: `app/stories.py`\n**Epic**: Stories\n**Phase**: 1 - Infrastructure\n**Effort**: 3-4 hours\n**Priority**: P0 (Blocking)\n**Dependencies**: Story CRUD operations",
+    "labels": ["epic:stories", "priority:p0", "phase:infrastructure"]
+  },
+  {
+    "title": "Entity extraction from articles",
+    "body": "Use LLM to extract named entities for clustering.\n\n**Tasks:**\n- [ ] Design entity extraction prompt\n- [ ] Extract entities from article titles/summaries\n- [ ] Store entities with articles\n- [ ] Cache entity extractions\n- [ ] Handle extraction failures gracefully\n\n**Approach**: Prompt LLM to extract companies, products, people from titles.\n**Files**: `app/llm.py`, `app/stories.py`\n**Epic**: Stories\n**Phase**: 2 - Clustering\n**Effort**: 3-4 hours\n**Priority**: P0 (Core Feature)\n**Dependencies**: Story generation pipeline",
+    "labels": ["epic:stories", "priority:p0", "phase:clustering"]
+  },
+  {
+    "title": "Semantic similarity for article clustering",
+    "body": "Implement text similarity without embeddings (start simple).\n\n**Tasks:**\n- [ ] TF-IDF or keyword overlap similarity\n- [ ] Compare article titles and summaries\n- [ ] Calculate similarity scores\n- [ ] Use for clustering decisions\n- [ ] Tune similarity thresholds\n\n**Note**: Start without embeddings - use simple text similarity first.\n**Files**: `app/stories.py`\n**Epic**: Stories\n**Phase**: 2 - Clustering\n**Effort**: 4-5 hours\n**Priority**: P0 (Core Feature)\n**Dependencies**: Entity extraction",
+    "labels": ["epic:stories", "priority:p0", "phase:clustering"]
+  },
+  {
+    "title": "Story clustering algorithm",
+    "body": "Implement intelligent article clustering based on entities and similarity.\n\n**Tasks:**\n- [ ] Combine entity overlap + text similarity\n- [ ] Add time proximity factor\n- [ ] Use existing topic classification\n- [ ] Implement clustering algorithm (threshold-based or DBSCAN)\n- [ ] Handle edge cases (singletons, mega-clusters)\n- [ ] Add clustering configuration\n\n**Algorithm**: Entity overlap × Semantic similarity × Time window → Clusters\n**Files**: `app/stories.py`\n**Epic**: Stories\n**Phase**: 2 - Clustering\n**Effort**: 3-4 hours\n**Priority**: P0 (Core Feature)\n**Dependencies**: Semantic similarity",
+    "labels": ["epic:stories", "priority:p0", "phase:clustering"]
+  },
+  {
+    "title": "Story quality and importance scoring",
+    "body": "Calculate importance and freshness scores for story ranking.\n\n**Tasks:**\n- [ ] Importance score (source quality × article count)\n- [ ] Freshness score (time-based decay)\n- [ ] Combined ranking score\n- [ ] Filter low-quality clusters\n- [ ] Tune scoring parameters\n\n**Files**: `app/stories.py`\n**Epic**: Stories\n**Phase**: 2 - Clustering\n**Effort**: 2 hours\n**Priority**: P0 (Core Feature)\n**Dependencies**: Clustering algorithm",
+    "labels": ["epic:stories", "priority:p0", "phase:clustering"]
+  },
+  {
+    "title": "Multi-document synthesis prompt engineering",
+    "body": "Design and test LLM prompts for synthesizing multiple articles into one story.\n\n**Tasks:**\n- [ ] Design multi-article synthesis prompt\n- [ ] Test with various article combinations\n- [ ] Iterate on output quality\n- [ ] Handle conflicting information\n- [ ] Handle missing/incomplete data\n- [ ] Document prompt template\n\n**Output**: Title, synthesis paragraph, key points, why it matters, topics/entities\n**Files**: `app/llm.py`\n**Epic**: Stories\n**Phase**: 3 - Synthesis\n**Effort**: 2-3 hours\n**Priority**: P0 (Core Feature)\n**Dependencies**: Clustering algorithm",
+    "labels": ["epic:stories", "priority:p0", "phase:synthesis"]
+  },
+  {
+    "title": "Story synthesis pipeline",
+    "body": "Implement the multi-document summarization pipeline.\n\n**Tasks:**\n- [ ] Gather all articles in cluster\n- [ ] Format articles for LLM prompt\n- [ ] Call LLM with synthesis prompt\n- [ ] Parse structured output (JSON)\n- [ ] Store synthesis in stories table\n- [ ] Handle LLM failures gracefully\n- [ ] Add retry logic\n\n**Files**: `app/llm.py`, `app/stories.py`\n**Epic**: Stories\n**Phase**: 3 - Synthesis\n**Effort**: 3-4 hours\n**Priority**: P0 (Core Feature)\n**Dependencies**: Synthesis prompt engineering",
+    "labels": ["epic:stories", "priority:p0", "phase:synthesis"]
+  },
+  {
+    "title": "Story synthesis caching and performance",
+    "body": "Add caching and performance optimizations for synthesis.\n\n**Tasks:**\n- [ ] Cache synthesis by story hash (articles + model)\n- [ ] Reuse synthesis when articles unchanged\n- [ ] Batch synthesis for multiple stories\n- [ ] Optimize LLM token usage\n- [ ] Add performance metrics\n\n**Files**: `app/llm.py`\n**Epic**: Stories\n**Phase**: 3 - Synthesis\n**Effort**: 2-3 hours\n**Priority**: P1 (Important)\n**Dependencies**: Synthesis pipeline",
+    "labels": ["epic:stories", "priority:p1", "phase:synthesis"]
+  },
+  {
+    "title": "On-demand story generation API",
+    "body": "Create API endpoint for manual story generation.\n\n**Tasks:**\n- [ ] `POST /stories/generate` endpoint\n- [ ] Trigger clustering + synthesis\n- [ ] Return generation statistics\n- [ ] Handle long-running operations\n- [ ] Add progress tracking\n\n**Files**: `app/main.py`, `app/stories.py`\n**Epic**: Stories\n**Phase**: 4 - Scheduling\n**Effort**: 2 hours\n**Priority**: P1 (Important)\n**Dependencies**: Synthesis pipeline",
+    "labels": ["epic:stories", "priority:p1", "phase:scheduling"]
+  },
+  {
+    "title": "Scheduled story generation",
+    "body": "Implement background scheduled story generation.\n\n**Tasks:**\n- [ ] Add APScheduler or similar\n- [ ] Configure generation schedule (configurable)\n- [ ] Run story generation every N hours\n- [ ] Add logging and error handling\n- [ ] Add health checks for scheduler\n\n**Approach**: Start with APScheduler (in-process) for simplicity\n**Files**: `app/main.py`, new `app/scheduler.py`\n**Epic**: Stories\n**Phase**: 4 - Scheduling\n**Effort**: 2-3 hours\n**Priority**: P1 (Important)\n**Dependencies**: On-demand generation API",
+    "labels": ["epic:stories", "priority:p1", "phase:scheduling"]
+  },
+  {
+    "title": "Incremental story updates",
+    "body": "Update existing stories vs creating duplicates.\n\n**Tasks:**\n- [ ] Detect new articles since last generation\n- [ ] Update existing stories when articles added\n- [ ] Create new stories for new clusters\n- [ ] Archive old stories (7+ days)\n- [ ] Add story versioning\n\n**Files**: `app/stories.py`\n**Epic**: Stories\n**Phase**: 4 - Scheduling\n**Effort**: 1-2 hours\n**Priority**: P2 (Nice to have)\n**Dependencies**: Scheduled generation",
+    "labels": ["epic:stories", "priority:p2", "phase:scheduling"]
+  },
+  {
+    "title": "Story-based landing page UI",
+    "body": "Redesign landing page to show stories instead of articles.\n\n**Tasks:**\n- [ ] Replace article list with story list\n- [ ] Design story card component (title, synthesis snippet, key points preview)\n- [ ] Add metadata display (article count, time, topics)\n- [ ] Sort by importance/freshness\n- [ ] Responsive layout\n- [ ] Loading states and skeletons\n- [ ] Click through to story detail\n\n**Design Goal**: User sees 5-10 stories at once, scannable in < 10 seconds\n**Files**: `app/templates/index.html`, `app/static/js/app.js`, `app/static/css/custom.css`\n**Epic**: Stories, UI\n**Phase**: 5 - Landing UI\n**Effort**: 4-5 hours\n**Priority**: P0 (User-Facing)\n**Dependencies**: Story generation, Story API",
+    "labels": ["epic:stories", "epic:ui", "priority:p0", "phase:ui"]
+  },
+  {
+    "title": "Story filters and controls",
+    "body": "Add filtering and control options to landing page.\n\n**Tasks:**\n- [ ] Filter by topic\n- [ ] Filter by time window (today, this week)\n- [ ] Hide/show archived stories\n- [ ] Manual refresh button\n- [ ] Auto-refresh option\n\n**Files**: `app/templates/index.html`, `app/static/js/app.js`\n**Epic**: Stories, UI\n**Phase**: 5 - Landing UI\n**Effort**: 1-2 hours\n**Priority**: P1 (Important)\n**Dependencies**: Landing page",
+    "labels": ["epic:stories", "epic:ui", "priority:p1", "phase:ui"]
+  },
+  {
+    "title": "Landing page empty states",
+    "body": "Handle no stories / no articles scenarios gracefully.\n\n**Tasks:**\n- [ ] No stories yet → helpful message\n- [ ] No articles in time window → guidance\n- [ ] Loading state during generation\n- [ ] Error states with retry\n\n**Files**: `app/templates/index.html`\n**Epic**: Stories, UI\n**Phase**: 5 - Landing UI\n**Effort**: 1 hour\n**Priority**: P1 (Important)\n**Dependencies**: Landing page",
+    "labels": ["epic:stories", "epic:ui", "priority:p1", "phase:ui"]
+  },
+  {
+    "title": "Story detail page",
+    "body": "Create dedicated page for viewing a single story with all details.\n\n**Tasks:**\n- [ ] Story header (title, metadata)\n- [ ] Full synthesis (expanded paragraph)\n- [ ] All key points (formatted bullets)\n- [ ] \"Why it matters\" section (highlighted)\n- [ ] Topics/entities tags\n- [ ] List of supporting articles (compact)\n- [ ] Click article → article detail\n- [ ] Back to stories navigation\n- [ ] Responsive design\n\n**Files**: New `app/templates/story_detail.html`, `app/main.py` (route)\n**Epic**: Stories, UI\n**Phase**: 6 - Detail UI\n**Effort**: 3-4 hours\n**Priority**: P0 (User-Facing)\n**Dependencies**: Landing page",
+    "labels": ["epic:stories", "epic:ui", "priority:p0", "phase:ui"]
+  },
+  {
+    "title": "Story to article navigation",
+    "body": "Implement navigation flow from story → article → back.\n\n**Tasks:**\n- [ ] Click article from story → article detail page\n- [ ] Breadcrumb navigation (Home → Story → Article)\n- [ ] Preserve context (which story user came from)\n- [ ] Back button functionality\n\n**Files**: `app/templates/article_detail.html`, `app/static/js/app.js`\n**Epic**: Stories, UI\n**Phase**: 6 - Detail UI\n**Effort**: 1-2 hours\n**Priority**: P1 (Important)\n**Dependencies**: Story detail page",
+    "labels": ["epic:stories", "epic:ui", "priority:p1", "phase:ui"]
+  },
+  {
+    "title": "Story API endpoints",
+    "body": "Create RESTful API endpoints for story operations.\n\n**Tasks:**\n- [ ] `GET /stories` - List stories (for landing page)\n- [ ] `GET /stories/{id}` - Story detail\n- [ ] `POST /stories/generate` - Trigger generation\n- [ ] `GET /stories/stats` - Generation statistics\n- [ ] Update OpenAPI docs\n\n**Files**: `app/main.py`\n**Epic**: Stories\n**Phase**: 7 - API\n**Effort**: 2-3 hours\n**Priority**: P1 (Foundation)\n**Dependencies**: Story CRUD, generation pipeline",
+    "labels": ["epic:stories", "priority:p1", "phase:api"]
+  },
+  {
+    "title": "Update existing endpoints for story context",
+    "body": "Update article endpoints to support story filtering.\n\n**Tasks:**\n- [ ] Keep `GET /items` for power users\n- [ ] Add `?story_id=X` filter to get articles in story\n- [ ] Update API documentation\n- [ ] Ensure backward compatibility\n\n**Files**: `app/main.py`, `docs/API.md`\n**Epic**: Stories\n**Phase**: 7 - API\n**Effort**: 1 hour\n**Priority**: P2 (Nice to have)\n**Dependencies**: Story API endpoints",
+    "labels": ["epic:stories", "priority:p2", "phase:api"]
+  },
+  {
+    "title": "Interest-based story filtering",
+    "body": "Filter and weight stories based on user interests.\n\n**Tasks:**\n- [ ] Define interest profiles (config-based to start)\n- [ ] Weight stories by interest match\n- [ ] Filter out low-interest stories\n- [ ] Show/hide by topic preferences\n- [ ] Add configuration UI (future)\n\n**Approach**: Start with topic-based preferences (simple)\n**Files**: `app/stories.py`, `app/main.py`\n**Epic**: Stories\n**Phase**: 8 - Interests\n**Effort**: 2-3 hours\n**Priority**: P2 (Enhancement)\n**Dependencies**: Story generation, Story API",
+    "labels": ["epic:stories", "priority:p2", "phase:interests"]
+  },
+  {
+    "title": "Source quality weighting for stories",
+    "body": "Weight story importance based on source quality.\n\n**Tasks:**\n- [ ] Define source quality weights (Hacker News > random blog)\n- [ ] Adjust story importance by source quality\n- [ ] Make weights configurable\n- [ ] Add source weighting UI (future)\n\n**Files**: `app/stories.py`\n**Epic**: Stories\n**Phase**: 8 - Interests\n**Effort**: 2-3 hours\n**Priority**: P2 (Enhancement)\n**Dependencies**: Story quality scoring",
+    "labels": ["epic:stories", "priority:p2", "phase:interests"]
+  },
+  {
+    "title": "Story clustering algorithm tests",
+    "body": "Unit tests for story clustering logic.\n\n**Tasks:**\n- [ ] Test entity extraction\n- [ ] Test similarity scoring\n- [ ] Test clustering algorithm\n- [ ] Test edge cases (singletons, mega-clusters)\n- [ ] Test with real article data\n\n**Files**: New `tests/test_stories.py`\n**Epic**: Stories, Operations\n**Effort**: 2-3 hours\n**Priority**: P1 (Quality)",
+    "labels": ["epic:stories", "epic:ops", "priority:p1", "phase:testing"]
+  },
+  {
+    "title": "Story synthesis quality tests",
+    "body": "Tests for multi-document synthesis quality.\n\n**Tasks:**\n- [ ] Test synthesis prompt\n- [ ] Validate output format (JSON schema)\n- [ ] Check for hallucinations (facts not in sources)\n- [ ] Test with various article combinations\n- [ ] Performance benchmarks\n\n**Files**: New `tests/test_synthesis.py`\n**Epic**: Stories, Operations\n**Effort**: 2-3 hours\n**Priority**: P1 (Quality)",
+    "labels": ["epic:stories", "epic:ops", "priority:p1", "phase:testing"]
+  },
+  {
+    "title": "End-to-end story generation integration tests",
+    "body": "Integration tests for full story generation pipeline.\n\n**Tasks:**\n- [ ] Articles → clustering → synthesis → storage\n- [ ] Test with real data\n- [ ] Test error handling\n- [ ] Test caching behavior\n- [ ] Test performance (generation time)\n\n**Files**: New `tests/test_story_integration.py`\n**Epic**: Stories, Operations\n**Effort**: 3-4 hours\n**Priority**: P1 (Quality)",
+    "labels": ["epic:stories", "epic:ops", "priority:p1", "phase:testing"]
+  },
+  {
+    "title": "Update README for story-first architecture",
+    "body": "Update documentation to reflect story-based vision.\n\n**Tasks:**\n- [ ] Update feature descriptions\n- [ ] Update architecture diagrams\n- [ ] Update examples and screenshots\n- [ ] Update value proposition\n- [ ] Remove misleading article-centric language\n\n**Files**: `README.md`\n**Epic**: Stories, Documentation\n**Effort**: 1-2 hours\n**Priority**: P1 (Communication)",
+    "labels": ["epic:stories", "priority:p1", "phase:documentation"]
+  },
+  {
+    "title": "Story architecture documentation",
+    "body": "Create comprehensive documentation for story system.\n\n**Tasks:**\n- [ ] Architecture decision record (ADR)\n- [ ] Story generation algorithm documentation\n- [ ] API documentation for story endpoints\n- [ ] User guide for story-based workflow\n- [ ] Troubleshooting guide\n\n**Files**: `docs/adr/`, `docs/API.md`, `docs/STORY_ARCHITECTURE.md`\n**Epic**: Stories, Documentation\n**Effort**: 2-3 hours\n**Priority**: P2 (Nice to have)",
+    "labels": ["epic:stories", "priority:p2", "phase:documentation"]
+  }
+]
+

@@ -1,6 +1,6 @@
 # NewsBrief API Documentation
 
-NewsBrief provides a RESTful API for managing RSS feeds and retrieving articles. All endpoints return JSON responses.
+NewsBrief provides a RESTful API for story-based news aggregation and RSS feed management. All endpoints return JSON responses.
 
 ## 📍 Base URL
 
@@ -17,6 +17,151 @@ NewsBrief automatically generates interactive API documentation:
 - **OpenAPI Schema**: http://localhost:8787/openapi.json
 
 ## 🔗 Endpoints
+
+### 📰 Story Endpoints (v0.5.0) 🚧
+
+Story-based aggregation endpoints for synthesized news briefs.
+
+#### **GET /stories**
+
+List all active stories (5-10 synthesized stories from last 24 hours).
+
+**Response (200)**
+```json
+{
+  "stories": [
+    {
+      "id": 1,
+      "title": "Google Announces Gemini 2.0 with Multimodal Capabilities",
+      "synthesis": "Google unveiled Gemini 2.0 today...",
+      "key_points": [
+        "Released December 2024, available via Google AI Studio",
+        "Native multimodal processing (text, image, video, audio)",
+        "2x faster than Gemini 1.5 with lower latency"
+      ],
+      "why_it_matters": "This represents Google's most significant AI release...",
+      "topics": ["AI/ML", "Cloud"],
+      "entities": ["Google", "Gemini 2.0"],
+      "article_count": 5,
+      "importance_score": 0.92,
+      "freshness_score": 0.98,
+      "generated_at": "2024-12-06T08:00:00Z",
+      "supporting_articles": [
+        {
+          "id": 123,
+          "title": "Google's Gemini 2.0 arrives...",
+          "url": "https://techcrunch.com/...",
+          "published": "2024-12-06T06:30:00Z"
+        }
+      ]
+    }
+  ],
+  "total": 7,
+  "generated_at": "2024-12-06T08:00:00Z",
+  "time_window_hours": 24
+}
+```
+
+**Example**
+```bash
+curl http://localhost:8787/stories | jq .
+```
+
+---
+
+#### **GET /stories/{id}**
+
+Get detailed view of a specific story with all supporting articles.
+
+**Parameters**
+- `id` (path): Story ID
+
+**Response (200)**
+```json
+{
+  "story": {
+    "id": 1,
+    "title": "Google Announces Gemini 2.0...",
+    "synthesis": "Full synthesis text...",
+    "key_points": [...],
+    "why_it_matters": "...",
+    "topics": ["AI/ML", "Cloud"],
+    "entities": ["Google", "Gemini 2.0"],
+    "article_count": 5,
+    "importance_score": 0.92,
+    "generated_at": "2024-12-06T08:00:00Z"
+  },
+  "articles": [
+    {
+      "id": 123,
+      "title": "Google's Gemini 2.0 arrives",
+      "url": "https://techcrunch.com/...",
+      "summary": "Article summary...",
+      "published": "2024-12-06T06:30:00Z",
+      "structured_summary": {...}
+    }
+  ]
+}
+```
+
+**Example**
+```bash
+curl http://localhost:8787/stories/1 | jq .
+```
+
+---
+
+#### **POST /stories/generate**
+
+Manually trigger story generation. Clusters articles from last 24 hours and generates synthesized stories.
+
+**Request Body (optional)**
+```json
+{
+  "hours": 24,
+  "min_articles": 2,
+  "max_stories": 10,
+  "force_regenerate": false
+}
+```
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "stories_generated": 7,
+  "articles_processed": 145,
+  "clusters_found": 12,
+  "errors": 0,
+  "generation_time": 45.3
+}
+```
+
+**Example**
+```bash
+curl -X POST http://localhost:8787/stories/generate | jq .
+```
+
+---
+
+#### **GET /stories/stats**
+
+Get story generation statistics.
+
+**Response (200)**
+```json
+{
+  "total_stories": 7,
+  "last_generated": "2024-12-06T08:00:00Z",
+  "next_scheduled": "2024-12-07T08:00:00Z",
+  "avg_articles_per_story": 4.2,
+  "avg_generation_time": 38.5
+}
+```
+
+---
+
+### 📁 Feed Management
 
 ### **POST /feeds**
 

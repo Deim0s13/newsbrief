@@ -248,5 +248,57 @@ def parse_cache_key(cache_key: str) -> tuple[str, str]:
         raise ValueError(f"Invalid cache key format: {cache_key}")
 
 
+# Story models for aggregated news
+class StoryOut(BaseModel):
+    """A synthesized news story aggregating multiple articles."""
+    id: int
+    title: str
+    synthesis: str
+    key_points: List[str] = Field(default_factory=list)
+    why_it_matters: Optional[str] = None
+    topics: List[str] = Field(default_factory=list)
+    entities: List[str] = Field(default_factory=list)
+    article_count: int
+    importance_score: float = 0.0
+    freshness_score: float = 0.0
+    generated_at: datetime
+    first_seen: Optional[datetime] = None
+    last_updated: Optional[datetime] = None
+    supporting_articles: List[ItemOut] = Field(default_factory=list)
+    primary_article_id: Optional[int] = None
+    
+
+class StoryDetailOut(BaseModel):
+    """Detailed story view with full article list."""
+    story: StoryOut
+    articles: List[ItemOut]
+
+
+class StoriesListOut(BaseModel):
+    """List of stories for the landing page."""
+    stories: List[StoryOut]
+    total: int
+    generated_at: datetime
+    time_window_hours: int = 24
+
+
+class StoryGenerationRequest(BaseModel):
+    """Request to generate/refresh stories."""
+    hours: int = Field(24, description="Look back window in hours")
+    min_articles: int = Field(2, description="Minimum articles to form a story")
+    max_stories: int = Field(10, description="Maximum number of stories to generate")
+    force_regenerate: bool = Field(False, description="Regenerate existing stories")
+
+
+class StoryGenerationResponse(BaseModel):
+    """Response from story generation."""
+    success: bool
+    stories_generated: int
+    articles_processed: int
+    clusters_found: int
+    errors: int
+    generation_time: float
+
+
 # Update forward references
 SummaryResponse.model_rebuild()

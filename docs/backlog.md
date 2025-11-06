@@ -1,5 +1,12 @@
 # NewsBrief Backlog
 
+> **🚀 PRIMARY FOCUS**: Story Architecture (v0.5.0)  
+> **See**: [Story Architecture Backlog](STORY_ARCHITECTURE_BACKLOG.md) | [Implementation Plan](IMPLEMENTATION_PLAN.md)
+>
+> The items below are secondary/future enhancements. Current development focuses on story-based aggregation.
+
+---
+
 ## Feed Refresh & Monitoring Improvements
 
 ### Priority: Medium
