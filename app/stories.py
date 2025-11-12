@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from typing import List, Optional
 
 from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKey, Boolean, desc
@@ -53,7 +53,7 @@ class Story(Base):
     freshness_score = Column(Float, default=0.0)
     cluster_method = Column(String)
     story_hash = Column(String, unique=True)
-    generated_at = Column(DateTime, default=datetime.utcnow)
+    generated_at = Column(DateTime, default=lambda: datetime.now(UTC))
     first_seen = Column(DateTime)
     last_updated = Column(DateTime)
     time_window_start = Column(DateTime)
@@ -74,7 +74,7 @@ class StoryArticle(Base):
     article_id = Column(Integer, nullable=False)  # FK to items table (not ORM yet, so no ForeignKey constraint)
     relevance_score = Column(Float, default=1.0)
     is_primary = Column(Boolean, default=False)
-    added_at = Column(DateTime, default=datetime.utcnow)
+    added_at = Column(DateTime, default=lambda: datetime.now(UTC))
     
     # Relationships
     story = relationship("Story", back_populates="story_articles")
@@ -135,9 +135,9 @@ def create_story(
         freshness_score=freshness_score,
         cluster_method=cluster_method,
         story_hash=story_hash,
-        generated_at=datetime.utcnow(),
-        first_seen=first_seen or datetime.utcnow(),
-        last_updated=datetime.utcnow(),
+        generated_at=datetime.now(UTC),
+        first_seen=first_seen or datetime.now(UTC),
+        last_updated=datetime.now(UTC),
         time_window_start=time_window_start,
         time_window_end=time_window_end,
         model=model,
@@ -174,7 +174,7 @@ def link_articles_to_story(
             article_id=article_id,
             relevance_score=1.0,  # Can be adjusted later with clustering scores
             is_primary=(article_id == primary_article_id),
-            added_at=datetime.utcnow(),
+            added_at=datetime.now(UTC),
         )
         session.add(story_article)
     
@@ -182,7 +182,7 @@ def link_articles_to_story(
     story = session.query(Story).filter(Story.id == story_id).first()
     if story:
         story.article_count = len(article_ids)
-        story.last_updated = datetime.utcnow()
+        story.last_updated = datetime.now(UTC)
     
     session.commit()
     logger.info(f"Linked {len(article_ids)} articles to story #{story_id}")
@@ -350,7 +350,7 @@ def cleanup_archived_stories(
     Returns:
         Number of stories deleted
     """
-    cutoff_date = datetime.utcnow() - timedelta(days=days)
+    cutoff_date = datetime.now(UTC) - timedelta(days=days)
     
     stories = session.query(Story).filter(
         Story.status == 'archived',

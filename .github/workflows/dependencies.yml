@@ -104,18 +104,18 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install safety
-        run: pip install safety
+      - name: Install pip-audit
+        run: pip install pip-audit
 
       - name: Run security audit
         run: |
           echo "🔍 Running security audit on dependencies..."
-          # Run safety and capture exit code
-          if safety check -r requirements.txt --bare 2>&1 | tee safety-report.txt; then
+          # Use pip-audit (official PyPA security tool)
+          if pip-audit -r requirements.txt 2>&1 | tee security-report.txt; then
             echo "✅ No security vulnerabilities found"
           else
             echo "⚠️  Security vulnerabilities found!"
-            cat safety-report.txt
+            cat security-report.txt
             exit 1
           fi
 

@@ -4,7 +4,7 @@ Test script for story CRUD operations.
 Validates that all database operations work correctly with SQLAlchemy ORM.
 """
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from pathlib import Path
 
 from sqlalchemy import create_engine
@@ -49,8 +49,8 @@ def test_create_story():
             importance_score=0.85,
             freshness_score=0.92,
             model="llama3.1:8b",
-            time_window_start=datetime.utcnow() - timedelta(hours=24),
-            time_window_end=datetime.utcnow(),
+            time_window_start=datetime.now(UTC) - timedelta(hours=24),
+            time_window_end=datetime.now(UTC),
             cluster_method="test",
         )
         
@@ -86,8 +86,8 @@ def test_link_articles():
             importance_score=0.8,
             freshness_score=0.9,
             model="test",
-            time_window_start=datetime.utcnow(),
-            time_window_end=datetime.utcnow(),
+            time_window_start=datetime.now(UTC),
+            time_window_end=datetime.now(UTC),
         )
         
         # Link articles
@@ -136,8 +136,8 @@ def test_get_story_by_id():
             importance_score=0.75,
             freshness_score=0.88,
             model="test",
-            time_window_start=datetime.utcnow(),
-            time_window_end=datetime.utcnow(),
+            time_window_start=datetime.now(UTC),
+            time_window_end=datetime.now(UTC),
         )
         
         link_articles_to_story(session, story_id, [10, 20, 30])
@@ -190,8 +190,8 @@ def test_get_stories_list():
                 importance_score=0.5 + (i * 0.1),
                 freshness_score=0.9,
                 model="test",
-                time_window_start=datetime.utcnow(),
-                time_window_end=datetime.utcnow(),
+                time_window_start=datetime.now(UTC),
+                time_window_end=datetime.now(UTC),
             )
             # Link at least 1 article to pass validation
             link_articles_to_story(session, story_id, [i+1])
@@ -230,8 +230,8 @@ def test_update_story():
             importance_score=0.5,
             freshness_score=0.8,
             model="test",
-            time_window_start=datetime.utcnow(),
-            time_window_end=datetime.utcnow(),
+            time_window_start=datetime.now(UTC),
+            time_window_end=datetime.now(UTC),
         )
         
         # Update story
@@ -283,8 +283,8 @@ def test_archive_story():
             importance_score=0.7,
             freshness_score=0.85,
             model="test",
-            time_window_start=datetime.utcnow(),
-            time_window_end=datetime.utcnow(),
+            time_window_start=datetime.now(UTC),
+            time_window_end=datetime.now(UTC),
         )
         
         # Archive story
@@ -318,8 +318,8 @@ def test_delete_story():
             importance_score=0.6,
             freshness_score=0.8,
             model="test",
-            time_window_start=datetime.utcnow(),
-            time_window_end=datetime.utcnow(),
+            time_window_start=datetime.now(UTC),
+            time_window_end=datetime.now(UTC),
         )
         
         # Link articles
@@ -360,14 +360,14 @@ def test_cleanup_archived():
             importance_score=0.5,
             freshness_score=0.7,
             model="test",
-            time_window_start=datetime.utcnow(),
-            time_window_end=datetime.utcnow(),
+            time_window_start=datetime.now(UTC),
+            time_window_end=datetime.now(UTC),
         )
         
         # Archive it and backdate last_updated
         archive_story(session, old_story_id)
         old_story = session.query(Story).filter(Story.id == old_story_id).first()
-        old_story.last_updated = datetime.utcnow() - timedelta(days=40)
+        old_story.last_updated = datetime.now(UTC) - timedelta(days=40)
         session.commit()
         
         # Create recent archived story
@@ -382,8 +382,8 @@ def test_cleanup_archived():
             importance_score=0.5,
             freshness_score=0.7,
             model="test",
-            time_window_start=datetime.utcnow(),
-            time_window_end=datetime.utcnow(),
+            time_window_start=datetime.now(UTC),
+            time_window_end=datetime.now(UTC),
         )
         archive_story(session, recent_story_id)
         
