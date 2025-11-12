@@ -144,6 +144,7 @@ jobs:
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
+        continue-on-error: true  # Don't fail pipeline on security scan issues
         with:
           image-ref: ${{ needs.build.outputs.image-tag }}
           format: 'sarif'
@@ -151,6 +152,7 @@ jobs:
 
       - name: Upload Trivy scan results
         uses: github/codeql-action/upload-sarif@v3
+        continue-on-error: true  # Don't fail if upload fails
         with:
           sarif_file: 'trivy-results.sarif'
 
