@@ -32,7 +32,6 @@ from .models import (
     ItemOut,
     LLMStatusOut,
     StoriesListOut,
-    StoryDetailOut,
     StoryGenerationRequest,
     StoryGenerationResponse,
     StoryOut,
@@ -1069,47 +1068,6 @@ def list_stories_endpoint(
         )
 
 
-@app.get("/stories/{story_id}", response_model=StoryDetailOut)
-def get_story_endpoint(story_id: int):
-    """
-    Get a single story with full details and supporting articles.
-
-    Returns the complete story including:
-    - Full synthesis narrative
-    - All key points
-    - "Why it matters" analysis
-    - Topics and entities
-    - List of supporting articles with summaries
-    - Importance and freshness scores
-
-    Args:
-        story_id: The ID of the story to retrieve
-
-    Returns:
-        Complete story details with all supporting articles
-
-    Raises:
-        404: Story not found
-    """
-    try:
-        with session_scope() as s:
-            story = get_story_by_id(session=s, story_id=story_id)
-
-            if not story:
-                raise HTTPException(
-                    status_code=404, detail=f"Story with ID {story_id} not found"
-                )
-
-            return story  # type: ignore[return-value]
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to get story {story_id}: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to retrieve story: {str(e)}"
-        )
-
-
 @app.get("/stories/stats")
 def get_story_stats():
     """
@@ -1185,4 +1143,45 @@ def get_story_stats():
         logger.error(f"Failed to get story stats: {e}")
         raise HTTPException(
             status_code=500, detail=f"Failed to retrieve statistics: {str(e)}"
+        )
+
+
+@app.get("/stories/{story_id}", response_model=StoryOut)
+def get_story_endpoint(story_id: int):
+    """
+    Get a single story with full details and supporting articles.
+
+    Returns the complete story including:
+    - Full synthesis narrative
+    - All key points
+    - "Why it matters" analysis
+    - Topics and entities
+    - List of supporting articles with summaries
+    - Importance and freshness scores
+
+    Args:
+        story_id: The ID of the story to retrieve
+
+    Returns:
+        Complete story details with all supporting articles
+
+    Raises:
+        404: Story not found
+    """
+    try:
+        with session_scope() as s:
+            story = get_story_by_id(session=s, story_id=story_id)
+
+            if not story:
+                raise HTTPException(
+                    status_code=404, detail=f"Story with ID {story_id} not found"
+                )
+
+            return story  # type: ignore[return-value]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get story {story_id}: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve story: {str(e)}"
         )
