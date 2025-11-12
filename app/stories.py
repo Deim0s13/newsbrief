@@ -18,7 +18,7 @@ import os
 import re
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from sqlalchemy import (
     Boolean,
@@ -520,7 +520,7 @@ def _calculate_keyword_overlap(keywords1: Set[str], keywords2: Set[str]) -> floa
 
 def _generate_story_synthesis(
     session: Session, article_ids: List[int], model: str = "llama3.1:8b"
-) -> Dict[str, any]:
+) -> Dict[str, Any]:
     """
     Generate story synthesis from multiple articles using LLM.
 
@@ -640,7 +640,7 @@ JSON:"""
         return _fallback_synthesis(articles)
 
 
-def _fallback_synthesis(articles: List[Tuple]) -> Dict[str, any]:
+def _fallback_synthesis(articles: Sequence[Any]) -> Dict[str, Any]:
     """
     Generate fallback synthesis when LLM is unavailable.
 
@@ -728,7 +728,7 @@ def generate_stories_simple(
     logger.info(f"Found {len(articles)} articles in time window")
 
     # Step 1: Group by topic (coarse filter)
-    topic_groups: Dict[str, List[Tuple]] = defaultdict(list)
+    topic_groups: Dict[str, List[Any]] = defaultdict(list)
     for article in articles:
         topic = article[2] or "uncategorized"
         topic_groups[topic].append(article)
@@ -744,14 +744,15 @@ def generate_stories_simple(
         # Extract keywords for each article
         article_keywords = {}
         for article in topic_articles:
-            article_id, title = article[0], article[1]
+            article_id = int(article[0])  # type: ignore[index]
+            title = str(article[1])  # type: ignore[index]
             article_keywords[article_id] = _extract_keywords(title)
 
         # Greedy clustering: iterate through articles, add to existing cluster or create new one
         topic_clusters: List[List[int]] = []
 
         for article in topic_articles:
-            article_id = article[0]
+            article_id = int(article[0])  # type: ignore[index]
             keywords = article_keywords[article_id]
 
             # Find best matching cluster
@@ -834,8 +835,8 @@ def generate_stories_simple(
             ).first()
 
             # Convert to datetime if needed (SQLite returns strings)
-            time_window_start = cluster_times[0]
-            time_window_end = cluster_times[1]
+            time_window_start = cluster_times[0]  # type: ignore[index]
+            time_window_end = cluster_times[1]  # type: ignore[index]
 
             if isinstance(time_window_start, str):
                 time_window_start = datetime.fromisoformat(
@@ -854,8 +855,8 @@ def generate_stories_simple(
             # Create story
             story_id = create_story(
                 session=session,
-                title=synthesis_data["synthesis"][:200],  # Use first part as title
-                synthesis=synthesis_data["synthesis"],
+                title=synthesis_data["synthesis"][:200],  # type: ignore[index] # Use first part as title
+                synthesis=synthesis_data["synthesis"],  # type: ignore[index]
                 key_points=synthesis_data["key_points"],
                 why_it_matters=synthesis_data["why_it_matters"],
                 topics=synthesis_data["topics"],
