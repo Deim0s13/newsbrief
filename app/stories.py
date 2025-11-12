@@ -251,7 +251,8 @@ def get_story_by_id(session: Session, story_id: int) -> Optional[StoryOut]:
 def get_stories(
     session: Session,
     limit: int = 10,
-    status: str = "active",
+    offset: int = 0,
+    status: Optional[str] = "active",
     order_by: str = "importance",
 ) -> List[StoryOut]:
     """
@@ -260,23 +261,28 @@ def get_stories(
     Args:
         session: SQLAlchemy session
         limit: Maximum number of stories to return
-        status: Filter by status ('active' or 'archived')
-        order_by: Sort order ('importance', 'date', or 'freshness')
+        offset: Number of stories to skip (for pagination)
+        status: Filter by status ('active', 'archived', or None for all)
+        order_by: Sort order ('importance', 'freshness', or 'generated_at')
 
     Returns:
         List of StoryOut models
     """
-    query = session.query(Story).filter(Story.status == status)
+    query = session.query(Story)
+
+    # Apply status filter if provided
+    if status:
+        query = query.filter(Story.status == status)
 
     # Apply sorting
     if order_by == "importance":
         query = query.order_by(desc(Story.importance_score))
     elif order_by == "freshness":
         query = query.order_by(desc(Story.freshness_score))
-    else:  # date
+    else:  # generated_at
         query = query.order_by(desc(Story.generated_at))
 
-    query = query.limit(limit)
+    query = query.offset(offset).limit(limit)
     stories = query.all()
 
     # Convert to StoryOut models

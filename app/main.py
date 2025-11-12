@@ -31,11 +31,21 @@ from .models import (
     FeedIn,
     ItemOut,
     LLMStatusOut,
+    StoriesListOut,
+    StoryDetailOut,
+    StoryGenerationRequest,
+    StoryGenerationResponse,
+    StoryOut,
     StructuredSummary,
     SummaryRequest,
     SummaryResponse,
     SummaryResultOut,
     extract_first_sentences,
+)
+from .stories import (
+    generate_stories_simple,
+    get_stories,
+    get_story_by_id,
 )
 
 logger = logging.getLogger(__name__)
@@ -932,4 +942,247 @@ def get_item(item_id: int):
             structured_summary=structured_summary,
             fallback_summary=fallback_summary,
             is_fallback_summary=is_fallback,
+        )
+
+
+# ============================================================================
+# Story Endpoints (v0.5.0)
+# ============================================================================
+
+
+@app.post("/stories/generate", response_model=StoryGenerationResponse)
+def generate_stories_endpoint(request: StoryGenerationRequest = None):  # type: ignore[assignment]
+    """
+    Generate stories from recent articles using hybrid clustering and LLM synthesis.
+
+    This endpoint triggers the story generation pipeline which:
+    1. Queries articles from the specified time window
+    2. Groups articles by topic (coarse filter)
+    3. Clusters by title keyword similarity (Jaccard index)
+    4. Generates multi-document synthesis via LLM
+    5. Stores stories with links to source articles
+
+    Returns:
+        Story generation results including story IDs and statistics
+    """
+    try:
+        # Use default request if none provided
+        if request is None:
+            request = StoryGenerationRequest()
+
+        with session_scope() as s:
+            story_ids = generate_stories_simple(
+                session=s,
+                time_window_hours=request.time_window_hours,
+                min_articles_per_story=request.min_articles_per_story,
+                similarity_threshold=request.similarity_threshold,
+                model=request.model,
+            )
+
+            return StoryGenerationResponse(
+                success=True,
+                story_ids=story_ids,
+                stories_generated=len(story_ids),
+                time_window_hours=request.time_window_hours,
+                model=request.model,
+            )
+    except Exception as e:
+        logger.error(f"Story generation failed: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Story generation failed: {str(e)}"
+        )
+
+
+@app.get("/stories", response_model=StoriesListOut)
+def list_stories_endpoint(
+    limit: int = Query(10, le=50, description="Maximum number of stories to return"),
+    offset: int = Query(
+        0, ge=0, description="Number of stories to skip for pagination"
+    ),
+    status: str = Query(
+        "active", description="Filter by status: active, archived, or all"
+    ),
+    order_by: str = Query(
+        "importance", description="Sort field: importance, freshness, or generated_at"
+    ),
+):
+    """
+    List stories with filtering, sorting, and pagination.
+
+    Stories are the main aggregated news briefs synthesized from multiple articles.
+    By default, returns the top 10 most important active stories.
+
+    Query Parameters:
+        limit: Maximum stories to return (default: 10, max: 50)
+        offset: Pagination offset (default: 0)
+        status: Filter by status - 'active', 'archived', or 'all' (default: active)
+        order_by: Sort field - 'importance', 'freshness', or 'generated_at' (default: importance)
+
+    Returns:
+        List of stories with metadata and supporting article summaries
+    """
+    try:
+        # Validate status parameter
+        if status not in ["active", "archived", "all"]:
+            raise HTTPException(
+                status_code=400, detail="status must be 'active', 'archived', or 'all'"
+            )
+
+        # Validate order_by parameter
+        if order_by not in ["importance", "freshness", "generated_at"]:
+            raise HTTPException(
+                status_code=400,
+                detail="order_by must be 'importance', 'freshness', or 'generated_at'",
+            )
+
+        with session_scope() as s:
+            # Convert "all" to None for get_stories function
+            status_filter = None if status == "all" else status
+
+            stories = get_stories(
+                session=s,
+                limit=limit,
+                offset=offset,
+                status=status_filter,
+                order_by=order_by,
+            )
+
+            # Get total count for pagination
+            count_query = "SELECT COUNT(*) FROM stories"
+            if status_filter:
+                count_query += f" WHERE status = '{status_filter}'"
+
+            total = s.execute(text(count_query)).scalar() or 0
+
+            return StoriesListOut(
+                stories=stories,
+                total=total,
+                limit=limit,
+                offset=offset,
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to list stories: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve stories: {str(e)}"
+        )
+
+
+@app.get("/stories/{story_id}", response_model=StoryDetailOut)
+def get_story_endpoint(story_id: int):
+    """
+    Get a single story with full details and supporting articles.
+
+    Returns the complete story including:
+    - Full synthesis narrative
+    - All key points
+    - "Why it matters" analysis
+    - Topics and entities
+    - List of supporting articles with summaries
+    - Importance and freshness scores
+
+    Args:
+        story_id: The ID of the story to retrieve
+
+    Returns:
+        Complete story details with all supporting articles
+
+    Raises:
+        404: Story not found
+    """
+    try:
+        with session_scope() as s:
+            story = get_story_by_id(session=s, story_id=story_id)
+
+            if not story:
+                raise HTTPException(
+                    status_code=404, detail=f"Story with ID {story_id} not found"
+                )
+
+            return story  # type: ignore[return-value]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get story {story_id}: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve story: {str(e)}"
+        )
+
+
+@app.get("/stories/stats")
+def get_story_stats():
+    """
+    Get story generation statistics and metadata.
+
+    Provides an overview of the story system including:
+    - Total number of stories (active and archived)
+    - Most recent generation timestamp
+    - Story count by topic
+    - Average articles per story
+    - Coverage statistics
+
+    Returns:
+        Story system statistics and metadata
+    """
+    try:
+        with session_scope() as s:
+            # Get basic counts
+            stats_query = text(
+                """
+                SELECT 
+                    COUNT(*) as total_stories,
+                    COUNT(CASE WHEN status = 'active' THEN 1 END) as active_stories,
+                    COUNT(CASE WHEN status = 'archived' THEN 1 END) as archived_stories,
+                    MAX(generated_at) as last_generated_at,
+                    AVG(article_count) as avg_articles_per_story,
+                    SUM(article_count) as total_articles_in_stories
+                FROM stories
+            """
+            )
+
+            stats_row = s.execute(stats_query).fetchone()
+
+            # Get topic distribution
+            topic_query = text(
+                """
+                SELECT topics_json, COUNT(*) as count
+                FROM stories
+                WHERE status = 'active' AND topics_json IS NOT NULL
+                GROUP BY topics_json
+                LIMIT 10
+            """
+            )
+
+            topic_rows = s.execute(topic_query).fetchall()
+
+            # Parse topics (they're stored as JSON arrays)
+            import json
+
+            topic_counts: dict = {}
+            for row in topic_rows:
+                try:
+                    topics = json.loads(row[0])
+                    for topic in topics:
+                        topic_counts[topic] = topic_counts.get(topic, 0) + row[1]
+                except (json.JSONDecodeError, TypeError):
+                    continue
+
+            return {
+                "total_stories": stats_row[0] or 0,
+                "active_stories": stats_row[1] or 0,
+                "archived_stories": stats_row[2] or 0,
+                "last_generated_at": stats_row[3],
+                "avg_articles_per_story": (
+                    round(stats_row[4], 2) if stats_row[4] else 0.0
+                ),
+                "total_articles_in_stories": stats_row[5] or 0,
+                "top_topics": dict(
+                    sorted(topic_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+                ),
+            }
+    except Exception as e:
+        logger.error(f"Failed to get story stats: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve statistics: {str(e)}"
         )

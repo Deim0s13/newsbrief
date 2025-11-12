@@ -321,17 +321,23 @@ class StoriesListOut(BaseModel):
 
     stories: List[StoryOut]
     total: int
-    generated_at: datetime
-    time_window_hours: int = 24
+    limit: int
+    offset: int
 
 
 class StoryGenerationRequest(BaseModel):
     """Request to generate/refresh stories."""
 
-    hours: int = Field(24, description="Look back window in hours")
-    min_articles: int = Field(2, description="Minimum articles to form a story")
-    max_stories: int = Field(10, description="Maximum number of stories to generate")
-    force_regenerate: bool = Field(False, description="Regenerate existing stories")
+    time_window_hours: int = Field(
+        24, description="Look back window in hours", ge=1, le=168
+    )
+    min_articles_per_story: int = Field(
+        1, description="Minimum articles to form a story", ge=1
+    )
+    similarity_threshold: float = Field(
+        0.3, description="Keyword similarity threshold (0.0-1.0)", ge=0.0, le=1.0
+    )
+    model: str = Field("llama3.1:8b", description="LLM model to use for synthesis")
 
 
 class StoryGenerationResponse(BaseModel):
@@ -339,10 +345,9 @@ class StoryGenerationResponse(BaseModel):
 
     success: bool
     stories_generated: int
-    articles_processed: int
-    clusters_found: int
-    errors: int
-    generation_time: float
+    story_ids: List[int]
+    time_window_hours: int
+    model: str
 
 
 # Story JSON field serialization helpers
