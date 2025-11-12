@@ -1,10 +1,13 @@
 name: Project Board Automation
 
+# DISABLED: No GitHub Project configured
+# To enable: Create a GitHub Project, update PROJECT_NUMBER below, then uncomment the triggers
+
 on:
-  workflow_dispatch:
-  issues:
-    types: [opened, labeled, reopened, closed, assigned]
-  # pull_request:  # Temporarily disabled - configure project number first
+  workflow_dispatch:  # Manual trigger only
+  # issues:  # Disabled until project is configured
+  #   types: [opened, labeled, reopened, closed, assigned]
+  # pull_request:
   #   types: [opened, ready_for_review, closed]
 
 permissions:
