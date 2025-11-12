@@ -1,12 +1,15 @@
 # sqlite db utils
 from __future__ import annotations
 
+import logging
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
+logger = logging.getLogger(__name__)
 
 DATA_DIR = Path("data")
 DATA_DIR.mkdir(exist_ok=True, parents=True)
@@ -32,7 +35,26 @@ def session_scope() -> Iterator:
 
 
 def init_db() -> None:
+    """
+    Initialize database with all required tables and indexes.
+
+    Handles both:
+    - New databases: Creates all tables from scratch
+    - Existing databases: Adds missing tables/columns (migration)
+
+    Uses CREATE TABLE IF NOT EXISTS for idempotent migrations.
+    """
     with engine.begin() as conn:
+        # Check if this is a migration (stories table doesn't exist yet)
+        result = conn.exec_driver_sql(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='stories'"
+        )
+        is_migration = len(result.fetchall()) == 0
+
+        if is_migration:
+            logger.info("🔄 Migrating database to v0.5.0 (story architecture)...")
+        else:
+            logger.info("✅ Database already has story tables, verifying schema...")
         conn.exec_driver_sql(
             """
         CREATE TABLE IF NOT EXISTS feeds (
@@ -86,6 +108,53 @@ def init_db() -> None:
         );
         """
         )
+
+        # Stories table - aggregated/synthesized news stories
+        conn.exec_driver_sql(
+            """
+        CREATE TABLE IF NOT EXISTS stories (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          title TEXT NOT NULL,
+          synthesis TEXT NOT NULL,
+          key_points_json TEXT,
+          why_it_matters TEXT,
+          topics_json TEXT,
+          entities_json TEXT,
+          article_count INTEGER DEFAULT 0,
+          importance_score REAL DEFAULT 0.0,
+          freshness_score REAL DEFAULT 0.0,
+          cluster_method TEXT,
+          story_hash TEXT UNIQUE,
+          generated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          first_seen DATETIME,
+          last_updated DATETIME,
+          time_window_start DATETIME,
+          time_window_end DATETIME,
+          model TEXT,
+          status TEXT DEFAULT 'active'
+        );
+        """
+        )
+
+        # Story-Article junction table
+        conn.exec_driver_sql(
+            """
+        CREATE TABLE IF NOT EXISTS story_articles (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          story_id INTEGER NOT NULL,
+          article_id INTEGER NOT NULL,
+          relevance_score REAL DEFAULT 1.0,
+          is_primary BOOLEAN DEFAULT 0,
+          added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(story_id) REFERENCES stories(id) ON DELETE CASCADE,
+          FOREIGN KEY(article_id) REFERENCES items(id) ON DELETE CASCADE,
+          UNIQUE(story_id, article_id)
+        );
+        """
+        )
+
+        if is_migration:
+            logger.info("✅ Story tables created successfully")
 
         # Migration: Add columns if they don't exist (for existing databases)
         migration_columns = [
@@ -152,3 +221,34 @@ def init_db() -> None:
         CREATE INDEX IF NOT EXISTS idx_feeds_health_score ON feeds(health_score DESC);
         """
         )
+        # Story indexes
+        conn.exec_driver_sql(
+            """
+        CREATE INDEX IF NOT EXISTS idx_stories_generated_at ON stories(generated_at DESC);
+        """
+        )
+        conn.exec_driver_sql(
+            """
+        CREATE INDEX IF NOT EXISTS idx_stories_importance ON stories(importance_score DESC);
+        """
+        )
+        conn.exec_driver_sql(
+            """
+        CREATE INDEX IF NOT EXISTS idx_stories_status ON stories(status);
+        """
+        )
+        conn.exec_driver_sql(
+            """
+        CREATE INDEX IF NOT EXISTS idx_story_articles_story ON story_articles(story_id);
+        """
+        )
+        conn.exec_driver_sql(
+            """
+        CREATE INDEX IF NOT EXISTS idx_story_articles_article ON story_articles(article_id);
+        """
+        )
+
+        if is_migration:
+            logger.info("🎉 Database migration to v0.5.0 complete!")
+        else:
+            logger.info("✅ Database schema verification complete")

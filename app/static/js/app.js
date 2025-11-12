@@ -13,6 +13,7 @@ let currentTopic = ''; // Track current topic filter
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM loaded, initializing NewsBrief...');
     initializeDarkMode();
+    initializeViewMode();
     setupEventListeners();
     
     // Load dashboard data if we're on the home page
@@ -245,20 +246,42 @@ async function loadDashboardData() {
 }
 
 function toggleViewMode(mode) {
+    console.log('toggleViewMode called with mode:', mode);
     const skimBtn = document.getElementById('skim-view');
     const fullBtn = document.getElementById('full-view');
     
+    if (!skimBtn || !fullBtn) {
+        console.error('View mode buttons not found');
+        return;
+    }
+    
+    // Save preference to localStorage
+    localStorage.setItem('newsbrief-view-mode', mode);
+    
     if (mode === 'skim') {
-        skimBtn.className = 'px-3 py-1 text-sm font-medium bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm rounded-md';
-        fullBtn.className = 'px-3 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white';
+        // Update button styles - skim active
+        skimBtn.className = 'px-3 py-1 text-sm font-medium bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm rounded-md transition-colors';
+        fullBtn.className = 'px-3 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors';
+        
         // Apply skim view styles
         document.body.classList.add('skim-view');
+        console.log('Skim view activated');
     } else {
-        fullBtn.className = 'px-3 py-1 text-sm font-medium bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm rounded-md';
-        skimBtn.className = 'px-3 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white';
-        // Apply full view styles
+        // Update button styles - full active
+        fullBtn.className = 'px-3 py-1 text-sm font-medium bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm rounded-md transition-colors';
+        skimBtn.className = 'px-3 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors';
+        
+        // Remove skim view styles
         document.body.classList.remove('skim-view');
+        console.log('Full view activated');
     }
+}
+
+function initializeViewMode() {
+    // Get saved preference or default to 'full'
+    const savedMode = localStorage.getItem('newsbrief-view-mode') || 'full';
+    console.log('Initializing view mode:', savedMode);
+    toggleViewMode(savedMode);
 }
 
 function formatArticleContent(content) {

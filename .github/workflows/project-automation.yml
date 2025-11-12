@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
   issues:
     types: [opened, labeled, reopened, closed, assigned]
-  pull_request:
-    types: [opened, ready_for_review, closed]
+  # pull_request:  # Temporarily disabled - configure project number first
+  #   types: [opened, ready_for_review, closed]
 
 permissions:
   contents: read

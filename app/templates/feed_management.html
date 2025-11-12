@@ -93,12 +93,13 @@
 <script>
 // Feed Management JavaScript
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('Feed Management page loaded');
     loadFeedsList();
-    setupEventListeners();
+    setupFeedManagementListeners();
 });
 
-function setupEventListeners() {
-    console.log('Setting up event listeners');
+function setupFeedManagementListeners() {
+    console.log('Setting up feed management event listeners');
     
     // Add feed form
     const addFeedForm = document.getElementById('add-feed-form');
@@ -135,7 +136,7 @@ async function loadFeedsList() {
         updateFeedsTable(feeds);
     } catch (error) {
         console.error('Error loading feeds:', error);
-        showNotification('Failed to load feeds', 'error');
+        showFeedNotification('Failed to load feeds', 'error');
     }
 }
 
@@ -195,13 +196,13 @@ async function addFeed() {
     
     if (!url) {
         console.log('No URL provided');
-        showNotification('Please enter a feed URL', 'error');
+        showFeedNotification('Please enter a feed URL', 'error');
         return;
     }
     
     try {
         console.log('Sending request to add feed:', url);
-        showNotification('Adding feed...', 'info');
+        showFeedNotification('Adding feed...', 'info');
         
         const response = await fetch('/feeds', {
             method: 'POST',
@@ -221,7 +222,7 @@ async function addFeed() {
         
         const result = await response.json();
         console.log('Feed added successfully:', result);
-        showNotification(`Feed added successfully! ID: ${result.feed_id}`, 'success');
+        showFeedNotification(`Feed added successfully! ID: ${result.feed_id}`, 'success');
         
         // Clear form and reload list
         urlInput.value = '';
@@ -229,7 +230,7 @@ async function addFeed() {
         
     } catch (error) {
         console.error('Error adding feed:', error);
-        showNotification(`Failed to add feed: ${error.message}`, 'error');
+        showFeedNotification(`Failed to add feed: ${error.message}`, 'error');
     }
 }
 
@@ -238,7 +239,7 @@ async function importOPML() {
     const file = fileInput.files[0];
     
     if (!file) {
-        showNotification('Please select an OPML file', 'error');
+        showFeedNotification('Please select an OPML file', 'error');
         return;
     }
     
@@ -256,7 +257,7 @@ async function importOPML() {
         }
         
         const result = await response.json();
-        showNotification(result.message, 'success');
+        showFeedNotification(result.message, 'success');
         
         // Clear form and reload list
         fileInput.value = '';
@@ -264,7 +265,7 @@ async function importOPML() {
         
     } catch (error) {
         console.error('Error importing OPML:', error);
-        showNotification(`Failed to import OPML: ${error.message}`, 'error');
+        showFeedNotification(`Failed to import OPML: ${error.message}`, 'error');
     }
 }
 
@@ -286,11 +287,11 @@ async function exportFeeds() {
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
         
-        showNotification('Feeds exported successfully!', 'success');
+        showFeedNotification('Feeds exported successfully!', 'success');
         
     } catch (error) {
         console.error('Error exporting feeds:', error);
-        showNotification(`Failed to export feeds: ${error.message}`, 'error');
+        showFeedNotification(`Failed to export feeds: ${error.message}`, 'error');
     }
 }
 
@@ -308,12 +309,12 @@ async function toggleFeed(feedId, disable) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
         
-        showNotification(`Feed ${disable ? 'disabled' : 'enabled'} successfully`, 'success');
+        showFeedNotification(`Feed ${disable ? 'disabled' : 'enabled'} successfully`, 'success');
         loadFeedsList();
         
     } catch (error) {
         console.error('Error toggling feed:', error);
-        showNotification(`Failed to toggle feed: ${error.message}`, 'error');
+        showFeedNotification(`Failed to toggle feed: ${error.message}`, 'error');
     }
 }
 
@@ -332,12 +333,12 @@ async function deleteFeed(feedId) {
         }
         
         const result = await response.json();
-        showNotification(`Feed deleted successfully. ${result.articles_deleted} articles removed.`, 'success');
+        showFeedNotification(`Feed deleted successfully. ${result.articles_deleted} articles removed.`, 'success');
         loadFeedsList();
         
     } catch (error) {
         console.error('Error deleting feed:', error);
-        showNotification(`Failed to delete feed: ${error.message}`, 'error');
+        showFeedNotification(`Failed to delete feed: ${error.message}`, 'error');
     }
 }
 
@@ -347,7 +348,7 @@ function refreshFeedsList() {
 
 async function refreshAllFeeds() {
     try {
-        showNotification('Refreshing all feeds... This may take a few minutes.', 'info');
+        showFeedNotification('Refreshing all feeds... This may take a few minutes.', 'info');
         
         const response = await fetch('/refresh', {
             method: 'POST'
@@ -358,14 +359,14 @@ async function refreshAllFeeds() {
         }
         
         const result = await response.json();
-        showNotification(`Successfully refreshed feeds! Processed ${result.stats.items.total} articles from ${result.stats.feeds.processed} feeds.`, 'success');
+        showFeedNotification(`Successfully refreshed feeds! Processed ${result.stats.items.total} articles from ${result.stats.feeds.processed} feeds.`, 'success');
         
         // Reload the feeds list to show updated status
         loadFeedsList();
         
     } catch (error) {
         console.error('Error refreshing feeds:', error);
-        showNotification(`Failed to refresh feeds: ${error.message}`, 'error');
+        showFeedNotification(`Failed to refresh feeds: ${error.message}`, 'error');
     }
 }
 
@@ -407,7 +408,7 @@ styleSheet.textContent = statusStyles;
 document.head.appendChild(styleSheet);
 
 // Notification system
-function showNotification(message, type = 'info') {
+function showFeedNotification(message, type = 'info') {
     // Remove any existing notifications
     const existing = document.querySelector('.notification');
     if (existing) {

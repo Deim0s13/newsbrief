@@ -26,7 +26,9 @@ jobs:
           python-version: '3.11'
 
       - name: Install pip-tools
-        run: pip install pip-tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install pip-tools>=7.3.0
 
       - name: Update requirements
         run: |
@@ -85,7 +87,7 @@ jobs:
             ---
             _This PR was created automatically by the dependency update workflow._
           branch: feature/dependency-updates-${{ github.run_number }}
-          base: dev
+          base: main
           labels: |
             dependencies
             automated
@@ -102,20 +104,19 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install safety
-        run: pip install safety
+      - name: Install pip-audit
+        run: pip install pip-audit
 
       - name: Run security audit
         run: |
           echo "🔍 Running security audit on dependencies..."
-          safety check -r requirements.txt --json > safety-report.json || true
-          
-          if [ -s safety-report.json ] && [ "$(cat safety-report.json)" != "[]" ]; then
-            echo "⚠️  Security vulnerabilities found!"
-            cat safety-report.json | python -m json.tool
-            exit 1
-          else
+          # Use pip-audit (official PyPA security tool)
+          if pip-audit -r requirements.txt 2>&1 | tee security-report.txt; then
             echo "✅ No security vulnerabilities found"
+          else
+            echo "⚠️  Security vulnerabilities found!"
+            cat security-report.txt
+            exit 1
           fi
 
   update-base-image:
@@ -170,7 +171,7 @@ jobs:
             ---
             _This PR was created automatically by the dependency update workflow._
           branch: feature/base-image-update-${{ github.run_number }}
-          base: dev
+          base: main
           labels: |
             docker
             automated

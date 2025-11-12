@@ -25,7 +25,7 @@ venv:
 	python3 -m venv .venv && . .venv/bin/activate && pip install -U pip && pip install -r requirements.txt
 
 run-local:
-	uvicorn app.main:app --reload --port $(PORT)
+	.venv/bin/uvicorn app.main:app --reload --port $(PORT)
 
 # ---------- Build / Tag / Push ----------
 build:
