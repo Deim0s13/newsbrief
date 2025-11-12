@@ -146,6 +146,26 @@ curl "http://localhost:8787/items?limit=10" | jq .
 
 ## 🧠 Story Generation (v0.5.0)
 
+### Why We Changed Approach
+
+**Original Vision**: Replace reading 50+ article summaries (like TLDR newsletters) with 5-10 AI-synthesized story briefs.
+
+**The Problem**: NewsBrief v0.3.x evolved into an article-centric RSS reader where users still scrolled through individual summaries—defeating the original purpose of reducing information overload.
+
+**The Solution (v0.5.0)**: Return to the original scope by pivoting to **story-based aggregation**. Instead of presenting 50+ individual articles, NewsBrief now:
+- Clusters related articles into unified narratives
+- Synthesizes multiple sources into coherent stories
+- Presents 5-10 curated stories daily
+- Reduces reading time from 30+ minutes to 2 minutes
+
+**Result**: A true TLDR-killer that provides "what happened today" in minutes, not hours.
+
+**See**: [ADR 0002: Story-Based Aggregation](docs/adr/0002-story-based-aggregation.md) for full context and architectural decisions.
+
+---
+
+### How Story Generation Works
+
 NewsBrief now includes an AI-powered story generation pipeline that synthesizes multiple articles into coherent narratives.
 
 ### How It Works

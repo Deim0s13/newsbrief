@@ -22,6 +22,8 @@ NewsBrief automatically generates interactive API documentation:
 
 Story-based aggregation endpoints for synthesized news briefs.
 
+**Why Story-Based?** NewsBrief v0.5.0 returns to the original vision: replace reading 50+ article summaries with 5-10 synthesized stories. Instead of an article-centric RSS reader, NewsBrief now aggregates related articles into unified narratives—a true TLDR-killer. See [ADR 0002](adr/0002-story-based-aggregation.md) for full context.
+
 **Status**: 
 - ✅ **Story Generation Pipeline**: Complete (Issue #39) - Available as Python API
 - 🚧 **HTTP Endpoints**: Coming in next phase - `/stories`, `/stories/{id}`, `/stories/generate`

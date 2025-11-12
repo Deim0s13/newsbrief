@@ -12,6 +12,20 @@
 - **Testing**: Comprehensive test coverage (automated + manual)
 - **Migration**: Idempotent schema updates (safe to run multiple times)
 
+## Why This Change?
+
+**The Pivot**: NewsBrief v0.5.0 represents a return to the **original project vision**.
+
+**Background**: NewsBrief v0.3.x evolved into an article-centric RSS reader where users browsed individual article summaries. While functional, this deviated from the original intent: replacing reading 50+ article summaries (TLDR newsletters, RSS fatigue) with AI-synthesized story briefs.
+
+**The Problem**: Information overload persisted. Users still spent 30+ minutes reading summaries instead of 2 minutes scanning key stories.
+
+**The Solution**: Story-based aggregation. Instead of 50+ individual articles, present 5-10 synthesized stories that provide unified narratives from multiple sources.
+
+**See**: [ADR 0002: Story-Based Aggregation](adr/0002-story-based-aggregation.md) for full architectural rationale.
+
+---
+
 ## Overview
 
 NewsBrief v0.5.0 introduces story-based aggregation, requiring new database tables. This migration is **automatic** and **non-destructive**.
