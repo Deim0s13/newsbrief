@@ -225,10 +225,31 @@ See:
 ## Status
 
 **Accepted** — 2025-11-06  
-**Implementation**: Starting Phase 1 (Core Infrastructure)
+**Implementation**: Phase 1 Complete ✅ (2025-11-12)
+
+### Progress Update
+
+**Phase 1: Core Infrastructure** (Complete — Issue #39)
+- ✅ Database schema: `stories` and `story_articles` tables
+- ✅ Pydantic models with validation
+- ✅ Story CRUD operations (8 functions)
+- ✅ Story generation pipeline with hybrid clustering
+- ✅ LLM synthesis via Ollama (llama3.1:8b)
+- ✅ Entity extraction and topic classification
+- ✅ Graceful fallback when LLM unavailable
+- ✅ Comprehensive test coverage
+
+**Implementation Notes**:
+- Hybrid clustering uses topic grouping + keyword similarity (Jaccard index)
+- LLM synthesis generates structured JSON output (synthesis, key_points, why_it_matters, entities, topics)
+- Single-article stories supported (min_articles_per_story=1)
+- Configurable parameters: time_window_hours, similarity_threshold, model
+- ~10 hours actual effort (target: 8-12 hours) ✅
+
+**Next Phase**: HTTP API endpoints and scheduled generation
 
 ---
 
-**Last Updated**: 2025-11-06  
-**Next Review**: After Phase 3 (Synthesis) completion
+**Last Updated**: 2025-11-12  
+**Next Review**: After Phase 4 (API Endpoints) completion
 

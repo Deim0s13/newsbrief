@@ -110,9 +110,9 @@ Supporting Articles (5):
 
 ---
 
-### Phase 1: Core Story Infrastructure
-**Status**: Not Started  
-**Effort**: 8-12 hours  
+### Phase 1: Core Story Infrastructure ✅
+**Status**: Complete  
+**Effort**: 8-12 hours (Actual: ~10 hours)
 **Priority**: P0 (Blocking)
 
 #### 1.1 Database Layer (2 hours)
@@ -142,19 +142,27 @@ Supporting Articles (5):
 
 **Files**: New `app/stories.py`
 
-#### 1.4 Simple Story Generation (3-4 hours)
-- [ ] Get articles from last N hours
-- [ ] Group by topic/similarity (simple heuristic)
-- [ ] Create one story per group
-- [ ] Store in database
+#### 1.4 Simple Story Generation (3-4 hours) ✅
+- [x] Get articles from last N hours
+- [x] Group by topic/similarity (simple heuristic)
+- [x] Create one story per group
+- [x] Store in database
 
-**Files**: `app/stories.py`
+**Files**: `app/stories.py` (Issue #39 - Complete)
 
-**Acceptance Criteria**:
-- Can manually trigger story generation
-- Stories are stored in database
-- Can retrieve stories via API
-- Basic grouping works (even if naive)
+**Implementation**:
+- Hybrid clustering: Topic grouping + keyword similarity (Jaccard)
+- LLM-powered multi-document synthesis via Ollama
+- Structured JSON output: synthesis, key_points, why_it_matters, topics, entities
+- Graceful fallback when LLM unavailable
+- Configurable time window, similarity threshold, min articles per story
+- Comprehensive test coverage (automated + manual LLM tests)
+
+**Acceptance Criteria**: ✅ All Met
+- ✅ Can manually trigger story generation (`generate_stories_simple`)
+- ✅ Stories are stored in database (with article links via junction table)
+- ✅ Can retrieve stories via API (using existing CRUD operations)
+- ✅ Hybrid clustering works (topic + keyword overlap)
 
 ---
 

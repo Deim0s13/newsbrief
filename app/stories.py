@@ -6,14 +6,19 @@ Provides database operations for story-based aggregation:
 - Link articles to stories
 - Query stories with filters
 - Update/archive/delete stories
+- Generate stories from articles
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import os
+import re
+from collections import defaultdict
 from datetime import UTC, datetime, timedelta
-from typing import List, Optional
+from typing import Dict, List, Optional, Set, Tuple
 
 from sqlalchemy import (
     Boolean,
@@ -25,10 +30,12 @@ from sqlalchemy import (
     String,
     Text,
     desc,
+    text,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session, relationship
 
+from .llm import get_llm_service
 from .models import (
     ItemOut,
     StoryOut,
@@ -437,3 +444,449 @@ def _story_db_to_model(  # type: ignore[misc]
         primary_article_id=primary_article_id,
     )
     # fmt: on
+
+
+# Story Generation Functions
+
+
+def _extract_keywords(title: str) -> Set[str]:
+    """
+    Extract meaningful keywords from article title.
+
+    Simple extraction: lowercase, remove common words, split on non-alpha.
+
+    Args:
+        title: Article title
+
+    Returns:
+        Set of keywords
+    """
+    # Common stop words to ignore
+    stop_words = {
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "by",
+        "for",
+        "from",
+        "has",
+        "he",
+        "in",
+        "is",
+        "it",
+        "its",
+        "of",
+        "on",
+        "that",
+        "the",
+        "to",
+        "was",
+        "will",
+        "with",
+    }
+
+    # Lowercase and extract words (alphanumeric + some punctuation)
+    words = re.findall(r"\b[a-z0-9]+\b", title.lower())
+
+    # Filter out stop words and short words (< 3 chars)
+    keywords = {w for w in words if len(w) >= 3 and w not in stop_words}
+
+    return keywords
+
+
+def _calculate_keyword_overlap(keywords1: Set[str], keywords2: Set[str]) -> float:
+    """
+    Calculate Jaccard similarity between two keyword sets.
+
+    Args:
+        keywords1: First set of keywords
+        keywords2: Second set of keywords
+
+    Returns:
+        Similarity score (0.0 to 1.0)
+    """
+    if not keywords1 or not keywords2:
+        return 0.0
+
+    intersection = len(keywords1 & keywords2)
+    union = len(keywords1 | keywords2)
+
+    return intersection / union if union > 0 else 0.0
+
+
+def _generate_story_synthesis(
+    session: Session, article_ids: List[int], model: str = "llama3.1:8b"
+) -> Dict[str, any]:
+    """
+    Generate story synthesis from multiple articles using LLM.
+
+    Args:
+        session: Database session
+        article_ids: List of article IDs to synthesize
+        model: LLM model to use
+
+    Returns:
+        Dict with synthesis, key_points, why_it_matters, topics, entities
+    """
+    # Fetch article details
+    # Build IN clause with proper placeholders
+    placeholders = ", ".join([f":id_{i}" for i in range(len(article_ids))])
+    params = {f"id_{i}": aid for i, aid in enumerate(article_ids)}
+
+    articles = session.execute(
+        text(
+            f"""
+        SELECT id, title, summary, ai_summary, topic
+        FROM items 
+        WHERE id IN ({placeholders})
+        ORDER BY published DESC
+    """
+        ),
+        params,
+    ).fetchall()
+
+    if not articles:
+        raise ValueError("No articles found for synthesis")
+
+    # Build context for LLM
+    article_summaries = []
+    for article in articles:
+        article_id, title, summary, ai_summary, topic = article
+        content = ai_summary or summary or title
+        article_summaries.append(f"- {title}\n  {content[:200]}")
+
+    context = "\n\n".join(article_summaries)
+
+    # Create prompt for multi-document synthesis
+    prompt = f"""You are a news aggregator. Synthesize these related articles into a single coherent story.
+
+Articles:
+{context}
+
+Generate a JSON response with:
+1. "synthesis": 2-3 sentence summary of the overall story (50-150 words)
+2. "key_points": List of 3-5 bullet points covering main facts
+3. "why_it_matters": 1-2 sentences explaining significance
+4. "topics": List of 1-3 relevant topic tags (e.g., "AI/ML", "Cloud", "Security")
+5. "entities": List of 3-7 key entities mentioned (companies, products, people)
+
+Respond ONLY with valid JSON, no other text.
+
+Example format:
+{{
+  "synthesis": "OpenAI announced GPT-5 with significant improvements...",
+  "key_points": [
+    "Released March 2024",
+    "10x faster than GPT-4",
+    "New multimodal capabilities"
+  ],
+  "why_it_matters": "This represents a major leap in AI capabilities...",
+  "topics": ["AI/ML", "Enterprise"],
+  "entities": ["OpenAI", "GPT-5", "Sam Altman"]
+}}
+
+JSON:"""
+
+    try:
+        llm_service = get_llm_service()
+
+        if not llm_service.is_available():
+            logger.warning("LLM service not available, using fallback synthesis")
+            return _fallback_synthesis(articles)
+
+        if not llm_service.ensure_model(model):
+            logger.warning(f"Model {model} not available, using fallback synthesis")
+            return _fallback_synthesis(articles)
+
+        # Generate synthesis
+        response = llm_service.client.generate(
+            model=model,
+            prompt=prompt,
+            options={
+                "temperature": 0.3,
+                "top_k": 40,
+                "top_p": 0.9,
+                "num_predict": 500,
+            },
+        )
+
+        # Extract JSON from response
+        response_text = response.get("response", "")
+
+        # Try to find JSON in response (might have extra text)
+        json_match = re.search(r"\{.*\}", response_text, re.DOTALL)
+        if json_match:
+            result = json.loads(json_match.group())
+
+            # Validate required fields
+            if all(k in result for k in ["synthesis", "key_points", "why_it_matters"]):
+                return {
+                    "synthesis": result["synthesis"],
+                    "key_points": result.get("key_points", []),
+                    "why_it_matters": result.get("why_it_matters", ""),
+                    "topics": result.get("topics", []),
+                    "entities": result.get("entities", []),
+                }
+
+        logger.warning("LLM response invalid, using fallback")
+        return _fallback_synthesis(articles)
+
+    except Exception as e:
+        logger.error(f"Failed to generate synthesis with LLM: {e}")
+        return _fallback_synthesis(articles)
+
+
+def _fallback_synthesis(articles: List[Tuple]) -> Dict[str, any]:
+    """
+    Generate fallback synthesis when LLM is unavailable.
+
+    Args:
+        articles: List of article tuples (id, title, summary, ai_summary, topic)
+
+    Returns:
+        Dict with synthesis fields
+    """
+    titles = [article[1] for article in articles]
+    topics = list({article[4] for article in articles if article[4]})
+
+    if len(articles) == 1:
+        synthesis = f"{titles[0]}"
+        key_points = ["Single article - see details below"]
+    else:
+        synthesis = (
+            f"Multiple articles about {topics[0] if topics else 'this topic'}: "
+            + ", ".join(titles[:3])
+        )
+        if len(titles) > 3:
+            synthesis += f" and {len(titles) - 3} more"
+        key_points = [f"• {title}" for title in titles[:5]]
+
+    return {
+        "synthesis": synthesis,
+        "key_points": key_points,
+        "why_it_matters": "See articles for details",
+        "topics": topics[:3] if topics else ["Uncategorized"],
+        "entities": [],
+    }
+
+
+def generate_stories_simple(
+    session: Session,
+    time_window_hours: int = 24,
+    min_articles_per_story: int = 1,
+    similarity_threshold: float = 0.3,
+    model: str = "llama3.1:8b",
+) -> List[int]:
+    """
+    Generate stories from recent articles using hybrid clustering.
+
+    Clustering approach:
+    1. Group by topic (coarse filter)
+    2. Within each topic, cluster by title keyword overlap
+    3. Generate synthesis for each cluster
+    4. Store stories in database
+
+    Args:
+        session: SQLAlchemy session
+        time_window_hours: Look back this many hours for articles
+        min_articles_per_story: Minimum articles per story (1 = allow single-article stories)
+        similarity_threshold: Minimum keyword overlap to cluster articles (0.0-1.0)
+        model: LLM model for synthesis
+
+    Returns:
+        List of created story IDs
+    """
+    logger.info(
+        f"Starting story generation: time_window={time_window_hours}h, "
+        f"min_articles={min_articles_per_story}, threshold={similarity_threshold}"
+    )
+
+    # Get articles from time window
+    cutoff_time = datetime.now(UTC) - timedelta(hours=time_window_hours)
+
+    articles = session.execute(
+        text(
+            """
+        SELECT id, title, topic, published
+        FROM items 
+        WHERE published >= :cutoff_time
+        AND (ai_summary IS NOT NULL OR summary IS NOT NULL)
+        ORDER BY published DESC
+    """
+        ),
+        {"cutoff_time": cutoff_time},
+    ).fetchall()
+
+    if not articles:
+        logger.info("No articles found in time window")
+        return []
+
+    logger.info(f"Found {len(articles)} articles in time window")
+
+    # Step 1: Group by topic (coarse filter)
+    topic_groups: Dict[str, List[Tuple]] = defaultdict(list)
+    for article in articles:
+        topic = article[2] or "uncategorized"
+        topic_groups[topic].append(article)
+
+    logger.info(f"Grouped into {len(topic_groups)} topics")
+
+    # Step 2: Within each topic, cluster by keyword overlap
+    clusters: List[List[int]] = []
+
+    for topic, topic_articles in topic_groups.items():
+        logger.debug(f"Processing topic '{topic}' with {len(topic_articles)} articles")
+
+        # Extract keywords for each article
+        article_keywords = {}
+        for article in topic_articles:
+            article_id, title = article[0], article[1]
+            article_keywords[article_id] = _extract_keywords(title)
+
+        # Greedy clustering: iterate through articles, add to existing cluster or create new one
+        topic_clusters: List[List[int]] = []
+
+        for article in topic_articles:
+            article_id = article[0]
+            keywords = article_keywords[article_id]
+
+            # Find best matching cluster
+            best_cluster = None
+            best_similarity = 0.0
+
+            for cluster in topic_clusters:
+                # Calculate average similarity to cluster
+                similarities = [
+                    _calculate_keyword_overlap(keywords, article_keywords[aid])
+                    for aid in cluster
+                ]
+                avg_similarity = (
+                    sum(similarities) / len(similarities) if similarities else 0.0
+                )
+
+                if avg_similarity > best_similarity:
+                    best_similarity = avg_similarity
+                    best_cluster = cluster
+
+            # Add to best cluster if similar enough, otherwise create new cluster
+            if best_cluster and best_similarity >= similarity_threshold:
+                best_cluster.append(article_id)
+            else:
+                topic_clusters.append([article_id])
+
+        clusters.extend(topic_clusters)
+        logger.debug(
+            f"Topic '{topic}' clustered into {len(topic_clusters)} story clusters"
+        )
+
+    logger.info(f"Total clusters: {len(clusters)}")
+
+    # Filter clusters by minimum articles
+    clusters = [c for c in clusters if len(c) >= min_articles_per_story]
+    logger.info(
+        f"After filtering (min={min_articles_per_story}): {len(clusters)} clusters"
+    )
+
+    if not clusters:
+        logger.info("No clusters meet minimum article threshold")
+        return []
+
+    # Step 3: Generate story for each cluster
+    story_ids = []
+
+    for i, cluster_article_ids in enumerate(clusters):
+        try:
+            logger.debug(
+                f"Generating story {i+1}/{len(clusters)} from {len(cluster_article_ids)} articles"
+            )
+
+            # Generate synthesis
+            synthesis_data = _generate_story_synthesis(
+                session, cluster_article_ids, model
+            )
+
+            # Calculate importance and freshness scores
+            # For now, use simple heuristics
+            importance_score = min(
+                1.0, 0.3 + (len(cluster_article_ids) * 0.1)
+            )  # More articles = more important
+            freshness_score = 1.0  # All articles are recent (from time window)
+
+            # Get time window for this cluster
+            placeholders = ", ".join(
+                [f":id_{i}" for i in range(len(cluster_article_ids))]
+            )
+            params = {f"id_{i}": aid for i, aid in enumerate(cluster_article_ids)}
+
+            cluster_times = session.execute(
+                text(
+                    f"""
+                SELECT MIN(published), MAX(published)
+                FROM items 
+                WHERE id IN ({placeholders})
+            """
+                ),
+                params,
+            ).first()
+
+            # Convert to datetime if needed (SQLite returns strings)
+            time_window_start = cluster_times[0]
+            time_window_end = cluster_times[1]
+
+            if isinstance(time_window_start, str):
+                time_window_start = datetime.fromisoformat(
+                    time_window_start.replace("Z", "+00:00")
+                )
+            if isinstance(time_window_end, str):
+                time_window_end = datetime.fromisoformat(
+                    time_window_end.replace("Z", "+00:00")
+                )
+
+            # Generate story hash for deduplication
+            cluster_hash = hashlib.md5(
+                json.dumps(sorted(cluster_article_ids)).encode()
+            ).hexdigest()
+
+            # Create story
+            story_id = create_story(
+                session=session,
+                title=synthesis_data["synthesis"][:200],  # Use first part as title
+                synthesis=synthesis_data["synthesis"],
+                key_points=synthesis_data["key_points"],
+                why_it_matters=synthesis_data["why_it_matters"],
+                topics=synthesis_data["topics"],
+                entities=synthesis_data["entities"],
+                importance_score=importance_score,
+                freshness_score=freshness_score,
+                model=model,
+                time_window_start=time_window_start,
+                time_window_end=time_window_end,
+                cluster_method="hybrid_topic_keywords",
+                story_hash=cluster_hash,
+            )
+
+            # Link articles to story
+            link_articles_to_story(
+                session=session,
+                story_id=story_id,
+                article_ids=cluster_article_ids,
+                primary_article_id=cluster_article_ids[
+                    0
+                ],  # Most recent article is primary
+            )
+
+            story_ids.append(story_id)
+            logger.info(
+                f"Created story #{story_id} from {len(cluster_article_ids)} articles"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to create story for cluster: {e}", exc_info=True)
+            continue
+
+    logger.info(f"Story generation complete: {len(story_ids)} stories created")
+    return story_ids

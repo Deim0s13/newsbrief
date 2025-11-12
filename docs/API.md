@@ -22,6 +22,14 @@ NewsBrief automatically generates interactive API documentation:
 
 Story-based aggregation endpoints for synthesized news briefs.
 
+**Why Story-Based?** NewsBrief v0.5.0 returns to the original vision: replace reading 50+ article summaries with 5-10 synthesized stories. Instead of an article-centric RSS reader, NewsBrief now aggregates related articles into unified narratives—a true TLDR-killer. See [ADR 0002](adr/0002-story-based-aggregation.md) for full context.
+
+**Status**: 
+- ✅ **Story Generation Pipeline**: Complete (Issue #39) - Available as Python API
+- 🚧 **HTTP Endpoints**: Coming in next phase - `/stories`, `/stories/{id}`, `/stories/generate`
+
+For now, use the Python API directly (see Python API section below).
+
 #### **GET /stories**
 
 List all active stories (5-10 synthesized stories from last 24 hours).
@@ -948,6 +956,125 @@ List auto-generated content categories
 
 ### **GET /summary/{item_id}** _(Planned)_
 Get AI-generated summary for specific article
+
+---
+
+## 🐍 Python API (v0.5.0)
+
+For story generation, the Python API is currently available while HTTP endpoints are being developed.
+
+### Story Generation
+
+Generate stories from recent articles using hybrid clustering and LLM synthesis.
+
+```python
+from app.db import session_scope
+from app.stories import generate_stories_simple
+
+with session_scope() as session:
+    story_ids = generate_stories_simple(
+        session=session,
+        time_window_hours=24,      # Lookback period (default: 24)
+        min_articles_per_story=1,  # Minimum articles per story (default: 1)
+        similarity_threshold=0.3,  # Keyword overlap threshold (default: 0.3)
+        model="llama3.1:8b"        # LLM model for synthesis
+    )
+    print(f"Generated {len(story_ids)} stories: {story_ids}")
+```
+
+**Parameters**:
+- `time_window_hours` (int): How many hours back to look for articles (default: 24)
+- `min_articles_per_story` (int): Minimum articles to form a story (default: 1, allows single-article stories)
+- `similarity_threshold` (float): Jaccard similarity threshold for keyword overlap (0.0-1.0, default: 0.3)
+- `model` (str): Ollama model to use for synthesis (default: "llama3.1:8b")
+
+**Returns**: List of created story IDs
+
+**Algorithm**:
+1. Query articles from last N hours
+2. Group by topic (coarse filter)
+3. Within each topic, cluster by title keyword overlap (Jaccard similarity)
+4. For each cluster, generate LLM synthesis
+5. Store story with links to source articles
+
+**Features**:
+- ✅ Hybrid clustering: Topic + keyword similarity
+- ✅ LLM-powered multi-document synthesis
+- ✅ Entity extraction (companies, products, people)
+- ✅ Topic auto-classification
+- ✅ Graceful fallback when LLM unavailable
+- ✅ Comprehensive error handling
+
+---
+
+### Retrieve Stories
+
+```python
+from app.db import session_scope
+from app.stories import get_stories, get_story_by_id
+
+# Get list of stories
+with session_scope() as session:
+    stories = get_stories(
+        session=session,
+        limit=10,                # Get top 10 stories
+        offset=0,                # Pagination offset
+        status="active",         # Only active stories
+        order_by="importance"    # Sort by importance_score DESC
+    )
+    
+    for story in stories:
+        print(f"\n{story.title}")
+        print(f"Articles: {story.article_count}")
+        print(f"Importance: {story.importance_score:.2f}")
+        print(f"Topics: {', '.join(story.topics)}")
+        print(f"Entities: {', '.join(story.entities)}")
+
+# Get single story with details
+with session_scope() as session:
+    story = get_story_by_id(session, story_id=1)
+    if story:
+        print(f"\n{story.title}")
+        print(f"\n{story.synthesis}")
+        print(f"\nKey Points:")
+        for point in story.key_points:
+            print(f"  • {point}")
+        print(f"\nWhy It Matters: {story.why_it_matters}")
+```
+
+**Parameters**:
+- `limit` (int): Max stories to return (default: 50)
+- `offset` (int): Pagination offset (default: 0)
+- `status` (str): Filter by status ("active", "archived", or None for all)
+- `order_by` (str): Sort field ("importance", "freshness", "generated_at")
+
+**Returns**: List of `StoryOut` Pydantic models
+
+---
+
+### Update & Archive Stories
+
+```python
+from app.db import session_scope
+from app.stories import update_story, archive_story, delete_story
+
+# Update a story
+with session_scope() as session:
+    update_story(
+        session=session,
+        story_id=1,
+        status="archived",
+        importance_score=0.95
+    )
+
+# Archive a story (soft delete)
+with session_scope() as session:
+    archive_story(session, story_id=1)
+
+# Permanently delete a story
+with session_scope() as session:
+    delete_story(session, story_id=1)
+```
 
 ---
 
