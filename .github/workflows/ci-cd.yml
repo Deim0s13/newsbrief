@@ -52,8 +52,13 @@ jobs:
 
       - name: Run tests
         run: |
-          # Currently no tests - placeholder for future
-          echo "✅ Tests passed (placeholder - add pytest when tests exist)"
+          echo "Running model validation tests..."
+          PYTHONPATH=. python tests/test_models.py
+          
+          echo "Running CRUD operation tests..."
+          PYTHONPATH=. python tests/test_story_crud.py
+          
+          echo "✅ All tests passed"
           
       - name: Security scan
         uses: github/super-linter@v5
