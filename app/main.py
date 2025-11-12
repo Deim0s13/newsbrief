@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from typing import List
 
-from fastapi import FastAPI, HTTPException, Query, Request, UploadFile, File
+from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -57,28 +57,25 @@ def _startup() -> None:
 @app.get("/", response_class=HTMLResponse)
 def home_page(request: Request):
     """Main web interface page."""
-    return templates.TemplateResponse("index.html", {
-        "request": request, 
-        "current_page": "articles"
-    })
+    return templates.TemplateResponse(
+        "index.html", {"request": request, "current_page": "articles"}
+    )
 
 
 @app.get("/monitoring", response_class=HTMLResponse)
 def monitoring_page(request: Request):
     """System monitoring dashboard page."""
-    return templates.TemplateResponse("monitoring.html", {
-        "request": request,
-        "current_page": "monitoring"
-    })
+    return templates.TemplateResponse(
+        "monitoring.html", {"request": request, "current_page": "monitoring"}
+    )
 
 
 @app.get("/feeds-manage", response_class=HTMLResponse)
 def feeds_management_page(request: Request):
     """Feed management interface page."""
-    return templates.TemplateResponse("feed_management.html", {
-        "request": request,
-        "current_page": "feed-management"
-    })
+    return templates.TemplateResponse(
+        "feed_management.html", {"request": request, "current_page": "feed-management"}
+    )
 
 
 @app.get("/feeds")
@@ -87,7 +84,8 @@ def list_feeds_endpoint():
     feeds = []
     with session_scope() as s:
         results = s.execute(
-            text("""
+            text(
+                """
                 SELECT f.*, 
                        COUNT(i.id) as total_articles,
                        MAX(i.created_at) as last_article_at
@@ -95,28 +93,35 @@ def list_feeds_endpoint():
                 LEFT JOIN items i ON f.id = i.feed_id
                 GROUP BY f.id
                 ORDER BY f.created_at DESC
-            """)
+            """
+            )
         ).fetchall()
-        
+
         for row in results:
             feed_data = dict(row._mapping)
             # Convert database booleans
             feed_data["disabled"] = bool(feed_data["disabled"])
             feed_data["robots_allowed"] = bool(feed_data["robots_allowed"])
-            
+
             # Convert timestamps to ISO 8601 with UTC indicator for proper browser parsing
-            for field in ['created_at', 'updated_at', 'last_fetch_at', 'last_success_at', 'last_article_at']:
+            for field in [
+                "created_at",
+                "updated_at",
+                "last_fetch_at",
+                "last_success_at",
+                "last_article_at",
+            ]:
                 if field in feed_data and feed_data[field]:
                     # Add 'Z' to indicate UTC timezone
                     ts = str(feed_data[field])
-                    if 'T' not in ts:
-                        ts = ts.replace(' ', 'T')
-                    if not ts.endswith('Z'):
-                        ts = ts + 'Z'
+                    if "T" not in ts:
+                        ts = ts.replace(" ", "T")
+                    if not ts.endswith("Z"):
+                        ts = ts + "Z"
                     feed_data[field] = ts
-            
+
             feeds.append(feed_data)
-    
+
     return feeds
 
 
@@ -132,30 +137,29 @@ def update_feed(feed_id: int, feed_update: dict):
     with session_scope() as s:
         # Check if feed exists
         existing = s.execute(
-            text("SELECT id FROM feeds WHERE id = :feed_id"),
-            {"feed_id": feed_id}
+            text("SELECT id FROM feeds WHERE id = :feed_id"), {"feed_id": feed_id}
         ).fetchone()
-        
+
         if not existing:
             raise HTTPException(status_code=404, detail="Feed not found")
-        
+
         # Build update query dynamically
         update_fields = []
         params = {"feed_id": feed_id}
-        
+
         if "url" in feed_update:
             update_fields.append("url = :url")
             params["url"] = feed_update["url"]
-        
+
         if "disabled" in feed_update:
             update_fields.append("disabled = :disabled")
             params["disabled"] = int(feed_update["disabled"])
-        
+
         if update_fields:
             update_fields.append("updated_at = CURRENT_TIMESTAMP")
             sql = f"UPDATE feeds SET {', '.join(update_fields)} WHERE id = :feed_id"
             s.execute(text(sql), params)
-    
+
     return {"ok": True, "message": "Feed updated successfully"}
 
 
@@ -165,25 +169,20 @@ def delete_feed(feed_id: int):
     with session_scope() as s:
         # Check if feed exists
         existing = s.execute(
-            text("SELECT id FROM feeds WHERE id = :feed_id"),
-            {"feed_id": feed_id}
+            text("SELECT id FROM feeds WHERE id = :feed_id"), {"feed_id": feed_id}
         ).fetchone()
-        
+
         if not existing:
             raise HTTPException(status_code=404, detail="Feed not found")
-        
+
         # Delete articles first (due to foreign key constraint)
         articles_deleted = s.execute(
-            text("DELETE FROM items WHERE feed_id = :feed_id"),
-            {"feed_id": feed_id}
+            text("DELETE FROM items WHERE feed_id = :feed_id"), {"feed_id": feed_id}
         ).rowcount
-        
+
         # Delete the feed
-        s.execute(
-            text("DELETE FROM feeds WHERE id = :feed_id"),
-            {"feed_id": feed_id}
-        )
-    
+        s.execute(text("DELETE FROM feeds WHERE id = :feed_id"), {"feed_id": feed_id})
+
     return {"ok": True, "articles_deleted": articles_deleted}
 
 
@@ -191,30 +190,26 @@ def delete_feed(feed_id: int):
 def import_opml_upload(file: UploadFile = File(...)):
     """Import feeds from uploaded OPML file."""
     try:
-        content = file.file.read().decode('utf-8')
+        content = file.file.read().decode("utf-8")
         result = import_opml_content(content)
-        
+
         # Build informative message
         message_parts = []
-        if result['added'] > 0:
+        if result["added"] > 0:
             message_parts.append(f"{result['added']} feed(s) added")
-        if result['skipped'] > 0:
+        if result["skipped"] > 0:
             message_parts.append(f"{result['skipped']} already existed")
-        if result['errors'] > 0:
+        if result["errors"] > 0:
             message_parts.append(f"{result['errors']} failed")
-        
+
         if message_parts:
             message = "Import complete: " + ", ".join(message_parts)
-        elif result['error_details']:
-            message = result['error_details'][0]  # Show first error detail
+        elif result["error_details"]:
+            message = result["error_details"][0]  # Show first error detail
         else:
             message = "No feeds found in OPML file"
-        
-        return {
-            "ok": True,
-            "message": message,
-            "stats": result
-        }
+
+        return {"ok": True, "message": message, "stats": result}
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to import OPML: {str(e)}")
 
@@ -227,7 +222,9 @@ def export_opml_endpoint():
         return Response(
             content=opml_content,
             media_type="application/xml",
-            headers={"Content-Disposition": "attachment; filename=newsbrief_feeds.opml"}
+            headers={
+                "Content-Disposition": "attachment; filename=newsbrief_feeds.opml"
+            },
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to export OPML: {str(e)}")
@@ -275,10 +272,12 @@ def update_feed_names_endpoint():
         return {
             "ok": True,
             "message": f"Updated {stats['feeds_updated']} feed names",
-            "stats": stats
+            "stats": stats,
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update feed names: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to update feed names: {str(e)}"
+        )
 
 
 @app.post("/recalculate-rankings")
@@ -289,10 +288,12 @@ def recalculate_rankings_endpoint():
         return {
             "ok": True,
             "message": f"Recalculated rankings and topics for {stats['articles_processed']} articles",
-            "stats": stats
+            "stats": stats,
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to recalculate rankings: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to recalculate rankings: {str(e)}"
+        )
 
 
 @app.post("/update-feed-health")
@@ -303,10 +304,12 @@ def update_feed_health_endpoint():
         return {
             "ok": True,
             "message": f"Updated health scores for {stats['feeds_updated']} feeds",
-            "stats": stats
+            "stats": stats,
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update health scores: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to update health scores: {str(e)}"
+        )
 
 
 @app.get("/items", response_model=List[ItemOut])
@@ -651,10 +654,10 @@ def get_items_by_topic(topic_key: str, limit: int = Query(50, le=200)):
         # Get total count for this topic
         count_result = s.execute(
             text("SELECT COUNT(*) FROM items WHERE topic = :topic_key"),
-            {"topic_key": topic_key}
+            {"topic_key": topic_key},
         ).fetchone()
         total_count = count_result[0]
-        
+
         rows = s.execute(
             text(
                 """
@@ -730,7 +733,7 @@ def get_items_by_topic(topic_key: str, limit: int = Query(50, le=200)):
 
         return {
             "topic": topic_key,
-            "display_name": topic_key.replace('-', '/').title(),
+            "display_name": topic_key.replace("-", "/").title(),
             "count": total_count,
             "items": items,
         }
@@ -764,12 +767,16 @@ def get_article_page(request: Request, item_id: int):
             try:
                 structured_summary = StructuredSummary.from_json_string(
                     row[10],
-                    row[12] or row[5] or "",  # structured content_hash, fallback to main content_hash
+                    row[12]
+                    or row[5]
+                    or "",  # structured content_hash, fallback to main content_hash
                     row[11],
                     datetime.fromisoformat(row[13]) if row[13] else datetime.now(),
                 )
             except Exception as e:
-                logger.warning(f"Failed to parse structured summary for item {item_id}: {e}")
+                logger.warning(
+                    f"Failed to parse structured summary for item {item_id}: {e}"
+                )
 
         # Generate fallback summary if no AI summary available
         fallback_summary = None
@@ -781,13 +788,16 @@ def get_article_page(request: Request, item_id: int):
         if not has_ai_summary and row[6]:  # content is available
             try:
                 from .models import extract_first_sentences
+
                 fallback_summary = extract_first_sentences(row[6], sentence_count=2)
                 is_fallback = True
 
                 if not fallback_summary.strip():
                     fallback_summary = row[4] or row[1] or "Content preview unavailable"
             except Exception as e:
-                logger.warning(f"Failed to extract fallback summary for item {item_id}: {e}")
+                logger.warning(
+                    f"Failed to extract fallback summary for item {item_id}: {e}"
+                )
                 fallback_summary = row[4] or row[1] or "Content preview unavailable"
                 is_fallback = True
 
@@ -811,24 +821,26 @@ def get_article_page(request: Request, item_id: int):
 
         # Get topic display info
         topic_display_name = "Unclassified"
-        topic_badge_classes = "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200"
-        
+        topic_badge_classes = (
+            "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200"
+        )
+
         if article.topic:
             topic_map = {
-                'ai-ml': 'AI/ML',
-                'cloud-k8s': 'Cloud/K8s',
-                'security': 'Security',
-                'devtools': 'DevTools',
-                'chips-hardware': 'Chips/Hardware'
+                "ai-ml": "AI/ML",
+                "cloud-k8s": "Cloud/K8s",
+                "security": "Security",
+                "devtools": "DevTools",
+                "chips-hardware": "Chips/Hardware",
             }
             topic_display_name = topic_map.get(article.topic, article.topic)
-            
+
             badge_classes = {
-                'ai-ml': 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
-                'cloud-k8s': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-                'security': 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-                'devtools': 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-                'chips-hardware': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                "ai-ml": "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
+                "cloud-k8s": "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+                "security": "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+                "devtools": "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+                "chips-hardware": "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
             }
             topic_badge_classes = badge_classes.get(article.topic, topic_badge_classes)
 
@@ -839,7 +851,7 @@ def get_article_page(request: Request, item_id: int):
                 "article": article,
                 "topic_display_name": topic_display_name,
                 "topic_badge_classes": topic_badge_classes,
-            }
+            },
         )
 
 

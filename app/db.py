@@ -37,11 +37,11 @@ def session_scope() -> Iterator:
 def init_db() -> None:
     """
     Initialize database with all required tables and indexes.
-    
+
     Handles both:
     - New databases: Creates all tables from scratch
     - Existing databases: Adds missing tables/columns (migration)
-    
+
     Uses CREATE TABLE IF NOT EXISTS for idempotent migrations.
     """
     with engine.begin() as conn:
@@ -50,7 +50,7 @@ def init_db() -> None:
             "SELECT name FROM sqlite_master WHERE type='table' AND name='stories'"
         )
         is_migration = len(result.fetchall()) == 0
-        
+
         if is_migration:
             logger.info("🔄 Migrating database to v0.5.0 (story architecture)...")
         else:
@@ -108,7 +108,7 @@ def init_db() -> None:
         );
         """
         )
-        
+
         # Stories table - aggregated/synthesized news stories
         conn.exec_driver_sql(
             """
@@ -135,7 +135,7 @@ def init_db() -> None:
         );
         """
         )
-        
+
         # Story-Article junction table
         conn.exec_driver_sql(
             """
@@ -152,7 +152,7 @@ def init_db() -> None:
         );
         """
         )
-        
+
         if is_migration:
             logger.info("✅ Story tables created successfully")
 
@@ -247,7 +247,7 @@ def init_db() -> None:
         CREATE INDEX IF NOT EXISTS idx_story_articles_article ON story_articles(article_id);
         """
         )
-        
+
         if is_migration:
             logger.info("🎉 Database migration to v0.5.0 complete!")
         else:

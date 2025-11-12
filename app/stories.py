@@ -7,29 +7,44 @@ Provides database operations for story-based aggregation:
 - Query stories with filters
 - Update/archive/delete stories
 """
+
 from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 from typing import List, Optional
 
-from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKey, Boolean, desc
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    desc,
+)
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, Session
+from sqlalchemy.orm import Session, relationship
 
 from .models import (
-    StoryOut,
     ItemOut,
-    serialize_story_json_field,
+    StoryOut,
     deserialize_story_json_field,
+    serialize_story_json_field,
 )
 
 logger = logging.getLogger(__name__)
 
 # Configuration
-STORY_ARCHIVE_DAYS = int(os.getenv("STORY_ARCHIVE_DAYS", "7"))  # Auto-archive after 7 days
-STORY_DELETE_DAYS = int(os.getenv("STORY_DELETE_DAYS", "30"))  # Hard delete after 30 days
+STORY_ARCHIVE_DAYS = int(
+    os.getenv("STORY_ARCHIVE_DAYS", "7")
+)  # Auto-archive after 7 days
+STORY_DELETE_DAYS = int(
+    os.getenv("STORY_DELETE_DAYS", "30")
+)  # Hard delete after 30 days
 
 # ORM Base
 Base = declarative_base()
@@ -37,10 +52,12 @@ Base = declarative_base()
 
 # ORM Models
 
+
 class Story(Base):
     """ORM model for stories table."""
-    __tablename__ = 'stories'
-    
+
+    __tablename__ = "stories"
+
     id = Column(Integer, primary_key=True)
     title = Column(String(200), nullable=False)
     synthesis = Column(Text, nullable=False)
@@ -59,29 +76,37 @@ class Story(Base):
     time_window_start = Column(DateTime)
     time_window_end = Column(DateTime)
     model = Column(String)
-    status = Column(String, default='active')
-    
+    status = Column(String, default="active")
+
     # Relationship to articles via junction table
-    story_articles = relationship("StoryArticle", back_populates="story", cascade="all, delete-orphan")
+    story_articles = relationship(
+        "StoryArticle", back_populates="story", cascade="all, delete-orphan"
+    )
 
 
 class StoryArticle(Base):
     """ORM model for story_articles junction table."""
-    __tablename__ = 'story_articles'
-    
+
+    __tablename__ = "story_articles"
+
     id = Column(Integer, primary_key=True)
-    story_id = Column(Integer, ForeignKey('stories.id', ondelete='CASCADE'), nullable=False)
-    article_id = Column(Integer, nullable=False)  # FK to items table (not ORM yet, so no ForeignKey constraint)
+    story_id = Column(
+        Integer, ForeignKey("stories.id", ondelete="CASCADE"), nullable=False
+    )
+    article_id = Column(
+        Integer, nullable=False
+    )  # FK to items table (not ORM yet, so no ForeignKey constraint)
     relevance_score = Column(Float, default=1.0)
     is_primary = Column(Boolean, default=False)
     added_at = Column(DateTime, default=lambda: datetime.now(UTC))
-    
+
     # Relationships
     story = relationship("Story", back_populates="story_articles")
     # Note: items table is not ORM yet, so we don't define relationship to it
 
 
 # CRUD Operations
+
 
 def create_story(
     session: Session,
@@ -102,7 +127,7 @@ def create_story(
 ) -> int:
     """
     Create a new story.
-    
+
     Args:
         session: SQLAlchemy session
         title: Story title
@@ -119,7 +144,7 @@ def create_story(
         cluster_method: Clustering algorithm used
         story_hash: Unique hash for deduplication
         first_seen: When story was first generated
-    
+
     Returns:
         Story ID
     """
@@ -141,13 +166,13 @@ def create_story(
         time_window_start=time_window_start,
         time_window_end=time_window_end,
         model=model,
-        status='active',
+        status="active",
     )
-    
+
     session.add(story)
     session.commit()
     session.refresh(story)
-    
+
     logger.info(f"Created story #{story.id}: {title[:50]}...")
     return story.id
 
@@ -160,7 +185,7 @@ def link_articles_to_story(
 ) -> None:
     """
     Link articles to a story via junction table.
-    
+
     Args:
         session: SQLAlchemy session
         story_id: Story ID
@@ -177,13 +202,13 @@ def link_articles_to_story(
             added_at=datetime.now(UTC),
         )
         session.add(story_article)
-    
+
     # Update article count on story
     story = session.query(Story).filter(Story.id == story_id).first()
     if story:
         story.article_count = len(article_ids)
         story.last_updated = datetime.now(UTC)
-    
+
     session.commit()
     logger.info(f"Linked {len(article_ids)} articles to story #{story_id}")
 
@@ -191,29 +216,28 @@ def link_articles_to_story(
 def get_story_by_id(session: Session, story_id: int) -> Optional[StoryOut]:
     """
     Get story by ID with supporting articles.
-    
+
     Args:
         session: SQLAlchemy session
         story_id: Story ID
-    
+
     Returns:
         StoryOut model or None if not found
     """
     story = session.query(Story).filter(Story.id == story_id).first()
     if not story:
         return None
-    
+
     # Get article IDs from junction table
     article_ids = [sa.article_id for sa in story.story_articles]
     primary_article_id = next(
-        (sa.article_id for sa in story.story_articles if sa.is_primary),
-        None
+        (sa.article_id for sa in story.story_articles if sa.is_primary), None
     )
-    
+
     # Query articles separately (items table not ORM yet)
     # For now, we'll return story without articles - articles will be fetched by API layer
     articles: List[ItemOut] = []  # TODO: Query items table when needed
-    
+
     return _story_db_to_model(story, articles, primary_article_id)
 
 
@@ -225,18 +249,18 @@ def get_stories(
 ) -> List[StoryOut]:
     """
     Query stories with filters and sorting.
-    
+
     Args:
         session: SQLAlchemy session
         limit: Maximum number of stories to return
         status: Filter by status ('active' or 'archived')
         order_by: Sort order ('importance', 'date', or 'freshness')
-    
+
     Returns:
         List of StoryOut models
     """
     query = session.query(Story).filter(Story.status == status)
-    
+
     # Apply sorting
     if order_by == "importance":
         query = query.order_by(desc(Story.importance_score))
@@ -244,10 +268,10 @@ def get_stories(
         query = query.order_by(desc(Story.freshness_score))
     else:  # date
         query = query.order_by(desc(Story.generated_at))
-    
+
     query = query.limit(limit)
     stories = query.all()
-    
+
     # Convert to StoryOut models
     # For list view, we don't need full article details
     return [_story_db_to_model(story, [], None) for story in stories]
@@ -256,33 +280,39 @@ def get_stories(
 def update_story(session: Session, story_id: int, **updates) -> bool:
     """
     Update story fields.
-    
+
     Args:
         session: SQLAlchemy session
         story_id: Story ID
         **updates: Fields to update (title, synthesis, importance_score, etc.)
-    
+
     Returns:
         True if story was updated, False if not found
     """
     story = session.query(Story).filter(Story.id == story_id).first()
     if not story:
         return False
-    
+
     # Update allowed fields
     allowed_fields = {
-        'title', 'synthesis', 'key_points_json', 'why_it_matters',
-        'topics_json', 'entities_json', 'importance_score',
-        'freshness_score', 'status'
+        "title",
+        "synthesis",
+        "key_points_json",
+        "why_it_matters",
+        "topics_json",
+        "entities_json",
+        "importance_score",
+        "freshness_score",
+        "status",
     }
-    
+
     for key, value in updates.items():
         if key in allowed_fields:
             setattr(story, key, value)
-    
+
     story.last_updated = datetime.utcnow()
     session.commit()
-    
+
     logger.info(f"Updated story #{story_id}")
     return True
 
@@ -290,24 +320,24 @@ def update_story(session: Session, story_id: int, **updates) -> bool:
 def archive_story(session: Session, story_id: int) -> bool:
     """
     Archive story (soft delete).
-    
+
     Sets status to 'archived' without deleting the record.
-    
+
     Args:
         session: SQLAlchemy session
         story_id: Story ID
-    
+
     Returns:
         True if story was archived, False if not found
     """
     story = session.query(Story).filter(Story.id == story_id).first()
     if not story:
         return False
-    
-    story.status = 'archived'
+
+    story.status = "archived"
     story.last_updated = datetime.utcnow()
     session.commit()
-    
+
     logger.info(f"Archived story #{story_id}")
     return True
 
@@ -315,23 +345,23 @@ def archive_story(session: Session, story_id: int) -> bool:
 def delete_story(session: Session, story_id: int) -> bool:
     """
     Hard delete story (CASCADE deletes story_articles).
-    
+
     Permanently removes story and its article links from database.
-    
+
     Args:
         session: SQLAlchemy session
         story_id: Story ID
-    
+
     Returns:
         True if story was deleted, False if not found
     """
     story = session.query(Story).filter(Story.id == story_id).first()
     if not story:
         return False
-    
+
     session.delete(story)
     session.commit()
-    
+
     logger.info(f"Deleted story #{story_id}")
     return True
 
@@ -342,32 +372,34 @@ def cleanup_archived_stories(
 ) -> int:
     """
     Hard delete archived stories older than N days.
-    
+
     Args:
         session: SQLAlchemy session
         days: Delete stories archived more than this many days ago
-    
+
     Returns:
         Number of stories deleted
     """
     cutoff_date = datetime.now(UTC) - timedelta(days=days)
-    
-    stories = session.query(Story).filter(
-        Story.status == 'archived',
-        Story.last_updated < cutoff_date
-    ).all()
-    
+
+    stories = (
+        session.query(Story)
+        .filter(Story.status == "archived", Story.last_updated < cutoff_date)
+        .all()
+    )
+
     count = len(stories)
     for story in stories:
         session.delete(story)
-    
+
     session.commit()
-    
+
     logger.info(f"Cleaned up {count} archived stories older than {days} days")
     return count
 
 
 # Helper Functions
+
 
 def _story_db_to_model(
     story: Story,
@@ -376,12 +408,12 @@ def _story_db_to_model(
 ) -> StoryOut:
     """
     Convert ORM Story to Pydantic StoryOut model.
-    
+
     Args:
         story: ORM Story object
         articles: List of supporting articles
         primary_article_id: ID of primary article
-    
+
     Returns:
         StoryOut model
     """
@@ -402,4 +434,3 @@ def _story_db_to_model(
         supporting_articles=articles,
         primary_article_id=primary_article_id,
     )
-

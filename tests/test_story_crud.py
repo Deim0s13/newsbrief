@@ -4,7 +4,7 @@ Test script for story CRUD operations.
 Validates that all database operations work correctly with SQLAlchemy ORM.
 """
 import tempfile
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from sqlalchemy import create_engine
@@ -14,21 +14,21 @@ from app.stories import (
     Base,
     Story,
     StoryArticle,
-    create_story,
-    link_articles_to_story,
-    get_story_by_id,
-    get_stories,
-    update_story,
     archive_story,
-    delete_story,
     cleanup_archived_stories,
+    create_story,
+    delete_story,
+    get_stories,
+    get_story_by_id,
+    link_articles_to_story,
+    update_story,
 )
 
 
 def setup_test_db():
     """Create a temporary test database."""
     # Use temporary in-memory SQLite database
-    engine = create_engine('sqlite:///:memory:', echo=False)
+    engine = create_engine("sqlite:///:memory:", echo=False)
     Base.metadata.create_all(engine)
     SessionLocal = sessionmaker(bind=engine)
     return SessionLocal()
@@ -53,16 +53,16 @@ def test_create_story():
             time_window_end=datetime.now(UTC),
             cluster_method="test",
         )
-        
+
         assert story_id > 0, "Story ID should be positive"
-        
+
         # Verify story exists in database
         story = session.query(Story).filter(Story.id == story_id).first()
         assert story is not None, "Story should exist in database"
         assert story.title == "Test Story: Major AI Breakthrough"
         assert story.article_count == 0  # No articles linked yet
         assert story.status == "active"
-        
+
         return True, "Create story"
     except Exception as e:
         return False, f"Create story: {e}"
@@ -89,7 +89,7 @@ def test_link_articles():
             time_window_start=datetime.now(UTC),
             time_window_end=datetime.now(UTC),
         )
-        
+
         # Link articles
         link_articles_to_story(
             session=session,
@@ -97,22 +97,29 @@ def test_link_articles():
             article_ids=[1, 2, 3, 4, 5],
             primary_article_id=2,
         )
-        
+
         # Verify links
         story = session.query(Story).filter(Story.id == story_id).first()
-        assert story.article_count == 5, f"Expected 5 articles, got {story.article_count}"
-        
-        links = session.query(StoryArticle).filter(StoryArticle.story_id == story_id).all()
+        assert (
+            story.article_count == 5
+        ), f"Expected 5 articles, got {story.article_count}"
+
+        links = (
+            session.query(StoryArticle).filter(StoryArticle.story_id == story_id).all()
+        )
         assert len(links) == 5, f"Expected 5 links, got {len(links)}"
-        
+
         # Verify primary article
-        primary = session.query(StoryArticle).filter(
-            StoryArticle.story_id == story_id,
-            StoryArticle.is_primary == True
-        ).first()
+        primary = (
+            session.query(StoryArticle)
+            .filter(StoryArticle.story_id == story_id, StoryArticle.is_primary == True)
+            .first()
+        )
         assert primary is not None, "Should have a primary article"
-        assert primary.article_id == 2, f"Primary should be article 2, got {primary.article_id}"
-        
+        assert (
+            primary.article_id == 2
+        ), f"Primary should be article 2, got {primary.article_id}"
+
         return True, "Link articles to story"
     except Exception as e:
         return False, f"Link articles: {e}"
@@ -139,9 +146,9 @@ def test_get_story_by_id():
             time_window_start=datetime.now(UTC),
             time_window_end=datetime.now(UTC),
         )
-        
+
         link_articles_to_story(session, story_id, [10, 20, 30])
-        
+
         # Retrieve story
         story = get_story_by_id(session, story_id)
         assert story is not None, "Story should be retrieved"
@@ -152,7 +159,7 @@ def test_get_story_by_id():
         assert story.article_count == 3
         assert len(story.topics) == 2
         assert "Cloud" in story.topics
-        
+
         return True, "Get story by ID"
     except Exception as e:
         return False, f"Get story by ID: {e}"
@@ -194,20 +201,22 @@ def test_get_stories_list():
                 time_window_end=datetime.now(UTC),
             )
             # Link at least 1 article to pass validation
-            link_articles_to_story(session, story_id, [i+1])
-        
+            link_articles_to_story(session, story_id, [i + 1])
+
         # Query stories
         stories = get_stories(session, limit=10, status="active", order_by="importance")
         assert len(stories) == 5, f"Expected 5 stories, got {len(stories)}"
-        
+
         # Verify sorted by importance (highest first)
         assert stories[0].importance_score >= stories[1].importance_score
         assert stories[1].importance_score >= stories[2].importance_score
-        
+
         # Test limit
         stories_limited = get_stories(session, limit=3)
-        assert len(stories_limited) == 3, f"Expected 3 stories, got {len(stories_limited)}"
-        
+        assert (
+            len(stories_limited) == 3
+        ), f"Expected 3 stories, got {len(stories_limited)}"
+
         return True, "Get stories (list/filter/sort)"
     except Exception as e:
         return False, f"Get stories: {e}"
@@ -233,7 +242,7 @@ def test_update_story():
             time_window_start=datetime.now(UTC),
             time_window_end=datetime.now(UTC),
         )
-        
+
         # Update story
         success = update_story(
             session,
@@ -242,12 +251,12 @@ def test_update_story():
             importance_score=0.95,
         )
         assert success, "Update should succeed"
-        
+
         # Verify updates
         story = session.query(Story).filter(Story.id == story_id).first()
         assert story.title == "Updated Title"
         assert story.importance_score == 0.95
-        
+
         return True, "Update story"
     except Exception as e:
         return False, f"Update story: {e}"
@@ -286,16 +295,18 @@ def test_archive_story():
             time_window_start=datetime.now(UTC),
             time_window_end=datetime.now(UTC),
         )
-        
+
         # Archive story
         success = archive_story(session, story_id)
         assert success, "Archive should succeed"
-        
+
         # Verify story still exists but is archived
         story = session.query(Story).filter(Story.id == story_id).first()
         assert story is not None, "Story should still exist in database"
-        assert story.status == "archived", f"Status should be 'archived', got '{story.status}'"
-        
+        assert (
+            story.status == "archived"
+        ), f"Status should be 'archived', got '{story.status}'"
+
         return True, "Archive story (soft delete)"
     except Exception as e:
         return False, f"Archive story: {e}"
@@ -321,22 +332,24 @@ def test_delete_story():
             time_window_start=datetime.now(UTC),
             time_window_end=datetime.now(UTC),
         )
-        
+
         # Link articles
         link_articles_to_story(session, story_id, [100, 200])
-        
+
         # Delete story
         success = delete_story(session, story_id)
         assert success, "Delete should succeed"
-        
+
         # Verify story is gone
         story = session.query(Story).filter(Story.id == story_id).first()
         assert story is None, "Story should be deleted from database"
-        
+
         # Verify links are also gone (CASCADE)
-        links = session.query(StoryArticle).filter(StoryArticle.story_id == story_id).all()
+        links = (
+            session.query(StoryArticle).filter(StoryArticle.story_id == story_id).all()
+        )
         assert len(links) == 0, "Article links should be deleted (CASCADE)"
-        
+
         return True, "Delete story (hard delete with CASCADE)"
     except Exception as e:
         return False, f"Delete story: {e}"
@@ -363,13 +376,13 @@ def test_cleanup_archived():
             time_window_start=datetime.now(UTC),
             time_window_end=datetime.now(UTC),
         )
-        
+
         # Archive it and backdate last_updated
         archive_story(session, old_story_id)
         old_story = session.query(Story).filter(Story.id == old_story_id).first()
         old_story.last_updated = datetime.now(UTC) - timedelta(days=40)
         session.commit()
-        
+
         # Create recent archived story
         recent_story_id = create_story(
             session=session,
@@ -386,18 +399,18 @@ def test_cleanup_archived():
             time_window_end=datetime.now(UTC),
         )
         archive_story(session, recent_story_id)
-        
+
         # Cleanup old stories (older than 30 days)
         count = cleanup_archived_stories(session, days=30)
         assert count == 1, f"Should delete 1 old story, deleted {count}"
-        
+
         # Verify old story is gone, recent one remains
         old = session.query(Story).filter(Story.id == old_story_id).first()
         assert old is None, "Old archived story should be deleted"
-        
+
         recent = session.query(Story).filter(Story.id == recent_story_id).first()
         assert recent is not None, "Recent archived story should remain"
-        
+
         return True, "Cleanup archived stories"
     except Exception as e:
         return False, f"Cleanup archived: {e}"
@@ -409,7 +422,7 @@ def main():
     """Run all tests and report results."""
     print("🧪 Testing Story CRUD Operations\n")
     print("=" * 60)
-    
+
     tests = [
         test_create_story,
         test_link_articles,
@@ -422,10 +435,10 @@ def main():
         test_delete_story,
         test_cleanup_archived,
     ]
-    
+
     passed = 0
     failed = 0
-    
+
     for test in tests:
         success, message = test()
         if success:
@@ -434,10 +447,10 @@ def main():
         else:
             print(f"❌ {message}")
             failed += 1
-    
+
     print("=" * 60)
     print(f"\n📊 Summary: {passed}/{len(tests)} tests passed")
-    
+
     if failed > 0:
         print(f"❌ {failed} tests failed")
         return 1
@@ -448,4 +461,3 @@ def main():
 
 if __name__ == "__main__":
     exit(main())
-
