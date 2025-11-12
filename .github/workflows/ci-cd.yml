@@ -124,8 +124,10 @@ jobs:
       - name: Set image tag for security scan
         id: set-image-tag
         run: |
-          # Use sha-tagged image for consistent security scanning
-          echo "tag=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}" >> $GITHUB_OUTPUT
+          # Use sha-tagged image for consistent security scanning (short SHA format)
+          SHORT_SHA="${{ github.sha }}"
+          SHORT_SHA="${SHORT_SHA:0:7}"
+          echo "tag=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${SHORT_SHA}" >> $GITHUB_OUTPUT
 
   security-scan:
     name: 🔒 Security Scan
