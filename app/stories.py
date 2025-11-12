@@ -47,13 +47,13 @@ STORY_DELETE_DAYS = int(
 )  # Hard delete after 30 days
 
 # ORM Base
-Base = declarative_base()
+Base = declarative_base()  # type: ignore
 
 
 # ORM Models
 
 
-class Story(Base):
+class Story(Base):  # type: ignore[misc,valid-type]
     """ORM model for stories table."""
 
     __tablename__ = "stories"
@@ -84,7 +84,7 @@ class Story(Base):
     )
 
 
-class StoryArticle(Base):
+class StoryArticle(Base):  # type: ignore[misc,valid-type]
     """ORM model for story_articles junction table."""
 
     __tablename__ = "story_articles"
@@ -174,7 +174,7 @@ def create_story(
     session.refresh(story)
 
     logger.info(f"Created story #{story.id}: {title[:50]}...")
-    return story.id
+    return story.id  # type: ignore[return-value]
 
 
 def link_articles_to_story(
@@ -206,8 +206,8 @@ def link_articles_to_story(
     # Update article count on story
     story = session.query(Story).filter(Story.id == story_id).first()
     if story:
-        story.article_count = len(article_ids)
-        story.last_updated = datetime.now(UTC)
+        story.article_count = len(article_ids)  # type: ignore[assignment]
+        story.last_updated = datetime.now(UTC)  # type: ignore[assignment]
 
     session.commit()
     logger.info(f"Linked {len(article_ids)} articles to story #{story_id}")
@@ -310,7 +310,7 @@ def update_story(session: Session, story_id: int, **updates) -> bool:
         if key in allowed_fields:
             setattr(story, key, value)
 
-    story.last_updated = datetime.utcnow()
+    story.last_updated = datetime.now(UTC)  # type: ignore[assignment]
     session.commit()
 
     logger.info(f"Updated story #{story_id}")
@@ -334,8 +334,8 @@ def archive_story(session: Session, story_id: int) -> bool:
     if not story:
         return False
 
-    story.status = "archived"
-    story.last_updated = datetime.utcnow()
+    story.status = "archived"  # type: ignore[assignment]
+    story.last_updated = datetime.now(UTC)  # type: ignore[assignment]
     session.commit()
 
     logger.info(f"Archived story #{story_id}")
@@ -401,7 +401,7 @@ def cleanup_archived_stories(
 # Helper Functions
 
 
-def _story_db_to_model(
+def _story_db_to_model(  # type: ignore[misc]
     story: Story,
     articles: List[ItemOut],
     primary_article_id: Optional[int] = None,
@@ -417,20 +417,23 @@ def _story_db_to_model(
     Returns:
         StoryOut model
     """
+    # SQLAlchemy Column types vs runtime values - mypy doesn't understand ORM magic
+    # fmt: off
     return StoryOut(
-        id=story.id,
-        title=story.title,
-        synthesis=story.synthesis,
-        key_points=deserialize_story_json_field(story.key_points_json),
-        why_it_matters=story.why_it_matters,
-        topics=deserialize_story_json_field(story.topics_json),
-        entities=deserialize_story_json_field(story.entities_json),
-        article_count=story.article_count,
-        importance_score=story.importance_score,
-        freshness_score=story.freshness_score,
-        generated_at=story.generated_at,
-        first_seen=story.first_seen,
-        last_updated=story.last_updated,
+        id=story.id,  # type: ignore[arg-type]
+        title=story.title,  # type: ignore[arg-type]
+        synthesis=story.synthesis,  # type: ignore[arg-type]
+        key_points=deserialize_story_json_field(story.key_points_json),  # type: ignore[arg-type]
+        why_it_matters=story.why_it_matters,  # type: ignore[arg-type]
+        topics=deserialize_story_json_field(story.topics_json),  # type: ignore[arg-type]
+        entities=deserialize_story_json_field(story.entities_json),  # type: ignore[arg-type]
+        article_count=story.article_count,  # type: ignore[arg-type]
+        importance_score=story.importance_score,  # type: ignore[arg-type]
+        freshness_score=story.freshness_score,  # type: ignore[arg-type]
+        generated_at=story.generated_at,  # type: ignore[arg-type]
+        first_seen=story.first_seen,  # type: ignore[arg-type]
+        last_updated=story.last_updated,  # type: ignore[arg-type]
         supporting_articles=articles,
         primary_article_id=primary_article_id,
     )
+    # fmt: on

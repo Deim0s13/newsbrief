@@ -801,7 +801,7 @@ def get_article_page(request: Request, item_id: int):
                 fallback_summary = row[4] or row[1] or "Content preview unavailable"
                 is_fallback = True
 
-        article = ItemOut(
+        article = ItemOut(  # type: ignore[call-arg]
             id=row[0],
             title=row[1],
             url=row[2],
@@ -920,7 +920,7 @@ def get_item(item_id: int):
                 fallback_summary = row[4] or row[1] or "Content preview unavailable"
                 is_fallback = True
 
-        return ItemOut(
+        return ItemOut(  # type: ignore[call-arg]
             id=row[0],
             title=row[1],
             url=row[2],
