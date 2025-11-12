@@ -76,7 +76,7 @@ jobs:
     needs: test
     outputs:
       image-digest: ${{ steps.build.outputs.digest }}
-      image-tag: ${{ steps.meta.outputs.tags }}
+      image-tag: ${{ steps.set-image-tag.outputs.tag }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -120,6 +120,12 @@ jobs:
             VERSION=${{ github.ref_name }}
             BUILD_DATE=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
             GIT_SHA=${{ github.sha }}
+
+      - name: Set image tag for security scan
+        id: set-image-tag
+        run: |
+          # Use sha-tagged image for consistent security scanning
+          echo "tag=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}" >> $GITHUB_OUTPUT
 
   security-scan:
     name: 🔒 Security Scan
