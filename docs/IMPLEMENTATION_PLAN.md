@@ -31,16 +31,23 @@
 
 ## Implementation Phases
 
-### Phase 1: Core Infrastructure (8-12 hours) 🔧
+### Phase 1: Core Infrastructure (8-12 hours) ✅ COMPLETE
 **Goal**: Database, models, basic CRUD, simple generation
 
 **Tasks**:
-- ✅ Database schema (stories, story_articles) - DONE
-- ✅ Pydantic models - DONE
-- ⏳ Story CRUD operations
-- ⏳ Simple story generation (naive clustering by topic)
+- ✅ Database schema (stories, story_articles) - Issue #36
+- ✅ Pydantic models with validation - Issue #37
+- ✅ Story CRUD operations (8 functions) - Issue #38
+- ✅ Story generation pipeline (hybrid clustering + LLM) - Issue #39
 
-**Deliverable**: Can manually create stories and link articles
+**Deliverable**: ✅ Can generate stories from articles with LLM synthesis
+
+**Implementation Notes**:
+- Hybrid clustering: Topic grouping + keyword similarity (Jaccard)
+- LLM synthesis via Ollama (llama3.1:8b) with structured JSON output
+- Entity extraction and topic classification built into synthesis
+- Graceful fallback when LLM unavailable
+- ~10 hours actual effort (on target)
 
 ---
 

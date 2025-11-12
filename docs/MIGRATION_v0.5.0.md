@@ -1,8 +1,16 @@
 # Database Migration to v0.5.0 (Story Architecture)
 
-**Date**: 2025-11-06  
-**Version**: v0.5.0  
+**Date**: 2025-11-06 (Updated: 2025-11-12)
+**Version**: v0.5.0-alpha (Phase 1 Complete)
 **Type**: Schema Addition (Non-Breaking)
+
+## ✅ Phase 1 Status: COMPLETE
+
+- **Database Schema**: `stories` and `story_articles` tables deployed
+- **Story Generation**: Hybrid clustering + LLM synthesis implemented
+- **CRUD Operations**: Complete story management functions
+- **Testing**: Comprehensive test coverage (automated + manual)
+- **Migration**: Idempotent schema updates (safe to run multiple times)
 
 ## Overview
 

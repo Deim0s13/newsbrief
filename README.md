@@ -36,13 +36,16 @@ NewsBrief is a self-hosted, privacy-focused news aggregator that replaces readin
 - **Comprehensive Documentation**: Complete CI/CD guides, API documentation, and architecture decision records
 
 ### **In Development (v0.5.0 - Story Architecture)**
-- **Story-Based Aggregation**: Cluster related articles into unified narratives
-- **Multi-Document Synthesis**: AI-powered synthesis of multiple sources into coherent stories
-- **Daily Story Briefs**: Auto-generate 5-10 curated stories daily
-- **Entity Extraction**: Identify companies, products, and people for intelligent clustering
-- **Story-First UI**: Landing page shows stories, not individual articles
-- **Manual Refresh**: On-demand story regeneration
-- **Interest-Based Filtering**: Surface relevant stories based on topics
+- ✅ **Story Database Infrastructure**: Complete schema with stories and article links (Issues #36-38)
+- ✅ **Story Generation Pipeline**: Hybrid clustering (topic + keyword similarity) with LLM synthesis (Issue #39)
+- ✅ **Multi-Document Synthesis**: Ollama-powered synthesis combining multiple sources into coherent narratives
+- ✅ **Entity Extraction**: LLM identifies companies, products, and people from article clusters
+- ✅ **Topic Auto-Classification**: Stories automatically tagged with relevant topics
+- 🚧 **Story API Endpoints**: RESTful endpoints for generating and retrieving stories
+- 🚧 **Scheduled Generation**: Cron-based daily story generation
+- 🚧 **Story-First UI**: Landing page redesign to show stories, not individual articles
+- 🚧 **Manual Refresh**: On-demand story regeneration from UI
+- 🚧 **Interest-Based Filtering**: Surface relevant stories based on user-selected topics
 
 ### **Future Enhancements**
 - **Configurable Time Windows**: 12h, 24h, 48h, 1w story generation
@@ -140,6 +143,52 @@ curl "http://localhost:8787/items?limit=10" | jq .
 | `/stories/generate` | POST | Generate/refresh stories | 🚧 v0.5.0 |
 | `/items` | GET | List articles (secondary feature) | ✅ Available |
 | `/docs` | GET | Interactive API documentation | ✅ Available |
+
+## 🧠 Story Generation (v0.5.0)
+
+NewsBrief now includes an AI-powered story generation pipeline that synthesizes multiple articles into coherent narratives.
+
+### How It Works
+
+1. **Article Collection**: Queries articles from the last 24 hours (configurable)
+2. **Topic Grouping**: Groups articles by their primary topic (AI/ML, Security, etc.)
+3. **Keyword Clustering**: Within each topic, clusters articles by title similarity (Jaccard index)
+4. **LLM Synthesis**: For each cluster, prompts Ollama to:
+   - Generate a coherent narrative from multiple sources
+   - Extract key points (3-8 bullets)
+   - Identify entities (companies, products, people)
+   - Classify topics
+   - Explain "why it matters"
+5. **Storage**: Stores synthesized stories with links to source articles
+
+### Features
+
+- ✅ **Hybrid Clustering**: Topic grouping + keyword similarity for intelligent article grouping
+- ✅ **Multi-Document Synthesis**: Ollama-powered synthesis combining multiple sources
+- ✅ **Entity Extraction**: Automatically identifies companies, products, and people
+- ✅ **Topic Classification**: Stories auto-tagged with relevant topics
+- ✅ **Graceful Fallback**: Works without LLM (uses simple concatenation)
+- ✅ **Configurable**: Time windows, similarity thresholds, minimum articles per story
+
+### Usage
+
+```python
+from app.db import session_scope
+from app.stories import generate_stories_simple
+
+with session_scope() as session:
+    story_ids = generate_stories_simple(
+        session=session,
+        time_window_hours=24,      # Lookback period
+        min_articles_per_story=1,  # Minimum articles per story
+        similarity_threshold=0.3,  # Keyword overlap threshold
+        model="llama3.1:8b"        # LLM model
+    )
+```
+
+**See**: [Python API Documentation](docs/API.md#-python-api-v050) for complete usage guide.
+
+---
 
 ## 🏗️ Architecture
 
@@ -277,17 +326,23 @@ newsbrief/
 ### **v0.5.0 - Story Architecture** 🚀 **In Development**
 Transform from article-centric to story-based aggregation
 
-**Phase 1-3: Core Engine** (26-37 hours)
-- [ ] Story database schema and models
-- [ ] Entity extraction (companies, products, people)
-- [ ] Intelligent article clustering (entity + text similarity)
-- [ ] Multi-document synthesis (AI-powered story generation)
-- [ ] Quality scoring (importance + freshness)
+**Phase 1-3: Core Engine** (26-37 hours) - PARTIALLY COMPLETE
+- [x] Story database schema and models (Issues #36-37)
+- [x] Story CRUD operations (Issue #38)
+- [x] Story generation pipeline with hybrid clustering (Issue #39)
+- [x] Multi-document synthesis (AI-powered, Issue #39)
+- [x] Entity extraction from article clusters (Issue #39)
+- [x] Quality scoring basics: importance + freshness (Issue #39)
+- [ ] Enhanced entity extraction (dedicated article-level function)
+- [ ] Advanced text similarity clustering (embeddings-based)
+- [ ] Story deduplication and merging
+- [ ] Configurable clustering parameters
 
-**Phase 4: Automation** (4-6 hours)
-- [ ] Daily auto-generation (6 AM)
+**Phase 4: Automation** (4-6 hours) - PARTIALLY COMPLETE
+- [x] Story archiving/cleanup CRUD functions (Issue #38)
+- [ ] Daily auto-generation (scheduled task)
 - [ ] Manual refresh API endpoint
-- [ ] Story archiving (7+ days)
+- [ ] Story retention policies and automation
 
 **Phase 5-6: Story-First UI** (10-14 hours)
 - [ ] Landing page with story cards (5-10 stories)

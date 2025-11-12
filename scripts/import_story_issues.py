@@ -34,10 +34,11 @@ HEADERS = {
     "Accept": "application/vnd.github.v3+json",
 }
 
+
 def create_label(name: str, color: str, description: str = "") -> bool:
     """Create a label if it doesn't exist."""
     url = f"{BASE_URL}/repos/{REPO_OWNER}/{REPO_NAME}/labels"
-    
+
     # Check if label exists
     response = requests.get(url, headers=HEADERS)
     if response.ok:
@@ -45,17 +46,18 @@ def create_label(name: str, color: str, description: str = "") -> bool:
         if name in existing:
             print(f"  ℹ️  Label '{name}' already exists")
             return True
-    
+
     # Create label
     data = {"name": name, "color": color, "description": description}
     response = requests.post(url, headers=HEADERS, json=data)
-    
+
     if response.status_code == 201:
         print(f"  ✅ Created label '{name}'")
         return True
     else:
         print(f"  ⚠️  Failed to create label '{name}': {response.status_code}")
         return False
+
 
 def create_issue(title: str, body: str, labels: list) -> dict:
     """Create a GitHub issue."""
@@ -65,9 +67,9 @@ def create_issue(title: str, body: str, labels: list) -> dict:
         "body": body,
         "labels": labels,
     }
-    
+
     response = requests.post(url, headers=HEADERS, json=data)
-    
+
     if response.status_code == 201:
         issue = response.json()
         print(f"  ✅ Created issue #{issue['number']}: {title}")
@@ -77,19 +79,20 @@ def create_issue(title: str, body: str, labels: list) -> dict:
         print(f"     Response: {response.text}")
         return None
 
+
 def main():
     print(f"🚀 Importing story architecture issues to {REPO_OWNER}/{REPO_NAME}\n")
-    
+
     # Load issues
     if not ISSUES_FILE.exists():
         print(f"❌ Issues file not found: {ISSUES_FILE}")
         sys.exit(1)
-    
+
     with open(ISSUES_FILE) as f:
         issues = json.load(f)
-    
+
     print(f"📋 Found {len(issues)} issues to create\n")
-    
+
     # Define and create labels
     print("🏷️  Creating labels...")
     labels_to_create = [
@@ -97,12 +100,10 @@ def main():
         ("epic:stories", "7B68EE", "Story-based architecture epic"),
         ("epic:ui", "1D76DB", "User interface improvements"),
         ("epic:ops", "0E8A16", "Operations and DevOps"),
-        
         # Priority labels
         ("priority:p0", "D73A4A", "Critical - Blocking priority"),
         ("priority:p1", "FBCA04", "High priority"),
         ("priority:p2", "0E8A16", "Medium priority"),
-        
         # Phase labels
         ("phase:planning", "BFD4F2", "Planning and design phase"),
         ("phase:infrastructure", "D4C5F9", "Infrastructure and foundation"),
@@ -115,29 +116,29 @@ def main():
         ("phase:testing", "EDEDED", "Testing and quality assurance"),
         ("phase:documentation", "D4F4DD", "Documentation"),
     ]
-    
+
     for name, color, description in labels_to_create:
         create_label(name, color, description)
-    
+
     print()
-    
+
     # Create issues
     print("📝 Creating issues...")
     created_count = 0
     failed_count = 0
-    
+
     for issue_data in issues:
         result = create_issue(
             title=issue_data["title"],
             body=issue_data["body"],
             labels=issue_data.get("labels", []),
         )
-        
+
         if result:
             created_count += 1
         else:
             failed_count += 1
-    
+
     print()
     print("=" * 60)
     print(f"✅ Successfully created: {created_count} issues")
@@ -150,6 +151,6 @@ def main():
     print("2. Issues will auto-sync to Project #7 via project-automation workflow")
     print("3. Review and adjust priorities/assignments as needed")
 
+
 if __name__ == "__main__":
     main()
-
