@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}NewsBrief - Today's Stories{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Today's Stories</h1>
+        <p class="mt-2 text-gray-600 dark:text-gray-300">AI-synthesized news from multiple sources</p>
+    </div>
+    
+    <!-- Filters and Actions -->
+    <div class="mb-6 flex flex-wrap gap-4 items-center">
+        <!-- Time Window Filter -->
+        <div class="flex items-center space-x-2">
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Time:</label>
+            <select id="time-filter" class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                <option value="24">Last 24 Hours</option>
+                <option value="48">Last 2 Days</option>
+                <option value="168">Last Week</option>
+            </select>
+        </div>
+        
+        <!-- Status Filter -->
+        <div class="flex items-center space-x-2">
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Show:</label>
+            <select id="status-filter" class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                <option value="active">Active Stories</option>
+                <option value="all">All Stories</option>
+                <option value="archived">Archived</option>
+            </select>
+        </div>
+        
+        <!-- Sort Order -->
+        <div class="flex items-center space-x-2">
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Sort by:</label>
+            <select id="sort-filter" class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                <option value="importance">Importance</option>
+                <option value="freshness">Freshness</option>
+                <option value="generated_at">Latest Generated</option>
+            </select>
+        </div>
+        
+        <!-- Refresh Stories Button -->
+        <button id="refresh-stories-btn" onclick="refreshStories()" class="ml-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md flex items-center space-x-2">
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+            <span>Generate Stories</span>
+        </button>
+    </div>
+    
+    <!-- Story Count & Stats -->
+    <div id="story-stats" class="hidden mb-4 text-sm text-gray-600 dark:text-gray-400">
+        <span id="story-count-text">Loading stories...</span>
+    </div>
+    
+    <!-- Stories Loading State -->
+    <div id="loading" class="hidden">
+        <div class="flex items-center justify-center py-12">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <span class="ml-3 text-gray-600 dark:text-gray-300">Loading stories...</span>
+        </div>
+    </div>
+    
+    <!-- Stories Container -->
+    <div id="stories-container" class="space-y-6">
+        <!-- Story items will be loaded here via JavaScript -->
+        <div class="text-center py-12 text-gray-500 dark:text-gray-400">
+            <svg class="mx-auto h-12 w-12 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"></path>
+            </svg>
+            <p>Loading your personalized news stories...</p>
+            <p class="text-sm mt-1">Stories are synthesized from multiple sources</p>
+        </div>
+    </div>
+    
+    <!-- Load More Button -->
+    <div id="load-more-container" class="hidden text-center mt-8">
+        <button id="load-more-btn" class="px-6 py-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-medium rounded-md">
+            Load More Stories
+        </button>
+    </div>
+</div>
+
+<!-- Story Card Template -->
+<template id="story-template">
+    <article class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 hover:shadow-lg transition-all cursor-pointer">
+        <div class="p-6">
+            <!-- Story Header -->
+            <div class="flex items-start justify-between mb-4">
+                <div class="flex items-center space-x-3 flex-wrap gap-2">
+                    <span class="story-topics text-xs"></span>
+                    <span class="story-article-count inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                        <svg class="h-3 w-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                        <span class="article-count-number"></span>
+                    </span>
+                </div>
+                <div class="flex items-center space-x-3">
+                    <span class="story-scores text-xs text-gray-500 dark:text-gray-400 font-mono"></span>
+                    <time class="story-time text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap"></time>
+                </div>
+            </div>
+            
+            <!-- Story Title -->
+            <h2 class="story-title text-2xl font-bold text-gray-900 dark:text-white mb-3 hover:text-blue-600 dark:hover:text-blue-400">
+            </h2>
+            
+            <!-- Story Synthesis Preview -->
+            <div class="story-synthesis text-gray-700 dark:text-gray-300 mb-4 line-clamp-3">
+            </div>
+            
+            <!-- Key Points Preview (first 2) -->
+            <div class="story-key-points mb-4">
+                <div class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Key Points:</div>
+                <ul class="space-y-1 text-sm text-gray-600 dark:text-gray-400">
+                    <!-- Key points will be inserted here -->
+                </ul>
+            </div>
+            
+            <!-- Why It Matters Preview -->
+            <div class="story-why-matters hidden">
+                <div class="flex items-start space-x-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                    <svg class="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <div>
+                        <div class="text-xs font-medium text-blue-900 dark:text-blue-300 mb-1">Why It Matters:</div>
+                        <div class="text-sm text-blue-800 dark:text-blue-200 why-matters-text line-clamp-2"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Footer -->
+            <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                <div class="flex items-center space-x-2 text-xs text-gray-500 dark:text-gray-400">
+                    <span class="story-entities"></span>
+                </div>
+                <a href="#" class="story-link text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-sm font-medium flex items-center space-x-1">
+                    <span>Read Full Story</span>
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                    </svg>
+                </a>
+            </div>
+        </div>
+    </article>
+</template>
+
+<!-- Custom JavaScript for Stories Page -->
+<script src="{{ url_for('static', path='js/stories.js') }}"></script>
+{% endblock %}
+

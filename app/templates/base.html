@@ -32,7 +32,10 @@
                     
                     <!-- Navigation Links -->
                     <div class="hidden md:ml-8 md:flex md:space-x-8">
-                        <a href="/" class="border-b-2 {% if current_page == 'articles' %}border-blue-500 text-blue-600{% else %}border-transparent text-gray-500 dark:text-gray-300 hover:border-gray-300 hover:text-gray-700 dark:hover:text-white{% endif %} inline-flex items-center px-1 pt-1 text-sm font-medium">
+                        <a href="/" class="border-b-2 {% if current_page == 'stories' %}border-blue-500 text-blue-600{% else %}border-transparent text-gray-500 dark:text-gray-300 hover:border-gray-300 hover:text-gray-700 dark:hover:text-white{% endif %} inline-flex items-center px-1 pt-1 text-sm font-medium">
+                            Stories
+                        </a>
+                        <a href="/articles" class="border-b-2 {% if current_page == 'articles' %}border-blue-500 text-blue-600{% else %}border-transparent text-gray-500 dark:text-gray-300 hover:border-gray-300 hover:text-gray-700 dark:hover:text-white{% endif %} inline-flex items-center px-1 pt-1 text-sm font-medium">
                             Articles
                         </a>
                         <a href="/feeds-manage" class="border-b-2 {% if current_page == 'feed-management' %}border-blue-500 text-blue-600{% else %}border-transparent text-gray-500 dark:text-gray-300 hover:border-gray-300 hover:text-gray-700 dark:hover:text-white{% endif %} inline-flex items-center px-1 pt-1 text-sm font-medium">
@@ -93,7 +96,7 @@
     <footer class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 mt-12">
         <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
             <div class="text-center text-sm text-gray-500 dark:text-gray-400">
-                <p>NewsBrief v0.5.1 - Intelligent RSS Aggregator with AI Ranking</p>
+                <p>NewsBrief v0.5.1 - Story-based News Aggregator with AI Synthesis</p>
                 <p class="mt-1">
                     <a href="/docs" class="hover:text-blue-600">API Documentation</a>
                     <span class="mx-2">•</span>

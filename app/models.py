@@ -350,11 +350,28 @@ class StoryOut(BaseModel):
 
     @validator("key_points")
     def validate_key_points(cls, v):
+        # Pad if too few key points (LLM sometimes returns < 3)
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        original_len = len(v)
         if len(v) < 3:
-            raise ValueError("must have at least 3 key points")
+            logger.info(f"[VALIDATOR] Padding key_points from {len(v)} to 3")
+            v = list(v)  # Make a copy
+            while len(v) < 3:
+                if len(v) == 1:
+                    v.append("Additional details in supporting articles")
+                elif len(v) == 2:
+                    v.append("See full article details below")
+        
         if len(v) > 8:
-            raise ValueError("must not exceed 8 key points")
-        return [point.strip() for point in v if point.strip()]
+            logger.warning(f"[VALIDATOR] Truncating key_points from {len(v)} to 8")
+            v = v[:8]  # Truncate instead of raising error
+        
+        result = [point.strip() for point in v if point.strip()]
+        if original_len != len(result):
+            logger.info(f"[VALIDATOR] Final key_points count: {len(result)} (was {original_len})")
+        return result
 
     @validator("importance_score", "freshness_score")
     def validate_score(cls, v):

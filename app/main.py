@@ -75,10 +75,36 @@ def _startup() -> None:
 # Web Interface Routes
 @app.get("/", response_class=HTMLResponse)
 def home_page(request: Request):
-    """Main web interface page."""
+    """Main web interface page - Stories landing page."""
+    return templates.TemplateResponse("stories.html", {
+        "request": request, 
+        "current_page": "stories"
+    })
+
+
+@app.get("/articles", response_class=HTMLResponse)
+def articles_page(request: Request):
+    """Articles listing page (legacy view)."""
     return templates.TemplateResponse("index.html", {
         "request": request, 
         "current_page": "articles"
+    })
+
+
+@app.get("/story/{story_id}", response_class=HTMLResponse)
+def story_detail_page(request: Request, story_id: int):
+    """Individual story detail page."""
+    # Get story details with supporting articles
+    with session_scope() as s:
+        story = get_story_by_id(session=s, story_id=story_id)
+        
+        if not story:
+            raise HTTPException(status_code=404, detail="Story not found")
+    
+    return templates.TemplateResponse("story_detail.html", {
+        "request": request, 
+        "story": story,
+        "current_page": "stories"
     })
 
 
@@ -1320,8 +1346,14 @@ def generate_stories_endpoint(request: StoryGenerationRequest = None):  # type: 
     1. Queries articles from the specified time window
     2. Groups articles by topic (coarse filter)
     3. Clusters by title keyword similarity (Jaccard index)
-    4. Generates multi-document synthesis via LLM
-    5. Stores stories with links to source articles
+    4. Generates multi-document synthesis via LLM (in parallel)
+    5. Stores stories with links to source articles (batched commits)
+
+    Optimizations:
+    - Parallel LLM synthesis (3 concurrent workers)
+    - Cached article data
+    - Batched database commits
+    - Duplicate detection
 
     Returns:
         Story generation results including story IDs and statistics
@@ -1338,8 +1370,10 @@ def generate_stories_endpoint(request: StoryGenerationRequest = None):  # type: 
                 min_articles_per_story=request.min_articles_per_story,
                 similarity_threshold=request.similarity_threshold,
                 model=request.model,
+                max_workers=3,  # Parallel LLM calls
             )
 
+            # Success even if 0 stories (might be all duplicates)
             return StoryGenerationResponse(
                 success=True,
                 story_ids=story_ids,
@@ -1348,7 +1382,7 @@ def generate_stories_endpoint(request: StoryGenerationRequest = None):  # type: 
                 model=request.model,
             )
     except Exception as e:
-        logger.error(f"Story generation failed: {e}")
+        logger.error(f"Story generation failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=500, detail=f"Story generation failed: {str(e)}"
         )

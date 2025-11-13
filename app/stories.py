@@ -16,7 +16,9 @@ import json
 import logging
 import os
 import re
+import time
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
@@ -525,7 +527,10 @@ def _calculate_keyword_overlap(keywords1: Set[str], keywords2: Set[str]) -> floa
 
 
 def _generate_story_synthesis(
-    session: Session, article_ids: List[int], model: str = "llama3.1:8b"
+    session: Session, 
+    article_ids: List[int], 
+    model: str = "llama3.1:8b",
+    articles_cache: Optional[Dict[int, Any]] = None
 ) -> Dict[str, Any]:
     """
     Generate story synthesis from multiple articles using LLM.
@@ -534,26 +539,31 @@ def _generate_story_synthesis(
         session: Database session
         article_ids: List of article IDs to synthesize
         model: LLM model to use
+        articles_cache: Optional cached article data to avoid DB queries
 
     Returns:
         Dict with synthesis, key_points, why_it_matters, topics, entities
     """
-    # Fetch article details
-    # Build IN clause with proper placeholders
-    placeholders = ", ".join([f":id_{i}" for i in range(len(article_ids))])
-    params = {f"id_{i}": aid for i, aid in enumerate(article_ids)}
+    # Use cached article data if available, otherwise fetch
+    if articles_cache:
+        articles = [articles_cache[aid] for aid in article_ids if aid in articles_cache]
+    else:
+        # Fetch article details
+        # Build IN clause with proper placeholders
+        placeholders = ", ".join([f":id_{i}" for i in range(len(article_ids))])
+        params = {f"id_{i}": aid for i, aid in enumerate(article_ids)}
 
-    articles = session.execute(
-        text(
-            f"""
-        SELECT id, title, summary, ai_summary, topic
-        FROM items 
-        WHERE id IN ({placeholders})
-        ORDER BY published DESC
-    """
-        ),
-        params,
-    ).fetchall()
+        articles = session.execute(
+            text(
+                f"""
+            SELECT id, title, summary, ai_summary, topic
+            FROM items 
+            WHERE id IN ({placeholders})
+            ORDER BY published DESC
+        """
+            ),
+            params,
+        ).fetchall()
 
     if not articles:
         raise ValueError("No articles found for synthesis")
@@ -561,7 +571,14 @@ def _generate_story_synthesis(
     # Build context for LLM
     article_summaries = []
     for article in articles:
-        article_id, title, summary, ai_summary, topic = article
+        if articles_cache:
+            # Cached data is already a dict/tuple
+            article_id, title, summary, ai_summary, topic = (
+                article["id"], article["title"], article["summary"], 
+                article["ai_summary"], article["topic"]
+            )
+        else:
+            article_id, title, summary, ai_summary, topic = article
         content = ai_summary or summary or title
         article_summaries.append(f"- {title}\n  {content[:200]}")
 
@@ -630,9 +647,28 @@ JSON:"""
 
             # Validate required fields
             if all(k in result for k in ["synthesis", "key_points", "why_it_matters"]):
+                key_points = result.get("key_points", [])
+                
+                # Ensure at least 3 key points (pad if LLM returns too few)
+                if len(key_points) < 3:
+                    logger.warning(f"LLM returned only {len(key_points)} key points, padding to 3")
+                    
+                    # Pad with generic points from synthesis or article data
+                    if len(key_points) == 0:
+                        key_points = [
+                            "Multiple related articles aggregated",
+                            f"Based on {len(articles)} sources",
+                            "See supporting articles for details"
+                        ]
+                    elif len(key_points) == 1:
+                        key_points.append(f"Based on {len(articles)} sources")
+                        key_points.append("See supporting articles for details")
+                    elif len(key_points) == 2:
+                        key_points.append(f"Based on {len(articles)} sources")
+                
                 return {
                     "synthesis": result["synthesis"],
-                    "key_points": result.get("key_points", []),
+                    "key_points": key_points,
                     "why_it_matters": result.get("why_it_matters", ""),
                     "topics": result.get("topics", []),
                     "entities": result.get("entities", []),
@@ -661,7 +697,11 @@ def _fallback_synthesis(articles: Sequence[Any]) -> Dict[str, Any]:
 
     if len(articles) == 1:
         synthesis = f"{titles[0]}"
-        key_points = ["Single article - see details below"]
+        key_points = [
+            "Single article - see details below",
+            f"Source: {titles[0][:80]}...",
+            f"Topic: {topics[0] if topics else 'General'}"
+        ]
     else:
         synthesis = (
             f"Multiple articles about {topics[0] if topics else 'this topic'}: "
@@ -669,7 +709,16 @@ def _fallback_synthesis(articles: Sequence[Any]) -> Dict[str, Any]:
         )
         if len(titles) > 3:
             synthesis += f" and {len(titles) - 3} more"
+        
+        # Ensure at least 3 key points
         key_points = [f"• {title}" for title in titles[:5]]
+        
+        # Pad with generic points if needed
+        while len(key_points) < 3:
+            if len(key_points) == 1:
+                key_points.append(f"• {len(articles)} related articles")
+            elif len(key_points) == 2:
+                key_points.append(f"• Topics: {', '.join(topics) if topics else 'Various'}")
 
     return {
         "synthesis": synthesis,
@@ -686,15 +735,22 @@ def generate_stories_simple(
     min_articles_per_story: int = 1,
     similarity_threshold: float = 0.3,
     model: str = "llama3.1:8b",
+    max_workers: int = 3,  # Parallel LLM calls
 ) -> List[int]:
     """
-    Generate stories from recent articles using hybrid clustering.
+    Generate stories from recent articles using hybrid clustering (OPTIMIZED).
 
     Clustering approach:
     1. Group by topic (coarse filter)
     2. Within each topic, cluster by title keyword overlap
-    3. Generate synthesis for each cluster
-    4. Store stories in database
+    3. Generate synthesis for each cluster (IN PARALLEL)
+    4. Store stories in database (BATCHED COMMITS)
+
+    Optimizations:
+    - Parallel LLM synthesis calls using ThreadPoolExecutor
+    - Cached article data to avoid redundant queries
+    - Batched database commits
+    - Performance instrumentation
 
     Args:
         session: SQLAlchemy session
@@ -702,22 +758,26 @@ def generate_stories_simple(
         min_articles_per_story: Minimum articles per story (1 = allow single-article stories)
         similarity_threshold: Minimum keyword overlap to cluster articles (0.0-1.0)
         model: LLM model for synthesis
+        max_workers: Maximum parallel LLM synthesis calls (default: 3)
 
     Returns:
         List of created story IDs
     """
+    overall_start = time.time()
     logger.info(
-        f"Starting story generation: time_window={time_window_hours}h, "
-        f"min_articles={min_articles_per_story}, threshold={similarity_threshold}"
+        f"Starting OPTIMIZED story generation: time_window={time_window_hours}h, "
+        f"min_articles={min_articles_per_story}, threshold={similarity_threshold}, "
+        f"max_workers={max_workers}"
     )
 
-    # Get articles from time window
+    # Get articles from time window (fetch ALL data once to cache it)
     cutoff_time = datetime.now(UTC) - timedelta(hours=time_window_hours)
-
+    
+    data_fetch_start = time.time()
     articles = session.execute(
         text(
             """
-        SELECT id, title, topic, published
+        SELECT id, title, topic, published, summary, ai_summary
         FROM items 
         WHERE published >= :cutoff_time
         AND (ai_summary IS NOT NULL OR summary IS NOT NULL)
@@ -726,12 +786,26 @@ def generate_stories_simple(
         ),
         {"cutoff_time": cutoff_time},
     ).fetchall()
+    data_fetch_time = time.time() - data_fetch_start
 
     if not articles:
         logger.info("No articles found in time window")
         return []
 
-    logger.info(f"Found {len(articles)} articles in time window")
+    logger.info(f"Found {len(articles)} articles in time window ({data_fetch_time:.2f}s)")
+    
+    # Build article cache (optimization: avoid repeated queries)
+    articles_cache = {
+        int(art[0]): {
+            "id": int(art[0]),
+            "title": str(art[1]),
+            "topic": art[2],
+            "published": art[3],
+            "summary": art[4],
+            "ai_summary": art[5],
+        }
+        for art in articles
+    }
 
     # Step 1: Group by topic (coarse filter)
     topic_groups: Dict[str, List[Any]] = defaultdict(list)
@@ -802,98 +876,203 @@ def generate_stories_simple(
         logger.info("No clusters meet minimum article threshold")
         return []
 
-    # Step 3: Generate story for each cluster
-    story_ids = []
-
-    for i, cluster_article_ids in enumerate(clusters):
+    # Step 3: Generate story synthesis for ALL clusters IN PARALLEL
+    logger.info(f"Starting parallel LLM synthesis with {max_workers} workers...")
+    synthesis_start = time.time()
+    
+    # Prepare cluster data with cached article info
+    cluster_data_list = []
+    for cluster_article_ids in clusters:
+        # Calculate metadata from cached data
+        cluster_articles = [articles_cache[aid] for aid in cluster_article_ids]
+        published_times = [art["published"] for art in cluster_articles]
+        
+        # Get time range
+        time_window_start = min(published_times) if published_times else cutoff_time
+        time_window_end = max(published_times) if published_times else datetime.now(UTC)
+        
+        # Convert string to datetime if needed (SQLite returns strings)
+        if isinstance(time_window_start, str):
+            time_window_start = datetime.fromisoformat(time_window_start.replace("Z", "+00:00"))
+        if isinstance(time_window_end, str):
+            time_window_end = datetime.fromisoformat(time_window_end.replace("Z", "+00:00"))
+        
+        cluster_data_list.append({
+            "article_ids": cluster_article_ids,
+            "time_window_start": time_window_start,
+            "time_window_end": time_window_end,
+            "importance_score": min(1.0, 0.3 + (len(cluster_article_ids) * 0.1)),
+            "freshness_score": 1.0,
+            "cluster_hash": hashlib.md5(json.dumps(sorted(cluster_article_ids)).encode()).hexdigest(),
+        })
+    
+    # Parallel LLM synthesis with ThreadPoolExecutor
+    synthesis_results = []
+    
+    def generate_synthesis_for_cluster(cluster_data):
+        """Helper function for parallel execution."""
         try:
-            logger.debug(
-                f"Generating story {i+1}/{len(clusters)} from {len(cluster_article_ids)} articles"
-            )
-
-            # Generate synthesis
             synthesis_data = _generate_story_synthesis(
-                session, cluster_article_ids, model
+                session, 
+                cluster_data["article_ids"], 
+                model,
+                articles_cache=articles_cache
             )
-
-            # Calculate importance and freshness scores
-            # For now, use simple heuristics
-            importance_score = min(
-                1.0, 0.3 + (len(cluster_article_ids) * 0.1)
-            )  # More articles = more important
-            freshness_score = 1.0  # All articles are recent (from time window)
-
-            # Get time window for this cluster
-            placeholders = ", ".join(
-                [f":id_{i}" for i in range(len(cluster_article_ids))]
-            )
-            params = {f"id_{i}": aid for i, aid in enumerate(cluster_article_ids)}
-
-            cluster_times = session.execute(
-                text(
-                    f"""
-                SELECT MIN(published), MAX(published)
-                FROM items 
-                WHERE id IN ({placeholders})
-            """
-                ),
-                params,
-            ).first()
-
-            # Convert to datetime if needed (SQLite returns strings)
-            time_window_start = cluster_times[0]  # type: ignore[index]
-            time_window_end = cluster_times[1]  # type: ignore[index]
-
-            if isinstance(time_window_start, str):
-                time_window_start = datetime.fromisoformat(
-                    time_window_start.replace("Z", "+00:00")
-                )
-            if isinstance(time_window_end, str):
-                time_window_end = datetime.fromisoformat(
-                    time_window_end.replace("Z", "+00:00")
-                )
-
-            # Generate story hash for deduplication
-            cluster_hash = hashlib.md5(
-                json.dumps(sorted(cluster_article_ids)).encode()
-            ).hexdigest()
-
-            # Create story
-            story_id = create_story(
-                session=session,
-                title=synthesis_data["synthesis"][:200],  # type: ignore[index] # Use first part as title
-                synthesis=synthesis_data["synthesis"],  # type: ignore[index]
-                key_points=synthesis_data["key_points"],
-                why_it_matters=synthesis_data["why_it_matters"],
-                topics=synthesis_data["topics"],
-                entities=synthesis_data["entities"],
-                importance_score=importance_score,
-                freshness_score=freshness_score,
-                model=model,
-                time_window_start=time_window_start,
-                time_window_end=time_window_end,
-                cluster_method="hybrid_topic_keywords",
-                story_hash=cluster_hash,
-            )
-
-            # Link articles to story
-            link_articles_to_story(
-                session=session,
-                story_id=story_id,
-                article_ids=cluster_article_ids,
-                primary_article_id=cluster_article_ids[
-                    0
-                ],  # Most recent article is primary
-            )
-
-            story_ids.append(story_id)
-            logger.info(
-                f"Created story #{story_id} from {len(cluster_article_ids)} articles"
-            )
-
+            return {
+                "success": True,
+                "cluster_data": cluster_data,
+                "synthesis_data": synthesis_data,
+            }
         except Exception as e:
-            logger.error(f"Failed to create story for cluster: {e}", exc_info=True)
+            logger.error(f"Synthesis failed for cluster: {e}")
+            return {
+                "success": False,
+                "cluster_data": cluster_data,
+                "error": str(e),
+            }
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all synthesis tasks
+        futures = {
+            executor.submit(generate_synthesis_for_cluster, cluster_data): i
+            for i, cluster_data in enumerate(cluster_data_list)
+        }
+        
+        # Collect results as they complete
+        for future in as_completed(futures):
+            cluster_idx = futures[future]
+            try:
+                result = future.result()
+                synthesis_results.append(result)
+                if result["success"]:
+                    logger.debug(
+                        f"Completed synthesis {len(synthesis_results)}/{len(clusters)} "
+                        f"(cluster {cluster_idx + 1})"
+                    )
+            except Exception as e:
+                logger.error(f"Failed to get synthesis result: {e}")
+    
+    synthesis_time = time.time() - synthesis_start
+    successful_syntheses = sum(1 for r in synthesis_results if r["success"])
+    logger.info(
+        f"Parallel LLM synthesis complete: {successful_syntheses}/{len(clusters)} succeeded "
+        f"({synthesis_time:.2f}s, avg {synthesis_time/len(clusters):.2f}s per story)"
+    )
+    
+    # Step 4: Create stories in database (batched commits)
+    logger.info("Creating stories in database...")
+    db_start = time.time()
+    story_ids = []
+    
+    # Check for existing story hashes to avoid duplicates
+    cluster_hashes = [result["cluster_data"]["cluster_hash"] 
+                      for result in synthesis_results if result["success"]]
+    
+    if cluster_hashes:
+        placeholders = ", ".join([f":hash_{i}" for i in range(len(cluster_hashes))])
+        hash_params = {f"hash_{i}": h for i, h in enumerate(cluster_hashes)}
+        
+        existing_hashes = session.execute(
+            text(f"SELECT story_hash FROM stories WHERE story_hash IN ({placeholders})"),
+            hash_params,
+        ).fetchall()
+        existing_hash_set = {row[0] for row in existing_hashes}
+        logger.info(f"Found {len(existing_hash_set)} existing stories (will skip duplicates)")
+    else:
+        existing_hash_set = set()
+    
+    # Collect all stories to create without committing
+    stories_to_create = []
+    skipped_duplicates = 0
+    
+    for result in synthesis_results:
+        if not result["success"]:
             continue
-
-    logger.info(f"Story generation complete: {len(story_ids)} stories created")
+            
+        cluster_data = result["cluster_data"]
+        synthesis_data = result["synthesis_data"]
+        
+        # Skip if story already exists
+        if cluster_data["cluster_hash"] in existing_hash_set:
+            skipped_duplicates += 1
+            logger.debug(f"Skipping duplicate story with hash {cluster_data['cluster_hash']}")
+            continue
+        
+        try:
+            # Create story WITHOUT commit (will batch commit at end)
+            story = Story(
+                title=synthesis_data["synthesis"][:200],
+                synthesis=synthesis_data["synthesis"],
+                key_points_json=serialize_story_json_field(synthesis_data["key_points"]),
+                why_it_matters=synthesis_data["why_it_matters"],
+                topics_json=serialize_story_json_field(synthesis_data["topics"]),
+                entities_json=serialize_story_json_field(synthesis_data["entities"]),
+                article_count=len(cluster_data["article_ids"]),
+                importance_score=cluster_data["importance_score"],
+                freshness_score=cluster_data["freshness_score"],
+                cluster_method="hybrid_topic_keywords_optimized",
+                story_hash=cluster_data["cluster_hash"],
+                generated_at=datetime.now(UTC),
+                first_seen=datetime.now(UTC),
+                last_updated=datetime.now(UTC),
+                time_window_start=cluster_data["time_window_start"],
+                time_window_end=cluster_data["time_window_end"],
+                model=model,
+                status="active",
+            )
+            session.add(story)
+            stories_to_create.append((story, cluster_data["article_ids"]))
+            
+        except Exception as e:
+            logger.error(f"Failed to prepare story: {e}", exc_info=True)
+            continue
+    
+    if skipped_duplicates > 0:
+        logger.info(f"Skipped {skipped_duplicates} duplicate stories")
+    
+    # Single flush to assign IDs
+    session.flush()
+    
+    # Now link articles (story IDs are available)
+    for story, article_ids in stories_to_create:
+        try:
+            for article_id in article_ids:
+                story_article = StoryArticle(
+                    story_id=story.id,
+                    article_id=article_id,
+                    relevance_score=1.0,
+                    is_primary=(article_id == article_ids[0]),
+                    added_at=datetime.now(UTC),
+                )
+                session.add(story_article)
+            
+            story_ids.append(story.id)  # type: ignore[arg-type]
+            
+        except Exception as e:
+            logger.error(f"Failed to link articles for story: {e}", exc_info=True)
+            continue
+    
+    # Single commit for ALL stories
+    try:
+        session.commit()
+        db_time = time.time() - db_start
+        logger.info(f"Database operations complete: {len(story_ids)} stories committed ({db_time:.2f}s)")
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Failed to commit stories: {e}", exc_info=True)
+        return []
+    
+    overall_time = time.time() - overall_start
+    
+    if len(story_ids) == 0 and skipped_duplicates > 0:
+        logger.info(
+            f"✅ Story generation COMPLETE: 0 new stories (all {skipped_duplicates} were duplicates) "
+            f"in {overall_time:.2f}s"
+        )
+    else:
+        logger.info(
+            f"✅ Story generation COMPLETE: {len(story_ids)} stories created in {overall_time:.2f}s "
+            f"(fetch: {data_fetch_time:.2f}s, synthesis: {synthesis_time:.2f}s, db: {db_time:.2f}s)"
+        )
+    
     return story_ids

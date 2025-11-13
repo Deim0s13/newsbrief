@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+
+{% block title %}{{ story.title }} - NewsBrief{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Breadcrumb -->
+    <nav class="mb-6">
+        <a href="/" class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-sm flex items-center">
+            <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+            </svg>
+            Back to Stories
+        </a>
+    </nav>
+    
+    <!-- Story Header -->
+    <article class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-8">
+        <!-- Topics & Metadata -->
+        <div class="mb-6 flex flex-wrap items-center gap-3">
+            {% if story.topics %}
+            <div class="flex flex-wrap gap-2">
+                {% for topic in story.topics %}
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium 
+                    {% if topic == 'ai-ml' %}bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200
+                    {% elif topic == 'security' %}bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200
+                    {% elif topic == 'cloud-k8s' %}bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200
+                    {% elif topic == 'devtools' %}bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200
+                    {% elif topic == 'chips-hardware' %}bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200
+                    {% else %}bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200{% endif %}">
+                    {{ topic }}
+                </span>
+                {% endfor %}
+            </div>
+            {% endif %}
+            
+            <div class="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400 ml-auto">
+                <span class="flex items-center">
+                    <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    {{ story.article_count }} sources
+                </span>
+                <span class="flex items-center" title="Generated {{ story.generated_at }}">
+                    <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <span id="story-time" data-timestamp="{{ story.generated_at }}"></span>
+                </span>
+            </div>
+        </div>
+        
+        <!-- Story Title -->
+        <h1 class="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-6">
+            {{ story.title }}
+        </h1>
+        
+        <!-- Full Synthesis -->
+        <div class="prose dark:prose-invert max-w-none mb-8">
+            <div class="text-lg text-gray-700 dark:text-gray-300 leading-relaxed">
+                {{ story.synthesis }}
+            </div>
+        </div>
+        
+        <!-- Key Points -->
+        {% if story.key_points and story.key_points|length > 0 %}
+        <div class="mb-8">
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
+                <svg class="h-5 w-5 mr-2 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
+                </svg>
+                Key Points
+            </h2>
+            <ul class="space-y-3">
+                {% for point in story.key_points %}
+                <li class="flex items-start">
+                    <svg class="h-5 w-5 text-blue-600 dark:text-blue-400 mr-3 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <span class="text-gray-700 dark:text-gray-300">{{ point }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        
+        <!-- Why It Matters -->
+        {% if story.why_it_matters %}
+        <div class="mb-8 p-6 bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-600 dark:border-blue-400 rounded-r-lg">
+            <h2 class="text-lg font-semibold text-blue-900 dark:text-blue-300 mb-3 flex items-center">
+                <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                Why It Matters
+            </h2>
+            <p class="text-blue-800 dark:text-blue-200">{{ story.why_it_matters }}</p>
+        </div>
+        {% endif %}
+        
+        <!-- Entities -->
+        {% if story.entities and story.entities|length > 0 %}
+        <div class="mb-8">
+            <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Key Entities</h3>
+            <div class="flex flex-wrap gap-2">
+                {% for entity in story.entities %}
+                <span class="px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm rounded-full">
+                    {{ entity }}
+                </span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Supporting Articles -->
+        {% if story.supporting_articles and story.supporting_articles|length > 0 %}
+        <div class="mt-8 pt-8 border-t border-gray-200 dark:border-gray-700">
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
+                <svg class="h-5 w-5 mr-2 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"></path>
+                </svg>
+                Supporting Articles ({{ story.supporting_articles|length }})
+            </h2>
+            
+            <div class="space-y-4">
+                {% for article in story.supporting_articles %}
+                <div class="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600 hover:border-blue-300 dark:hover:border-blue-600 transition-colors">
+                    <div class="flex items-start justify-between mb-2">
+                        <h3 class="text-base font-medium text-gray-900 dark:text-white flex-1">
+                            {{ article.title }}
+                        </h3>
+                        {% if article.topic %}
+                        <span class="ml-3 px-2 py-0.5 text-xs rounded-full bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300">
+                            {{ article.topic }}
+                        </span>
+                        {% endif %}
+                    </div>
+                    
+                    {% if article.summary %}
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">
+                        {{ article.summary }}
+                    </p>
+                    {% endif %}
+                    
+                    <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                        <span>{{ article.published if article.published else 'Unknown date' }}</span>
+                        <div class="flex items-center space-x-3">
+                            <a href="/article/{{ article.id }}" class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 flex items-center">
+                                <span>View Detail</span>
+                                <svg class="h-3 w-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                                </svg>
+                            </a>
+                            <a href="{{ article.url }}" target="_blank" rel="noopener noreferrer" class="text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-300 flex items-center">
+                                <span>Original</span>
+                                <svg class="h-3 w-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                                </svg>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Story Metadata Footer -->
+        <div class="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div>
+                    <span class="text-gray-500 dark:text-gray-400">Importance</span>
+                    <div class="font-semibold text-gray-900 dark:text-white">{{ (story.importance_score * 100)|round|int }}%</div>
+                </div>
+                <div>
+                    <span class="text-gray-500 dark:text-gray-400">Freshness</span>
+                    <div class="font-semibold text-gray-900 dark:text-white">{{ (story.freshness_score * 100)|round|int }}%</div>
+                </div>
+                <div>
+                    <span class="text-gray-500 dark:text-gray-400">Model</span>
+                    <div class="font-mono text-xs text-gray-700 dark:text-gray-300">{{ story.model }}</div>
+                </div>
+                <div>
+                    <span class="text-gray-500 dark:text-gray-400">Status</span>
+                    <div class="font-semibold capitalize 
+                        {% if story.status == 'active' %}text-green-600 dark:text-green-400
+                        {% else %}text-gray-600 dark:text-gray-400{% endif %}">
+                        {{ story.status }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </article>
+</div>
+
+<script>
+// Format story time on load
+document.addEventListener('DOMContentLoaded', function() {
+    const timeElement = document.getElementById('story-time');
+    if (timeElement) {
+        const timestamp = timeElement.getAttribute('data-timestamp');
+        timeElement.textContent = formatTimeAgo(timestamp);
+    }
+});
+
+function formatTimeAgo(timestamp) {
+    const now = new Date();
+    const past = new Date(timestamp);
+    const seconds = Math.floor((now - past) / 1000);
+    
+    if (seconds < 60) return 'just now';
+    if (seconds < 3600) return `${Math.floor(seconds / 60)} minutes ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)} hours ago`;
+    if (seconds < 604800) return `${Math.floor(seconds / 86400)} days ago`;
+    return past.toLocaleDateString();
+}
+</script>
+{% endblock %}
+
