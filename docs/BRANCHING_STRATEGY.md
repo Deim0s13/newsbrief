@@ -7,17 +7,19 @@
 
 ## 🌳 Branch Structure
 
-### **`main`** (Protected)
-- **Purpose**: Stable, production-ready code
-- **Protection**: Require pull requests, reviews
-- **Releases**: Tagged releases (v0.5.0, v0.6.0, etc.)
-- **Deploy**: Could deploy directly to production
+### **`main`** (Protected - Production)
+- **Purpose**: Production-ready code only
+- **Protection**: Require pull requests, reviews, CI/CD must pass
+- **Releases**: All tagged releases (v0.5.0, v0.6.0, etc.)
+- **Deploy**: Direct deployment to production
+- **Updates**: Only via PR from `dev` after thorough testing
 
-### **`dev`** (Integration)
-- **Purpose**: Integration branch for completed features
-- **Merges from**: Feature branches
-- **Merges to**: `main` (via PR for releases)
-- **Testing**: All features tested together before release
+### **`dev`** (Integration - Staging)
+- **Purpose**: Integration branch for completed features (staging environment)
+- **Merges from**: Feature branches (via PR)
+- **Merges to**: `main` (via PR for releases only)
+- **Testing**: All features tested together before promoting to production
+- **Default branch**: Primary development branch for day-to-day work
 
 ### **`feature/*`** (Working branches)
 - **Purpose**: Individual feature development
