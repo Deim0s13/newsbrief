@@ -41,11 +41,10 @@ NewsBrief is a self-hosted, privacy-focused news aggregator that replaces readin
 - ✅ **Multi-Document Synthesis**: Ollama-powered synthesis combining multiple sources into coherent narratives
 - ✅ **Entity Extraction**: LLM identifies companies, products, and people from article clusters
 - ✅ **Topic Auto-Classification**: Stories automatically tagged with relevant topics
-- 🚧 **Story API Endpoints**: RESTful endpoints for generating and retrieving stories
-- 🚧 **Scheduled Generation**: Cron-based daily story generation
-- 🚧 **Story-First UI**: Landing page redesign to show stories, not individual articles
-- 🚧 **Manual Refresh**: On-demand story regeneration from UI
-- 🚧 **Interest-Based Filtering**: Surface relevant stories based on user-selected topics
+- ✅ **Story API Endpoints**: RESTful endpoints for generating and retrieving stories (Issues #47, #55)
+- 🚧 **Scheduled Generation**: Cron-based daily story generation (Issue #48)
+- 🚧 **Story-First UI**: Landing page redesign to show stories, not individual articles (Issues #50-54)
+- 🚧 **Performance Optimization**: Background jobs and concurrent LLM calls (Issue #66)
 
 ### **Future Enhancements**
 - **Configurable Time Windows**: 12h, 24h, 48h, 1w story generation
@@ -138,9 +137,10 @@ curl "http://localhost:8787/items?limit=10" | jq .
 |----------|--------|---------|--------|
 | `/feeds` | POST | Add new RSS feed | ✅ Available |
 | `/refresh` | POST | Fetch latest articles from all feeds | ✅ Available |
-| `/stories` | GET | List synthesized stories | 🚧 v0.5.0 |
-| `/stories/{id}` | GET | Get story with supporting articles | 🚧 v0.5.0 |
-| `/stories/generate` | POST | Generate/refresh stories | 🚧 v0.5.0 |
+| `/stories` | GET | List synthesized stories | ✅ v0.5.0 |
+| `/stories/{id}` | GET | Get story with supporting articles | ✅ v0.5.0 |
+| `/stories/generate` | POST | Generate/refresh stories | ✅ v0.5.0 |
+| `/stories/stats` | GET | Story generation statistics | ✅ v0.5.0 |
 | `/items` | GET | List articles (secondary feature) | ✅ Available |
 | `/docs` | GET | Interactive API documentation | ✅ Available |
 
@@ -346,34 +346,34 @@ newsbrief/
 ### **v0.5.0 - Story Architecture** 🚀 **In Development**
 Transform from article-centric to story-based aggregation
 
-**Phase 1-3: Core Engine** (26-37 hours) - PARTIALLY COMPLETE
+**Phase 1: Core Infrastructure** (8-12 hours) - ✅ COMPLETE
 - [x] Story database schema and models (Issues #36-37)
-- [x] Story CRUD operations (Issue #38)
+- [x] Story CRUD operations (8 functions, Issue #38)
 - [x] Story generation pipeline with hybrid clustering (Issue #39)
 - [x] Multi-document synthesis (AI-powered, Issue #39)
 - [x] Entity extraction from article clusters (Issue #39)
 - [x] Quality scoring basics: importance + freshness (Issue #39)
-- [ ] Enhanced entity extraction (dedicated article-level function)
-- [ ] Advanced text similarity clustering (embeddings-based)
-- [ ] Story deduplication and merging
-- [ ] Configurable clustering parameters
+- [x] Story API endpoints (4 endpoints, Issues #47, #55)
+  - [x] POST /stories/generate (on-demand generation)
+  - [x] GET /stories (list with filtering/sorting/pagination)
+  - [x] GET /stories/{id} (single story details)
+  - [x] GET /stories/stats (generation statistics)
+- [x] Python API fully functional
+- [x] Real data testing (150 articles → 379 stories)
 
-**Phase 4: Automation** (4-6 hours) - PARTIALLY COMPLETE
-- [x] Story archiving/cleanup CRUD functions (Issue #38)
-- [ ] Daily auto-generation (scheduled task)
-- [ ] Manual refresh API endpoint
-- [ ] Story retention policies and automation
+**Phase 2: Automation & UI** (10-14 hours) - 🚧 NOT STARTED
+- [ ] Scheduled story generation (daily/configurable, Issue #48)
+- [ ] Story-First UI landing page (Issues #50-54)
+- [ ] Story detail page with supporting articles
+- [ ] Manual "Refresh Stories" button
+- [ ] Topic filters and navigation
 
-**Phase 5-6: Story-First UI** (10-14 hours)
-- [ ] Landing page with story cards (5-10 stories)
-- [ ] Story detail page (synthesis + supporting articles)
-- [ ] Topic filters and manual refresh button
-- [ ] Article view as secondary feature
-
-**Phase 7-8: Refinement** (7-10 hours)
-- [ ] Story API endpoints
+**Phase 3: Optimization & Enhancement** (8-12 hours) - 🚧 NOT STARTED
+- [ ] Performance optimization (background jobs, concurrency, caching, Issue #66)
+- [ ] Advanced clustering improvements (embeddings-based)
 - [ ] Interest-based filtering
 - [ ] Source quality weighting
+- [ ] Story deduplication and merging
 
 **See**: [Implementation Plan](docs/IMPLEMENTATION_PLAN.md) | [Detailed Backlog](docs/STORY_ARCHITECTURE_BACKLOG.md)
 

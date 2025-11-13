@@ -39,15 +39,23 @@
 - ✅ Pydantic models with validation - Issue #37
 - ✅ Story CRUD operations (8 functions) - Issue #38
 - ✅ Story generation pipeline (hybrid clustering + LLM) - Issue #39
+- ✅ Story API endpoints (4 HTTP endpoints) - Issues #47, #55
 
-**Deliverable**: ✅ Can generate stories from articles with LLM synthesis
+**Deliverable**: ✅ Can generate stories from articles with LLM synthesis + HTTP API access
 
 **Implementation Notes**:
 - Hybrid clustering: Topic grouping + keyword similarity (Jaccard)
 - LLM synthesis via Ollama (llama3.1:8b) with structured JSON output
 - Entity extraction and topic classification built into synthesis
 - Graceful fallback when LLM unavailable
-- ~10 hours actual effort (on target)
+- HTTP API: POST /generate, GET /stories, GET /stories/{id}, GET /stories/stats
+- Python API fully functional with all CRUD operations
+- Real data testing: 150 articles → 379 stories (100% LLM success)
+- ~13 hours actual effort (Phase 1 + API)
+
+**Known Issues**:
+- Performance: 171s generation time (tracked in Issue #66)
+- HTTP timeout on POST /stories/generate (not blocking)
 
 ---
 

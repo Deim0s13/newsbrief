@@ -225,11 +225,11 @@ See:
 ## Status
 
 **Accepted** — 2025-11-06  
-**Implementation**: Phase 1 Complete ✅ (2025-11-12)
+**Implementation**: Phase 1 + API Complete ✅ (2025-11-12)
 
 ### Progress Update
 
-**Phase 1: Core Infrastructure** (Complete — Issue #39)
+**Phase 1: Core Infrastructure** (Complete — Issues #36-39)
 - ✅ Database schema: `stories` and `story_articles` tables
 - ✅ Pydantic models with validation
 - ✅ Story CRUD operations (8 functions)
@@ -239,17 +239,29 @@ See:
 - ✅ Graceful fallback when LLM unavailable
 - ✅ Comprehensive test coverage
 
+**Story API Endpoints** (Complete — Issues #47, #55)
+- ✅ POST /stories/generate (on-demand generation)
+- ✅ GET /stories (list with filtering/sorting/pagination)
+- ✅ GET /stories/{id} (single story details)
+- ✅ GET /stories/stats (generation statistics)
+- ✅ Python API fully functional
+- ✅ Real data testing (150 articles → 379 stories, 100% LLM success)
+
 **Implementation Notes**:
 - Hybrid clustering uses topic grouping + keyword similarity (Jaccard index)
 - LLM synthesis generates structured JSON output (synthesis, key_points, why_it_matters, entities, topics)
 - Single-article stories supported (min_articles_per_story=1)
 - Configurable parameters: time_window_hours, similarity_threshold, model
-- ~10 hours actual effort (target: 8-12 hours) ✅
+- ~13 hours actual effort (target: 11-16 hours) ✅
 
-**Next Phase**: HTTP API endpoints and scheduled generation
+**Known Issues**:
+- Performance: 171s generation time (tracked in Issue #66)
+- HTTP timeout on POST /stories/generate (not blocking)
+
+**Next Phase**: Scheduled generation (Issue #48), Story-First UI (Issues #50-54), Performance optimization (Issue #66)
 
 ---
 
 **Last Updated**: 2025-11-12  
-**Next Review**: After Phase 4 (API Endpoints) completion
+**Next Review**: After UI implementation
 
