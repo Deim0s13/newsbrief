@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Iterable, Optional, Tuple
 
+import certifi
 import feedparser
 import httpx
 from sqlalchemy import text
@@ -611,7 +612,9 @@ def fetch_and_store() -> RefreshStats:
     )
 
     with httpx.Client(
-        timeout=HTTP_TIMEOUT, headers={"User-Agent": "newsbrief/0.1"}
+        timeout=HTTP_TIMEOUT,
+        headers={"User-Agent": "newsbrief/0.1"},
+        verify=certifi.where()  # Use bundled SSL certificates
     ) as client:
         for fid, url, etag, last_mod, robots_allowed, disabled in list_feeds():
             # Check time limit
@@ -827,7 +830,7 @@ def fetch_and_store() -> RefreshStats:
                         "url": link,
                     }
 
-                    ranking_score = calculate_ranking_score(
+                    ranking_score = _calculate_ranking_score_legacy(
                         article_data, source_weight=1.0
                     )
                     topic, topic_confidence = classify_topic(article_data)
@@ -993,8 +996,8 @@ def export_opml() -> str:
     return opml_content
 
 
-def calculate_ranking_score(article_data: dict, source_weight: float = 1.0) -> float:
-    """Calculate ranking score for an article."""
+def _calculate_ranking_score_legacy(article_data: dict, source_weight: float = 1.0) -> float:
+    """Calculate ranking score for an article (legacy version)."""
     score = 0.0
 
     # Base score from source weight
@@ -1338,7 +1341,7 @@ def recalculate_rankings_and_topics() -> dict:
             }
 
             # Calculate new ranking and topic
-            new_ranking = calculate_ranking_score(article_data, source_weight=1.0)
+            new_ranking = _calculate_ranking_score_legacy(article_data, source_weight=1.0)
             new_topic, new_confidence = classify_topic(article_data)
 
             # Update the article
