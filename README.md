@@ -1,8 +1,10 @@
 # NewsBrief
 
-> **Local-first RSS aggregator with AI-powered content curation**
+> **AI-powered news aggregator that synthesizes multiple sources into daily story briefs**
 
-NewsBrief is a self-hosted, privacy-focused RSS feed aggregator that intelligently curates and summarizes your news sources. Built with modern technologies for speed, reliability, and offline capability.
+NewsBrief is a self-hosted, privacy-focused news aggregator that replaces reading 50+ article summaries with 5-10 synthesized stories. Using local AI, it clusters related articles, extracts key insights, and presents "what happened today" in 2 minutes. Built with modern technologies for speed, reliability, and offline capability.
+
+**Think**: TLDR newsletter, but personalized to your feeds and generated locally.
 
 ## 🌟 Features
 
@@ -49,13 +51,23 @@ NewsBrief is a self-hosted, privacy-focused RSS feed aggregator that intelligent
 - **Automated Dependency Management**: Weekly security audits, dependency updates, and base image maintenance
 - **Comprehensive Documentation**: Complete CI/CD guides, API documentation, and architecture decision records
 
-### **Planned (Roadmap)**
-- **Enhanced AI Features**: Advanced categorization, sentiment analysis, and content recommendations
-- **Semantic Search**: Vector embeddings for content discovery and similarity matching
-- **Full-Text Search**: SQLite FTS5 integration for fast text search
-- **Smart Categorization**: Automatic topic clustering and intelligent feeds organization
-- **HTTPS & Security**: SSL/TLS support, authentication, and secure deployment
-- **Mobile Optimizations**: PWA support, offline reading, and mobile-first design improvements
+### **In Development (v0.5.0 - Story Architecture)**
+- ✅ **Story Database Infrastructure**: Complete schema with stories and article links (Issues #36-38)
+- ✅ **Story Generation Pipeline**: Hybrid clustering (topic + keyword similarity) with LLM synthesis (Issue #39)
+- ✅ **Multi-Document Synthesis**: Ollama-powered synthesis combining multiple sources into coherent narratives
+- ✅ **Entity Extraction**: LLM identifies companies, products, and people from article clusters
+- ✅ **Topic Auto-Classification**: Stories automatically tagged with relevant topics
+- ✅ **Story API Endpoints**: RESTful endpoints for generating and retrieving stories (Issues #47, #55)
+- 🚧 **Scheduled Generation**: Cron-based daily story generation (Issue #48)
+- 🚧 **Story-First UI**: Landing page redesign to show stories, not individual articles (Issues #50-54)
+- 🚧 **Performance Optimization**: Background jobs and concurrent LLM calls (Issue #66)
+
+### **Future Enhancements**
+- **Configurable Time Windows**: 12h, 24h, 48h, 1w story generation
+- **Topic Grouping**: Group stories by Security, AI, DevTools, etc.
+- **Advanced Embeddings**: Vector-based semantic clustering
+- **Full-Text Search**: SQLite FTS5 integration
+- **Export/Import**: Data portability and backup features
 
 ## 🚀 Quick Start
 
@@ -101,67 +113,157 @@ podman run --rm -it \
 
 ## 📖 Usage
 
-### **Add RSS Feeds**
+### **Story-Based Workflow** (v0.5.0+)
 
 ```bash
-# Add a feed
+# 1. Add your RSS feeds
 curl -X POST http://localhost:8787/feeds \
   -H "Content-Type: application/json" \
   -d '{"url": "https://feeds.example.com/rss"}'
 
-# Import from OPML (place feeds.opml in ./data/)
+# Or import from OPML (place feeds.opml in ./data/)
 # Feeds are automatically imported on startup
+
+# 2. Fetch articles from feeds
+curl -X POST http://localhost:8787/refresh
+
+# 3. Generate daily story brief (5-10 synthesized stories)
+curl -X POST http://localhost:8787/stories/generate | jq .
+
+# 4. View today's stories
+curl http://localhost:8787/stories | jq .
+
+# 5. Get specific story with supporting articles
+curl http://localhost:8787/stories/1 | jq .
 ```
 
-### **Fetch Latest Articles**
+### **Current Workflow** (v0.3.4 - Article-Based)
 
 ```bash
 # Refresh all feeds
 curl -X POST http://localhost:8787/refresh
 
-# Get latest articles
+# Get latest articles (to be replaced by stories)
 curl "http://localhost:8787/items?limit=10" | jq .
 ```
 
 ### **API Endpoints**
 
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/feeds` | POST | Add new RSS feed |
-| `/refresh` | POST | Fetch latest articles from all feeds |
-| `/items` | GET | List articles (supports `?limit=N`) |
-| `/docs` | GET | Interactive API documentation |
+| Endpoint | Method | Purpose | Status |
+|----------|--------|---------|--------|
+| `/feeds` | POST | Add new RSS feed | ✅ Available |
+| `/refresh` | POST | Fetch latest articles from all feeds | ✅ Available |
+| `/stories` | GET | List synthesized stories | ✅ v0.5.0 |
+| `/stories/{id}` | GET | Get story with supporting articles | ✅ v0.5.0 |
+| `/stories/generate` | POST | Generate/refresh stories | ✅ v0.5.0 |
+| `/stories/stats` | GET | Story generation statistics | ✅ v0.5.0 |
+| `/items` | GET | List articles (secondary feature) | ✅ Available |
+| `/docs` | GET | Interactive API documentation | ✅ Available |
+
+## 🧠 Story Generation (v0.5.0)
+
+### Why We Changed Approach
+
+**Original Vision**: Replace reading 50+ article summaries (like TLDR newsletters) with 5-10 AI-synthesized story briefs.
+
+**The Problem**: NewsBrief v0.3.x evolved into an article-centric RSS reader where users still scrolled through individual summaries—defeating the original purpose of reducing information overload.
+
+**The Solution (v0.5.0)**: Return to the original scope by pivoting to **story-based aggregation**. Instead of presenting 50+ individual articles, NewsBrief now:
+- Clusters related articles into unified narratives
+- Synthesizes multiple sources into coherent stories
+- Presents 5-10 curated stories daily
+- Reduces reading time from 30+ minutes to 2 minutes
+
+**Result**: A true TLDR-killer that provides "what happened today" in minutes, not hours.
+
+**See**: [ADR 0002: Story-Based Aggregation](docs/adr/0002-story-based-aggregation.md) for full context and architectural decisions.
+
+---
+
+### How Story Generation Works
+
+NewsBrief now includes an AI-powered story generation pipeline that synthesizes multiple articles into coherent narratives.
+
+### How It Works
+
+1. **Article Collection**: Queries articles from the last 24 hours (configurable)
+2. **Topic Grouping**: Groups articles by their primary topic (AI/ML, Security, etc.)
+3. **Keyword Clustering**: Within each topic, clusters articles by title similarity (Jaccard index)
+4. **LLM Synthesis**: For each cluster, prompts Ollama to:
+   - Generate a coherent narrative from multiple sources
+   - Extract key points (3-8 bullets)
+   - Identify entities (companies, products, people)
+   - Classify topics
+   - Explain "why it matters"
+5. **Storage**: Stores synthesized stories with links to source articles
+
+### Features
+
+- ✅ **Hybrid Clustering**: Topic grouping + keyword similarity for intelligent article grouping
+- ✅ **Multi-Document Synthesis**: Ollama-powered synthesis combining multiple sources
+- ✅ **Entity Extraction**: Automatically identifies companies, products, and people
+- ✅ **Topic Classification**: Stories auto-tagged with relevant topics
+- ✅ **Graceful Fallback**: Works without LLM (uses simple concatenation)
+- ✅ **Configurable**: Time windows, similarity thresholds, minimum articles per story
+
+### Usage
+
+```python
+from app.db import session_scope
+from app.stories import generate_stories_simple
+
+with session_scope() as session:
+    story_ids = generate_stories_simple(
+        session=session,
+        time_window_hours=24,      # Lookback period
+        min_articles_per_story=1,  # Minimum articles per story
+        similarity_threshold=0.3,  # Keyword overlap threshold
+        model="llama3.1:8b"        # LLM model
+    )
+```
+
+**See**: [Python API Documentation](docs/API.md#-python-api-v050) for complete usage guide.
+
+---
 
 ## 🏗️ Architecture
 
-NewsBrief follows **local-first principles** with a clean, scalable architecture:
+NewsBrief follows **local-first principles** with story-first aggregation:
 
 ```
 ┌─────────────────────────────────────────────┐
-│                Frontend                     │
+│           Story-First Frontend              │
 │            (HTMX + Jinja2)                 │
-│                [Planned]                    │
+│     Landing: Stories → Story Detail         │
+│              [v0.5.0]                       │
 ├─────────────────────────────────────────────┤
 │              FastAPI Server                 │
 │         (REST API + Templates)              │
 ├─────────────────────────────────────────────┤
 │             Business Logic                  │
-│    ┌─────────┬─────────┬─────────────────┐   │
-│    │  Feeds  │ Content │   Future: LLM   │   │
-│    │ Manager │Extract. │  Summarization  │   │
-│    └─────────┴─────────┴─────────────────┘   │
+│  ┌──────────┬──────────┬─────────────────┐  │
+│  │  Story   │  Entity  │ Multi-Document  │  │
+│  │Clustering│Extraction│   Synthesis     │  │
+│  ├──────────┼──────────┼─────────────────┤  │
+│  │  Feeds   │ Content  │  LLM (Ollama)   │  │
+│  │ Manager  │ Extract  │  Llama 3.1 8B   │  │
+│  └──────────┴──────────┴─────────────────┘  │
 ├─────────────────────────────────────────────┤
 │              SQLite Database                │
-│        (Articles + Feeds + Metadata)       │
+│  Stories + Story-Articles + Articles        │
+│              + Feeds + Cache                │
 └─────────────────────────────────────────────┘
 ```
 
 **Key Design Decisions:**
+- **Story-First**: Aggregate articles into synthesized narratives, not individual summaries
+- **Local LLM**: Ollama (Llama 3.1 8B) for entity extraction and multi-doc synthesis
+- **Intelligent Clustering**: Entity overlap + text similarity + time proximity
+- **Daily Generation**: Auto-generate 5-10 stories daily + manual refresh
 - **SQLite**: Simple, fast, no external dependencies
 - **FastAPI**: Modern Python web framework with automatic OpenAPI docs
-- **Readability**: Clean content extraction from web articles
 - **Container-first**: Podman/Docker for easy deployment
-- **Local LLM**: Ollama integration for privacy-preserving AI features
+- **Privacy-First**: All AI processing runs locally
 
 ## 🛠️ Development
 
@@ -257,31 +359,69 @@ newsbrief/
 > **📋 Live Project Board**: Track detailed progress and epic breakdowns at  
 > **[GitHub Project Board](https://github.com/users/Deim0s13/projects/7/views/1?layout=board)**
 
-### **v0.4.0 - Web Interface**
-- [ ] HTMX-powered web UI
-- [ ] Article reading interface with AI summaries
-- [ ] Feed management dashboard
-- [ ] Search and filtering functionality
+### **v0.5.0 - Story Architecture** 🚀 **In Development**
+Transform from article-centric to story-based aggregation
 
-### **v0.5.0 - Advanced Features**
-- [ ] Vector embeddings for semantic search
-- [ ] Enhanced content classification and categorization
-- [ ] Intelligent content recommendations
-- [ ] Sentiment analysis and topic clustering
-- [ ] Export/import functionality and data portability
-- [ ] Advanced filtering and rules engine
+**Phase 1: Core Infrastructure** (8-12 hours) - ✅ COMPLETE
+- [x] Story database schema and models (Issues #36-37)
+- [x] Story CRUD operations (8 functions, Issue #38)
+- [x] Story generation pipeline with hybrid clustering (Issue #39)
+- [x] Multi-document synthesis (AI-powered, Issue #39)
+- [x] Entity extraction from article clusters (Issue #39)
+- [x] Quality scoring basics: importance + freshness (Issue #39)
+- [x] Story API endpoints (4 endpoints, Issues #47, #55)
+  - [x] POST /stories/generate (on-demand generation)
+  - [x] GET /stories (list with filtering/sorting/pagination)
+  - [x] GET /stories/{id} (single story details)
+  - [x] GET /stories/stats (generation statistics)
+- [x] Python API fully functional
+- [x] Real data testing (150 articles → 379 stories)
 
-### **Epic Organization**
+**Phase 2: Automation & UI** (10-14 hours) - 🚧 NOT STARTED
+- [ ] Scheduled story generation (daily/configurable, Issue #48)
+- [ ] Story-First UI landing page (Issues #50-54)
+- [ ] Story detail page with supporting articles
+- [ ] Manual "Refresh Stories" button
+- [ ] Topic filters and navigation
 
-The roadmap above represents high-level milestones. For detailed epic breakdowns, user stories, and current development status, see the **[GitHub Project Board](https://github.com/users/Deim0s13/projects/7/views/1?layout=board)** which includes:
+**Phase 3: Optimization & Enhancement** (8-12 hours) - 🚧 NOT STARTED
+- [ ] Performance optimization (background jobs, concurrency, caching, Issue #66)
+- [ ] Advanced clustering improvements (embeddings-based)
+- [ ] Interest-based filtering
+- [ ] Source quality weighting
+- [ ] Story deduplication and merging
 
-- **Epic: Ingestion** - Feed processing and content extraction improvements
-- **Epic: Summaries** - AI-powered content summarization with Ollama
-- **Epic: Ranking** - Content scoring and intelligent curation
-- **Epic: UI** - Web interface and user experience enhancements  
-- **Epic: Embeddings** - Semantic search and content clustering
-- **Epic: Search** - Full-text and semantic search capabilities
+**See**: [Implementation Plan](docs/IMPLEMENTATION_PLAN.md) | [Detailed Backlog](docs/STORY_ARCHITECTURE_BACKLOG.md)
+
+### **v0.6.0 - Enhanced Intelligence**
+- [ ] Configurable time windows (12h, 24h, 48h, 1w)
+- [ ] Topic grouping (Security, AI, DevTools sections)
+- [ ] Dynamic story generation (quality-based)
+- [ ] Vector embeddings for better clustering
+- [ ] Full-text search (SQLite FTS5)
+
+### **Project Tracking**
+
+Development is organized with GitHub Projects and Milestones for clear visibility:
+
+📋 **[GitHub Issues](https://github.com/Deim0s13/newsbrief/issues)** - All issues with labels and milestones  
+🎯 **[Milestones](https://github.com/Deim0s13/newsbrief/milestones)** - Release targets with progress tracking  
+📊 **GitHub Project Board** - Kanban board (Backlog → Next → In Progress → Done)
+
+**Milestones**:
+- [v0.5.0 - Story Architecture](https://github.com/Deim0s13/newsbrief/milestone/1) (7 issues) - Due: Dec 15, 2025
+- [v0.6.0 - Intelligence & Polish](https://github.com/Deim0s13/newsbrief/milestone/2) (8 issues) - Due: Q1 2026
+- [v0.7.0 - Infrastructure](https://github.com/Deim0s13/newsbrief/milestone/3) (13 issues) - Due: Q2 2026
+
+**Epics** (via labels):
+- **epic:stories** - Story-based aggregation and synthesis
+- **epic:ui** - Web interface and user experience
+- **epic:database** - Data layer and migrations
+- **epic:security** - Authentication, encryption, hardening
+- **epic:ops** - CI/CD, deployment, monitoring  
 - **Epic: Operations** - DevOps, monitoring, and deployment tooling
+- **Epic: Embeddings** - Semantic search and advanced clustering (Future)
+- **Epic: Search** - Full-text and semantic search capabilities (Future)
 
 ## 🤝 Contributing
 

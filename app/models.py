@@ -168,6 +168,9 @@ class ItemOut(BaseModel):
     url: str
     published: Optional[datetime] = None
     summary: Optional[str] = None
+    feed_id: Optional[int] = Field(
+        None, description="ID of the feed this article belongs to"
+    )
     # Legacy plain text AI summary (for backward compatibility)
     ai_summary: Optional[str] = None
     ai_model: Optional[str] = None
@@ -307,6 +310,151 @@ def parse_cache_key(cache_key: str) -> tuple[str, str]:
         return content_hash, model
     except ValueError:
         raise ValueError(f"Invalid cache key format: {cache_key}")
+
+
+# Story models for aggregated news
+class StoryOut(BaseModel):
+    """A synthesized news story aggregating multiple articles."""
+
+    id: int
+    title: str
+    synthesis: str
+    key_points: List[str] = Field(default_factory=list)
+    why_it_matters: Optional[str] = None
+    topics: List[str] = Field(default_factory=list)
+    entities: List[str] = Field(default_factory=list)
+    article_count: int
+    importance_score: float = 0.0
+    freshness_score: float = 0.0
+    generated_at: datetime
+    first_seen: Optional[datetime] = None
+    last_updated: Optional[datetime] = None
+    supporting_articles: List[ItemOut] = Field(default_factory=list)
+    primary_article_id: Optional[int] = None
+
+    @validator("title")
+    def validate_title(cls, v):
+        if not v or len(v.strip()) < 10:
+            raise ValueError("title must be at least 10 characters")
+        if len(v) > 200:
+            raise ValueError("title must not exceed 200 characters")
+        return v.strip()
+
+    @validator("synthesis")
+    def validate_synthesis(cls, v):
+        if not v or len(v.strip()) < 50:
+            raise ValueError("synthesis must be at least 50 characters")
+        if len(v) > 1000:
+            raise ValueError("synthesis must not exceed 1000 characters")
+        return v.strip()
+
+    @validator("key_points")
+    def validate_key_points(cls, v):
+        if len(v) < 3:
+            raise ValueError("must have at least 3 key points")
+        if len(v) > 8:
+            raise ValueError("must not exceed 8 key points")
+        return [point.strip() for point in v if point.strip()]
+
+    @validator("importance_score", "freshness_score")
+    def validate_score(cls, v):
+        if not 0.0 <= v <= 1.0:
+            raise ValueError("score must be between 0.0 and 1.0")
+        return v
+
+    @validator("article_count")
+    def validate_article_count(cls, v):
+        if v < 1:
+            raise ValueError("story must have at least 1 article")
+        return v
+
+
+class StoryDetailOut(BaseModel):
+    """Detailed story view with full article list."""
+
+    story: StoryOut
+    articles: List[ItemOut]
+
+
+class StoriesListOut(BaseModel):
+    """List of stories for the landing page."""
+
+    stories: List[StoryOut]
+    total: int
+    limit: int
+    offset: int
+
+
+class StoryGenerationRequest(BaseModel):
+    """Request to generate/refresh stories."""
+
+    time_window_hours: int = Field(
+        24, description="Look back window in hours", ge=1, le=168
+    )
+    min_articles_per_story: int = Field(
+        1, description="Minimum articles to form a story", ge=1
+    )
+    similarity_threshold: float = Field(
+        0.3, description="Keyword similarity threshold (0.0-1.0)", ge=0.0, le=1.0
+    )
+    model: str = Field("llama3.1:8b", description="LLM model to use for synthesis")
+
+
+class StoryGenerationResponse(BaseModel):
+    """Response from story generation."""
+
+    success: bool
+    stories_generated: int
+    story_ids: List[int]
+    time_window_hours: int
+    model: str
+
+
+# Story JSON field serialization helpers
+def serialize_story_json_field(items: List[str]) -> str:
+    """
+    Serialize list of strings to JSON for database storage.
+
+    Used for: key_points_json, topics_json, entities_json
+
+    Args:
+        items: List of strings (topics, entities, key_points)
+
+    Returns:
+        JSON string for database storage
+
+    Example:
+        >>> serialize_story_json_field(["AI/ML", "Cloud"])
+        '["AI/ML", "Cloud"]'
+    """
+    return json.dumps(items, ensure_ascii=False)
+
+
+def deserialize_story_json_field(json_str: Optional[str]) -> List[str]:
+    """
+    Deserialize JSON string from database to list of strings.
+
+    Used for: key_points_json, topics_json, entities_json
+
+    Args:
+        json_str: JSON string from database (or None)
+
+    Returns:
+        List of strings (empty list if json_str is None or invalid)
+
+    Example:
+        >>> deserialize_story_json_field('["AI/ML", "Cloud"]')
+        ['AI/ML', 'Cloud']
+        >>> deserialize_story_json_field(None)
+        []
+    """
+    if not json_str:
+        return []
+    try:
+        result = json.loads(json_str)
+        return result if isinstance(result, list) else []
+    except (json.JSONDecodeError, TypeError):
+        return []
 
 
 # Update forward references
