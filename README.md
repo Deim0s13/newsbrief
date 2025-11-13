@@ -384,15 +384,25 @@ Transform from article-centric to story-based aggregation
 - [ ] Vector embeddings for better clustering
 - [ ] Full-text search (SQLite FTS5)
 
-### **Epic Organization**
+### **Project Tracking**
 
-The roadmap above represents high-level milestones. For detailed epic breakdowns, user stories, and current development status, see the **[GitHub Project Board](https://github.com/users/Deim0s13/projects/7/views/1?layout=board)** which includes:
+Development is organized with GitHub Projects and Milestones for clear visibility:
 
-- **Epic: Stories** - 🚀 Story-based aggregation and synthesis (NEW)
-- **Epic: Ingestion** - Feed processing and content extraction
-- **Epic: Summaries** - AI-powered content summarization with Ollama
-- **Epic: Ranking** - Content scoring and intelligent curation
-- **Epic: UI** - Web interface and user experience enhancements  
+📋 **[GitHub Issues](https://github.com/Deim0s13/newsbrief/issues)** - All issues with labels and milestones  
+🎯 **[Milestones](https://github.com/Deim0s13/newsbrief/milestones)** - Release targets with progress tracking  
+📊 **GitHub Project Board** - Kanban board (Backlog → Next → In Progress → Done)
+
+**Milestones**:
+- [v0.5.0 - Story Architecture](https://github.com/Deim0s13/newsbrief/milestone/1) (7 issues) - Due: Dec 15, 2025
+- [v0.6.0 - Intelligence & Polish](https://github.com/Deim0s13/newsbrief/milestone/2) (8 issues) - Due: Q1 2026
+- [v0.7.0 - Infrastructure](https://github.com/Deim0s13/newsbrief/milestone/3) (13 issues) - Due: Q2 2026
+
+**Epics** (via labels):
+- **epic:stories** - Story-based aggregation and synthesis
+- **epic:ui** - Web interface and user experience
+- **epic:database** - Data layer and migrations
+- **epic:security** - Authentication, encryption, hardening
+- **epic:ops** - CI/CD, deployment, monitoring  
 - **Epic: Operations** - DevOps, monitoring, and deployment tooling
 - **Epic: Embeddings** - Semantic search and advanced clustering (Future)
 - **Epic: Search** - Full-text and semantic search capabilities (Future)
