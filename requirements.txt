@@ -8,6 +8,7 @@ beautifulsoup4
 lxml
 sqlalchemy>=2.0
 pydantic>=2.7
+apscheduler==3.10.4
 python-slugify
 ollama>=0.3.0
 tiktoken>=0.5.0

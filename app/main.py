@@ -55,6 +55,7 @@ from .stories import (
     get_stories,
     get_story_by_id,
 )
+from . import scheduler
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,22 @@ def _startup() -> None:
     init_db()
     # seed from OPML if present (one-time harmless)
     import_opml("data/feeds.opml")
+    # Start background scheduler for automated story generation
+    try:
+        scheduler.start_scheduler()
+        logger.info("Background scheduler started successfully")
+    except Exception as e:
+        logger.error(f"Failed to start scheduler: {e}", exc_info=True)
+
+
+@app.on_event("shutdown")
+def _shutdown() -> None:
+    """Shutdown event - stop background scheduler."""
+    try:
+        scheduler.stop_scheduler()
+        logger.info("Background scheduler stopped")
+    except Exception as e:
+        logger.error(f"Error stopping scheduler: {e}", exc_info=True)
 
 
 # Web Interface Routes
@@ -1539,6 +1556,29 @@ def get_story_stats():
         logger.error(f"Failed to get story stats: {e}")
         raise HTTPException(
             status_code=500, detail=f"Failed to retrieve statistics: {str(e)}"
+        )
+
+
+@app.get("/scheduler/status")
+def get_scheduler_status():
+    """
+    Get background scheduler status.
+
+    Returns information about the automated story generation scheduler:
+    - Whether scheduler is running
+    - Next scheduled run time
+    - Configuration (schedule, time window, archive settings)
+
+    Returns:
+        Scheduler status and configuration
+    """
+    try:
+        status = scheduler.get_scheduler_status()
+        return status
+    except Exception as e:
+        logger.error(f"Failed to get scheduler status: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve scheduler status: {str(e)}"
         )
 
 
