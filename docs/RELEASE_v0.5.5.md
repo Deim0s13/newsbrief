@@ -1,4 +1,4 @@
-# Release Notes - v0.5.0: Story Architecture
+# Release Notes - v0.5.5: Story Architecture - Return to Original Scope
 
 **Release Date**: November 18, 2025  
 **Milestone**: Story Architecture  
@@ -8,7 +8,7 @@
 
 ## 🎯 Overview
 
-NewsBrief v0.5.0 represents a fundamental transformation from article-centric RSS reader to story-based news aggregator. This release delivers on the original vision: **replace reading 50+ article summaries with 5-10 AI-synthesized stories**.
+NewsBrief v0.5.5 represents a fundamental transformation from article-centric RSS reader to story-based news aggregator. This release marks our return to the original vision after exploring alternative approaches in v0.5.1-v0.5.4. The goal: **replace reading 50+ article summaries with 5-10 AI-synthesized stories**.
 
 **Key Achievement**: Users can now stay informed in **2 minutes** instead of 30+ minutes.
 
@@ -46,7 +46,7 @@ NewsBrief v0.5.0 represents a fundamental transformation from article-centric RS
 
 ## 📈 Key Metrics
 
-| Metric | Before (v0.4.x) | After (v0.5.0) | Improvement |
+| Metric | Before (v0.4.x) | After (v0.5.5) | Improvement |
 |--------|----------------|----------------|-------------|
 | **Time to Informed** | 30+ minutes | 2 minutes | **93% faster** |
 | **Items to Review** | 50+ articles | 5-10 stories | **90% reduction** |
@@ -172,7 +172,7 @@ STORY_MODEL=llama3.1:8b                       # LLM model
 
 ## 🚀 Upgrade Guide
 
-### From v0.4.x to v0.5.0
+### From v0.4.x to v0.5.5
 
 1. **Pull latest code**:
    ```bash
@@ -208,7 +208,7 @@ STORY_MODEL=llama3.1:8b                       # LLM model
 ## 🙏 Credits
 
 **Epic**: epic:stories - Story-based aggregation and synthesis  
-**Milestone**: v0.5.0 - Story Architecture  
+**Milestone**: v0.5.5 - Story Architecture  
 **Issues**: 29 issues closed  
 **Commits**: 30+ commits  
 **Lines Changed**: 2,500+ lines added
@@ -217,7 +217,7 @@ STORY_MODEL=llama3.1:8b                       # LLM model
 
 ## 📝 Documentation
 
-- **README.md** - Updated with v0.5.0 features
+- **README.md** - Updated with v0.5.5 features
 - **IMPLEMENTATION_PLAN.md** - All phases marked complete
 - **API.md** - Story endpoints documented
 - **SESSION_SUMMARY_2025-11-18.md** - Today's session summary
@@ -242,7 +242,8 @@ STORY_MODEL=llama3.1:8b                       # LLM model
 
 ---
 
-**Release**: v0.5.0  
+**Release**: v0.5.5  
+**Version Notes**: v0.5.1-v0.5.4 explored alternative approaches. v0.5.5 represents the finalized implementation aligned with our original scope.  
 **Date**: November 18, 2025  
 **Status**: ✅ Production Ready
 

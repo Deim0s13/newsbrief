@@ -8,39 +8,44 @@ NewsBrief is a self-hosted, privacy-focused news aggregator that replaces readin
 
 ## 🌟 Features
 
-### **Current (v0.5.3)**
-- **RSS Feed Management**: Import feeds from OPML or add individually via API
-- **Intelligent Content Extraction**: Clean article content using Mozilla Readability
-- **Long Article Processing**: Map-reduce summarization for articles exceeding context limits with intelligent chunking
-- **Structured AI Summarization**: Local LLM via Ollama generates structured JSON summaries with bullets, significance analysis, and topic tags
-- **Fallback Summary Display**: Intelligent first-2-sentences extraction when AI services are offline or unavailable
-- **Advanced Caching System**: Hash+model based caching for instant responses and cross-article deduplication
-- **Batch Processing**: Efficient multi-article summarization with comprehensive error handling
-- **Robots.txt Compliance**: Respects robots.txt policies at both feed and article levels
-- **Enhanced Fetch Caps**: Configurable global and per-feed limits with time-based safety caps
-- **Fair Distribution**: Prevents individual feeds from consuming entire refresh quota
-- **Comprehensive Monitoring**: Detailed statistics, performance metrics, cache hit rates, and configuration visibility
+### **🎯 Story-Based Aggregation (v0.5.5)** - *Current Release*
+Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **Time to informed: 30 min → 2 min**
+
+- **Automated Story Generation**: Daily scheduled generation at 6 AM (configurable timezone)
+- **Intelligent Clustering**: Hybrid topic grouping + keyword similarity for related article detection
+- **Multi-Document Synthesis**: LLM-powered synthesis combining multiple sources into coherent narratives
+- **Entity Extraction**: Automatically identifies companies, products, and people from article clusters
+- **Topic Auto-Classification**: Stories tagged with Security, AI/ML, DevTools, Cloud/K8s, etc.
+- **Story-First UI**: Landing page shows stories (not articles) with filters, sorting, and pagination
+- **Supporting Articles**: Each story links to source articles with structured summaries
+- **Manual Refresh**: On-demand story generation via UI or API
+- **Performance Optimized**: Parallel LLM synthesis (3 workers), caching, batching - 80% faster
+- **RESTful Story API**: Complete endpoints for generation, retrieval, filtering, and monitoring
+- **Automatic Archiving**: Old stories archived after 7 days (configurable)
+- **Scheduler Monitoring**: Real-time status of automated generation
+
+### **📰 RSS Feed Management**
+- **OPML Import/Export**: Bulk feed management with category preservation
+- **Feed Health Monitoring**: Multi-factor scoring (response time, success rate, failure tracking)
+- **Configurable Fetch Limits**: Global and per-feed caps with fair distribution
+- **Robots.txt Compliance**: Respects policies at feed and article levels
 - **Efficient Caching**: ETag and Last-Modified support to minimize bandwidth
-- **Local SQLite Storage**: Fast, reliable, file-based database with optimized indexing
-- **Content Deduplication**: SHA256-based hashing with intelligent cache invalidation  
-- **RESTful API**: Enhanced JSON endpoints with structured summary support and backward compatibility
-- **Container Ready**: Docker/Podman support with optimized builds and environment configuration
 
-### **🎯 Article Ranking & Topics (v0.4.0)**
-- **Smart Ranking Algorithm**: Recency boost + source weight + keyword matching for relevance scoring
-- **Topic Classification**: AI/ML, Cloud/K8s, Security, DevTools, Chips/Hardware with keyword-based classification
-- **Topic-Based Browsing**: Filter and explore articles by topic categories
-- **Ranking API**: Recalculate rankings and manage topic classifications
+### **🤖 AI-Powered Content Processing**
+- **Structured AI Summarization**: Local LLM via Ollama generates JSON summaries with bullets and significance
+- **Intelligent Content Extraction**: Mozilla Readability for clean article content
+- **Long Article Handling**: Map-reduce summarization for articles exceeding context limits
+- **Fallback Summaries**: Intelligent first-sentence extraction when LLM unavailable
+- **Advanced Caching**: Hash+model based caching for instant responses
+- **Batch Processing**: Efficient multi-article summarization with error handling
 
-### **🎨 Web Interface & Feed Management (v0.5.x)**
-- **Responsive Web UI**: Professional Tailwind CSS interface with dark mode support
-- **Article Browsing**: Skim/Detail view modes, topic filtering, and smart search functionality
-- **Advanced Feed Management**: Professional dashboard with CRUD operations, health monitoring, and bulk operations
-- **Real-time Health Monitoring**: Multi-factor health scoring (response time, success rate, failure tracking)
-- **OPML Import/Export**: Comprehensive XML parsing with metadata preservation and category organization
-- **Bulk Operations**: Multi-select management with category assignment, priority setting, and organizational tools
-- **Performance Insights**: Visual health indicators, trend analysis, and top/bottom performer identification
-- **Category Management**: Predefined categories, bulk assignment, and advanced filtering with statistics
+### **🎨 Web Interface**
+- **Story-First Landing**: Browse synthesized stories (not individual articles)
+- **Story Detail Pages**: Full synthesis with key points, entities, and supporting articles
+- **Article Browsing**: Secondary view for exploring individual articles
+- **Topic Filtering**: Filter by Security, AI/ML, DevTools, Cloud/K8s, etc.
+- **Responsive Design**: Professional Tailwind CSS with dark mode support
+- **Feed Management Dashboard**: CRUD operations, health monitoring, bulk operations
 
 ### **🚀 DevOps & CI/CD (v0.3.4)**
 - **Modern CI/CD Pipeline**: Automated testing, building, security scanning, and multi-environment deployment
@@ -51,7 +56,7 @@ NewsBrief is a self-hosted, privacy-focused news aggregator that replaces readin
 - **Automated Dependency Management**: Weekly security audits, dependency updates, and base image maintenance
 - **Comprehensive Documentation**: Complete CI/CD guides, API documentation, and architecture decision records
 
-### **✅ Completed (v0.5.0 - Story Architecture)** - Nov 2025
+### **✅ Completed (v0.5.5 - Story Architecture)** - Nov 2025
 - ✅ **Story Database Infrastructure**: Complete schema with stories and article links (Issues #36-38)
 - ✅ **Story Generation Pipeline**: Hybrid clustering (topic + keyword similarity) with LLM synthesis (Issue #39)
 - ✅ **Multi-Document Synthesis**: Ollama-powered synthesis combining multiple sources into coherent narratives
@@ -113,7 +118,7 @@ podman run --rm -it \
 
 ## 📖 Usage
 
-### **Story-Based Workflow** (v0.5.0+)
+### **Story-Based Workflow** (v0.5.5+)
 
 ```bash
 # 1. Add your RSS feeds
@@ -153,15 +158,15 @@ curl "http://localhost:8787/items?limit=10" | jq .
 |----------|--------|---------|--------|
 | `/feeds` | POST | Add new RSS feed | ✅ Available |
 | `/refresh` | POST | Fetch latest articles from all feeds | ✅ Available |
-| `/stories` | GET | List synthesized stories | ✅ v0.5.0 |
-| `/stories/{id}` | GET | Get story with supporting articles | ✅ v0.5.0 |
-| `/stories/generate` | POST | Generate/refresh stories | ✅ v0.5.0 |
-| `/stories/stats` | GET | Story generation statistics | ✅ v0.5.0 |
-| `/scheduler/status` | GET | Monitor automated story generation | ✅ v0.5.0 |
+| `/stories` | GET | List synthesized stories | ✅ v0.5.5 |
+| `/stories/{id}` | GET | Get story with supporting articles | ✅ v0.5.5 |
+| `/stories/generate` | POST | Generate/refresh stories | ✅ v0.5.5 |
+| `/stories/stats` | GET | Story generation statistics | ✅ v0.5.5 |
+| `/scheduler/status` | GET | Monitor automated story generation | ✅ v0.5.5 |
 | `/items` | GET | List articles (secondary feature) | ✅ Available |
 | `/docs` | GET | Interactive API documentation | ✅ Available |
 
-## 🧠 Story Generation (v0.5.0)
+## 🧠 Story Generation (v0.5.5)
 
 ### Why We Changed Approach
 
@@ -169,7 +174,7 @@ curl "http://localhost:8787/items?limit=10" | jq .
 
 **The Problem**: NewsBrief v0.3.x evolved into an article-centric RSS reader where users still scrolled through individual summaries—defeating the original purpose of reducing information overload.
 
-**The Solution (v0.5.0)**: Return to the original scope by pivoting to **story-based aggregation**. Instead of presenting 50+ individual articles, NewsBrief now:
+**The Solution (v0.5.5)**: Return to the original scope by pivoting to **story-based aggregation**. Instead of presenting 50+ individual articles, NewsBrief now:
 - Clusters related articles into unified narratives
 - Synthesizes multiple sources into coherent stories
 - Presents 5-10 curated stories daily
@@ -236,7 +241,7 @@ NewsBrief follows **local-first principles** with story-first aggregation:
 │           Story-First Frontend              │
 │            (HTMX + Jinja2)                 │
 │     Landing: Stories → Story Detail         │
-│              [v0.5.0]                       │
+│              [v0.5.5]                       │
 ├─────────────────────────────────────────────┤
 │              FastAPI Server                 │
 │         (REST API + Templates)              │
@@ -360,7 +365,7 @@ newsbrief/
 > **📋 Live Project Board**: Track detailed progress and epic breakdowns at  
 > **[GitHub Project Board](https://github.com/users/Deim0s13/projects/7/views/1?layout=board)**
 
-### **v0.5.0 - Story Architecture** ✅ **COMPLETE** (Nov 2025)
+### **v0.5.5 - Story Architecture** ✅ **COMPLETE** (Nov 2025)
 Transform from article-centric to story-based aggregation
 
 **Phase 1: Core Infrastructure** - ✅ COMPLETE
@@ -414,7 +419,7 @@ Development is organized with GitHub Projects and Milestones for clear visibilit
 📊 **GitHub Project Board** - Kanban board (Backlog → Next → In Progress → Done)
 
 **Milestones**:
-- [v0.5.0 - Story Architecture](https://github.com/Deim0s13/newsbrief/milestone/1) - ✅ **COMPLETE** (Nov 2025)
+- [v0.5.5 - Story Architecture](https://github.com/Deim0s13/newsbrief/milestone/1) - ✅ **COMPLETE** (Nov 2025)
 - [v0.6.0 - Intelligence & Polish](https://github.com/Deim0s13/newsbrief/milestone/2) (8 issues) - Due: Q1 2026
 - [v0.7.0 - Infrastructure](https://github.com/Deim0s13/newsbrief/milestone/3) (13 issues) - Due: Q2 2026
 

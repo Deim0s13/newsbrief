@@ -90,9 +90,9 @@ def test_synthesis_too_short():
 
 
 def test_key_points_too_few():
-    """Test that < 3 key points fails."""
+    """Test that < 3 key points gets auto-padded (lenient for LLM inconsistency)."""
     try:
-        StoryOut(
+        story = StoryOut(
             id=1,
             title="Valid Title Here",
             synthesis="A" * 100,
@@ -100,17 +100,18 @@ def test_key_points_too_few():
             article_count=1,
             generated_at=datetime.now(),
         )
-        return False, "Too few key points - should have raised ValueError"
-    except ValueError as e:
-        if "at least 3" in str(e):
-            return True, "Key points minimum validation"
-        return False, f"Wrong error message: {e}"
+        # Should auto-pad to 3 key points
+        if len(story.key_points) == 3:
+            return True, "Key points minimum validation (auto-padded)"
+        return False, f"Expected 3 key points (padded), got {len(story.key_points)}"
+    except Exception as e:
+        return False, f"Unexpected error: {e}"
 
 
 def test_key_points_too_many():
-    """Test that > 8 key points fails."""
+    """Test that > 8 key points gets auto-truncated (lenient for LLM inconsistency)."""
     try:
-        StoryOut(
+        story = StoryOut(
             id=1,
             title="Valid Title Here",
             synthesis="A" * 100,
@@ -118,11 +119,12 @@ def test_key_points_too_many():
             article_count=1,
             generated_at=datetime.now(),
         )
-        return False, "Too many key points - should have raised ValueError"
-    except ValueError as e:
-        if "must not exceed 8" in str(e):
-            return True, "Key points maximum validation"
-        return False, f"Wrong error message: {e}"
+        # Should auto-truncate to 8 key points
+        if len(story.key_points) == 8:
+            return True, "Key points maximum validation (auto-truncated)"
+        return False, f"Expected 8 key points (truncated), got {len(story.key_points)}"
+    except Exception as e:
+        return False, f"Unexpected error: {e}"
 
 
 def test_importance_score_out_of_range():

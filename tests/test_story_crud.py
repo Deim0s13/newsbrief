@@ -27,9 +27,49 @@ from app.stories import (
 
 def setup_test_db():
     """Create a temporary test database."""
+    from sqlalchemy import text
+    
     # Use temporary in-memory SQLite database
     engine = create_engine("sqlite:///:memory:", echo=False)
     Base.metadata.create_all(engine)
+    
+    # Create items table for article linking tests
+    # (items table is defined in app.db, not in stories Base)
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS items (
+                id INTEGER PRIMARY KEY,
+                title TEXT,
+                url TEXT,
+                published DATETIME,
+                summary TEXT,
+                content_hash TEXT,
+                content TEXT,
+                ai_summary TEXT,
+                ai_model TEXT,
+                ai_generated_at DATETIME,
+                structured_summary_json TEXT,
+                structured_summary_model TEXT,
+                structured_summary_content_hash TEXT,
+                structured_summary_generated_at DATETIME,
+                ranking_score REAL DEFAULT 0.0,
+                topic TEXT,
+                topic_confidence REAL,
+                source_weight REAL DEFAULT 1.0,
+                feed_id INTEGER
+            )
+        """))
+        
+        # Insert test articles
+        conn.execute(text("""
+            INSERT INTO items (id, title, url, summary, ranking_score, topic)
+            VALUES 
+                (10, 'Test Article 1', 'http://example.com/1', 'Summary 1', 0.9, 'AI/ML'),
+                (20, 'Test Article 2', 'http://example.com/2', 'Summary 2', 0.8, 'Cloud'),
+                (30, 'Test Article 3', 'http://example.com/3', 'Summary 3', 0.7, 'Security')
+        """))
+        conn.commit()
+    
     SessionLocal = sessionmaker(bind=engine)
     return SessionLocal()
 
