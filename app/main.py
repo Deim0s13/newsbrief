@@ -4,12 +4,13 @@ import logging
 from datetime import datetime
 from typing import List
 
-from fastapi import FastAPI, HTTPException, Query, Request, File, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import text
 
+from . import scheduler
 from .db import init_db, session_scope
 from .feeds import (
     MAX_ITEMS_PER_FEED,
@@ -17,6 +18,7 @@ from .feeds import (
     MAX_REFRESH_TIME_SECONDS,
     RefreshStats,
     add_feed,
+    export_opml,
     fetch_and_store,
     import_opml,
     import_opml_content,
@@ -24,14 +26,13 @@ from .feeds import (
     recalculate_rankings_and_topics,
     update_feed_health_scores,
     update_feed_names,
-    export_opml,
 )
 from .llm import DEFAULT_MODEL, OLLAMA_BASE_URL, get_llm_service, is_llm_available
 from .models import (
     FeedIn,
     FeedOut,
-    FeedUpdate,
     FeedStats,
+    FeedUpdate,
     ItemOut,
     LLMStatusOut,
     StoriesListOut,
@@ -55,7 +56,6 @@ from .stories import (
     get_stories,
     get_story_by_id,
 )
-from . import scheduler
 
 logger = logging.getLogger(__name__)
 
@@ -93,19 +93,17 @@ def _shutdown() -> None:
 @app.get("/", response_class=HTMLResponse)
 def home_page(request: Request):
     """Main web interface page - Stories landing page."""
-    return templates.TemplateResponse("stories.html", {
-        "request": request, 
-        "current_page": "stories"
-    })
+    return templates.TemplateResponse(
+        "stories.html", {"request": request, "current_page": "stories"}
+    )
 
 
 @app.get("/articles", response_class=HTMLResponse)
 def articles_page(request: Request):
     """Articles listing page (legacy view)."""
-    return templates.TemplateResponse("index.html", {
-        "request": request, 
-        "current_page": "articles"
-    })
+    return templates.TemplateResponse(
+        "index.html", {"request": request, "current_page": "articles"}
+    )
 
 
 @app.get("/story/{story_id}", response_class=HTMLResponse)
@@ -114,15 +112,14 @@ def story_detail_page(request: Request, story_id: int):
     # Get story details with supporting articles
     with session_scope() as s:
         story = get_story_by_id(session=s, story_id=story_id)
-        
+
         if not story:
             raise HTTPException(status_code=404, detail="Story not found")
-    
-    return templates.TemplateResponse("story_detail.html", {
-        "request": request, 
-        "story": story,
-        "current_page": "stories"
-    })
+
+    return templates.TemplateResponse(
+        "story_detail.html",
+        {"request": request, "story": story, "current_page": "stories"},
+    )
 
 
 @app.get("/article/{item_id}", response_class=HTMLResponse)
@@ -131,7 +128,8 @@ def article_detail_page(request: Request, item_id: int):
     # Get article details
     with session_scope() as s:
         result = s.execute(
-            text("""
+            text(
+                """
                 SELECT id, title, url, published, author, summary, content, content_hash,
                        ai_summary, ai_model, ai_generated_at,
                        structured_summary_json, structured_summary_model, 
@@ -140,21 +138,24 @@ def article_detail_page(request: Request, item_id: int):
                        created_at
                 FROM items 
                 WHERE id = :item_id
-            """),
-            {"item_id": item_id}
+            """
+            ),
+            {"item_id": item_id},
         ).fetchone()
-    
+
     if not result:
         raise HTTPException(status_code=404, detail="Article not found")
-    
+
     # Convert to dict for template
     article = dict(result._mapping)
-    
+
     # Parse structured summary if available
     if article["structured_summary_json"]:
         try:
-            from .models import StructuredSummary
             import json
+
+            from .models import StructuredSummary
+
             structured_data = json.loads(article["structured_summary_json"])
             article["structured_summary"] = StructuredSummary(
                 bullets=structured_data.get("bullets", []),
@@ -162,48 +163,52 @@ def article_detail_page(request: Request, item_id: int):
                 tags=structured_data.get("tags", []),
                 content_hash=article["structured_summary_content_hash"] or "",
                 model=article["structured_summary_model"] or "",
-                generated_at=article["structured_summary_generated_at"] or article["created_at"],
+                generated_at=article["structured_summary_generated_at"]
+                or article["created_at"],
                 is_chunked=structured_data.get("is_chunked", False),
                 chunk_count=structured_data.get("chunk_count"),
                 total_tokens=structured_data.get("total_tokens"),
-                processing_method=structured_data.get("processing_method", "direct")
+                processing_method=structured_data.get("processing_method", "direct"),
             )
         except (json.JSONDecodeError, ValueError):
             article["structured_summary"] = None
     else:
         article["structured_summary"] = None
-    
+
     # Handle fallback summary (generate on-the-fly since not stored in DB)
     article["fallback_summary"] = None
     article["is_fallback_summary"] = False
-    
+
     if not article["structured_summary"] and not article["ai_summary"]:
         if article["content"]:
             from .models import extract_first_sentences
+
             try:
-                article["fallback_summary"] = extract_first_sentences(article["content"])
+                article["fallback_summary"] = extract_first_sentences(
+                    article["content"]
+                )
                 article["is_fallback_summary"] = True
             except Exception:
-                article["fallback_summary"] = article.get("summary", "No summary available")
+                article["fallback_summary"] = article.get(
+                    "summary", "No summary available"
+                )
                 article["is_fallback_summary"] = True
         else:
             article["fallback_summary"] = article.get("summary", "No summary available")
             article["is_fallback_summary"] = True
-    
-    return templates.TemplateResponse("article_detail.html", {
-        "request": request, 
-        "article": article,
-        "current_page": "articles"
-    })
+
+    return templates.TemplateResponse(
+        "article_detail.html",
+        {"request": request, "article": article, "current_page": "articles"},
+    )
 
 
 @app.get("/feeds-manage", response_class=HTMLResponse)
 def feeds_management_page(request: Request):
     """Feed management interface page."""
-    return templates.TemplateResponse("feed_management.html", {
-        "request": request,
-        "current_page": "feed-management"
-    })
+    return templates.TemplateResponse(
+        "feed_management.html", {"request": request, "current_page": "feed-management"}
+    )
 
 
 @app.get("/search", response_class=HTMLResponse)
@@ -211,12 +216,13 @@ def search_page(request: Request, q: str = ""):
     """Search results page."""
     articles = []
     search_query = q.strip()
-    
+
     if search_query:
         # Perform basic search on title and summary
         with session_scope() as s:
             results = s.execute(
-                text("""
+                text(
+                    """
                     SELECT id, title, url, published, author, summary, 
                            ai_summary, ai_model, ai_generated_at,
                            structured_summary_json, structured_summary_model,
@@ -227,20 +233,25 @@ def search_page(request: Request, q: str = ""):
                     WHERE title LIKE :query OR summary LIKE :query OR ai_summary LIKE :query
                     ORDER BY ranking_score DESC, COALESCE(published, created_at) DESC
                     LIMIT 50
-                """),
-                {"query": f"%{search_query}%"}
+                """
+                ),
+                {"query": f"%{search_query}%"},
             ).fetchall()
-            
+
             # Convert to list of dicts for template
             for row in results:
                 article_dict = dict(row._mapping)
-                
+
                 # Parse structured summary if available
                 if article_dict["structured_summary_json"]:
                     try:
                         import json
+
                         from .models import StructuredSummary
-                        structured_data = json.loads(article_dict["structured_summary_json"])
+
+                        structured_data = json.loads(
+                            article_dict["structured_summary_json"]
+                        )
                         article_dict["structured_summary"] = {
                             "bullets": structured_data.get("bullets", []),
                             "why_it_matters": structured_data.get("why_it_matters", ""),
@@ -250,16 +261,19 @@ def search_page(request: Request, q: str = ""):
                         article_dict["structured_summary"] = None
                 else:
                     article_dict["structured_summary"] = None
-                
+
                 articles.append(article_dict)
-    
-    return templates.TemplateResponse("search_results.html", {
-        "request": request,
-        "articles": articles,
-        "search_query": search_query,
-        "result_count": len(articles),
-        "current_page": "articles"
-    })
+
+    return templates.TemplateResponse(
+        "search_results.html",
+        {
+            "request": request,
+            "articles": articles,
+            "search_query": search_query,
+            "result_count": len(articles),
+            "current_page": "articles",
+        },
+    )
 
 
 @app.get("/feeds", response_model=List[FeedOut])
@@ -268,7 +282,8 @@ def list_feeds():
     feeds = []
     with session_scope() as s:
         results = s.execute(
-            text("""
+            text(
+                """
                 SELECT f.*, 
                        COUNT(i.id) as total_articles,
                        MAX(i.created_at) as last_article_at
@@ -276,16 +291,17 @@ def list_feeds():
                 LEFT JOIN items i ON f.id = i.feed_id
                 GROUP BY f.id
                 ORDER BY f.priority DESC, f.created_at DESC
-            """)
+            """
+            )
         ).fetchall()
-        
+
         for row in results:
             feed_data = dict(row._mapping)
             # Convert database booleans
             feed_data["disabled"] = bool(feed_data["disabled"])
             feed_data["robots_allowed"] = bool(feed_data["robots_allowed"])
             feeds.append(FeedOut(**feed_data))
-    
+
     return feeds
 
 
@@ -294,7 +310,8 @@ def get_feed(feed_id: int):
     """Get detailed information about a specific feed."""
     with session_scope() as s:
         result = s.execute(
-            text("""
+            text(
+                """
                 SELECT f.*, 
                        COUNT(i.id) as total_articles,
                        MAX(i.created_at) as last_article_at
@@ -302,13 +319,14 @@ def get_feed(feed_id: int):
                 LEFT JOIN items i ON f.id = i.feed_id
                 WHERE f.id = :feed_id
                 GROUP BY f.id
-            """),
-            {"feed_id": feed_id}
+            """
+            ),
+            {"feed_id": feed_id},
         ).fetchone()
-        
+
         if not result:
             raise HTTPException(status_code=404, detail="Feed not found")
-        
+
         feed_data = dict(result._mapping)
         feed_data["disabled"] = bool(feed_data["disabled"])
         feed_data["robots_allowed"] = bool(feed_data["robots_allowed"])
@@ -320,27 +338,31 @@ def add_feed_endpoint(feed: FeedIn):
     """Add a new RSS/Atom feed."""
     # Use the existing add_feed function but with enhanced data
     fid = add_feed(str(feed.url))
-    
+
     # Update the feed with additional metadata if provided
-    if any([feed.name, feed.description, feed.category, feed.priority != 1, feed.disabled]):
+    if any(
+        [feed.name, feed.description, feed.category, feed.priority != 1, feed.disabled]
+    ):
         with session_scope() as s:
             s.execute(
-                text("""
+                text(
+                    """
                     UPDATE feeds 
                     SET name = :name, description = :description, category = :category,
                         priority = :priority, disabled = :disabled, updated_at = CURRENT_TIMESTAMP
                     WHERE id = :feed_id
-                """),
+                """
+                ),
                 {
                     "name": feed.name,
                     "description": feed.description,
                     "category": feed.category,
                     "priority": feed.priority,
                     "disabled": int(feed.disabled),
-                    "feed_id": fid
-                }
+                    "feed_id": fid,
+                },
             )
-    
+
     # Return the created feed
     return get_feed(fid)
 
@@ -351,42 +373,41 @@ def update_feed(feed_id: int, feed_update: FeedUpdate):
     with session_scope() as s:
         # Check if feed exists
         existing = s.execute(
-            text("SELECT id FROM feeds WHERE id = :feed_id"),
-            {"feed_id": feed_id}
+            text("SELECT id FROM feeds WHERE id = :feed_id"), {"feed_id": feed_id}
         ).fetchone()
-        
+
         if not existing:
             raise HTTPException(status_code=404, detail="Feed not found")
-        
+
         # Build update query dynamically
         update_fields = []
         params = {"feed_id": feed_id}
-        
+
         if feed_update.name is not None:
             update_fields.append("name = :name")
             params["name"] = feed_update.name
-        
+
         if feed_update.description is not None:
             update_fields.append("description = :description")
             params["description"] = feed_update.description
-        
+
         if feed_update.category is not None:
             update_fields.append("category = :category")
             params["category"] = feed_update.category
-        
+
         if feed_update.priority is not None:
             update_fields.append("priority = :priority")
             params["priority"] = feed_update.priority
-        
+
         if feed_update.disabled is not None:
             update_fields.append("disabled = :disabled")
             params["disabled"] = int(feed_update.disabled)
-        
+
         if update_fields:
             update_fields.append("updated_at = CURRENT_TIMESTAMP")
             sql = f"UPDATE feeds SET {', '.join(update_fields)} WHERE id = :feed_id"
             s.execute(text(sql), params)
-    
+
     return get_feed(feed_id)
 
 
@@ -396,25 +417,20 @@ def delete_feed(feed_id: int):
     with session_scope() as s:
         # Check if feed exists
         existing = s.execute(
-            text("SELECT id FROM feeds WHERE id = :feed_id"),
-            {"feed_id": feed_id}
+            text("SELECT id FROM feeds WHERE id = :feed_id"), {"feed_id": feed_id}
         ).fetchone()
-        
+
         if not existing:
             raise HTTPException(status_code=404, detail="Feed not found")
-        
+
         # Delete articles first (due to foreign key constraint)
         articles_deleted = s.execute(
-            text("DELETE FROM items WHERE feed_id = :feed_id"),
-            {"feed_id": feed_id}
+            text("DELETE FROM items WHERE feed_id = :feed_id"), {"feed_id": feed_id}
         ).rowcount
-        
+
         # Delete the feed
-        s.execute(
-            text("DELETE FROM feeds WHERE id = :feed_id"),
-            {"feed_id": feed_id}
-        )
-    
+        s.execute(text("DELETE FROM feeds WHERE id = :feed_id"), {"feed_id": feed_id})
+
     return {"ok": True, "articles_deleted": articles_deleted}
 
 
@@ -424,16 +440,16 @@ def get_feed_stats(feed_id: int):
     with session_scope() as s:
         # Check if feed exists
         feed_check = s.execute(
-            text("SELECT id FROM feeds WHERE id = :feed_id"),
-            {"feed_id": feed_id}
+            text("SELECT id FROM feeds WHERE id = :feed_id"), {"feed_id": feed_id}
         ).fetchone()
-        
+
         if not feed_check:
             raise HTTPException(status_code=404, detail="Feed not found")
-        
+
         # Get article counts by time period
         stats_result = s.execute(
-            text("""
+            text(
+                """
                 SELECT 
                     COUNT(*) as total_articles,
                     COUNT(CASE WHEN created_at >= datetime('now', '-1 day') THEN 1 END) as articles_last_24h,
@@ -442,27 +458,32 @@ def get_feed_stats(feed_id: int):
                     MAX(created_at) as last_fetch_at
                 FROM items 
                 WHERE feed_id = :feed_id
-            """),
-            {"feed_id": feed_id}
+            """
+            ),
+            {"feed_id": feed_id},
         ).fetchone()
-        
+
         # Get feed info for error tracking
         feed_info = s.execute(
-            text("SELECT last_error, fetch_count, success_count FROM feeds WHERE id = :feed_id"),
-            {"feed_id": feed_id}
+            text(
+                "SELECT last_error, fetch_count, success_count FROM feeds WHERE id = :feed_id"
+            ),
+            {"feed_id": feed_id},
         ).fetchone()
-        
+
         stats_data = dict(stats_result._mapping)
         feed_data = dict(feed_info._mapping)
-        
+
         # Calculate derived statistics
         total_articles = stats_data["total_articles"]
         fetch_count = feed_data["fetch_count"] or 0
         success_count = feed_data["success_count"] or 0
-        
+
         success_rate = (success_count / fetch_count * 100) if fetch_count > 0 else 0.0
-        avg_articles_per_day = total_articles / 30.0 if total_articles > 0 else 0.0  # Simple 30-day average
-        
+        avg_articles_per_day = (
+            total_articles / 30.0 if total_articles > 0 else 0.0
+        )  # Simple 30-day average
+
         return FeedStats(
             feed_id=feed_id,
             total_articles=total_articles,
@@ -473,7 +494,7 @@ def get_feed_stats(feed_id: int):
             last_fetch_at=stats_data["last_fetch_at"],
             last_error=feed_data["last_error"],
             success_rate=round(success_rate, 1),
-            avg_response_time_ms=0.0  # TODO: Implement response time tracking
+            avg_response_time_ms=0.0,  # TODO: Implement response time tracking
         )
 
 
@@ -481,40 +502,43 @@ def get_feed_stats(feed_id: int):
 def export_feeds_opml():
     """Export all feeds as OPML file."""
     from fastapi.responses import Response
-    
+
     opml_content = export_opml()
-    
+
     return Response(
         content=opml_content,
         media_type="application/xml",
         headers={
             "Content-Disposition": f"attachment; filename=newsbrief_feeds_{datetime.now().strftime('%Y%m%d_%H%M%S')}.opml"
-        }
+        },
     )
 
 
 @app.post("/feeds/import/opml")
 def import_feeds_opml(file: bytes = None):
     """Import feeds from OPML file upload or raw content."""
-    
+
     if not file:
         raise HTTPException(status_code=400, detail="No file content provided")
-    
+
     try:
         # Decode file content
-        opml_content = file.decode('utf-8')
-        
+        opml_content = file.decode("utf-8")
+
         # Process OPML import
         result = import_opml_content(opml_content)
-        
+
         return {
             "success": True,
             "message": f"Import completed: {result['feeds_added']} added, {result['feeds_updated']} updated, {result['feeds_skipped']} skipped",
-            "details": result
+            "details": result,
         }
-        
+
     except UnicodeDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid file encoding. Please upload a valid OPML file.")
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid file encoding. Please upload a valid OPML file.",
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
 
@@ -522,31 +546,37 @@ def import_feeds_opml(file: bytes = None):
 @app.post("/feeds/import/opml/upload")
 async def import_feeds_opml_upload(file: UploadFile = File(...)):
     """Import feeds from OPML file upload (multipart form)."""
-    
+
     if not file:
         raise HTTPException(status_code=400, detail="No file provided")
-    
+
     # Check file type
-    if not file.filename.endswith('.opml') and not file.content_type in ['application/xml', 'text/xml']:
+    if not file.filename.endswith(".opml") and not file.content_type in [
+        "application/xml",
+        "text/xml",
+    ]:
         raise HTTPException(status_code=400, detail="File must be an OPML file (.opml)")
-    
+
     try:
         # Read file content
         file_content = await file.read()
-        opml_content = file_content.decode('utf-8')
-        
+        opml_content = file_content.decode("utf-8")
+
         # Process OPML import
         result = import_opml_content(opml_content)
-        
+
         return {
             "success": True,
             "filename": file.filename,
             "message": f"Import completed: {result['feeds_added']} added, {result['feeds_updated']} updated, {result['feeds_skipped']} skipped",
-            "details": result
+            "details": result,
         }
-        
+
     except UnicodeDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid file encoding. Please upload a valid UTF-8 encoded OPML file.")
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid file encoding. Please upload a valid UTF-8 encoded OPML file.",
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
 
@@ -556,7 +586,8 @@ def get_feed_categories():
     """Get all available feed categories with statistics."""
     with session_scope() as s:
         results = s.execute(
-            text("""
+            text(
+                """
                 SELECT category, 
                        COUNT(*) as feed_count,
                        SUM(CASE WHEN disabled = 0 THEN 1 ELSE 0 END) as active_count,
@@ -566,37 +597,50 @@ def get_feed_categories():
                 WHERE category IS NOT NULL AND category != ''
                 GROUP BY category
                 ORDER BY feed_count DESC, category
-            """)
+            """
+            )
         ).fetchall()
-        
+
         categories = []
         for row in results:
-            categories.append({
-                "name": row[0],
-                "feed_count": row[1], 
-                "active_count": row[2],
-                "avg_health": round(row[3] or 100, 1),
-                "total_articles": row[4] or 0
-            })
-        
+            categories.append(
+                {
+                    "name": row[0],
+                    "feed_count": row[1],
+                    "active_count": row[2],
+                    "avg_health": round(row[3] or 100, 1),
+                    "total_articles": row[4] or 0,
+                }
+            )
+
         # Add predefined categories that might not exist yet
         existing_names = {cat["name"] for cat in categories}
         predefined = [
-            "News", "Technology", "Business", "Science", "Sports", 
-            "Entertainment", "Health", "Politics", "Opinion", "Personal"
+            "News",
+            "Technology",
+            "Business",
+            "Science",
+            "Sports",
+            "Entertainment",
+            "Health",
+            "Politics",
+            "Opinion",
+            "Personal",
         ]
-        
+
         for pred_cat in predefined:
             if pred_cat not in existing_names:
-                categories.append({
-                    "name": pred_cat,
-                    "feed_count": 0,
-                    "active_count": 0, 
-                    "avg_health": 100.0,
-                    "total_articles": 0,
-                    "is_predefined": True
-                })
-        
+                categories.append(
+                    {
+                        "name": pred_cat,
+                        "feed_count": 0,
+                        "active_count": 0,
+                        "avg_health": 100.0,
+                        "total_articles": 0,
+                        "is_predefined": True,
+                    }
+                )
+
         return {"categories": categories}
 
 
@@ -605,44 +649,45 @@ def bulk_assign_category(feed_ids: List[int], category: str):
     """Assign a category to multiple feeds at once."""
     if not feed_ids:
         raise HTTPException(status_code=400, detail="No feed IDs provided")
-    
+
     # Validate category name
     if not category or len(category.strip()) == 0:
         category = None
     else:
         category = category.strip()
-    
+
     with session_scope() as s:
         # Verify all feed IDs exist
         existing_feeds = s.execute(
             text("SELECT id FROM feeds WHERE id IN :feed_ids"),
-            {"feed_ids": tuple(feed_ids)}
+            {"feed_ids": tuple(feed_ids)},
         ).fetchall()
-        
+
         existing_ids = {row[0] for row in existing_feeds}
         invalid_ids = [fid for fid in feed_ids if fid not in existing_ids]
-        
+
         if invalid_ids:
             raise HTTPException(
-                status_code=404, 
-                detail=f"Feed IDs not found: {invalid_ids}"
+                status_code=404, detail=f"Feed IDs not found: {invalid_ids}"
             )
-        
+
         # Update categories
         s.execute(
-            text("""
+            text(
+                """
                 UPDATE feeds 
                 SET category = :category, updated_at = CURRENT_TIMESTAMP
                 WHERE id IN :feed_ids
-            """),
-            {"category": category, "feed_ids": tuple(feed_ids)}
+            """
+            ),
+            {"category": category, "feed_ids": tuple(feed_ids)},
         )
-        
+
         return {
             "success": True,
             "message": f"Updated {len(feed_ids)} feeds",
             "category": category,
-            "updated_feed_ids": feed_ids
+            "updated_feed_ids": feed_ids,
         }
 
 
@@ -651,41 +696,42 @@ def bulk_assign_priority(feed_ids: List[int], priority: int):
     """Assign priority to multiple feeds at once."""
     if not feed_ids:
         raise HTTPException(status_code=400, detail="No feed IDs provided")
-    
+
     if priority < 1 or priority > 5:
         raise HTTPException(status_code=400, detail="Priority must be between 1 and 5")
-    
+
     with session_scope() as s:
         # Verify all feed IDs exist
         existing_feeds = s.execute(
             text("SELECT id FROM feeds WHERE id IN :feed_ids"),
-            {"feed_ids": tuple(feed_ids)}
+            {"feed_ids": tuple(feed_ids)},
         ).fetchall()
-        
+
         existing_ids = {row[0] for row in existing_feeds}
         invalid_ids = [fid for fid in feed_ids if fid not in existing_ids]
-        
+
         if invalid_ids:
             raise HTTPException(
-                status_code=404, 
-                detail=f"Feed IDs not found: {invalid_ids}"
+                status_code=404, detail=f"Feed IDs not found: {invalid_ids}"
             )
-        
+
         # Update priorities
         s.execute(
-            text("""
+            text(
+                """
                 UPDATE feeds 
                 SET priority = :priority, updated_at = CURRENT_TIMESTAMP
                 WHERE id IN :feed_ids
-            """),
-            {"priority": priority, "feed_ids": tuple(feed_ids)}
+            """
+            ),
+            {"priority": priority, "feed_ids": tuple(feed_ids)},
         )
-        
+
         return {
             "success": True,
             "message": f"Updated priority for {len(feed_ids)} feeds",
             "priority": priority,
-            "updated_feed_ids": feed_ids
+            "updated_feed_ids": feed_ids,
         }
 
 
@@ -1142,27 +1188,28 @@ def get_item(item_id: int):
 def topics_page(request: Request):
     """Topics overview page."""
     topics = get_available_topics()
-    
+
     # Get article counts per topic
     topic_stats = []
     with session_scope() as s:
         for topic in topics:
             count_result = s.execute(
                 text("SELECT COUNT(*) as count FROM items WHERE topic = :topic"),
-                {"topic": topic["key"]}
+                {"topic": topic["key"]},
             ).fetchone()
-            
-            topic_stats.append({
-                "key": topic["key"],
-                "name": topic["name"],
-                "article_count": count_result[0] if count_result else 0
-            })
-    
-    return templates.TemplateResponse("topics.html", {
-        "request": request,
-        "topics": topic_stats,
-        "current_page": "topics"
-    })
+
+            topic_stats.append(
+                {
+                    "key": topic["key"],
+                    "name": topic["name"],
+                    "article_count": count_result[0] if count_result else 0,
+                }
+            )
+
+    return templates.TemplateResponse(
+        "topics.html",
+        {"request": request, "topics": topic_stats, "current_page": "topics"},
+    )
 
 
 @app.get("/api/topics")
@@ -1348,6 +1395,7 @@ def recalculate_rankings():
         "updated_items": updated_count,
         "message": f"Recalculated rankings for {updated_count} articles",
     }
+
 
 # ============================================================================
 # Story Endpoints (v0.5.0)

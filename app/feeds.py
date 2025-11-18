@@ -273,18 +273,23 @@ def add_feed(url: str) -> int:
     return ensure_feed(url)
 
 
-def calculate_health_score(fetch_count: int, success_count: int, consecutive_failures: int, avg_response_time_ms: float) -> float:
+def calculate_health_score(
+    fetch_count: int,
+    success_count: int,
+    consecutive_failures: int,
+    avg_response_time_ms: float,
+) -> float:
     """Calculate a health score (0-100) based on various metrics."""
     if fetch_count == 0:
         return 100.0
-    
+
     # Base success rate (0-70 points)
     success_rate = success_count / fetch_count
     success_points = success_rate * 70
-    
+
     # Consecutive failures penalty (0-20 point deduction)
     failure_penalty = min(consecutive_failures * 5, 20)
-    
+
     # Response time scoring (0-10 points)
     # Fast: <500ms = 10pts, Medium: 500-2000ms = 5pts, Slow: >2000ms = 0pts
     if avg_response_time_ms < 500:
@@ -293,31 +298,35 @@ def calculate_health_score(fetch_count: int, success_count: int, consecutive_fai
         response_points = 5
     else:
         response_points = 0
-    
+
     health_score = success_points - failure_penalty + response_points
     return max(0, min(100, health_score))
 
 
-def update_feed_health_metrics(feed_id: int, success: bool, response_time_ms: float, error_message: str = None):
+def update_feed_health_metrics(
+    feed_id: int, success: bool, response_time_ms: float, error_message: str = None
+):
     """Update feed health metrics after a fetch attempt."""
     with session_scope() as s:
         # Get current metrics
         current = s.execute(
-            text("""
+            text(
+                """
                 SELECT fetch_count, success_count, consecutive_failures, 
                        avg_response_time_ms, last_success_at
                 FROM feeds WHERE id = :feed_id
-            """),
-            {"feed_id": feed_id}
+            """
+            ),
+            {"feed_id": feed_id},
         ).fetchone()
-        
+
         if not current:
             return
-        
+
         fetch_count = (current[0] or 0) + 1
         success_count = (current[1] or 0) + (1 if success else 0)
         consecutive_failures = 0 if success else (current[2] or 0) + 1
-        
+
         # Update moving average for response time (weighted towards recent)
         current_avg = current[3] or 0.0
         if fetch_count == 1:
@@ -325,21 +334,23 @@ def update_feed_health_metrics(feed_id: int, success: bool, response_time_ms: fl
         else:
             # Exponential moving average with 0.2 weight for new value
             new_avg = (current_avg * 0.8) + (response_time_ms * 0.2)
-        
+
         # Calculate new health score
-        health_score = calculate_health_score(fetch_count, success_count, consecutive_failures, new_avg)
-        
+        health_score = calculate_health_score(
+            fetch_count, success_count, consecutive_failures, new_avg
+        )
+
         # Update metrics
         update_fields = [
             "fetch_count = :fetch_count",
-            "success_count = :success_count", 
+            "success_count = :success_count",
             "consecutive_failures = :consecutive_failures",
             "avg_response_time_ms = :avg_response_time_ms",
             "last_response_time_ms = :last_response_time_ms",
             "health_score = :health_score",
-            "last_fetch_at = CURRENT_TIMESTAMP"
+            "last_fetch_at = CURRENT_TIMESTAMP",
         ]
-        
+
         update_params = {
             "feed_id": feed_id,
             "fetch_count": fetch_count,
@@ -347,16 +358,18 @@ def update_feed_health_metrics(feed_id: int, success: bool, response_time_ms: fl
             "consecutive_failures": consecutive_failures,
             "avg_response_time_ms": new_avg,
             "last_response_time_ms": response_time_ms,
-            "health_score": health_score
+            "health_score": health_score,
         }
-        
+
         if success:
             update_fields.append("last_success_at = CURRENT_TIMESTAMP")
             update_fields.append("last_error = NULL")
         elif error_message:
             update_fields.append("last_error = :last_error")
-            update_params["last_error"] = error_message[:500]  # Limit error message length
-        
+            update_params["last_error"] = error_message[
+                :500
+            ]  # Limit error message length
+
         sql = f"UPDATE feeds SET {', '.join(update_fields)} WHERE id = :feed_id"
         s.execute(text(sql), update_params)
 
@@ -394,23 +407,23 @@ def import_opml_content(opml_content: str) -> dict:
     """Enhanced OPML import with detailed parsing and metadata extraction."""
     import xml.etree.ElementTree as ET
     from urllib.parse import urlparse
-    
+
     result = {
         "feeds_added": 0,
-        "feeds_updated": 0, 
+        "feeds_updated": 0,
         "feeds_skipped": 0,
         "errors": [],
-        "categories_found": []
+        "categories_found": [],
     }
-    
+
     try:
         # Parse XML content
         root = ET.fromstring(opml_content)
-        
+
         # Find all outline elements with xmlUrl (feed entries)
         feed_outlines = root.findall(".//outline[@xmlUrl]")
         categories = set()
-        
+
         with session_scope() as s:
             for outline in feed_outlines:
                 try:
@@ -419,40 +432,41 @@ def import_opml_content(opml_content: str) -> dict:
                     title = outline.get("title", outline.get("text", ""))
                     description = outline.get("description", "")
                     category = outline.get("category", "")
-                    
+
                     # Extract category from parent outline if not set
                     if not category:
                         parent = outline.getparent()
                         if parent is not None and parent.get("text"):
                             category = parent.get("text")
-                            
+
                     if category:
                         categories.add(category)
-                    
+
                     # Check if feed already exists
                     existing = s.execute(
-                        text("SELECT id FROM feeds WHERE url = :url"),
-                        {"url": xml_url}
+                        text("SELECT id FROM feeds WHERE url = :url"), {"url": xml_url}
                     ).fetchone()
-                    
+
                     if existing:
                         # Update existing feed with metadata if available
                         if title or description or category:
                             s.execute(
-                                text("""
+                                text(
+                                    """
                                     UPDATE feeds 
                                     SET name = COALESCE(:name, name),
                                         description = COALESCE(:description, description),
                                         category = COALESCE(:category, category),
                                         updated_at = CURRENT_TIMESTAMP
                                     WHERE url = :url
-                                """),
+                                """
+                                ),
                                 {
                                     "name": title if title else None,
                                     "description": description if description else None,
                                     "category": category if category else None,
-                                    "url": xml_url
-                                }
+                                    "url": xml_url,
+                                },
                             )
                             result["feeds_updated"] += 1
                         else:
@@ -460,126 +474,140 @@ def import_opml_content(opml_content: str) -> dict:
                     else:
                         # Add new feed
                         feed_id = ensure_feed(xml_url)
-                        
+
                         # Update with metadata
                         if title or description or category:
                             s.execute(
-                                text("""
+                                text(
+                                    """
                                     UPDATE feeds 
                                     SET name = :name, description = :description, 
                                         category = :category, updated_at = CURRENT_TIMESTAMP
                                     WHERE id = :feed_id
-                                """),
+                                """
+                                ),
                                 {
                                     "name": title if title else None,
                                     "description": description if description else None,
                                     "category": category if category else None,
-                                    "feed_id": feed_id
-                                }
+                                    "feed_id": feed_id,
+                                },
                             )
-                        
+
                         result["feeds_added"] += 1
-                        
+
                 except Exception as e:
-                    result["errors"].append(f"Error processing feed {xml_url}: {str(e)}")
+                    result["errors"].append(
+                        f"Error processing feed {xml_url}: {str(e)}"
+                    )
                     continue
-        
+
         result["categories_found"] = sorted(list(categories))
-        
+
     except ET.ParseError as e:
         result["errors"].append(f"Invalid OPML format: {str(e)}")
     except Exception as e:
         result["errors"].append(f"Import error: {str(e)}")
-    
+
     return result
 
 
 def export_opml() -> str:
     """Generate OPML export of all feeds with metadata."""
-    from datetime import datetime
     import xml.etree.ElementTree as ET
-    
+    from datetime import datetime
+
     # Create OPML structure
     opml = ET.Element("opml", version="2.0")
-    
+
     # Head section
     head = ET.SubElement(opml, "head")
     ET.SubElement(head, "title").text = "NewsBrief Feed Export"
-    ET.SubElement(head, "dateCreated").text = datetime.now().strftime("%a, %d %b %Y %H:%M:%S %z")
+    ET.SubElement(head, "dateCreated").text = datetime.now().strftime(
+        "%a, %d %b %Y %H:%M:%S %z"
+    )
     ET.SubElement(head, "generator").text = "NewsBrief RSS Reader"
-    
+
     # Body section
     body = ET.SubElement(opml, "body")
-    
+
     # Get all feeds organized by category
     with session_scope() as s:
         # Get feeds grouped by category
         feeds_result = s.execute(
-            text("""
+            text(
+                """
                 SELECT url, name, description, category, disabled, created_at,
                        COUNT(i.id) as article_count
                 FROM feeds f
                 LEFT JOIN items i ON f.id = i.feed_id  
                 ORDER BY category, name, url
-            """)
+            """
+            )
         ).fetchall()
-        
+
         feeds_by_category = {}
         uncategorized_feeds = []
-        
+
         for feed in feeds_result:
             category = feed.category if feed.category else None
             feed_data = dict(feed._mapping)
-            
+
             if category:
                 if category not in feeds_by_category:
                     feeds_by_category[category] = []
                 feeds_by_category[category].append(feed_data)
             else:
                 uncategorized_feeds.append(feed_data)
-        
+
         # Add categorized feeds
         for category, feeds in feeds_by_category.items():
-            category_outline = ET.SubElement(body, "outline", text=category, title=category)
-            
+            category_outline = ET.SubElement(
+                body, "outline", text=category, title=category
+            )
+
             for feed in feeds:
                 feed_attrs = {
                     "type": "rss",
                     "xmlUrl": feed["url"],
                     "text": feed["name"] if feed["name"] else feed["url"],
-                    "title": feed["name"] if feed["name"] else feed["url"]
+                    "title": feed["name"] if feed["name"] else feed["url"],
                 }
-                
+
                 if feed["description"]:
                     feed_attrs["description"] = feed["description"]
-                    
+
                 # Add metadata as custom attributes
                 feed_attrs["nb:articleCount"] = str(feed["article_count"])
                 feed_attrs["nb:disabled"] = str(bool(feed["disabled"])).lower()
-                feed_attrs["nb:added"] = feed["created_at"].isoformat() if feed["created_at"] else ""
-                
+                feed_attrs["nb:added"] = (
+                    feed["created_at"].isoformat() if feed["created_at"] else ""
+                )
+
                 ET.SubElement(category_outline, "outline", **feed_attrs)
-        
+
         # Add uncategorized feeds
         if uncategorized_feeds:
             for feed in uncategorized_feeds:
                 feed_attrs = {
-                    "type": "rss", 
+                    "type": "rss",
                     "xmlUrl": feed["url"],
                     "text": feed["name"] if feed["name"] else feed["url"],
-                    "title": feed["name"] if feed["name"] else feed["url"]
+                    "title": feed["name"] if feed["name"] else feed["url"],
                 }
-                
+
                 if feed["description"]:
                     feed_attrs["description"] = feed["description"]
-                    
+
                 # Add metadata
                 feed_attrs["nb:articleCount"] = str(feed["article_count"])
                 feed_attrs["nb:disabled"] = str(bool(feed["disabled"])).lower()
-                feed_attrs["nb:added"] = feed["created_at"].isoformat() if feed["created_at"] else ""
-                
+                feed_attrs["nb:added"] = (
+                    feed["created_at"].isoformat() if feed["created_at"] else ""
+                )
+
                 ET.SubElement(body, "outline", **feed_attrs)
-    
+
     # Convert to string with pretty formatting
     ET.indent(opml, space="  ", level=0)
     return ET.tostring(opml, encoding="unicode", xml_declaration=True)
@@ -614,7 +642,7 @@ def fetch_and_store() -> RefreshStats:
     with httpx.Client(
         timeout=HTTP_TIMEOUT,
         headers={"User-Agent": "newsbrief/0.1"},
-        verify=certifi.where()  # Use bundled SSL certificates
+        verify=certifi.where(),  # Use bundled SSL certificates
     ) as client:
         for fid, url, etag, last_mod, robots_allowed, disabled in list_feeds():
             # Check time limit
@@ -647,30 +675,32 @@ def fetch_and_store() -> RefreshStats:
             fetch_start_time = time.time()
             fetch_success = False
             error_message = None
-            
+
             try:
                 resp = client.get(url, headers=headers)
                 response_time_ms = (time.time() - fetch_start_time) * 1000
-                
+
                 # Handle cached response (still considered successful)
                 if resp.status_code == 304:
                     stats.feeds_cached_304 += 1
                     fetch_success = True
                     update_feed_health_metrics(fid, True, response_time_ms)
                     continue
-                
+
                 # Handle error responses
                 if resp.status_code >= 400:
                     stats.feeds_error += 1
                     fetch_success = False
                     error_message = f"HTTP {resp.status_code}: {resp.reason_phrase}"
-                    update_feed_health_metrics(fid, False, response_time_ms, error_message)
+                    update_feed_health_metrics(
+                        fid, False, response_time_ms, error_message
+                    )
                     continue
-                    
+
                 # Success case
                 fetch_success = True
                 update_feed_health_metrics(fid, True, response_time_ms)
-                
+
             except Exception as e:
                 response_time_ms = (time.time() - fetch_start_time) * 1000
                 stats.feeds_error += 1
@@ -996,7 +1026,9 @@ def export_opml() -> str:
     return opml_content
 
 
-def _calculate_ranking_score_legacy(article_data: dict, source_weight: float = 1.0) -> float:
+def _calculate_ranking_score_legacy(
+    article_data: dict, source_weight: float = 1.0
+) -> float:
     """Calculate ranking score for an article (legacy version)."""
     score = 0.0
 
@@ -1341,7 +1373,9 @@ def recalculate_rankings_and_topics() -> dict:
             }
 
             # Calculate new ranking and topic
-            new_ranking = _calculate_ranking_score_legacy(article_data, source_weight=1.0)
+            new_ranking = _calculate_ranking_score_legacy(
+                article_data, source_weight=1.0
+            )
             new_topic, new_confidence = classify_topic(article_data)
 
             # Update the article

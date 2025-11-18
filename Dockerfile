@@ -1,5 +1,18 @@
 FROM python:3.11-slim
 
+# Build arguments for versioning
+ARG VERSION=v0.5.5
+ARG BUILD_DATE
+ARG GIT_SHA
+
+# Labels for container metadata
+LABEL org.opencontainers.image.title="NewsBrief"
+LABEL org.opencontainers.image.description="Story-based News Aggregator with AI Synthesis"
+LABEL org.opencontainers.image.version="${VERSION}"
+LABEL org.opencontainers.image.created="${BUILD_DATE}"
+LABEL org.opencontainers.image.revision="${GIT_SHA}"
+LABEL org.opencontainers.image.source="https://github.com/Deim0s13/newsbrief"
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 

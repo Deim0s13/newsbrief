@@ -4,9 +4,10 @@ Background scheduler for automated story generation.
 Uses APScheduler to run story generation on a configurable schedule.
 Default: Daily at 6 AM.
 """
+
 import logging
 import os
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -63,7 +64,10 @@ def archive_old_stories() -> int:
                     AND generated_at < :cutoff
                     """
                 ),
-                {"cutoff": cutoff_date.isoformat(), "now": datetime.now(UTC).isoformat()},
+                {
+                    "cutoff": cutoff_date.isoformat(),
+                    "now": datetime.now(UTC).isoformat(),
+                },
             )
             session.commit()
             count = result.rowcount or 0
@@ -230,4 +234,3 @@ def get_scheduler_status() -> dict:
             "model": STORY_MODEL,
         },
     }
-

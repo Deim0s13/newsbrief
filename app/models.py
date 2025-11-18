@@ -15,7 +15,9 @@ class FeedIn(BaseModel):
     name: Optional[str] = Field(None, description="Custom name for the feed")
     description: Optional[str] = Field(None, description="Description of the feed")
     category: Optional[str] = Field(None, description="Feed category/tag")
-    priority: int = Field(1, description="Feed priority (1-5, higher = more important)", ge=1, le=5)
+    priority: int = Field(
+        1, description="Feed priority (1-5, higher = more important)", ge=1, le=5
+    )
     disabled: bool = Field(False, description="Whether the feed is disabled")
 
 
@@ -34,18 +36,30 @@ class FeedOut(BaseModel):
     updated_at: datetime
     # Statistics
     total_articles: int = Field(0, description="Total articles from this feed")
-    last_fetch_at: Optional[datetime] = Field(None, description="Last fetch attempt timestamp")
+    last_fetch_at: Optional[datetime] = Field(
+        None, description="Last fetch attempt timestamp"
+    )
     last_error: Optional[str] = Field(None, description="Last error message if any")
     fetch_count: int = Field(0, description="Total number of fetch attempts")
     success_count: int = Field(0, description="Total number of successful fetches")
     # Enhanced health monitoring
-    last_success_at: Optional[datetime] = Field(None, description="Last successful fetch timestamp")
+    last_success_at: Optional[datetime] = Field(
+        None, description="Last successful fetch timestamp"
+    )
     consecutive_failures: int = Field(0, description="Number of consecutive failures")
-    avg_response_time_ms: float = Field(0.0, description="Average response time in milliseconds")
-    last_response_time_ms: float = Field(0.0, description="Last response time in milliseconds")
+    avg_response_time_ms: float = Field(
+        0.0, description="Average response time in milliseconds"
+    )
+    last_response_time_ms: float = Field(
+        0.0, description="Last response time in milliseconds"
+    )
     health_score: float = Field(100.0, description="Overall health score (0-100)")
-    last_modified_check: Optional[datetime] = Field(None, description="Last time we checked Last-Modified")
-    etag_check: Optional[datetime] = Field(None, description="Last time we checked ETag")
+    last_modified_check: Optional[datetime] = Field(
+        None, description="Last time we checked Last-Modified"
+    )
+    etag_check: Optional[datetime] = Field(
+        None, description="Last time we checked ETag"
+    )
 
 
 class FeedUpdate(BaseModel):
@@ -58,6 +72,7 @@ class FeedUpdate(BaseModel):
 
 class FeedStats(BaseModel):
     """Detailed statistics for a specific feed."""
+
     feed_id: int
     total_articles: int
     articles_last_24h: int
@@ -352,8 +367,9 @@ class StoryOut(BaseModel):
     def validate_key_points(cls, v):
         # Pad if too few key points (LLM sometimes returns < 3)
         import logging
+
         logger = logging.getLogger(__name__)
-        
+
         original_len = len(v)
         if len(v) < 3:
             logger.info(f"[VALIDATOR] Padding key_points from {len(v)} to 3")
@@ -363,14 +379,16 @@ class StoryOut(BaseModel):
                     v.append("Additional details in supporting articles")
                 elif len(v) == 2:
                     v.append("See full article details below")
-        
+
         if len(v) > 8:
             logger.warning(f"[VALIDATOR] Truncating key_points from {len(v)} to 8")
             v = v[:8]  # Truncate instead of raising error
-        
+
         result = [point.strip() for point in v if point.strip()]
         if original_len != len(result):
-            logger.info(f"[VALIDATOR] Final key_points count: {len(result)} (was {original_len})")
+            logger.info(
+                f"[VALIDATOR] Final key_points count: {len(result)} (was {original_len})"
+            )
         return result
 
     @validator("importance_score", "freshness_score")
