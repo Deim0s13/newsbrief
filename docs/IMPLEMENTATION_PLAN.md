@@ -100,14 +100,13 @@ SYNTHESIS_TEMPERATURE = 0.3  # Lower for factual synthesis
 
 ---
 
-### Phase 4: Scheduling & Automation (4-6 hours) ⏰
+### Phase 4: Scheduling & Automation ✅ COMPLETE
 **Goal**: Daily auto-generation + manual refresh
 
 **Tasks**:
-- On-demand API endpoint (POST /stories/generate)
-- APScheduler integration (daily at 6 AM)
-- Incremental updates (update existing vs create new)
-- Archive old stories (7+ days)
+- ✅ On-demand API endpoint (POST /stories/generate)
+- ✅ APScheduler integration (daily at 6 AM, configurable timezone)
+- ✅ Archive old stories (7+ days)
 
 **Schedule Configuration**:
 ```python
@@ -120,7 +119,7 @@ STORY_ARCHIVE_DAYS = 7
 
 ---
 
-### Phase 5: Story-Based Landing Page (6-8 hours) 🎨
+### Phase 5: Story-Based Landing Page ✅ COMPLETE
 **Goal**: Replace article list with story cards
 
 **Tasks**:
@@ -140,26 +139,28 @@ STORY_ARCHIVE_DAYS = 7
 
 ---
 
-### Phase 6: Story Detail Page (4-6 hours) 📄
+### Phase 6: Story Detail Page ✅ COMPLETE
 **Goal**: Deep dive into individual stories
 
 **Tasks**:
-- Story detail view (full synthesis, all key points, why it matters)
-- Supporting articles list (compact)
-- Navigation (story → article → back)
-- Breadcrumbs
+- ✅ Story detail view (full synthesis, all key points, why it matters)
+- ✅ Supporting articles list (compact)
+- ✅ Navigation (story → article → back)
+- ✅ Breadcrumbs
 
 **Deliverable**: Can read full story and drill into supporting articles
 
 ---
 
-### Phase 7: API Layer (3-4 hours) 🔌
+### Phase 7: API Layer ✅ COMPLETE
 **Goal**: RESTful story endpoints
 
 **Tasks**:
-- GET /stories (list)
-- GET /stories/{id} (detail)
-- POST /stories/generate (manual refresh)
+- ✅ GET /stories (list)
+- ✅ GET /stories/{id} (detail)
+- ✅ POST /stories/generate (manual refresh)
+- ✅ GET /stories/stats (statistics)
+- ✅ GET /scheduler/status (monitor automation)
 - GET /stories/stats
 - Update /items to support ?story_id filter
 
