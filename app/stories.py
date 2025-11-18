@@ -243,9 +243,77 @@ def get_story_by_id(session: Session, story_id: int) -> Optional[StoryOut]:
         (sa.article_id for sa in story.story_articles if sa.is_primary), None
     )
 
-    # Query articles separately (items table not ORM yet)
-    # For now, we'll return story without articles - articles will be fetched by API layer
-    articles: List[ItemOut] = []  # TODO: Query items table when needed
+    # Query articles from items table
+    articles: List[ItemOut] = []
+    if article_ids:
+        from sqlalchemy import text
+        from app.models import StructuredSummary, extract_first_sentences
+        
+        # Build IN clause with proper placeholders (SQLite requirement)
+        placeholders = ", ".join([f":id_{i}" for i in range(len(article_ids))])
+        params = {f"id_{i}": aid for i, aid in enumerate(article_ids)}
+        
+        rows = session.execute(
+            text(
+                f"""
+                SELECT id, title, url, published, summary, content_hash, content,
+                       ai_summary, ai_model, ai_generated_at,
+                       structured_summary_json, structured_summary_model, 
+                       structured_summary_content_hash, structured_summary_generated_at,
+                       ranking_score, topic, topic_confidence, source_weight, feed_id
+                FROM items 
+                WHERE id IN ({placeholders})
+                ORDER BY ranking_score DESC
+                """
+            ),
+            params,
+        ).all()
+
+        for r in rows:
+            # Parse structured summary if available
+            structured_summary = None
+            if r[10] and r[11]:  # structured_summary_json and model
+                try:
+                    structured_summary = StructuredSummary.from_json_string(
+                        r[10],
+                        r[12] or r[5] or "",  # structured content_hash, fallback to main content_hash
+                        r[11],
+                        datetime.fromisoformat(r[13]) if r[13] else datetime.now(UTC),
+                    )
+                except Exception:
+                    pass  # Skip if parsing fails
+
+            # Generate fallback summary if no AI summary available
+            fallback_summary = None
+            is_fallback = False
+            has_ai_summary = structured_summary is not None or r[7] is not None
+            if not has_ai_summary and r[6]:  # content field
+                try:
+                    fallback_summary = extract_first_sentences(r[6], sentence_count=2)
+                    is_fallback = True
+                except Exception:
+                    pass
+
+            articles.append(
+                ItemOut(
+                    id=r[0],
+                    title=r[1],
+                    url=r[2],
+                    published=datetime.fromisoformat(r[3]) if r[3] else None,
+                    summary=r[4],
+                    ai_summary=r[7],
+                    ai_model=r[8],
+                    ai_generated_at=datetime.fromisoformat(r[9]) if r[9] else None,
+                    structured_summary=structured_summary,
+                    fallback_summary=fallback_summary,
+                    is_fallback_summary=is_fallback,
+                    ranking_score=r[14] or 0.0,
+                    topic=r[15],
+                    topic_confidence=r[16] or 0.0,
+                    source_weight=r[17] or 1.0,
+                    feed_id=r[18],
+                )
+            )
 
     return _story_db_to_model(story, articles, primary_article_id)
 

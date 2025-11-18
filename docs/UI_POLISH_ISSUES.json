@@ -1,0 +1,18 @@
+[
+  {
+    "title": "Implement mobile navigation menu",
+    "body": "**Context**: Mobile menu button exists in navigation but has no functionality.\n\n**Current State**:\n- Mobile menu button visible on small screens (line 80-84 in base.html)\n- Button doesn't trigger any menu\n- Navigation links hidden on mobile\n\n**Tasks**:\n- [ ] Add JavaScript to toggle mobile menu visibility\n- [ ] Create mobile menu dropdown/sidebar\n- [ ] Ensure all nav links accessible on mobile\n- [ ] Add smooth transitions\n- [ ] Test on various mobile screen sizes\n\n**Files**: `app/templates/base.html`, `app/static/js/app.js`\n\n**Priority**: P2\n**Effort**: 2 hours\n**Epic**: UI\n**Phase**: Polish",
+    "labels": ["epic:ui", "priority:p2", "phase:polish", "good first issue"]
+  },
+  {
+    "title": "Implement or remove skim/detail view toggle on articles page",
+    "body": "**Context**: Articles page has view toggle buttons that don't do anything.\n\n**Current State**:\n- Toggle buttons for \"Detailed\" and \"Skim\" views exist\n- No backend logic to switch views\n- TODO comment in app.js line 38\n\n**Decision Needed**:\nEither:\n1. **Implement the feature** (show compact vs full article cards)\n2. **Remove the toggle** (articles page is now secondary)\n\n**If Implementing**:\n- [ ] Add CSS classes for skim view (compact cards)\n- [ ] Wire up JavaScript to toggle classes\n- [ ] Persist preference in localStorage\n- [ ] Test both views\n\n**If Removing**:\n- [ ] Remove toggle buttons from index.html\n- [ ] Remove TODO from app.js\n- [ ] Simplify articles page layout\n\n**Files**: `app/templates/index.html`, `app/static/js/app.js`, `app/static/css/custom.css`\n\n**Priority**: P2\n**Effort**: 1 hour (implement) or 15 min (remove)\n**Epic**: UI\n**Phase**: Polish",
+    "labels": ["epic:ui", "priority:p2", "phase:polish"]
+  },
+  {
+    "title": "Add response time tracking to feed health monitoring",
+    "body": "**Context**: Feed management dashboard shows health metrics but doesn't track response times.\n\n**Current State**:\n- Health score based on success rate and failure tracking\n- TODO comment in main.py line 459: `avg_response_time_ms=0.0`\n- No timing data collected during feed fetches\n\n**Tasks**:\n- [ ] Add `response_time_ms` column to feeds table (migration)\n- [ ] Measure fetch time in `fetch_and_store()`\n- [ ] Calculate rolling average (last 10 fetches)\n- [ ] Update health score calculation to include response time\n- [ ] Display response time in feed management UI\n- [ ] Add \"slow feed\" indicator (>5s response time)\n\n**Files**: `app/db.py`, `app/feeds.py`, `app/main.py`, `app/templates/feed_management.html`\n\n**Priority**: P2\n**Effort**: 3 hours\n**Epic**: Operations\n**Milestone**: v0.6.0 or v0.7.0",
+    "labels": ["epic:ops", "priority:p2", "enhancement"]
+  }
+]
+
