@@ -1348,8 +1348,9 @@ def update_feed_health_scores() -> dict:
 
 def update_feed_names() -> dict:
     """Update existing feeds with proper names from their RSS feeds."""
-    from sqlalchemy import text
     from urllib.parse import urlparse
+
+    from sqlalchemy import text
 
     from .db import session_scope
 
