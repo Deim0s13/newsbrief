@@ -1293,3 +1293,99 @@ def recalculate_rankings_and_topics() -> dict:
                 stats["rankings_updated"] += 1
 
     return stats
+
+
+def update_feed_health_scores() -> dict:
+    """Update health scores for all feeds based on their metrics."""
+    from sqlalchemy import text
+
+    from .db import session_scope
+
+    stats = {"feeds_updated": 0, "avg_health_score": 0.0}
+
+    with session_scope() as s:
+        rows = s.execute(
+            text(
+                """
+                SELECT id, fetch_count, success_count, consecutive_failures, avg_response_time_ms
+                FROM feeds
+            """
+            )
+        ).all()
+
+        total_health = 0.0
+        for row in rows:
+            (
+                feed_id,
+                fetch_count,
+                success_count,
+                consecutive_failures,
+                avg_response_time_ms,
+            ) = row
+
+            health_score = calculate_health_score(
+                fetch_count or 0,
+                success_count or 0,
+                consecutive_failures or 0,
+                avg_response_time_ms,
+            )
+
+            s.execute(
+                text(
+                    "UPDATE feeds SET health_score = :health_score WHERE id = :feed_id"
+                ),
+                {"health_score": health_score, "feed_id": feed_id},
+            )
+
+            stats["feeds_updated"] += 1
+            total_health += health_score
+
+        if stats["feeds_updated"] > 0:
+            stats["avg_health_score"] = total_health / stats["feeds_updated"]
+
+    return stats
+
+
+def update_feed_names() -> dict:
+    """Update existing feeds with proper names from their RSS feeds."""
+    from sqlalchemy import text
+    from urllib.parse import urlparse
+
+    from .db import session_scope
+
+    stats = {"feeds_updated": 0, "feeds_failed": 0}
+
+    with session_scope() as s:
+        # Get all feeds without names or with generic names
+        rows = s.execute(
+            text(
+                "SELECT id, url, name FROM feeds WHERE name IS NULL OR name = '' OR name LIKE 'Feed from %' OR name = 'Unnamed Feed'"
+            )
+        ).all()
+
+        for row in rows:
+            feed_id, feed_url, current_name = row
+
+            # Create a descriptive name from URL domain
+            feed_name = None
+            try:
+                domain = urlparse(feed_url).netloc
+                if domain:
+                    feed_name = f"Feed from {domain}"
+                else:
+                    feed_name = "Unnamed Feed"
+            except Exception:
+                feed_name = "Unnamed Feed"
+
+            # Only update if we have a different name
+            if feed_name and feed_name != current_name:
+                try:
+                    s.execute(
+                        text("UPDATE feeds SET name = :name WHERE id = :feed_id"),
+                        {"name": feed_name, "feed_id": feed_id},
+                    )
+                    stats["feeds_updated"] += 1
+                except Exception:
+                    stats["feeds_failed"] += 1
+
+    return stats
