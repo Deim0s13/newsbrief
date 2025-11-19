@@ -228,7 +228,7 @@ with session_scope() as session:
     )
 ```
 
-**See**: [Python API Documentation](docs/API.md#-python-api-v050) for complete usage guide.
+**See**: [Python API Documentation](docs/user-guide/API.md#-python-api-v050) for complete usage guide.
 
 ---
 
@@ -326,7 +326,7 @@ safety check -r requirements.txt    # Security audit
 
 **🚀 Automated Pipeline**: Push to `dev` → Testing & Security Scan → Multi-arch Build → Deploy to Development
 
-**📚 Complete CI/CD Guide**: See [`docs/CI-CD.md`](docs/CI-CD.md) for comprehensive workflow documentation.
+**📚 Complete CI/CD Guide**: See [`docs/development/CI-CD.md`](docs/development/CI-CD.md) for comprehensive workflow documentation.
 
 ### **Project Structure**
 
@@ -401,7 +401,7 @@ Transform from article-centric to story-based aggregation
 - [x] Batched database commits
 - [x] 80% reduction in generation time
 
-**See**: [Implementation Plan](docs/IMPLEMENTATION_PLAN.md) | [Detailed Backlog](docs/STORY_ARCHITECTURE_BACKLOG.md)
+**See**: [Implementation Plan](docs/project-management/IMPLEMENTATION_PLAN.md) | [Detailed Backlog](docs/planning/STORY_ARCHITECTURE_BACKLOG.md)
 
 ### **v0.6.0 - Enhanced Intelligence**
 - [ ] Configurable time windows (12h, 24h, 48h, 1w)
