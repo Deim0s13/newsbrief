@@ -913,6 +913,7 @@ def fetch_and_store() -> RefreshStats:
     return stats
 
 
+
 def _calculate_ranking_score_legacy(
     article_data: dict, source_weight: float = 1.0
 ) -> float:
@@ -1291,5 +1292,179 @@ def recalculate_rankings_and_topics() -> dict:
                 stats["topics_assigned"] += 1
             if new_ranking != current_ranking:
                 stats["rankings_updated"] += 1
+
+    return stats
+
+
+def calculate_health_score(
+    fetch_count: int,
+    success_count: int,
+    consecutive_failures: int,
+    avg_response_time_ms: int | None,
+) -> float:
+    """
+    Calculate a health score (0-100) for a feed based on various metrics.
+
+    Args:
+        fetch_count: Total number of fetch attempts
+        success_count: Number of successful fetches
+        consecutive_failures: Number of consecutive recent failures
+        avg_response_time_ms: Average response time in milliseconds
+
+    Returns:
+        Health score from 0.0 to 100.0
+    """
+    if fetch_count == 0:
+        return 100.0  # New feeds start with perfect health
+
+    # Base score from success rate (0-70 points)
+    success_rate = success_count / fetch_count if fetch_count > 0 else 1.0
+    base_score = success_rate * 70.0
+
+    # Penalty for consecutive failures (up to -50 points)
+    failure_penalty = min(consecutive_failures * 10.0, 50.0)
+
+    # Bonus for good response time (0-30 points)
+    response_bonus = 30.0
+    if avg_response_time_ms is not None:
+        if avg_response_time_ms > 5000:  # > 5 seconds
+            response_bonus = 0.0
+        elif avg_response_time_ms > 3000:  # > 3 seconds
+            response_bonus = 10.0
+        elif avg_response_time_ms > 1000:  # > 1 second
+            response_bonus = 20.0
+        # else: keeps full 30 points
+
+    final_score = base_score - failure_penalty + response_bonus
+    return max(0.0, min(100.0, final_score))
+
+
+def update_feed_health_scores() -> dict:
+    """Update health scores for all feeds based on their metrics."""
+    from sqlalchemy import text
+
+    from .db import session_scope
+
+    stats = {"feeds_updated": 0, "avg_health_score": 0.0}
+
+    with session_scope() as s:
+        rows = s.execute(
+            text(
+                """
+                SELECT id, fetch_count, success_count, consecutive_failures, avg_response_time_ms
+                FROM feeds
+            """
+            )
+        ).all()
+
+        total_health = 0.0
+        for row in rows:
+            (
+                feed_id,
+                fetch_count,
+                success_count,
+                consecutive_failures,
+                avg_response_time_ms,
+            ) = row
+
+            health_score = calculate_health_score(
+                fetch_count or 0,
+                success_count or 0,
+                consecutive_failures or 0,
+                avg_response_time_ms,
+            )
+
+            s.execute(
+                text(
+                    "UPDATE feeds SET health_score = :health_score WHERE id = :feed_id"
+                ),
+                {"health_score": health_score, "feed_id": feed_id},
+            )
+
+            stats["feeds_updated"] += 1
+            total_health += health_score
+
+        if stats["feeds_updated"] > 0:
+            stats["avg_health_score"] = total_health / stats["feeds_updated"]
+
+    return stats
+
+
+def update_feed_names() -> dict:
+    """Update existing feeds with proper names from their RSS feeds."""
+    from sqlalchemy import text
+
+    from .db import session_scope
+
+    stats = {"feeds_updated": 0, "feeds_failed": 0}
+
+    with session_scope() as s:
+        # Get all feeds without names or with generic names
+        rows = s.execute(
+            text(
+                "SELECT id, url, name FROM feeds WHERE name IS NULL OR name = '' OR name LIKE 'Feed from %' OR name = 'Unnamed Feed'"
+            )
+        ).all()
+
+        for row in rows:
+            feed_id, feed_url, current_name = row
+
+            # Try to get feed name from RSS feed
+            feed_name = None
+            try:
+                import feedparser
+
+                feed_data = feedparser.parse(feed_url)
+
+                # Check if feed is valid and has content
+                if feed_data.feed and not feed_data.bozo:
+                    # Try multiple attributes for feed name
+                    if hasattr(feed_data.feed, "title") and feed_data.feed.title:
+                        feed_name = feed_data.feed.title
+                    elif (
+                        hasattr(feed_data.feed, "subtitle") and feed_data.feed.subtitle
+                    ):
+                        feed_name = feed_data.feed.subtitle
+                    elif (
+                        hasattr(feed_data.feed, "description")
+                        and feed_data.feed.description
+                    ):
+                        # Use first part of description as name
+                        desc = feed_data.feed.description
+                        feed_name = desc[:50] + "..." if len(desc) > 50 else desc
+                    elif feed_data.entries and len(feed_data.entries) > 0:
+                        # Try to infer name from first entry's source
+                        first_entry = feed_data.entries[0]
+                        if hasattr(first_entry, "source") and first_entry.source:
+                            feed_name = first_entry.source
+                        elif hasattr(first_entry, "author") and first_entry.author:
+                            feed_name = first_entry.author
+            except Exception:
+                pass  # Will fall back to domain name below
+
+            # If we still don't have a name, use domain name as fallback
+            if not feed_name or feed_name.strip() == "":
+                try:
+                    from urllib.parse import urlparse
+
+                    domain = urlparse(feed_url).netloc
+                    # Create a more descriptive name from domain
+                    if domain:
+                        feed_name = f"Feed from {domain}"
+                    else:
+                        feed_name = "Unnamed Feed"
+                except Exception:
+                    feed_name = "Unnamed Feed"
+
+            # Only update if we have a different name
+            if feed_name and feed_name != current_name:
+                try:
+                    s.execute(
+                        text("UPDATE feeds SET name = :name WHERE id = :feed_id"),
+                        {"name": feed_name, "feed_id": feed_id},
+                    )
+                    stats["feeds_updated"] += 1
+                except Exception:
+                    stats["feeds_failed"] += 1
 
     return stats
