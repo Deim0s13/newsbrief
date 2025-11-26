@@ -37,6 +37,11 @@ from sqlalchemy import (
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session, relationship
 
+from .entities import (
+    ExtractedEntities,
+    extract_and_cache_entities,
+    get_entity_overlap,
+)
 from .llm import get_llm_service
 from .models import (
     ItemOut,
@@ -597,6 +602,47 @@ def _calculate_keyword_overlap(keywords1: Set[str], keywords2: Set[str]) -> floa
     return intersection / union if union > 0 else 0.0
 
 
+def _calculate_combined_similarity(
+    keywords1: Set[str],
+    keywords2: Set[str],
+    entities1: Optional[ExtractedEntities],
+    entities2: Optional[ExtractedEntities],
+    keyword_weight: float = 0.4,
+    entity_weight: float = 0.6,
+) -> float:
+    """
+    Calculate combined similarity using keywords and entities.
+
+    Args:
+        keywords1: First article keywords
+        keywords2: Second article keywords
+        entities1: First article entities (optional)
+        entities2: Second article entities (optional)
+        keyword_weight: Weight for keyword similarity (default: 0.4)
+        entity_weight: Weight for entity similarity (default: 0.6)
+
+    Returns:
+        Combined similarity score (0.0 to 1.0)
+    """
+    # Calculate keyword similarity
+    keyword_sim = _calculate_keyword_overlap(keywords1, keywords2)
+
+    # Calculate entity similarity if both entities exist
+    if entities1 and entities2:
+        entity_sim = get_entity_overlap(entities1, entities2)
+    else:
+        # If no entities, fall back to pure keyword similarity
+        entity_sim = 0.0
+        # Adjust weights to compensate for missing entity data
+        keyword_weight = 1.0
+        entity_weight = 0.0
+
+    # Weighted combination
+    combined_sim = (keyword_weight * keyword_sim) + (entity_weight * entity_sim)
+
+    return combined_sim
+
+
 def _generate_story_synthesis(
     session: Session,
     article_ids: List[int],
@@ -816,17 +862,24 @@ def generate_stories_simple(
     max_workers: int = 3,  # Parallel LLM calls
 ) -> List[int]:
     """
-    Generate stories from recent articles using hybrid clustering (OPTIMIZED).
+    Generate stories from recent articles using hybrid clustering (OPTIMIZED + ENTITIES v0.6.1).
 
     Clustering approach:
     1. Group by topic (coarse filter)
-    2. Within each topic, cluster by title keyword overlap
-    3. Generate synthesis for each cluster (IN PARALLEL)
-    4. Store stories in database (BATCHED COMMITS)
+    2. Extract entities (companies, products, people, technologies, locations)
+    3. Within each topic, cluster by combined keyword + entity similarity
+    4. Generate synthesis for each cluster (IN PARALLEL)
+    5. Store stories in database (BATCHED COMMITS)
+
+    Similarity Calculation (v0.6.1):
+    - 40% keyword overlap (title-based)
+    - 60% entity overlap (LLM-extracted entities)
+    - Graceful fallback to pure keyword similarity if entity extraction fails
 
     Optimizations:
     - Parallel LLM synthesis calls using ThreadPoolExecutor
     - Cached article data to avoid redundant queries
+    - Cached entity extractions to avoid redundant LLM calls
     - Batched database commits
     - Performance instrumentation
 
@@ -834,8 +887,8 @@ def generate_stories_simple(
         session: SQLAlchemy session
         time_window_hours: Look back this many hours for articles
         min_articles_per_story: Minimum articles per story (1 = allow single-article stories)
-        similarity_threshold: Minimum keyword overlap to cluster articles (0.0-1.0)
-        model: LLM model for synthesis
+        similarity_threshold: Minimum combined similarity to cluster articles (0.0-1.0)
+        model: LLM model for synthesis and entity extraction
         max_workers: Maximum parallel LLM synthesis calls (default: 3)
 
     Returns:
@@ -908,21 +961,54 @@ def generate_stories_simple(
             title = str(article[1])  # type: ignore[index]
             article_keywords[article_id] = _extract_keywords(title)
 
+        # Extract entities for each article (v0.6.1 - enhanced clustering)
+        article_entities = {}
+        entity_extraction_start = time.time()
+        for article in topic_articles:
+            article_id = int(article[0])  # type: ignore[index]
+            title = str(article[1])  # type: ignore[index]
+            summary = article[4] or article[5] or ""  # type: ignore[index]
+            
+            try:
+                entities = extract_and_cache_entities(
+                    article_id=article_id,
+                    title=title,
+                    summary=str(summary),
+                    session=session,
+                    model=model,
+                    use_cache=True,
+                )
+                article_entities[article_id] = entities
+            except Exception as e:
+                logger.warning(f"Failed to extract entities for article {article_id}: {e}")
+                article_entities[article_id] = None
+        
+        entity_extraction_time = time.time() - entity_extraction_start
+        logger.debug(
+            f"Entity extraction for {len(topic_articles)} articles took {entity_extraction_time:.2f}s"
+        )
+
         # Greedy clustering: iterate through articles, add to existing cluster or create new one
         topic_clusters: List[List[int]] = []
 
         for article in topic_articles:
             article_id = int(article[0])  # type: ignore[index]
             keywords = article_keywords[article_id]
+            entities = article_entities.get(article_id)
 
             # Find best matching cluster
             best_cluster = None
             best_similarity = 0.0
 
             for cluster in topic_clusters:
-                # Calculate average similarity to cluster
+                # Calculate average combined similarity to cluster (keywords + entities)
                 similarities = [
-                    _calculate_keyword_overlap(keywords, article_keywords[aid])
+                    _calculate_combined_similarity(
+                        keywords,
+                        article_keywords[aid],
+                        entities,
+                        article_entities.get(aid),
+                    )
                     for aid in cluster
                 ]
                 avg_similarity = (
