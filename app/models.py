@@ -436,13 +436,18 @@ class StoryGenerationRequest(BaseModel):
 
 
 class StoryGenerationResponse(BaseModel):
-    """Response from story generation."""
+    """Response from story generation (v0.6.1 enhanced)."""
 
     success: bool
     stories_generated: int
     story_ids: List[int]
     time_window_hours: int
     model: str
+    # v0.6.1: Enhanced feedback for 0-stories UX
+    articles_found: int = 0
+    clusters_created: int = 0
+    duplicates_skipped: int = 0
+    message: Optional[str] = None
 
 
 # Story JSON field serialization helpers

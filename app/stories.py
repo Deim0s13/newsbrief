@@ -1053,7 +1053,7 @@ def generate_stories_simple(
     similarity_threshold: float = 0.3,
     model: str = "llama3.1:8b",
     max_workers: int = 3,  # Parallel LLM calls
-) -> List[int]:
+) -> Dict[str, Any]:
     """
     Generate stories from recent articles using hybrid clustering (OPTIMIZED + ENTITIES v0.6.1).
 
@@ -1114,7 +1114,12 @@ def generate_stories_simple(
 
     if not articles:
         logger.info("No articles found in time window")
-        return []
+        return {
+            "story_ids": [],
+            "articles_found": 0,
+            "clusters_created": 0,
+            "duplicates_skipped": 0,
+        }
 
     logger.info(
         f"Found {len(articles)} articles in time window ({data_fetch_time:.2f}s)"
@@ -1246,7 +1251,12 @@ def generate_stories_simple(
 
     if not clusters:
         logger.info("No clusters meet minimum article threshold")
-        return []
+        return {
+            "story_ids": [],
+            "articles_found": len(articles),
+            "clusters_created": 0,
+            "duplicates_skipped": 0,
+        }
 
     # Step 3: Generate story synthesis for ALL clusters IN PARALLEL
     logger.info(f"Starting parallel LLM synthesis with {max_workers} workers...")
@@ -1499,7 +1509,12 @@ def generate_stories_simple(
     except Exception as e:
         session.rollback()
         logger.error(f"Failed to commit stories: {e}", exc_info=True)
-        return []
+        return {
+            "story_ids": [],
+            "articles_found": len(articles),
+            "clusters_created": len(clusters),
+            "duplicates_skipped": skipped_duplicates,
+        }
 
     overall_time = time.time() - overall_start
 
@@ -1514,4 +1529,10 @@ def generate_stories_simple(
             f"(fetch: {data_fetch_time:.2f}s, synthesis: {synthesis_time:.2f}s, db: {db_time:.2f}s)"
         )
 
-    return story_ids
+    # v0.6.1: Return detailed stats for better UX
+    return {
+        "story_ids": story_ids,
+        "articles_found": len(articles),
+        "clusters_created": len(clusters),
+        "duplicates_skipped": skipped_duplicates,
+    }
