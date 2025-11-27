@@ -12,50 +12,22 @@ from sqlalchemy import text
 
 from . import scheduler
 from .db import init_db, session_scope
-from .feeds import (
-    MAX_ITEMS_PER_FEED,
-    MAX_ITEMS_PER_REFRESH,
-    MAX_REFRESH_TIME_SECONDS,
-    RefreshStats,
-    add_feed,
-    export_opml,
-    fetch_and_store,
-    import_opml,
-    import_opml_content,
-    list_feeds,
-    recalculate_rankings_and_topics,
-    update_feed_health_scores,
-    update_feed_names,
-)
-from .llm import DEFAULT_MODEL, OLLAMA_BASE_URL, get_llm_service, is_llm_available
-from .models import (
-    FeedIn,
-    FeedOut,
-    FeedStats,
-    FeedUpdate,
-    ItemOut,
-    LLMStatusOut,
-    StoriesListOut,
-    StoryGenerationRequest,
-    StoryGenerationResponse,
-    StoryOut,
-    StructuredSummary,
-    SummaryRequest,
-    SummaryResponse,
-    SummaryResultOut,
-    extract_first_sentences,
-)
-from .ranking import (
-    calculate_ranking_score,
-    classify_article_topic,
-    get_available_topics,
-    get_topic_display_name,
-)
-from .stories import (
-    generate_stories_simple,
-    get_stories,
-    get_story_by_id,
-)
+from .feeds import (MAX_ITEMS_PER_FEED, MAX_ITEMS_PER_REFRESH,
+                    MAX_REFRESH_TIME_SECONDS, RefreshStats, add_feed,
+                    export_opml, fetch_and_store, import_opml,
+                    import_opml_content, list_feeds,
+                    recalculate_rankings_and_topics, update_feed_health_scores,
+                    update_feed_names)
+from .llm import (DEFAULT_MODEL, OLLAMA_BASE_URL, get_llm_service,
+                  is_llm_available)
+from .models import (FeedIn, FeedOut, FeedStats, FeedUpdate, ItemOut,
+                     LLMStatusOut, StoriesListOut, StoryGenerationRequest,
+                     StoryGenerationResponse, StoryOut, StructuredSummary,
+                     SummaryRequest, SummaryResponse, SummaryResultOut,
+                     extract_first_sentences)
+from .ranking import (calculate_ranking_score, classify_article_topic,
+                      get_available_topics, get_topic_display_name)
+from .stories import generate_stories_simple, get_stories, get_story_by_id
 
 logger = logging.getLogger(__name__)
 
@@ -1443,7 +1415,7 @@ def generate_stories_endpoint(request: StoryGenerationRequest = None):  # type: 
             articles_found = result["articles_found"]
             clusters_created = result["clusters_created"]
             duplicates_skipped = result["duplicates_skipped"]
-            
+
             message = None
             if len(story_ids) == 0:
                 if articles_found == 0:

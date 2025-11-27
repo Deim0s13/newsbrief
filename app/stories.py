@@ -23,33 +23,16 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
-from sqlalchemy import (
-    Boolean,
-    Column,
-    DateTime,
-    Float,
-    ForeignKey,
-    Integer,
-    String,
-    Text,
-    desc,
-    text,
-)
+from sqlalchemy import (Boolean, Column, DateTime, Float, ForeignKey, Integer,
+                        String, Text, desc, text)
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session, relationship
 
-from .entities import (
-    ExtractedEntities,
-    extract_and_cache_entities,
-    get_entity_overlap,
-)
+from .entities import (ExtractedEntities, extract_and_cache_entities,
+                       get_entity_overlap)
 from .llm import get_llm_service
-from .models import (
-    ItemOut,
-    StoryOut,
-    deserialize_story_json_field,
-    serialize_story_json_field,
-)
+from .models import (ItemOut, StoryOut, deserialize_story_json_field,
+                     serialize_story_json_field)
 
 logger = logging.getLogger(__name__)
 
@@ -573,21 +556,97 @@ def _extract_keywords(
     """
     # Expanded stop words list (common English words with low semantic value)
     stop_words = {
-        "a", "an", "and", "are", "as", "at", "be", "by", "for", "from",
-        "has", "have", "he", "her", "his", "in", "is", "it", "its", "of",
-        "on", "that", "the", "to", "was", "were", "will", "with", "this",
-        "but", "they", "been", "can", "would", "should", "could", "may",
-        "might", "must", "shall", "their", "them", "these", "those", "who",
-        "what", "where", "when", "why", "how", "which", "or", "if", "so",
-        "than", "such", "into", "through", "about", "after", "before",
-        "between", "under", "over", "our", "your", "we", "you", "not",
-        "no", "nor", "only", "own", "same", "out", "up", "down", "just",
-        "now", "then", "also", "more", "most", "other", "some", "all",
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "by",
+        "for",
+        "from",
+        "has",
+        "have",
+        "he",
+        "her",
+        "his",
+        "in",
+        "is",
+        "it",
+        "its",
+        "of",
+        "on",
+        "that",
+        "the",
+        "to",
+        "was",
+        "were",
+        "will",
+        "with",
+        "this",
+        "but",
+        "they",
+        "been",
+        "can",
+        "would",
+        "should",
+        "could",
+        "may",
+        "might",
+        "must",
+        "shall",
+        "their",
+        "them",
+        "these",
+        "those",
+        "who",
+        "what",
+        "where",
+        "when",
+        "why",
+        "how",
+        "which",
+        "or",
+        "if",
+        "so",
+        "than",
+        "such",
+        "into",
+        "through",
+        "about",
+        "after",
+        "before",
+        "between",
+        "under",
+        "over",
+        "our",
+        "your",
+        "we",
+        "you",
+        "not",
+        "no",
+        "nor",
+        "only",
+        "own",
+        "same",
+        "out",
+        "up",
+        "down",
+        "just",
+        "now",
+        "then",
+        "also",
+        "more",
+        "most",
+        "other",
+        "some",
+        "all",
     }
 
     # Combine title and summary (title gets more weight by appearing first)
     text = f"{title} {title} {summary}".strip()  # Title appears 2x for emphasis
-    
+
     # Lowercase and extract words (alphanumeric)
     words = re.findall(r"\b[a-z0-9]+\b", text.lower())
 
@@ -725,9 +784,7 @@ def _calculate_importance_score(
     entity_score = min(entity_count / 10.0, 1.0)
 
     # Weighted combination
-    importance = (
-        0.4 * article_score + 0.3 * source_score + 0.3 * entity_score
-    )
+    importance = 0.4 * article_score + 0.3 * source_score + 0.3 * entity_score
 
     return importance
 
@@ -1171,7 +1228,7 @@ def generate_stories_simple(
             article_id = int(article[0])  # type: ignore[index]
             title = str(article[1])  # type: ignore[index]
             summary = article[4] or article[5] or ""  # type: ignore[index]
-            
+
             try:
                 entities = extract_and_cache_entities(
                     article_id=article_id,
@@ -1183,9 +1240,11 @@ def generate_stories_simple(
                 )
                 article_entities[article_id] = entities
             except Exception as e:
-                logger.warning(f"Failed to extract entities for article {article_id}: {e}")
+                logger.warning(
+                    f"Failed to extract entities for article {article_id}: {e}"
+                )
                 article_entities[article_id] = None
-        
+
         entity_extraction_time = time.time() - entity_extraction_start
         logger.debug(
             f"Entity extraction for {len(topic_articles)} articles took {entity_extraction_time:.2f}s"
@@ -1211,7 +1270,7 @@ def generate_stories_simple(
                     # Get cached article data for topic
                     other_article = articles_cache.get(aid)
                     other_topic = other_article["topic"] if other_article else None
-                    
+
                     sim = _calculate_combined_similarity(
                         keywords,
                         article_keywords[aid],
@@ -1221,7 +1280,7 @@ def generate_stories_simple(
                         topic2=other_topic,
                     )
                     similarities.append(sim)
-                
+
                 avg_similarity = (
                     sum(similarities) / len(similarities) if similarities else 0.0
                 )
@@ -1307,14 +1366,20 @@ def generate_stories_simple(
         feed_health_scores = []
         if feed_ids:
             feed_id_list = list(feed_ids)
-            placeholders_health = ", ".join([f":fid_{i}" for i in range(len(feed_id_list))])
+            placeholders_health = ", ".join(
+                [f":fid_{i}" for i in range(len(feed_id_list))]
+            )
             health_params = {f"fid_{i}": fid for i, fid in enumerate(feed_id_list)}
             health_results = session.execute(
-                text(f"SELECT health_score FROM feeds WHERE id IN ({placeholders_health})"),
+                text(
+                    f"SELECT health_score FROM feeds WHERE id IN ({placeholders_health})"
+                ),
                 health_params,
             ).fetchall()
-            feed_health_scores = [row[0] for row in health_results if row[0] is not None]
-        
+            feed_health_scores = [
+                row[0] for row in health_results if row[0] is not None
+            ]
+
         if not feed_health_scores:
             feed_health_scores = [100.0]  # Default to perfect health
 

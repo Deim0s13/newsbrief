@@ -185,7 +185,9 @@ def extract_entities(
 
         # Clean markdown formatting if present
         if raw_response.startswith("```json"):
-            raw_response = raw_response.replace("```json", "").replace("```", "").strip()
+            raw_response = (
+                raw_response.replace("```json", "").replace("```", "").strip()
+            )
         elif raw_response.startswith("```"):
             raw_response = raw_response.replace("```", "").strip()
 
@@ -387,4 +389,3 @@ def extract_and_cache_entities(
     store_entity_cache(article_id, entities, session, model)
 
     return entities
-

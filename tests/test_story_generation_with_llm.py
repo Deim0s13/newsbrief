@@ -10,7 +10,8 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 from app.llm import get_llm_service
-from app.stories import Base, _generate_story_synthesis, generate_stories_simple
+from app.stories import (Base, _generate_story_synthesis,
+                         generate_stories_simple)
 
 
 def setup_test_db():

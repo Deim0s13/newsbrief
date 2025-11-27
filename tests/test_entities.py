@@ -7,14 +7,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 from sqlalchemy import text
 
-from app.entities import (
-    ExtractedEntities,
-    extract_and_cache_entities,
-    extract_entities,
-    get_cached_entities,
-    get_entity_overlap,
-    store_entity_cache,
-)
+from app.entities import (ExtractedEntities, extract_and_cache_entities,
+                          extract_entities, get_cached_entities,
+                          get_entity_overlap, store_entity_cache)
 
 
 class TestExtractedEntities:
@@ -420,4 +415,3 @@ def setup_test_db():
         session.rollback()
     finally:
         session.close()
-

@@ -2,12 +2,10 @@
 
 from datetime import UTC, datetime, timedelta
 
-from app.stories import (
-    _calculate_freshness_score,
-    _calculate_importance_score,
-    _calculate_source_quality_score,
-    _calculate_story_scores,
-)
+from app.stories import (_calculate_freshness_score,
+                         _calculate_importance_score,
+                         _calculate_source_quality_score,
+                         _calculate_story_scores)
 
 
 class TestImportanceScoring:
@@ -233,9 +231,7 @@ class TestCombinedStoryScoring:
 
         # Quality = 0.4 * importance + 0.3 * freshness + 0.2 * source + 0.1 * engagement
         # Engagement is placeholder 0.5
-        expected_quality = (
-            0.4 * importance + 0.3 * freshness + 0.2 * 0.8 + 0.1 * 0.5
-        )
+        expected_quality = 0.4 * importance + 0.3 * freshness + 0.2 * 0.8 + 0.1 * 0.5
 
         assert abs(quality - expected_quality) < 0.01
 
@@ -295,4 +291,3 @@ class TestScoringEdgeCases:
 
         # Average: 50, normalized: 0.5
         assert score == 0.5
-

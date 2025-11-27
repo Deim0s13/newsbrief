@@ -1,11 +1,8 @@
 """Unit tests for enhanced semantic similarity (v0.6.1)."""
 
 from app.entities import ExtractedEntities
-from app.stories import (
-    _calculate_combined_similarity,
-    _calculate_keyword_overlap,
-    _extract_keywords,
-)
+from app.stories import (_calculate_combined_similarity,
+                         _calculate_keyword_overlap, _extract_keywords)
 
 
 class TestEnhancedKeywordExtraction:
@@ -50,7 +47,7 @@ class TestEnhancedKeywordExtraction:
         assert "machine" in keywords
         assert "learning" in keywords
         assert "model" in keywords
-        
+
         # Should have bigrams
         assert "machine_learning" in keywords
         assert "learning_model" in keywords
@@ -66,7 +63,7 @@ class TestEnhancedKeywordExtraction:
         # Should have unigrams
         assert "machine" in keywords
         assert "learning" in keywords
-        
+
         # Should NOT have bigrams
         assert "machine_learning" not in keywords
         assert "learning_model" not in keywords
@@ -84,7 +81,7 @@ class TestEnhancedKeywordExtraction:
         assert "trained" in keywords
         assert "massive" in keywords
         assert "data" in keywords
-        
+
         # Stop words should be filtered
         assert "the" not in keywords
         assert "is" not in keywords
@@ -158,9 +155,12 @@ class TestCombinedSimilarity:
         keywords2 = {"google", "openai", "gpt"}
 
         similarity = _calculate_combined_similarity(
-            keywords1, keywords2,
-            entities1=None, entities2=None,
-            topic1=None, topic2=None,
+            keywords1,
+            keywords2,
+            entities1=None,
+            entities2=None,
+            topic1=None,
+            topic2=None,
         )
 
         # Should fall back to pure keyword similarity
@@ -172,7 +172,7 @@ class TestCombinedSimilarity:
         """Test similarity with keywords and entities."""
         keywords1 = {"google", "ai"}
         keywords2 = {"google", "openai"}
-        
+
         entities1 = ExtractedEntities(
             companies=["Google", "Microsoft"],
             products=[],
@@ -189,9 +189,12 @@ class TestCombinedSimilarity:
         )
 
         similarity = _calculate_combined_similarity(
-            keywords1, keywords2,
-            entities1, entities2,
-            topic1=None, topic2=None,
+            keywords1,
+            keywords2,
+            entities1,
+            entities2,
+            topic1=None,
+            topic2=None,
         )
 
         # Should combine keyword (30%) + entity (50%) similarity
@@ -202,7 +205,7 @@ class TestCombinedSimilarity:
         """Test similarity with topic bonus."""
         keywords1 = {"google", "ai"}
         keywords2 = {"apple", "iphone"}  # Different keywords
-        
+
         entities1 = ExtractedEntities(
             companies=["Google"],
             products=[],
@@ -220,16 +223,20 @@ class TestCombinedSimilarity:
 
         # Test with same topic
         similarity_same_topic = _calculate_combined_similarity(
-            keywords1, keywords2,
-            entities1, entities2,
+            keywords1,
+            keywords2,
+            entities1,
+            entities2,
             topic1="tech",
             topic2="tech",
         )
 
         # Test with different topics
         similarity_diff_topic = _calculate_combined_similarity(
-            keywords1, keywords2,
-            entities1, entities2,
+            keywords1,
+            keywords2,
+            entities1,
+            entities2,
             topic1="tech",
             topic2="business",
         )
@@ -251,9 +258,12 @@ class TestCombinedSimilarity:
         )
 
         similarity = _calculate_combined_similarity(
-            keywords, keywords,
-            entities, entities,
-            topic1="tech", topic2="tech",
+            keywords,
+            keywords,
+            entities,
+            entities,
+            topic1="tech",
+            topic2="tech",
         )
 
         # Perfect match: 100% keywords + 100% entities + 100% topic
@@ -266,9 +276,12 @@ class TestCombinedSimilarity:
         keywords2 = {"google", "ai"}  # Identical
 
         similarity = _calculate_combined_similarity(
-            keywords1, keywords2,
-            entities1=None, entities2=None,
-            topic1=None, topic2=None,
+            keywords1,
+            keywords2,
+            entities1=None,
+            entities2=None,
+            topic1=None,
+            topic2=None,
             keyword_weight=0.8,
             entity_weight=0.2,
             topic_weight=0.0,
@@ -281,7 +294,7 @@ class TestCombinedSimilarity:
         """Test zero similarity when nothing matches."""
         keywords1 = {"google", "ai"}
         keywords2 = {"apple", "iphone"}
-        
+
         entities1 = ExtractedEntities(
             companies=["Google"],
             products=[],
@@ -298,8 +311,10 @@ class TestCombinedSimilarity:
         )
 
         similarity = _calculate_combined_similarity(
-            keywords1, keywords2,
-            entities1, entities2,
+            keywords1,
+            keywords2,
+            entities1,
+            entities2,
             topic1="tech",
             topic2="business",
         )
@@ -340,8 +355,10 @@ class TestIntegrationScenarios:
         )
 
         similarity = _calculate_combined_similarity(
-            keywords1, keywords2,
-            entities1, entities2,
+            keywords1,
+            keywords2,
+            entities1,
+            entities2,
             topic1="tech",
             topic2="tech",
         )
@@ -379,8 +396,10 @@ class TestIntegrationScenarios:
         )
 
         similarity = _calculate_combined_similarity(
-            keywords1, keywords2,
-            entities1, entities2,
+            keywords1,
+            keywords2,
+            entities1,
+            entities2,
             topic1="tech",
             topic2="tech",
         )
@@ -388,4 +407,3 @@ class TestIntegrationScenarios:
         # Should have low similarity (different companies, products)
         # Only topic bonus applies
         assert similarity < 0.3
-
