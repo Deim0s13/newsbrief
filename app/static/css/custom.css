@@ -1,5 +1,5 @@
 /* NewsBrief Custom CSS */
-/* v0.5.1 Foundation & Navigation */
+/* v0.6.1 Foundation, Navigation & View Modes */
 
 /* Line clamping utility for article titles */
 .line-clamp-2 {
@@ -125,3 +125,44 @@
         border: 1px solid #d1d5db;
     }
 }
+
+/* Skim View Mode (v0.6.1) - Compact article cards */
+.skim-view article {
+    padding: 1rem !important;  /* Reduced from p-6 (1.5rem) */
+}
+
+.skim-view .article-title {
+    font-size: 1.125rem !important;  /* text-lg instead of text-xl */
+    margin-bottom: 0.5rem !important;  /* mb-2 instead of mb-3 */
+}
+
+.skim-view .article-content {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;  /* Show only 2 lines */
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin-bottom: 0.75rem !important;  /* mb-3 instead of mb-4 */
+    font-size: 0.875rem;  /* text-sm */
+}
+
+.skim-view .article-content ul {
+    display: none;  /* Hide bullet lists in skim mode */
+}
+
+.skim-view .article-content h4 {
+    display: none;  /* Hide headings in skim mode */
+}
+
+.skim-view .article-content p {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.skim-view .ai-indicator {
+    font-size: 0.75rem !important;  /* text-xs */
+    padding: 0.25rem 0.5rem !important;  /* Smaller padding */
+}
+
+/* Detailed View (default) - No additional styles needed */
