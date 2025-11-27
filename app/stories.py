@@ -60,6 +60,17 @@ STORY_DELETE_DAYS = int(
     os.getenv("STORY_DELETE_DAYS", "30")
 )  # Hard delete after 30 days
 
+# Similarity Tuning (v0.6.1) - Adjust these for clustering behavior
+SIMILARITY_KEYWORD_WEIGHT = float(
+    os.getenv("SIMILARITY_KEYWORD_WEIGHT", "0.3")
+)  # Weight for keyword overlap
+SIMILARITY_ENTITY_WEIGHT = float(
+    os.getenv("SIMILARITY_ENTITY_WEIGHT", "0.5")
+)  # Weight for entity overlap
+SIMILARITY_TOPIC_WEIGHT = float(
+    os.getenv("SIMILARITY_TOPIC_WEIGHT", "0.2")
+)  # Weight for same-topic bonus
+
 # ORM Base
 Base = declarative_base()  # type: ignore
 
@@ -533,51 +544,65 @@ def _story_db_to_model(  # type: ignore[misc]
 # Story Generation Functions
 
 
-def _extract_keywords(title: str) -> Set[str]:
+def _extract_keywords(
+    title: str,
+    summary: str = "",
+    include_bigrams: bool = True,
+) -> Set[str]:
     """
-    Extract meaningful keywords from article title.
+    Extract keywords and phrases from article text for clustering (v0.6.1 enhanced).
 
-    Simple extraction: lowercase, remove common words, split on non-alpha.
+    Enhancements over v0.5.x:
+    - Uses both title AND summary for richer semantic content
+    - Includes bigrams (2-word phrases) for phrase matching
+    - Expanded stop words list for better filtering
+    - Title appears 2x to emphasize importance
 
     Args:
         title: Article title
+        summary: Article summary/content (optional)
+        include_bigrams: Whether to include bigrams (2-word phrases)
 
     Returns:
-        Set of keywords
+        Set of keywords and bigrams (lowercase, no stop words)
+
+    Examples:
+        >>> _extract_keywords("OpenAI Releases GPT-4")
+        {'openai', 'releases', 'gpt', 'openai_releases', 'releases_gpt'}
     """
-    # Common stop words to ignore
+    # Expanded stop words list (common English words with low semantic value)
     stop_words = {
-        "a",
-        "an",
-        "and",
-        "are",
-        "as",
-        "at",
-        "be",
-        "by",
-        "for",
-        "from",
-        "has",
-        "he",
-        "in",
-        "is",
-        "it",
-        "its",
-        "of",
-        "on",
-        "that",
-        "the",
-        "to",
-        "was",
-        "will",
-        "with",
+        "a", "an", "and", "are", "as", "at", "be", "by", "for", "from",
+        "has", "have", "he", "her", "his", "in", "is", "it", "its", "of",
+        "on", "that", "the", "to", "was", "were", "will", "with", "this",
+        "but", "they", "been", "can", "would", "should", "could", "may",
+        "might", "must", "shall", "their", "them", "these", "those", "who",
+        "what", "where", "when", "why", "how", "which", "or", "if", "so",
+        "than", "such", "into", "through", "about", "after", "before",
+        "between", "under", "over", "our", "your", "we", "you", "not",
+        "no", "nor", "only", "own", "same", "out", "up", "down", "just",
+        "now", "then", "also", "more", "most", "other", "some", "all",
     }
 
-    # Lowercase and extract words (alphanumeric + some punctuation)
-    words = re.findall(r"\b[a-z0-9]+\b", title.lower())
+    # Combine title and summary (title gets more weight by appearing first)
+    text = f"{title} {title} {summary}".strip()  # Title appears 2x for emphasis
+    
+    # Lowercase and extract words (alphanumeric)
+    words = re.findall(r"\b[a-z0-9]+\b", text.lower())
 
     # Filter out stop words and short words (< 3 chars)
-    keywords = {w for w in words if len(w) >= 3 and w not in stop_words}
+    filtered_words = [w for w in words if len(w) >= 3 and w not in stop_words]
+
+    # Create keyword set (unigrams)
+    keywords = set(filtered_words)
+
+    # Add bigrams for phrase matching (e.g., "machine learning", "ai model")
+    if include_bigrams and len(filtered_words) > 1:
+        bigrams = {
+            f"{filtered_words[i]}_{filtered_words[i+1]}"
+            for i in range(len(filtered_words) - 1)
+        }
+        keywords.update(bigrams)
 
     return keywords
 
@@ -607,23 +632,42 @@ def _calculate_combined_similarity(
     keywords2: Set[str],
     entities1: Optional[ExtractedEntities],
     entities2: Optional[ExtractedEntities],
-    keyword_weight: float = 0.4,
-    entity_weight: float = 0.6,
+    topic1: Optional[str] = None,
+    topic2: Optional[str] = None,
+    keyword_weight: Optional[float] = None,
+    entity_weight: Optional[float] = None,
+    topic_weight: Optional[float] = None,
 ) -> float:
     """
-    Calculate combined similarity using keywords and entities.
+    Calculate combined similarity using keywords, entities, and topic (v0.6.1 enhanced).
+
+    Similarity Components:
+    - 30% keyword overlap (titles + summaries + bigrams)
+    - 50% entity overlap (companies, products, people, technologies, locations)
+    - 20% topic bonus (same topic = +20%, different = 0%)
 
     Args:
         keywords1: First article keywords
         keywords2: Second article keywords
         entities1: First article entities (optional)
         entities2: Second article entities (optional)
-        keyword_weight: Weight for keyword similarity (default: 0.4)
-        entity_weight: Weight for entity similarity (default: 0.6)
+        topic1: First article topic (optional)
+        topic2: Second article topic (optional)
+        keyword_weight: Weight for keyword similarity (default: from config)
+        entity_weight: Weight for entity similarity (default: from config)
+        topic_weight: Weight for topic bonus (default: from config)
 
     Returns:
         Combined similarity score (0.0 to 1.0)
     """
+    # Use configuration defaults if not provided
+    if keyword_weight is None:
+        keyword_weight = SIMILARITY_KEYWORD_WEIGHT
+    if entity_weight is None:
+        entity_weight = SIMILARITY_ENTITY_WEIGHT
+    if topic_weight is None:
+        topic_weight = SIMILARITY_TOPIC_WEIGHT
+
     # Calculate keyword similarity
     keyword_sim = _calculate_keyword_overlap(keywords1, keywords2)
 
@@ -631,14 +675,23 @@ def _calculate_combined_similarity(
     if entities1 and entities2:
         entity_sim = get_entity_overlap(entities1, entities2)
     else:
-        # If no entities, fall back to pure keyword similarity
+        # If no entities, fall back to keywords + topic only
         entity_sim = 0.0
-        # Adjust weights to compensate for missing entity data
-        keyword_weight = 1.0
+        # Redistribute entity weight to keyword weight
+        keyword_weight = keyword_weight + entity_weight
         entity_weight = 0.0
 
+    # Calculate topic bonus (binary: same topic = 1.0, different = 0.0)
+    topic_bonus = 0.0
+    if topic1 and topic2 and topic1 == topic2:
+        topic_bonus = 1.0
+
     # Weighted combination
-    combined_sim = (keyword_weight * keyword_sim) + (entity_weight * entity_sim)
+    combined_sim = (
+        (keyword_weight * keyword_sim)
+        + (entity_weight * entity_sim)
+        + (topic_weight * topic_bonus)
+    )
 
     return combined_sim
 
@@ -954,12 +1007,17 @@ def generate_stories_simple(
     for topic, topic_articles in topic_groups.items():
         logger.debug(f"Processing topic '{topic}' with {len(topic_articles)} articles")
 
-        # Extract keywords for each article
+        # Extract keywords for each article (v0.6.1 - using title + summary + bigrams)
         article_keywords = {}
         for article in topic_articles:
             article_id = int(article[0])  # type: ignore[index]
             title = str(article[1])  # type: ignore[index]
-            article_keywords[article_id] = _extract_keywords(title)
+            summary = article[4] or article[5] or ""  # type: ignore[index]
+            article_keywords[article_id] = _extract_keywords(
+                title=title,
+                summary=str(summary),
+                include_bigrams=True,
+            )
 
         # Extract entities for each article (v0.6.1 - enhanced clustering)
         article_entities = {}
@@ -993,6 +1051,7 @@ def generate_stories_simple(
 
         for article in topic_articles:
             article_id = int(article[0])  # type: ignore[index]
+            article_topic = article[2]  # type: ignore[index]
             keywords = article_keywords[article_id]
             entities = article_entities.get(article_id)
 
@@ -1001,16 +1060,23 @@ def generate_stories_simple(
             best_similarity = 0.0
 
             for cluster in topic_clusters:
-                # Calculate average combined similarity to cluster (keywords + entities)
-                similarities = [
-                    _calculate_combined_similarity(
+                # Calculate average combined similarity to cluster (keywords + entities + topic)
+                similarities = []
+                for aid in cluster:
+                    # Get cached article data for topic
+                    other_article = articles_cache.get(aid)
+                    other_topic = other_article["topic"] if other_article else None
+                    
+                    sim = _calculate_combined_similarity(
                         keywords,
                         article_keywords[aid],
                         entities,
                         article_entities.get(aid),
+                        topic1=article_topic,
+                        topic2=other_topic,
                     )
-                    for aid in cluster
-                ]
+                    similarities.append(sim)
+                
                 avg_similarity = (
                     sum(similarities) / len(similarities) if similarities else 0.0
                 )
