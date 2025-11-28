@@ -77,6 +77,7 @@ class Story(Base):  # type: ignore[misc,valid-type]
     article_count = Column(Integer, default=0)
     importance_score = Column(Float, default=0.0)
     freshness_score = Column(Float, default=0.0)
+    quality_score = Column(Float, default=0.0)
     cluster_method = Column(String)
     story_hash = Column(String, unique=True)
     generated_at = Column(DateTime, default=lambda: datetime.now(UTC))
