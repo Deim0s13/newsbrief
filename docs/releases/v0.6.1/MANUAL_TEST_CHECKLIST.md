@@ -9,10 +9,10 @@
 ## Pre-Testing Setup
 
 ### 1. Environment Preparation
-- [ ] Ensure Ollama is running (`ollama serve` or background process)
-- [ ] Verify llama3.2:3b model is available (`ollama pull llama3.2:3b`)
-- [ ] Check database has recent articles (fetch feeds if needed)
-- [ ] Start the application (`uvicorn app.main:app --reload`)
+- ✅ Ensure Ollama is running (`ollama serve` or background process)
+- ✅ Verify llama3.2:3b model is available (`ollama pull llama3.2:3b`)
+- ✅ Check database has recent articles (fetch feeds if needed)
+- ✅ Start the application (`uvicorn app.main:app --reload`)
 
 ### 2. Database Backup (Optional but Recommended)
 ```bash
@@ -28,15 +28,12 @@ cp data/newsbrief.db data/newsbrief_backup_pre_v0.6.1.db
 **Goal**: Verify entities are extracted from articles and used in clustering
 
 #### Test Steps:
-1. [ ] Navigate to Stories page
-2. [ ] Click "Generate Stories" with default settings
-3. [ ] Wait for story generation to complete
-4. [ ] Open database and verify `items` table:
-   ```sql
-   SELECT id, title, entities_json, entities_extracted_at, entities_model 
-   FROM items 
-   WHERE entities_json IS NOT NULL 
-   LIMIT 5;
+1. ✅ Navigate to Stories page
+2. ✅ Click "Generate Stories" with default settings
+3. ✅ Wait for story generation to complete
+4. ✅ Open database and verify `items` table:
+   ```bash
+   sqlite3 data/newsbrief.sqlite3 "SELECT id, title, entities_json, entities_extracted_at, entities_model FROM items WHERE entities_json IS NOT NULL LIMIT 5;"
    ```
 5. [ ] Verify `entities_json` contains structured data with keys:
    - `companies`
@@ -54,12 +51,12 @@ cp data/newsbrief.db data/newsbrief_backup_pre_v0.6.1.db
 - ✅ Stories cluster based on entity overlap (not just keywords)
 
 #### Validation Queries:
-```sql
--- Count articles with extracted entities
-SELECT COUNT(*) FROM items WHERE entities_json IS NOT NULL;
+```bash
+# Count articles with extracted entities
+sqlite3 data/newsbrief.sqlite3 "SELECT COUNT(*) FROM items WHERE entities_json IS NOT NULL;"
 
--- Sample entity data
-SELECT title, entities_json FROM items WHERE entities_json IS NOT NULL LIMIT 3;
+# Sample entity data
+sqlite3 data/newsbrief.sqlite3 "SELECT title, entities_json FROM items WHERE entities_json IS NOT NULL LIMIT 3;"
 ```
 
 ---
@@ -113,11 +110,8 @@ grep "entity_overlap" /path/to/app.log
 #### Test Steps:
 1. [ ] Generate stories
 2. [ ] Check `stories` table for new score columns:
-   ```sql
-   SELECT id, title, importance_score, freshness_score, quality_score, created_at
-   FROM stories
-   ORDER BY created_at DESC
-   LIMIT 10;
+   ```bash
+   sqlite3 data/newsbrief.sqlite3 "SELECT id, title, importance_score, freshness_score, quality_score, generated_at FROM stories ORDER BY generated_at DESC LIMIT 10;"
    ```
 3. [ ] Verify scores are in range `0.0 - 1.0`
 4. [ ] Verify scores reflect:
@@ -146,22 +140,12 @@ grep "entity_overlap" /path/to/app.log
 - ✅ Scores can be used for ranking/filtering (future feature)
 
 #### Validation Queries:
-```sql
--- Score distribution
-SELECT 
-    ROUND(importance_score, 1) as importance,
-    ROUND(freshness_score, 1) as freshness,
-    ROUND(quality_score, 1) as quality,
-    COUNT(*) as count
-FROM stories
-GROUP BY ROUND(importance_score, 1), ROUND(freshness_score, 1), ROUND(quality_score, 1)
-ORDER BY importance DESC;
+```bash
+# Score distribution
+sqlite3 data/newsbrief.sqlite3 "SELECT ROUND(importance_score, 1) as importance, ROUND(freshness_score, 1) as freshness, ROUND(quality_score, 1) as quality, COUNT(*) as count FROM stories GROUP BY ROUND(importance_score, 1), ROUND(freshness_score, 1), ROUND(quality_score, 1) ORDER BY importance DESC;"
 
--- Top quality stories
-SELECT id, title, importance_score, freshness_score, quality_score
-FROM stories
-ORDER BY quality_score DESC
-LIMIT 5;
+# Top quality stories
+sqlite3 data/newsbrief.sqlite3 "SELECT id, substr(title, 1, 60), importance_score, freshness_score, quality_score FROM stories ORDER BY quality_score DESC LIMIT 5;"
 ```
 
 ---
