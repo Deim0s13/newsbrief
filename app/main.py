@@ -12,50 +12,22 @@ from sqlalchemy import text
 
 from . import scheduler
 from .db import init_db, session_scope
-from .feeds import (
-    MAX_ITEMS_PER_FEED,
-    MAX_ITEMS_PER_REFRESH,
-    MAX_REFRESH_TIME_SECONDS,
-    RefreshStats,
-    add_feed,
-    export_opml,
-    fetch_and_store,
-    import_opml,
-    import_opml_content,
-    list_feeds,
-    recalculate_rankings_and_topics,
-    update_feed_health_scores,
-    update_feed_names,
-)
-from .llm import DEFAULT_MODEL, OLLAMA_BASE_URL, get_llm_service, is_llm_available
-from .models import (
-    FeedIn,
-    FeedOut,
-    FeedStats,
-    FeedUpdate,
-    ItemOut,
-    LLMStatusOut,
-    StoriesListOut,
-    StoryGenerationRequest,
-    StoryGenerationResponse,
-    StoryOut,
-    StructuredSummary,
-    SummaryRequest,
-    SummaryResponse,
-    SummaryResultOut,
-    extract_first_sentences,
-)
-from .ranking import (
-    calculate_ranking_score,
-    classify_article_topic,
-    get_available_topics,
-    get_topic_display_name,
-)
-from .stories import (
-    generate_stories_simple,
-    get_stories,
-    get_story_by_id,
-)
+from .feeds import (MAX_ITEMS_PER_FEED, MAX_ITEMS_PER_REFRESH,
+                    MAX_REFRESH_TIME_SECONDS, RefreshStats, add_feed,
+                    export_opml, fetch_and_store, import_opml,
+                    import_opml_content, list_feeds,
+                    recalculate_rankings_and_topics, update_feed_health_scores,
+                    update_feed_names)
+from .llm import (DEFAULT_MODEL, OLLAMA_BASE_URL, get_llm_service,
+                  is_llm_available)
+from .models import (FeedIn, FeedOut, FeedStats, FeedUpdate, ItemOut,
+                     LLMStatusOut, StoriesListOut, StoryGenerationRequest,
+                     StoryGenerationResponse, StoryOut, StructuredSummary,
+                     SummaryRequest, SummaryResponse, SummaryResultOut,
+                     extract_first_sentences)
+from .ranking import (calculate_ranking_score, classify_article_topic,
+                      get_available_topics, get_topic_display_name)
+from .stories import generate_stories_simple, get_stories, get_story_by_id
 
 logger = logging.getLogger(__name__)
 
@@ -1429,7 +1401,7 @@ def generate_stories_endpoint(request: StoryGenerationRequest = None):  # type: 
             request = StoryGenerationRequest()
 
         with session_scope() as s:
-            story_ids = generate_stories_simple(
+            result = generate_stories_simple(
                 session=s,
                 time_window_hours=request.time_window_hours,
                 min_articles_per_story=request.min_articles_per_story,
@@ -1438,6 +1410,23 @@ def generate_stories_endpoint(request: StoryGenerationRequest = None):  # type: 
                 max_workers=3,  # Parallel LLM calls
             )
 
+            # v0.6.1: Generate helpful message based on results
+            story_ids = result["story_ids"]
+            articles_found = result["articles_found"]
+            clusters_created = result["clusters_created"]
+            duplicates_skipped = result["duplicates_skipped"]
+
+            message = None
+            if len(story_ids) == 0:
+                if articles_found == 0:
+                    message = f"No articles found in the last {request.time_window_hours} hours. Try fetching feeds or increasing the time window."
+                elif duplicates_skipped > 0:
+                    message = f"All {duplicates_skipped} story clusters were duplicates of existing stories. Your stories are up to date! Try increasing the time window or fetch new articles."
+                elif clusters_created == 0:
+                    message = f"Found {articles_found} articles but they didn't cluster into stories. Try adjusting the similarity threshold or minimum articles per story."
+                else:
+                    message = f"Found {articles_found} articles in {clusters_created} clusters, but story generation failed. Check logs for details."
+
             # Success even if 0 stories (might be all duplicates)
             return StoryGenerationResponse(
                 success=True,
@@ -1445,6 +1434,10 @@ def generate_stories_endpoint(request: StoryGenerationRequest = None):  # type: 
                 stories_generated=len(story_ids),
                 time_window_hours=request.time_window_hours,
                 model=request.model,
+                articles_found=articles_found,
+                clusters_created=clusters_created,
+                duplicates_skipped=duplicates_skipped,
+                message=message,
             )
     except Exception as e:
         logger.error(f"Story generation failed: {e}", exc_info=True)

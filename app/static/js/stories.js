@@ -293,8 +293,15 @@ async function refreshStories() {
         
         const result = await response.json();
         
-        // Show success message
-        showNotification(`Successfully generated ${result.stories_generated} stories!`, 'success');
+        // v0.6.1: Show detailed message based on results
+        if (result.stories_generated > 0) {
+            showNotification(`Successfully generated ${result.stories_generated} stories!`, 'success');
+        } else if (result.message) {
+            // Show helpful message explaining why 0 stories
+            showNotification(result.message, 'info');
+        } else {
+            showNotification(`Generation complete: ${result.stories_generated} stories created.`, 'info');
+        }
         
         // Reload stories
         setTimeout(() => {

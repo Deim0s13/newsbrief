@@ -145,15 +145,18 @@ jobs:
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
-        continue-on-error: true  # Don't fail pipeline on security scan issues
         with:
           image-ref: ${{ needs.build.outputs.image-tag }}
           format: 'sarif'
           output: 'trivy-results.sarif'
+          severity: 'CRITICAL'
+          exit-code: '1'  # Fail pipeline on CRITICAL vulnerabilities
+          # Note: Known HIGH severity issues in base OS (libxslt, kernel headers) are accepted
+          # See: docs/project-management/SECURITY_ACCEPTED_RISKS.md
 
       - name: Upload Trivy scan results
         uses: github/codeql-action/upload-sarif@v3
-        continue-on-error: true  # Don't fail if upload fails
+        continue-on-error: true  # Don't fail if upload fails (GitHub API issues)
         with:
           sarif_file: 'trivy-results.sarif'
 

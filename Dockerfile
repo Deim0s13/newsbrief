@@ -1,7 +1,7 @@
 FROM python:3.11-slim
 
 # Build arguments for versioning
-ARG VERSION=v0.5.5
+ARG VERSION=v0.6.1
 ARG BUILD_DATE
 ARG GIT_SHA
 
@@ -17,6 +17,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 # System deps for lxml/readability
+# Note: libxslt1-dev has CVE-2025-7425 (HIGH) - no fix available, required for lxml
+# linux-libc-dev kernel headers included for build-time compilation
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential libxml2-dev libxslt1-dev libffi-dev curl \
   && rm -rf /var/lib/apt/lists/*
@@ -24,8 +26,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Install Python deps first (better layer caching)
+# Upgrade pip and setuptools to latest secure versions
 COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip setuptools && \
+    pip install --no-cache-dir -r requirements.txt
 
 # App code
 COPY app /app/app

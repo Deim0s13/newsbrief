@@ -24,8 +24,14 @@ function setupEventListeners() {
         });
     }
     
-    // View toggle buttons (skim/detail)
+    // View toggle buttons (skim/detail) - v0.6.1 implementation
     const viewButtons = document.querySelectorAll('.flex.bg-gray-100 button');
+    const articlesContainer = document.getElementById('articles-container');
+    
+    // Load saved view preference from localStorage (default to 'detailed')
+    const savedView = localStorage.getItem('articlesViewMode') || 'detailed';
+    applyViewMode(savedView);
+    
     viewButtons.forEach(button => {
         button.addEventListener('click', function() {
             // Remove active class from all buttons
@@ -35,11 +41,45 @@ function setupEventListeners() {
             // Add active class to clicked button
             this.className = 'px-3 py-1 text-sm font-medium bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm rounded-md';
             
-            // TODO: Implement view switching logic
+            // Apply view mode
             const isSkimView = this.textContent.trim() === 'Skim';
-            console.log('View switched to:', isSkimView ? 'Skim' : 'Detailed');
+            const viewMode = isSkimView ? 'skim' : 'detailed';
+            applyViewMode(viewMode);
+            
+            // Save preference to localStorage
+            localStorage.setItem('articlesViewMode', viewMode);
+            
+            console.log('View switched to:', viewMode);
         });
     });
+    
+    function applyViewMode(mode) {
+        if (mode === 'skim') {
+            articlesContainer.classList.add('skim-view');
+            
+            // Directly modify article padding to override Tailwind's p-6
+            articlesContainer.querySelectorAll('article').forEach(article => {
+                article.style.padding = '0.75rem';
+            });
+        } else {
+            articlesContainer.classList.remove('skim-view');
+            
+            // Restore default padding
+            articlesContainer.querySelectorAll('article').forEach(article => {
+                article.style.padding = '';
+            });
+        }
+        
+        // Update button active states based on saved preference
+        viewButtons.forEach(btn => {
+            const btnText = btn.textContent.trim();
+            if ((mode === 'skim' && btnText === 'Skim') || (mode === 'detailed' && btnText === 'Detailed')) {
+                btn.className = 'px-3 py-1 text-sm font-medium bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm rounded-md';
+            } else {
+                btn.className = 'px-3 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white';
+            }
+        });
+    }
     
     // Load more button
     const loadMoreBtn = document.getElementById('load-more-btn');
@@ -96,6 +136,14 @@ async function loadArticles(selectedTopic = '') {
             container.appendChild(articleElement);
         });
         
+        // Apply skim view to articles if that mode is active
+        const savedView = localStorage.getItem('articlesViewMode') || 'detailed';
+        if (savedView === 'skim') {
+            container.querySelectorAll('article').forEach(article => {
+                article.style.padding = '0.75rem';
+            });
+        }
+        
         // Show load more button if we have full page
         if (articles.length === 20) {
             document.getElementById('load-more-container').classList.remove('hidden');
@@ -130,6 +178,13 @@ async function loadMoreArticles() {
             const articleElement = createArticleElement(article);
             container.appendChild(articleElement);
         });
+        
+        // Apply skim view to newly loaded articles if active
+        if (container.classList.contains('skim-view')) {
+            container.querySelectorAll('article').forEach(article => {
+                article.style.padding = '0.75rem';
+            });
+        }
         
         if (articles.length < 20) {
             loadMoreBtn.style.display = 'none';

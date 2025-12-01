@@ -106,7 +106,7 @@ def scheduled_story_generation():
                 session=session,
                 time_window_hours=STORY_TIME_WINDOW_HOURS,
                 min_articles_per_story=STORY_MIN_ARTICLES,
-                similarity_threshold=0.3,
+                similarity_threshold=0.25,  # Lowered from 0.3 for v0.6.1 entity-based clustering
                 model=STORY_MODEL,
                 max_workers=3,  # Parallel LLM synthesis
             )

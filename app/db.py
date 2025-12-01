@@ -172,6 +172,14 @@ def init_db() -> None:
             "ALTER TABLE items ADD COLUMN topic TEXT;",
             "ALTER TABLE items ADD COLUMN topic_confidence REAL DEFAULT 0.0;",
             "ALTER TABLE items ADD COLUMN source_weight REAL DEFAULT 1.0;",
+            # Entity extraction columns (v0.6.1)
+            "ALTER TABLE items ADD COLUMN entities_json TEXT;",
+            "ALTER TABLE items ADD COLUMN entities_extracted_at DATETIME;",
+            "ALTER TABLE items ADD COLUMN entities_model TEXT;",
+            # Story quality scoring columns (v0.6.1)
+            "ALTER TABLE stories ADD COLUMN importance_score REAL DEFAULT 0.5;",
+            "ALTER TABLE stories ADD COLUMN freshness_score REAL DEFAULT 0.5;",
+            "ALTER TABLE stories ADD COLUMN quality_score REAL DEFAULT 0.5;",
             # Feeds table migrations (v0.5.3)
             "ALTER TABLE feeds ADD COLUMN name TEXT;",
             "ALTER TABLE feeds ADD COLUMN description TEXT;",

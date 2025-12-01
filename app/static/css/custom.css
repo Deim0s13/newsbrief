@@ -1,5 +1,5 @@
 /* NewsBrief Custom CSS */
-/* v0.5.1 Foundation & Navigation */
+/* v0.6.1 Foundation, Navigation & View Modes */
 
 /* Line clamping utility for article titles */
 .line-clamp-2 {
@@ -125,3 +125,59 @@
         border: 1px solid #d1d5db;
     }
 }
+
+/* Skim View Mode (v0.6.1) - Compact article cards */
+.skim-view article {
+    padding: 0.75rem !important;  /* Reduced from p-6 (1.5rem) to 0.75rem */
+}
+
+.skim-view .article-title {
+    font-size: 1rem !important;  /* text-base instead of text-xl */
+    margin-bottom: 0.5rem !important;  /* mb-2 instead of mb-3 */
+    font-weight: 600 !important;  /* Slightly lighter weight */
+}
+
+.skim-view .article-content {
+    max-height: 2.5rem;  /* Limit height to ~2 lines */
+    overflow: hidden;
+    margin-bottom: 0.5rem !important;  /* mb-2 instead of mb-4 */
+    font-size: 0.875rem !important;  /* text-sm */
+    line-height: 1.25rem;  /* Consistent line height */
+}
+
+.skim-view .article-content * {
+    font-size: inherit !important;  /* Ensure all children inherit small size */
+    margin: 0 !important;  /* Remove all margins */
+    padding: 0 !important;  /* Remove all padding */
+}
+
+.skim-view .article-content div,
+.skim-view .article-content ul,
+.skim-view .article-content h4 {
+    display: none !important;  /* Hide all structured content */
+}
+
+.skim-view .article-content p {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;  /* Show only 2 lines of text */
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: inherit !important;
+}
+
+/* Hide metadata in skim view */
+.skim-view .article-metadata {
+    font-size: 0.75rem !important;  /* Smaller metadata */
+}
+
+.skim-view .ai-indicator {
+    font-size: 0.65rem !important;  /* text-xs */
+    padding: 0.125rem 0.375rem !important;  /* Smaller padding */
+}
+
+.skim-view .ranking-score,
+.skim-view .source-info {
+    font-size: 0.75rem !important;  /* Smaller text */
+}
+
+/* Detailed View (default) - No additional styles needed */
