@@ -8,10 +8,13 @@ NewsBrief is a self-hosted, privacy-focused news aggregator that replaces readin
 
 ## 🌟 Features
 
-### **🎯 Story-Based Aggregation (v0.5.5)** - *Current Release*
+### **🎯 Story-Based Aggregation (v0.6.1)** - *Current Release*
 Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **Time to informed: 30 min → 2 min**
 
 - **Automated Story Generation**: Daily scheduled generation at 6 AM (configurable timezone)
+- **🧠 Entity Extraction (v0.6.1)**: Identifies companies, products, people, technologies, and locations
+- **🔗 Semantic Similarity (v0.6.1)**: Enhanced clustering with entity overlap (50%) + keywords (30%) + topic bonus (20%)
+- **⭐ Quality Scoring (v0.6.1)**: Three-dimensional scoring for importance, freshness, and overall quality
 - **Intelligent Clustering**: Hybrid topic grouping + keyword similarity for related article detection
 - **Multi-Document Synthesis**: LLM-powered synthesis combining multiple sources into coherent narratives
 - **Entity Extraction**: Automatically identifies companies, products, and people from article clusters
@@ -56,10 +59,13 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 - **Automated Dependency Management**: Weekly security audits, dependency updates, and base image maintenance
 - **Comprehensive Documentation**: Complete CI/CD guides, API documentation, and architecture decision records
 
-### **✅ Completed (v0.5.5 - Story Architecture)** - Nov 2025
-- ✅ **Story Database Infrastructure**: Complete schema with stories and article links (Issues #36-38)
-- ✅ **Story Generation Pipeline**: Hybrid clustering (topic + keyword similarity) with LLM synthesis (Issue #39)
-- ✅ **Multi-Document Synthesis**: Ollama-powered synthesis combining multiple sources into coherent narratives
+### **✅ Completed (v0.6.1 - Enhanced Intelligence)** - Dec 2025
+- ✅ **Entity Extraction**: LLM-based extraction of companies, products, people, technologies, locations (Issue #40)
+- ✅ **Semantic Similarity**: Enhanced clustering with entity overlap and bigrams/trigrams (Issue #41)
+- ✅ **Story Quality Scoring**: Importance, freshness, and quality scoring algorithms (Issue #43)
+- ✅ **UX Improvements**: Detailed feedback messages for story generation (Issue #67)
+- ✅ **Skim/Detail Toggle**: Flexible viewing modes for articles (Issue #70)
+- ✅ **Story Architecture**: Complete database schema, generation pipeline, multi-document synthesis (v0.5.5)
 - ✅ **Entity Extraction**: LLM identifies companies, products, and people from article clusters
 - ✅ **Topic Auto-Classification**: Stories automatically tagged with relevant topics
 - ✅ **Story API Endpoints**: RESTful endpoints for generating and retrieving stories (Issues #47, #55)
@@ -241,7 +247,7 @@ NewsBrief follows **local-first principles** with story-first aggregation:
 │           Story-First Frontend              │
 │            (HTMX + Jinja2)                 │
 │     Landing: Stories → Story Detail         │
-│              [v0.5.5]                       │
+│              [v0.6.1]                       │
 ├─────────────────────────────────────────────┤
 │              FastAPI Server                 │
 │         (REST API + Templates)              │
@@ -403,10 +409,10 @@ Transform from article-centric to story-based aggregation
 
 **See**: [Implementation Plan](docs/project-management/IMPLEMENTATION_PLAN.md) | [Detailed Backlog](docs/planning/STORY_ARCHITECTURE_BACKLOG.md)
 
-### **v0.6.0 - Enhanced Intelligence**
-- [ ] Configurable time windows (12h, 24h, 48h, 1w)
-- [ ] Topic grouping (Security, AI, DevTools sections)
-- [ ] Dynamic story generation (quality-based)
+### **v0.6.0 - Enhanced Intelligence** - 🚧 IN PROGRESS
+- [x] **v0.6.1 - Enhanced Clustering**: Entity extraction, semantic similarity, quality scoring ✅ COMPLETE (Dec 2025)
+- [ ] **v0.6.2 - Performance & Quality**: UI polish, score refinements, filter fixes (Q1 2026)
+- [ ] **v0.6.3 - Personalization**: User preferences, topic prioritization, bookmarks (Q1 2026)
 - [ ] Vector embeddings for better clustering
 - [ ] Full-text search (SQLite FTS5)
 
@@ -420,7 +426,8 @@ Development is organized with GitHub Projects and Milestones for clear visibilit
 
 **Milestones**:
 - [v0.5.5 - Story Architecture](https://github.com/Deim0s13/newsbrief/milestone/1) - ✅ **COMPLETE** (Nov 2025)
-- [v0.6.0 - Intelligence & Polish](https://github.com/Deim0s13/newsbrief/milestone/2) (8 issues) - Due: Q1 2026
+- [v0.6.1 - Enhanced Clustering](https://github.com/Deim0s13/newsbrief/releases/tag/v0.6.1) - ✅ **COMPLETE** (Dec 2025)
+- [v0.6.0 - Intelligence & Polish](https://github.com/Deim0s13/newsbrief/milestone/2) - 🚧 IN PROGRESS (Q1 2026)
 - [v0.7.0 - Infrastructure](https://github.com/Deim0s13/newsbrief/milestone/3) (13 issues) - Due: Q2 2026
 
 **Epics** (via labels):
