@@ -205,9 +205,44 @@ On the main Articles page (`/articles`), the "Skim View" toggle only reduces fon
 
 ---
 
+## ⚠️ Medium Priority Issues (Continued)
+
+### Issue 6: Filter Options Not Working
+**Severity**: MEDIUM  
+**User Impact**: Cannot filter articles or stories
+
+**Description**: 
+None of the filter options (topic filters, sorting options, etc.) are functioning on the Articles page.
+
+**Steps to Reproduce**:
+1. Navigate to Articles page
+2. Try to select a topic filter (e.g., "AI/ML", "Cloud/K8s")
+3. Observe: No filtering occurs, all articles still displayed
+4. Try other filter/sort options
+5. Observe: No change in displayed articles
+
+**Expected**:
+- Topic filter should show only articles matching selected topic
+- Sort options should reorder articles
+- Filters should persist across page loads
+
+**Investigation Needed**:
+- Check if JavaScript event listeners are attached
+- Verify API endpoints for filtered queries
+- Check if filter state is being managed correctly
+- Test if this affects Stories page as well
+
+**Files to Check**:
+- `app/static/js/app.js` (filter event handlers)
+- `app/static/js/stories.js` (if stories page affected)
+- `app/main.py` (filter/sort API endpoints)
+- `app/templates/index.html` (filter UI elements)
+
+---
+
 ## ℹ️ Low Priority Issues
 
-### Issue 6: Model and Status Fields Empty in Story Detail
+### Issue 7: Model and Status Fields Empty in Story Detail
 **Severity**: LOW  
 **User Impact**: Missing metadata display
 
@@ -232,7 +267,7 @@ LIMIT 5;
 
 ## 📊 Performance Issues (Non-Blocking)
 
-### Issue 7: Feed Refresh Takes 2.5 Minutes
+### Issue 8: Feed Refresh Takes 2.5 Minutes
 **Severity**: LOW (acceptable for 22 feeds)  
 **User Impact**: Longer wait time for feed refresh
 
@@ -317,9 +352,10 @@ LIMIT 5;
 **SHOULD FIX**:
 3. Ranking scores (MEDIUM - functionality)
 4. Importance scores (MEDIUM - functionality)
+5. Filter options not working (MEDIUM - functionality)
 
 **NICE TO HAVE**:
-5. Skim view (MEDIUM - UX feature)
-6. Model/Status display (LOW - metadata)
-7. Performance optimization (LOW - acceptable currently)
+6. Skim view (MEDIUM - UX feature)
+7. Model/Status display (LOW - metadata)
+8. Performance optimization (LOW - acceptable currently)
 

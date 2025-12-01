@@ -69,7 +69,16 @@ The skim/detail view toggle on the main articles page only reduces font size ins
 
 ---
 
-### 6. Missing Metadata Display
+### 6. Filter Options Not Working
+**Impact**: Medium - cannot filter articles by topic  
+**Workaround**: Scroll through all articles  
+**Status**: Tracked for v0.6.2
+
+Topic filters and sort options on the Articles page are not functional. All articles are displayed regardless of filter selection.
+
+---
+
+### 7. Missing Metadata Display
 **Impact**: Minor - informational only  
 **Workaround**: Data is in database, just not displayed  
 **Status**: Tracked for v0.6.2
@@ -78,7 +87,7 @@ Story detail pages don't display the LLM model used or story status, though this
 
 ---
 
-### 7. Feed Refresh Performance
+### 8. Feed Refresh Performance
 **Impact**: Low - acceptable for current scale  
 **Workaround**: None needed  
 **Status**: Monitoring
@@ -102,6 +111,7 @@ Refreshing all 22 feeds takes approximately 2.5 minutes. This is acceptable for 
 - ⚠️ HTML tags in some article summaries
 - ⚠️ Topic mismatches in story pages
 - ⚠️ Similar scores across articles/stories
+- ⚠️ Filter options not responding
 - ⚠️ Skim view not fully working on main page
 
 **These issues DO NOT affect:**
@@ -126,6 +136,11 @@ Refreshing all 22 feeds takes approximately 2.5 minutes. This is acceptable for 
 ### For Score Uniformity
 - Stories are still properly ordered by generation time
 - Quality differences exist in the underlying data
+
+### For Filter Options
+- Manually scroll through all articles to find desired topic
+- Articles are still correctly classified (just filtering UI not working)
+- Or use search functionality if available
 
 ### For Skim View
 - Use skim/detail toggle in individual article pages (works correctly)
