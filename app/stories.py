@@ -1154,6 +1154,10 @@ def generate_stories_simple(
 
     # Get articles from time window (fetch ALL data once to cache it)
     cutoff_time = datetime.now(UTC) - timedelta(hours=time_window_hours)
+    # Convert to ISO format without timezone for SQLite TEXT comparison compatibility
+    # SQLite stores as 'YYYY-MM-DDTHH:MM:SS', Python passes 'YYYY-MM-DD HH:MM:SS+00:00'
+    # Without this, string comparison fails (space < 'T' in ASCII)
+    cutoff_time_str = cutoff_time.replace(tzinfo=None).isoformat()
 
     data_fetch_start = time.time()
     articles = session.execute(
@@ -1166,7 +1170,7 @@ def generate_stories_simple(
         ORDER BY published DESC
     """
         ),
-        {"cutoff_time": cutoff_time},
+        {"cutoff_time": cutoff_time_str},
     ).fetchall()
     data_fetch_time = time.time() - data_fetch_start
 
