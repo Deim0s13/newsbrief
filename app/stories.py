@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import time
@@ -22,28 +23,16 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
-from sqlalchemy import (
-    Boolean,
-    Column,
-    DateTime,
-    Float,
-    ForeignKey,
-    Integer,
-    String,
-    Text,
-    desc,
-    text,
-)
+from sqlalchemy import (Boolean, Column, DateTime, Float, ForeignKey, Integer,
+                        String, Text, desc, text)
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session, relationship
 
+from .entities import (ExtractedEntities, extract_and_cache_entities,
+                       get_entity_overlap)
 from .llm import get_llm_service
-from .models import (
-    ItemOut,
-    StoryOut,
-    deserialize_story_json_field,
-    serialize_story_json_field,
-)
+from .models import (ItemOut, StoryOut, deserialize_story_json_field,
+                     serialize_story_json_field)
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +43,17 @@ STORY_ARCHIVE_DAYS = int(
 STORY_DELETE_DAYS = int(
     os.getenv("STORY_DELETE_DAYS", "30")
 )  # Hard delete after 30 days
+
+# Similarity Tuning (v0.6.1) - Adjust these for clustering behavior
+SIMILARITY_KEYWORD_WEIGHT = float(
+    os.getenv("SIMILARITY_KEYWORD_WEIGHT", "0.3")
+)  # Weight for keyword overlap
+SIMILARITY_ENTITY_WEIGHT = float(
+    os.getenv("SIMILARITY_ENTITY_WEIGHT", "0.5")
+)  # Weight for entity overlap
+SIMILARITY_TOPIC_WEIGHT = float(
+    os.getenv("SIMILARITY_TOPIC_WEIGHT", "0.2")
+)  # Weight for same-topic bonus
 
 # ORM Base
 Base = declarative_base()  # type: ignore
@@ -77,6 +77,7 @@ class Story(Base):  # type: ignore[misc,valid-type]
     article_count = Column(Integer, default=0)
     importance_score = Column(Float, default=0.0)
     freshness_score = Column(Float, default=0.0)
+    quality_score = Column(Float, default=0.0)
     cluster_method = Column(String)
     story_hash = Column(String, unique=True)
     generated_at = Column(DateTime, default=lambda: datetime.now(UTC))
@@ -528,19 +529,33 @@ def _story_db_to_model(  # type: ignore[misc]
 # Story Generation Functions
 
 
-def _extract_keywords(title: str) -> Set[str]:
+def _extract_keywords(
+    title: str,
+    summary: str = "",
+    include_bigrams: bool = True,
+) -> Set[str]:
     """
-    Extract meaningful keywords from article title.
+    Extract keywords and phrases from article text for clustering (v0.6.1 enhanced).
 
-    Simple extraction: lowercase, remove common words, split on non-alpha.
+    Enhancements over v0.5.x:
+    - Uses both title AND summary for richer semantic content
+    - Includes bigrams (2-word phrases) for phrase matching
+    - Expanded stop words list for better filtering
+    - Title appears 2x to emphasize importance
 
     Args:
         title: Article title
+        summary: Article summary/content (optional)
+        include_bigrams: Whether to include bigrams (2-word phrases)
 
     Returns:
-        Set of keywords
+        Set of keywords and bigrams (lowercase, no stop words)
+
+    Examples:
+        >>> _extract_keywords("OpenAI Releases GPT-4")
+        {'openai', 'releases', 'gpt', 'openai_releases', 'releases_gpt'}
     """
-    # Common stop words to ignore
+    # Expanded stop words list (common English words with low semantic value)
     stop_words = {
         "a",
         "an",
@@ -553,7 +568,10 @@ def _extract_keywords(title: str) -> Set[str]:
         "for",
         "from",
         "has",
+        "have",
         "he",
+        "her",
+        "his",
         "in",
         "is",
         "it",
@@ -564,15 +582,88 @@ def _extract_keywords(title: str) -> Set[str]:
         "the",
         "to",
         "was",
+        "were",
         "will",
         "with",
+        "this",
+        "but",
+        "they",
+        "been",
+        "can",
+        "would",
+        "should",
+        "could",
+        "may",
+        "might",
+        "must",
+        "shall",
+        "their",
+        "them",
+        "these",
+        "those",
+        "who",
+        "what",
+        "where",
+        "when",
+        "why",
+        "how",
+        "which",
+        "or",
+        "if",
+        "so",
+        "than",
+        "such",
+        "into",
+        "through",
+        "about",
+        "after",
+        "before",
+        "between",
+        "under",
+        "over",
+        "our",
+        "your",
+        "we",
+        "you",
+        "not",
+        "no",
+        "nor",
+        "only",
+        "own",
+        "same",
+        "out",
+        "up",
+        "down",
+        "just",
+        "now",
+        "then",
+        "also",
+        "more",
+        "most",
+        "other",
+        "some",
+        "all",
     }
 
-    # Lowercase and extract words (alphanumeric + some punctuation)
-    words = re.findall(r"\b[a-z0-9]+\b", title.lower())
+    # Combine title and summary (title gets more weight by appearing first)
+    text = f"{title} {title} {summary}".strip()  # Title appears 2x for emphasis
+
+    # Lowercase and extract words (alphanumeric)
+    words = re.findall(r"\b[a-z0-9]+\b", text.lower())
 
     # Filter out stop words and short words (< 3 chars)
-    keywords = {w for w in words if len(w) >= 3 and w not in stop_words}
+    filtered_words = [w for w in words if len(w) >= 3 and w not in stop_words]
+
+    # Create keyword set (unigrams)
+    keywords = set(filtered_words)
+
+    # Add bigrams for phrase matching (e.g., "machine learning", "ai model")
+    if include_bigrams and len(filtered_words) > 1:
+        bigrams = {
+            f"{filtered_words[i]}_{filtered_words[i+1]}"
+            for i in range(len(filtered_words) - 1)
+        }
+        keywords.update(bigrams)
 
     return keywords
 
@@ -595,6 +686,212 @@ def _calculate_keyword_overlap(keywords1: Set[str], keywords2: Set[str]) -> floa
     union = len(keywords1 | keywords2)
 
     return intersection / union if union > 0 else 0.0
+
+
+def _calculate_combined_similarity(
+    keywords1: Set[str],
+    keywords2: Set[str],
+    entities1: Optional[ExtractedEntities],
+    entities2: Optional[ExtractedEntities],
+    topic1: Optional[str] = None,
+    topic2: Optional[str] = None,
+    keyword_weight: Optional[float] = None,
+    entity_weight: Optional[float] = None,
+    topic_weight: Optional[float] = None,
+) -> float:
+    """
+    Calculate combined similarity using keywords, entities, and topic (v0.6.1 enhanced).
+
+    Similarity Components:
+    - 30% keyword overlap (titles + summaries + bigrams)
+    - 50% entity overlap (companies, products, people, technologies, locations)
+    - 20% topic bonus (same topic = +20%, different = 0%)
+
+    Args:
+        keywords1: First article keywords
+        keywords2: Second article keywords
+        entities1: First article entities (optional)
+        entities2: Second article entities (optional)
+        topic1: First article topic (optional)
+        topic2: Second article topic (optional)
+        keyword_weight: Weight for keyword similarity (default: from config)
+        entity_weight: Weight for entity similarity (default: from config)
+        topic_weight: Weight for topic bonus (default: from config)
+
+    Returns:
+        Combined similarity score (0.0 to 1.0)
+    """
+    # Use configuration defaults if not provided
+    if keyword_weight is None:
+        keyword_weight = SIMILARITY_KEYWORD_WEIGHT
+    if entity_weight is None:
+        entity_weight = SIMILARITY_ENTITY_WEIGHT
+    if topic_weight is None:
+        topic_weight = SIMILARITY_TOPIC_WEIGHT
+
+    # Calculate keyword similarity
+    keyword_sim = _calculate_keyword_overlap(keywords1, keywords2)
+
+    # Calculate entity similarity if both entities exist
+    if entities1 and entities2:
+        entity_sim = get_entity_overlap(entities1, entities2)
+    else:
+        # If no entities, fall back to keywords + topic only
+        entity_sim = 0.0
+        # Redistribute entity weight to keyword weight
+        keyword_weight = keyword_weight + entity_weight
+        entity_weight = 0.0
+
+    # Calculate topic bonus (binary: same topic = 1.0, different = 0.0)
+    topic_bonus = 0.0
+    if topic1 and topic2 and topic1 == topic2:
+        topic_bonus = 1.0
+
+    # Weighted combination
+    combined_sim = (
+        (keyword_weight * keyword_sim)
+        + (entity_weight * entity_sim)
+        + (topic_weight * topic_bonus)
+    )
+
+    return combined_sim
+
+
+def _calculate_importance_score(
+    article_count: int,
+    unique_source_count: int,
+    entity_count: int,
+) -> float:
+    """
+    Calculate story importance based on article count, source diversity, and entity richness.
+
+    Formula: 40% article count + 30% source diversity + 30% entity richness
+
+    Args:
+        article_count: Number of articles in the story
+        unique_source_count: Number of unique sources (feeds)
+        entity_count: Number of unique entities across all articles
+
+    Returns:
+        Importance score (0.0 to 1.0)
+    """
+    # Article count score (cap at 10 articles = 1.0)
+    article_score = min(article_count / 10.0, 1.0)
+
+    # Source diversity score (cap at 5 unique sources = 1.0)
+    source_score = min(unique_source_count / 5.0, 1.0)
+
+    # Entity richness score (cap at 10 unique entities = 1.0)
+    entity_score = min(entity_count / 10.0, 1.0)
+
+    # Weighted combination
+    importance = 0.4 * article_score + 0.3 * source_score + 0.3 * entity_score
+
+    return importance
+
+
+def _calculate_freshness_score(
+    article_published_times: List[datetime],
+    half_life_hours: float = 12.0,
+) -> float:
+    """
+    Calculate story freshness based on article ages with exponential decay.
+
+    Uses exponential decay: freshness = exp(-avg_age / half_life)
+    Default half-life: 12 hours (story is 50% fresh after 12 hours)
+
+    Args:
+        article_published_times: List of article publication datetimes
+        half_life_hours: Half-life for exponential decay (default: 12 hours)
+
+    Returns:
+        Freshness score (0.0 to 1.0)
+    """
+    if not article_published_times:
+        return 0.5  # Default for empty
+
+    now = datetime.now(UTC)
+
+    # Calculate ages in hours
+    ages_hours = []
+    for pub_time in article_published_times:
+        # Handle timezone-aware and naive datetimes
+        if pub_time.tzinfo is None:
+            pub_time = pub_time.replace(tzinfo=UTC)
+        age_seconds = (now - pub_time).total_seconds()
+        age_hours = age_seconds / 3600.0
+        ages_hours.append(age_hours)
+
+    # Average age
+    avg_age_hours = sum(ages_hours) / len(ages_hours)
+
+    # Exponential decay
+    freshness = math.exp(-avg_age_hours / half_life_hours)
+
+    return min(freshness, 1.0)  # Cap at 1.0
+
+
+def _calculate_source_quality_score(
+    feed_health_scores: List[float],
+) -> float:
+    """
+    Calculate story source quality based on feed health scores.
+
+    Args:
+        feed_health_scores: List of feed health scores (0-100)
+
+    Returns:
+        Source quality score (0.0 to 1.0)
+    """
+    if not feed_health_scores:
+        return 0.5  # Default for empty
+
+    # Average health score
+    avg_health = sum(feed_health_scores) / len(feed_health_scores)
+
+    # Normalize to 0-1 (health scores are 0-100)
+    quality = avg_health / 100.0
+
+    return min(quality, 1.0)  # Cap at 1.0
+
+
+def _calculate_story_scores(
+    article_count: int,
+    unique_source_count: int,
+    entity_count: int,
+    article_published_times: List[datetime],
+    feed_health_scores: List[float],
+) -> Tuple[float, float, float]:
+    """
+    Calculate all story scores (importance, freshness, quality).
+
+    Args:
+        article_count: Number of articles in story
+        unique_source_count: Number of unique sources
+        entity_count: Number of unique entities
+        article_published_times: List of article publication times
+        feed_health_scores: List of feed health scores
+
+    Returns:
+        Tuple of (importance_score, freshness_score, quality_score)
+    """
+    # Calculate individual scores
+    importance = _calculate_importance_score(
+        article_count, unique_source_count, entity_count
+    )
+    freshness = _calculate_freshness_score(article_published_times)
+    source_quality = _calculate_source_quality_score(feed_health_scores)
+
+    # Calculate overall quality score (weighted combination)
+    # 40% importance + 30% freshness + 20% source quality + 10% engagement (future)
+    quality = (
+        0.4 * importance
+        + 0.3 * freshness
+        + 0.2 * source_quality
+        + 0.1 * 0.5  # Engagement placeholder (0.5 neutral)
+    )
+
+    return (importance, freshness, quality)
 
 
 def _generate_story_synthesis(
@@ -811,22 +1108,29 @@ def generate_stories_simple(
     session: Session,
     time_window_hours: int = 24,
     min_articles_per_story: int = 1,
-    similarity_threshold: float = 0.3,
+    similarity_threshold: float = 0.25,  # Lowered from 0.3 for v0.6.1 entity-based clustering
     model: str = "llama3.1:8b",
     max_workers: int = 3,  # Parallel LLM calls
-) -> List[int]:
+) -> Dict[str, Any]:
     """
-    Generate stories from recent articles using hybrid clustering (OPTIMIZED).
+    Generate stories from recent articles using hybrid clustering (OPTIMIZED + ENTITIES v0.6.1).
 
     Clustering approach:
     1. Group by topic (coarse filter)
-    2. Within each topic, cluster by title keyword overlap
-    3. Generate synthesis for each cluster (IN PARALLEL)
-    4. Store stories in database (BATCHED COMMITS)
+    2. Extract entities (companies, products, people, technologies, locations)
+    3. Within each topic, cluster by combined keyword + entity similarity
+    4. Generate synthesis for each cluster (IN PARALLEL)
+    5. Store stories in database (BATCHED COMMITS)
+
+    Similarity Calculation (v0.6.1):
+    - 40% keyword overlap (title-based)
+    - 60% entity overlap (LLM-extracted entities)
+    - Graceful fallback to pure keyword similarity if entity extraction fails
 
     Optimizations:
     - Parallel LLM synthesis calls using ThreadPoolExecutor
     - Cached article data to avoid redundant queries
+    - Cached entity extractions to avoid redundant LLM calls
     - Batched database commits
     - Performance instrumentation
 
@@ -834,8 +1138,8 @@ def generate_stories_simple(
         session: SQLAlchemy session
         time_window_hours: Look back this many hours for articles
         min_articles_per_story: Minimum articles per story (1 = allow single-article stories)
-        similarity_threshold: Minimum keyword overlap to cluster articles (0.0-1.0)
-        model: LLM model for synthesis
+        similarity_threshold: Minimum combined similarity to cluster articles (0.0-1.0)
+        model: LLM model for synthesis and entity extraction
         max_workers: Maximum parallel LLM synthesis calls (default: 3)
 
     Returns:
@@ -850,6 +1154,10 @@ def generate_stories_simple(
 
     # Get articles from time window (fetch ALL data once to cache it)
     cutoff_time = datetime.now(UTC) - timedelta(hours=time_window_hours)
+    # Convert to ISO format without timezone for SQLite TEXT comparison compatibility
+    # SQLite stores as 'YYYY-MM-DDTHH:MM:SS', Python passes 'YYYY-MM-DD HH:MM:SS+00:00'
+    # Without this, string comparison fails (space < 'T' in ASCII)
+    cutoff_time_str = cutoff_time.replace(tzinfo=None).isoformat()
 
     data_fetch_start = time.time()
     articles = session.execute(
@@ -862,13 +1170,18 @@ def generate_stories_simple(
         ORDER BY published DESC
     """
         ),
-        {"cutoff_time": cutoff_time},
+        {"cutoff_time": cutoff_time_str},
     ).fetchall()
     data_fetch_time = time.time() - data_fetch_start
 
     if not articles:
         logger.info("No articles found in time window")
-        return []
+        return {
+            "story_ids": [],
+            "articles_found": 0,
+            "clusters_created": 0,
+            "duplicates_skipped": 0,
+        }
 
     logger.info(
         f"Found {len(articles)} articles in time window ({data_fetch_time:.2f}s)"
@@ -901,30 +1214,78 @@ def generate_stories_simple(
     for topic, topic_articles in topic_groups.items():
         logger.debug(f"Processing topic '{topic}' with {len(topic_articles)} articles")
 
-        # Extract keywords for each article
+        # Extract keywords for each article (v0.6.1 - using title + summary + bigrams)
         article_keywords = {}
         for article in topic_articles:
             article_id = int(article[0])  # type: ignore[index]
             title = str(article[1])  # type: ignore[index]
-            article_keywords[article_id] = _extract_keywords(title)
+            summary = article[4] or article[5] or ""  # type: ignore[index]
+            article_keywords[article_id] = _extract_keywords(
+                title=title,
+                summary=str(summary),
+                include_bigrams=True,
+            )
+
+        # Extract entities for each article (v0.6.1 - enhanced clustering)
+        article_entities = {}
+        entity_extraction_start = time.time()
+        for article in topic_articles:
+            article_id = int(article[0])  # type: ignore[index]
+            title = str(article[1])  # type: ignore[index]
+            summary = article[4] or article[5] or ""  # type: ignore[index]
+
+            try:
+                entities = extract_and_cache_entities(
+                    article_id=article_id,
+                    title=title,
+                    summary=str(summary),
+                    session=session,
+                    model=model,
+                    use_cache=True,
+                )
+                article_entities[article_id] = entities
+            except Exception as e:
+                logger.warning(
+                    f"Failed to extract entities for article {article_id}: {e}"
+                )
+                article_entities[article_id] = None
+
+        entity_extraction_time = time.time() - entity_extraction_start
+        logger.debug(
+            f"Entity extraction for {len(topic_articles)} articles took {entity_extraction_time:.2f}s"
+        )
 
         # Greedy clustering: iterate through articles, add to existing cluster or create new one
         topic_clusters: List[List[int]] = []
 
         for article in topic_articles:
             article_id = int(article[0])  # type: ignore[index]
+            article_topic = article[2]  # type: ignore[index]
             keywords = article_keywords[article_id]
+            entities = article_entities.get(article_id)
 
             # Find best matching cluster
             best_cluster = None
             best_similarity = 0.0
 
             for cluster in topic_clusters:
-                # Calculate average similarity to cluster
-                similarities = [
-                    _calculate_keyword_overlap(keywords, article_keywords[aid])
-                    for aid in cluster
-                ]
+                # Calculate average combined similarity to cluster (keywords + entities + topic)
+                similarities = []
+                for aid in cluster:
+                    # Get cached article data for topic
+                    other_article = articles_cache.get(aid)
+                    other_topic = other_article["topic"] if other_article else None
+
+                    sim = _calculate_combined_similarity(
+                        keywords,
+                        article_keywords[aid],
+                        entities,
+                        article_entities.get(aid),
+                        topic1=article_topic,
+                        topic2=other_topic,
+                    )
+                    similarities.append(sim)
+
                 avg_similarity = (
                     sum(similarities) / len(similarities) if similarities else 0.0
                 )
@@ -954,13 +1315,18 @@ def generate_stories_simple(
 
     if not clusters:
         logger.info("No clusters meet minimum article threshold")
-        return []
+        return {
+            "story_ids": [],
+            "articles_found": len(articles),
+            "clusters_created": 0,
+            "duplicates_skipped": 0,
+        }
 
     # Step 3: Generate story synthesis for ALL clusters IN PARALLEL
     logger.info(f"Starting parallel LLM synthesis with {max_workers} workers...")
     synthesis_start = time.time()
 
-    # Prepare cluster data with cached article info
+    # Prepare cluster data with cached article info and calculate scores (v0.6.1)
     cluster_data_list = []
     for cluster_article_ids in clusters:
         # Calculate metadata from cached data
@@ -981,13 +1347,64 @@ def generate_stories_simple(
                 time_window_end.replace("Z", "+00:00")
             )
 
+        # Convert published times to datetime objects
+        published_datetimes = []
+        for pt in published_times:
+            if isinstance(pt, str):
+                pt = datetime.fromisoformat(pt.replace("Z", "+00:00"))
+            elif pt.tzinfo is None:
+                pt = pt.replace(tzinfo=UTC)
+            published_datetimes.append(pt)
+
+        # Calculate story scores (v0.6.1 quality scoring)
+        # Get unique sources (feed IDs)
+        feed_ids = {art["id"] for art in cluster_articles if "id" in art}
+        unique_source_count = len(feed_ids)
+
+        # Get unique entities from articles (if available)
+        entity_count = 0
+        # Note: Entities will be available after entity extraction (#40)
+        # For now, use a placeholder based on article count
+        entity_count = min(len(cluster_article_ids) * 2, 10)  # Estimate
+
+        # Get feed health scores (query from database)
+        feed_health_scores = []
+        if feed_ids:
+            feed_id_list = list(feed_ids)
+            placeholders_health = ", ".join(
+                [f":fid_{i}" for i in range(len(feed_id_list))]
+            )
+            health_params = {f"fid_{i}": fid for i, fid in enumerate(feed_id_list)}
+            health_results = session.execute(
+                text(
+                    f"SELECT health_score FROM feeds WHERE id IN ({placeholders_health})"
+                ),
+                health_params,
+            ).fetchall()
+            feed_health_scores = [
+                row[0] for row in health_results if row[0] is not None
+            ]
+
+        if not feed_health_scores:
+            feed_health_scores = [100.0]  # Default to perfect health
+
+        # Calculate scores using proper algorithms
+        importance, freshness, quality = _calculate_story_scores(
+            article_count=len(cluster_article_ids),
+            unique_source_count=unique_source_count,
+            entity_count=entity_count,
+            article_published_times=published_datetimes,
+            feed_health_scores=feed_health_scores,
+        )
+
         cluster_data_list.append(
             {
                 "article_ids": cluster_article_ids,
                 "time_window_start": time_window_start,
                 "time_window_end": time_window_end,
-                "importance_score": min(1.0, 0.3 + (len(cluster_article_ids) * 0.1)),
-                "freshness_score": 1.0,
+                "importance_score": importance,
+                "freshness_score": freshness,
+                "quality_score": quality,
                 "cluster_hash": hashlib.md5(
                     json.dumps(sorted(cluster_article_ids)).encode()
                 ).hexdigest(),
@@ -1109,6 +1526,7 @@ def generate_stories_simple(
                 article_count=len(cluster_data["article_ids"]),
                 importance_score=cluster_data["importance_score"],
                 freshness_score=cluster_data["freshness_score"],
+                quality_score=cluster_data["quality_score"],  # v0.6.1 quality scoring
                 cluster_method="hybrid_topic_keywords_optimized",
                 story_hash=cluster_data["cluster_hash"],
                 generated_at=datetime.now(UTC),
@@ -1161,7 +1579,12 @@ def generate_stories_simple(
     except Exception as e:
         session.rollback()
         logger.error(f"Failed to commit stories: {e}", exc_info=True)
-        return []
+        return {
+            "story_ids": [],
+            "articles_found": len(articles),
+            "clusters_created": len(clusters),
+            "duplicates_skipped": skipped_duplicates,
+        }
 
     overall_time = time.time() - overall_start
 
@@ -1176,4 +1599,10 @@ def generate_stories_simple(
             f"(fetch: {data_fetch_time:.2f}s, synthesis: {synthesis_time:.2f}s, db: {db_time:.2f}s)"
         )
 
-    return story_ids
+    # v0.6.1: Return detailed stats for better UX
+    return {
+        "story_ids": story_ids,
+        "articles_found": len(articles),
+        "clusters_created": len(clusters),
+        "duplicates_skipped": skipped_duplicates,
+    }

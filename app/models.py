@@ -430,19 +430,24 @@ class StoryGenerationRequest(BaseModel):
         1, description="Minimum articles to form a story", ge=1
     )
     similarity_threshold: float = Field(
-        0.3, description="Keyword similarity threshold (0.0-1.0)", ge=0.0, le=1.0
+        0.25, description="Similarity threshold (0.0-1.0) - lowered for v0.6.1 entity-based clustering", ge=0.0, le=1.0
     )
     model: str = Field("llama3.1:8b", description="LLM model to use for synthesis")
 
 
 class StoryGenerationResponse(BaseModel):
-    """Response from story generation."""
+    """Response from story generation (v0.6.1 enhanced)."""
 
     success: bool
     stories_generated: int
     story_ids: List[int]
     time_window_hours: int
     model: str
+    # v0.6.1: Enhanced feedback for 0-stories UX
+    articles_found: int = 0
+    clusters_created: int = 0
+    duplicates_skipped: int = 0
+    message: Optional[str] = None
 
 
 # Story JSON field serialization helpers

@@ -11,14 +11,9 @@ from typing import List, Optional
 from sqlalchemy import text
 
 from .db import session_scope
-from .models import (
-    ChunkSummary,
-    StructuredSummary,
-    TextChunk,
-    create_cache_key,
-    create_content_hash,
-    extract_first_sentences,
-)
+from .models import (ChunkSummary, StructuredSummary, TextChunk,
+                     create_cache_key, create_content_hash,
+                     extract_first_sentences)
 
 # Configure logging
 logger = logging.getLogger(__name__)

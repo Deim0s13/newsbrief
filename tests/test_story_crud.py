@@ -10,33 +10,26 @@ from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.stories import (
-    Base,
-    Story,
-    StoryArticle,
-    archive_story,
-    cleanup_archived_stories,
-    create_story,
-    delete_story,
-    get_stories,
-    get_story_by_id,
-    link_articles_to_story,
-    update_story,
-)
+from app.stories import (Base, Story, StoryArticle, archive_story,
+                         cleanup_archived_stories, create_story, delete_story,
+                         get_stories, get_story_by_id, link_articles_to_story,
+                         update_story)
 
 
 def setup_test_db():
     """Create a temporary test database."""
     from sqlalchemy import text
-    
+
     # Use temporary in-memory SQLite database
     engine = create_engine("sqlite:///:memory:", echo=False)
     Base.metadata.create_all(engine)
-    
+
     # Create items table for article linking tests
     # (items table is defined in app.db, not in stories Base)
     with engine.connect() as conn:
-        conn.execute(text("""
+        conn.execute(
+            text(
+                """
             CREATE TABLE IF NOT EXISTS items (
                 id INTEGER PRIMARY KEY,
                 title TEXT,
@@ -58,18 +51,24 @@ def setup_test_db():
                 source_weight REAL DEFAULT 1.0,
                 feed_id INTEGER
             )
-        """))
-        
+        """
+            )
+        )
+
         # Insert test articles
-        conn.execute(text("""
+        conn.execute(
+            text(
+                """
             INSERT INTO items (id, title, url, summary, ranking_score, topic)
             VALUES 
                 (10, 'Test Article 1', 'http://example.com/1', 'Summary 1', 0.9, 'AI/ML'),
                 (20, 'Test Article 2', 'http://example.com/2', 'Summary 2', 0.8, 'Cloud'),
                 (30, 'Test Article 3', 'http://example.com/3', 'Summary 3', 0.7, 'Security')
-        """))
+        """
+            )
+        )
         conn.commit()
-    
+
     SessionLocal = sessionmaker(bind=engine)
     return SessionLocal()
 

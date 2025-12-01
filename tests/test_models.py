@@ -5,11 +5,8 @@ Validates that StoryOut validators and serialization helpers work correctly.
 """
 from datetime import datetime
 
-from app.models import (
-    StoryOut,
-    deserialize_story_json_field,
-    serialize_story_json_field,
-)
+from app.models import (StoryOut, deserialize_story_json_field,
+                        serialize_story_json_field)
 
 
 def test_valid_story():
