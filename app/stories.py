@@ -1108,7 +1108,7 @@ def generate_stories_simple(
     session: Session,
     time_window_hours: int = 24,
     min_articles_per_story: int = 1,
-    similarity_threshold: float = 0.3,
+    similarity_threshold: float = 0.25,  # Lowered from 0.3 for v0.6.1 entity-based clustering
     model: str = "llama3.1:8b",
     max_workers: int = 3,  # Parallel LLM calls
 ) -> Dict[str, Any]:
