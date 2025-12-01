@@ -1,0 +1,23 @@
+Collecting pip-tools
+  Downloading pip_tools-7.5.2-py3-none-any.whl.metadata (26 kB)
+Collecting build>=1.0.0 (from pip-tools)
+  Downloading build-1.3.0-py3-none-any.whl.metadata (5.6 kB)
+Collecting click>=8 (from pip-tools)
+  Downloading click-8.3.1-py3-none-any.whl.metadata (2.6 kB)
+Requirement already satisfied: pip>=22.2 in /opt/hostedtoolcache/Python/3.11.14/x64/lib/python3.11/site-packages (from pip-tools) (25.3)
+Collecting pyproject_hooks (from pip-tools)
+  Downloading pyproject_hooks-1.2.0-py3-none-any.whl.metadata (1.3 kB)
+Requirement already satisfied: setuptools in /opt/hostedtoolcache/Python/3.11.14/x64/lib/python3.11/site-packages (from pip-tools) (79.0.1)
+Collecting wheel (from pip-tools)
+  Downloading wheel-0.45.1-py3-none-any.whl.metadata (2.3 kB)
+Collecting packaging>=19.1 (from build>=1.0.0->pip-tools)
+  Downloading packaging-25.0-py3-none-any.whl.metadata (3.3 kB)
+Downloading pip_tools-7.5.2-py3-none-any.whl (66 kB)
+Downloading build-1.3.0-py3-none-any.whl (23 kB)
+Downloading click-8.3.1-py3-none-any.whl (108 kB)
+Downloading packaging-25.0-py3-none-any.whl (66 kB)
+Downloading pyproject_hooks-1.2.0-py3-none-any.whl (10 kB)
+Downloading wheel-0.45.1-py3-none-any.whl (72 kB)
+Installing collected packages: wheel, pyproject_hooks, packaging, click, build, pip-tools
+
+Successfully installed build-1.3.0 click-8.3.1 packaging-25.0 pip-tools-7.5.2 pyproject_hooks-1.2.0 wheel-0.45.1
