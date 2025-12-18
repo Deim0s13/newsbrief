@@ -35,14 +35,14 @@ cp data/newsbrief.db data/newsbrief_backup_pre_v0.6.1.db
    ```bash
    sqlite3 data/newsbrief.sqlite3 "SELECT id, title, entities_json, entities_extracted_at, entities_model FROM items WHERE entities_json IS NOT NULL LIMIT 5;"
    ```
-5. [ ] Verify `entities_json` contains structured data with keys:
+5. ✅ Verify `entities_json` contains structured data with keys:
    - `companies`
    - `products`
    - `people`
    - `technologies`
    - `locations`
-6. [ ] Verify `entities_model` is set (e.g., "llama3.2:3b")
-7. [ ] Verify `entities_extracted_at` has a timestamp
+6. ✅ Verify `entities_model` is set (e.g., "llama3.2:3b")
+7. ✅ Verify `entities_extracted_at` has a timestamp
 
 #### Expected Results:
 - ✅ Entities are extracted and stored in database
@@ -66,27 +66,27 @@ sqlite3 data/newsbrief.sqlite3 "SELECT title, entities_json FROM items WHERE ent
 **Goal**: Verify improved clustering with bigrams/trigrams and combined similarity
 
 #### Test Steps:
-1. [ ] Generate stories with tech-focused articles (AI, cloud, etc.)
-2. [ ] Verify similar articles cluster together (e.g., "OpenAI GPT-4" + "OpenAI launches GPT-4")
-3. [ ] Check that articles with shared entities but different keywords cluster correctly
-4. [ ] Verify topic bonus works (same topic = higher similarity)
+1. ✅ Generate stories with tech-focused articles (AI, cloud, etc.)
+2. ✅ Verify similar articles cluster together (e.g., "OpenAI GPT-4" + "OpenAI launches GPT-4")
+3. ✅ Check that articles with shared entities but different keywords cluster correctly
+4. ✅ Verify topic bonus works (same topic = higher similarity)
 
 #### Test Scenarios:
 
 **Scenario 1: Similar AI Articles**
-- [ ] Find 2+ articles about the same AI topic (e.g., ChatGPT, Gemini)
-- [ ] Verify they cluster into the same story
-- [ ] Check story synthesis mentions key entities
+- ✅ Find 2+ articles about the same AI topic (e.g., ChatGPT, Gemini)
+- ✅ Verify they cluster into the same story
+- ✅ Check story synthesis mentions key entities
 
 **Scenario 2: Different Topics**
-- [ ] Find articles about different topics (e.g., AI vs Hardware)
-- [ ] Verify they do NOT cluster together
-- [ ] Check each has its own story
+- ✅ Find articles about different topics (e.g., AI vs Hardware)
+- ✅ Verify they do NOT cluster together
+- ✅ Check each has its own story
 
 **Scenario 3: Bigrams/Trigrams**
-- [ ] Look for articles with phrases like "machine learning", "cloud computing"
-- [ ] Verify these phrases are captured (not just individual words)
-- [ ] Check clustering considers these multi-word terms
+- ✅ Look for articles with phrases like "machine learning", "cloud computing"
+- ✅ Verify these phrases are captured (not just individual words)
+- ✅ Check clustering considers these multi-word terms
 
 #### Expected Results:
 - ✅ Better clustering quality than v0.5.x
@@ -108,13 +108,13 @@ grep "entity_overlap" /path/to/app.log
 **Goal**: Verify stories have importance, freshness, and quality scores
 
 #### Test Steps:
-1. [ ] Generate stories
-2. [ ] Check `stories` table for new score columns:
+1. ✅ Generate stories
+2. ✅ Check `stories` table for new score columns:
    ```bash
    sqlite3 data/newsbrief.sqlite3 "SELECT id, title, importance_score, freshness_score, quality_score, generated_at FROM stories ORDER BY generated_at DESC LIMIT 10;"
    ```
-3. [ ] Verify scores are in range `0.0 - 1.0`
-4. [ ] Verify scores reflect:
+3. ✅ Verify scores are in range `0.0 - 1.0`
+4. ✅ Verify scores reflect:
    - **Importance**: More articles = higher score
    - **Freshness**: Newer articles = higher score
    - **Quality**: Better source health = higher score
