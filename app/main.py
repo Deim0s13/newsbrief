@@ -16,6 +16,7 @@ from .feeds import (MAX_ITEMS_PER_FEED, MAX_ITEMS_PER_REFRESH,
                     MAX_REFRESH_TIME_SECONDS, RefreshStats, add_feed,
                     export_opml, fetch_and_store, import_opml,
                     import_opml_content, list_feeds,
+                    migrate_sanitize_existing_summaries,
                     recalculate_rankings_and_topics, update_feed_health_scores,
                     update_feed_names)
 from .llm import (DEFAULT_MODEL, OLLAMA_BASE_URL, get_llm_service,
@@ -43,6 +44,11 @@ def _startup() -> None:
     init_db()
     # seed from OPML if present (one-time harmless)
     import_opml("data/feeds.opml")
+    # Migrate existing summaries to sanitized HTML (idempotent)
+    try:
+        migrate_sanitize_existing_summaries()
+    except Exception as e:
+        logger.warning(f"Summary sanitization migration failed: {e}")
     # Start background scheduler for automated story generation
     try:
         scheduler.start_scheduler()

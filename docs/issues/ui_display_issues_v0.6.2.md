@@ -121,12 +121,29 @@ ORDER BY ranking_score DESC;
 
 ---
 
-### Issue 4: All Story Importance Scores Show ~0.66
-**Severity**: MEDIUM  
-**User Impact**: Cannot differentiate story importance
+### Issue 4: Story Importance Scores Broken - New Stories Hidden
+**Severity**: HIGH (upgraded from MEDIUM)  
+**User Impact**: New stories hidden from default view, users see stale content
 
 **Description**: 
-All stories show nearly identical importance scores around 0.66 (66%), despite varying article counts and characteristics.
+Story importance scores are severely broken:
+- **Old stories (Dec 1)**: importance_score = 1.0 (maximum)
+- **New stories (Dec 19)**: importance_score = 0.16-0.32 (very low)
+
+Since the UI defaults to sorting by importance, **new stories are hidden** behind old stories. Users must manually change sort to "Most Recent" to see fresh content.
+
+**Root Cause Investigation (2025-12-19)**:
+```sql
+-- Old stories have artificially high scores
+SELECT id, importance_score, generated_at FROM stories ORDER BY importance_score DESC LIMIT 3;
+-- 783 | 1.0 | 2025-12-01
+-- 784 | 1.0 | 2025-12-01
+
+-- New stories have very low scores  
+SELECT id, importance_score, generated_at FROM stories ORDER BY generated_at DESC LIMIT 3;
+-- 932 | 0.16 | 2025-12-19
+-- 931 | 0.16 | 2025-12-19
+```
 
 **Expected**: 
 Varied importance scores (0.0-1.0) based on:
@@ -139,10 +156,13 @@ Varied importance scores (0.0-1.0) based on:
 importance = 0.4 * article_score + 0.3 * source_score + 0.3 * entity_score
 ```
 
-**Investigation**:
-- Are all stories actually getting similar scores, or is it a display issue?
-- Is the scoring calculation working correctly?
-- Are default values being used?
+**Investigation Needed**:
+1. Why do old stories have perfect 1.0 scores? (likely before scoring was implemented properly)
+2. Why do new stories get such low scores (0.16)?
+3. Should we normalize/recalculate all scores?
+4. Consider changing default sort to "Most Recent" instead of "Importance"
+
+**Workaround**: Change sort dropdown to "Most Recent" in the UI
 
 **Database Query**:
 ```sql
@@ -346,12 +366,12 @@ LIMIT 5;
 ## 🎯 Priority for v0.6.2
 
 **MUST FIX**:
-1. HTML tags (HIGH - user-facing)
+1. ~~HTML tags (HIGH - user-facing)~~ ✅ FIXED (2025-12-19)
 2. Topic mismatch (HIGH - data integrity)
+3. Importance scores (HIGH - new stories hidden from default view)
 
 **SHOULD FIX**:
-3. Ranking scores (MEDIUM - functionality)
-4. Importance scores (MEDIUM - functionality)
+4. Ranking scores (MEDIUM - functionality)
 5. Filter options not working (MEDIUM - functionality)
 
 **NICE TO HAVE**:

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Iterable, Optional, Tuple
 
+import bleach
 import certifi
 import feedparser
 import httpx
@@ -16,6 +17,73 @@ from .db import session_scope
 from .models import create_content_hash
 from .ranking import calculate_ranking_score, classify_article_topic
 from .readability import extract_readable
+
+# Allowed HTML tags for sanitized content (safe formatting only)
+ALLOWED_HTML_TAGS = ["p", "br", "b", "i", "em", "strong", "ul", "ol", "li", "a"]
+ALLOWED_HTML_ATTRIBUTES = {"a": ["href", "title"]}
+
+
+def sanitize_html(html_content: str) -> str:
+    """
+    Sanitize HTML content, removing dangerous tags while preserving safe formatting.
+
+    Args:
+        html_content: Raw HTML string from RSS feed
+
+    Returns:
+        Sanitized HTML with only safe tags allowed
+    """
+    if not html_content:
+        return ""
+    return bleach.clean(
+        html_content,
+        tags=ALLOWED_HTML_TAGS,
+        attributes=ALLOWED_HTML_ATTRIBUTES,
+        strip=True,  # Remove disallowed tags entirely (not just escape)
+    )
+
+
+def migrate_sanitize_existing_summaries() -> int:
+    """
+    Migrate existing article summaries to sanitized HTML.
+
+    This function runs automatically on app startup to ensure all existing
+    summaries are sanitized. It's idempotent - running multiple times is safe.
+
+    Returns:
+        Number of articles updated
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+    updated_count = 0
+
+    with session_scope() as session:
+        # Get all articles with non-empty summaries
+        rows = session.execute(
+            text("SELECT id, summary FROM items WHERE summary IS NOT NULL AND summary != ''")
+        ).fetchall()
+
+        for row in rows:
+            article_id, original_summary = row
+            sanitized = sanitize_html(original_summary)
+
+            # Only update if sanitization changed the content
+            if sanitized != original_summary:
+                session.execute(
+                    text("UPDATE items SET summary = :summary WHERE id = :id"),
+                    {"summary": sanitized, "id": article_id},
+                )
+                updated_count += 1
+
+        session.commit()
+
+    if updated_count > 0:
+        logger.info(f"Sanitized {updated_count} existing article summaries")
+    else:
+        logger.debug("No article summaries needed sanitization")
+
+    return updated_count
 
 
 @dataclass
@@ -809,8 +877,8 @@ def fetch_and_store() -> RefreshStats:
                         except Exception:
                             pass
 
-                # Initial summary (feed-provided)
-                summary = entry.get("summary") or ""
+                # Initial summary (feed-provided, sanitized for safety)
+                summary = sanitize_html(entry.get("summary") or "")
 
                 # Fetch article page for full text (best-effort)
                 content_text = None
