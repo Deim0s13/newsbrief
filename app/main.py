@@ -29,6 +29,7 @@ from .models import (FeedIn, FeedOut, FeedStats, FeedUpdate, ItemOut,
 from .ranking import (calculate_ranking_score, classify_article_topic,
                       get_available_topics, get_topic_display_name)
 from .stories import generate_stories_simple, get_stories, get_story_by_id
+from .topics import migrate_article_topics_v062
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,11 @@ def _startup() -> None:
         migrate_sanitize_existing_summaries()
     except Exception as e:
         logger.warning(f"Summary sanitization migration failed: {e}")
+    # Migrate article topics to unified system (one-time, v0.6.2)
+    try:
+        migrate_article_topics_v062()
+    except Exception as e:
+        logger.warning(f"Topic migration v0.6.2 failed: {e}")
     # Start background scheduler for automated story generation
     try:
         scheduler.start_scheduler()

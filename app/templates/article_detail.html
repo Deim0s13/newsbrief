@@ -81,7 +81,7 @@
             <div class="flex items-center space-x-3">
                 {% if article.topic %}
                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium topic-badge-{{ article.topic }}">
-                    {{ article.topic|replace('ai-ml', 'AI/ML')|replace('cloud-k8s', 'Cloud/K8s')|replace('devtools', 'DevTools')|replace('chips-hardware', 'Chips/Hardware')|title }}
+                    {{ article.topic|replace('ai-ml', 'AI/ML')|replace('cloud-k8s', 'Cloud/K8s')|replace('devtools', 'DevTools')|replace('chips-hardware', 'Chips/Hardware')|replace('politics', 'Politics')|replace('business', 'Business')|replace('science', 'Science')|replace('general', 'General')|title }}
                 </span>
                 {% endif %}
                 {% if article.ranking_score %}

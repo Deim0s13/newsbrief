@@ -130,7 +130,7 @@
                         </h3>
                         {% if article.topic %}
                         <span class="ml-3 px-2 py-0.5 text-xs rounded-full bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300">
-                            {{ article.topic }}
+                            {{ article.topic|replace('ai-ml', 'AI/ML')|replace('cloud-k8s', 'Cloud/K8s')|replace('devtools', 'DevTools')|replace('chips-hardware', 'Chips/Hardware')|replace('politics', 'Politics')|replace('business', 'Business')|replace('science', 'Science')|replace('general', 'General')|title }}
                         </span>
                         {% endif %}
                     </div>

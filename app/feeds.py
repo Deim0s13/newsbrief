@@ -17,6 +17,7 @@ from .db import session_scope
 from .models import create_content_hash
 from .ranking import calculate_ranking_score, classify_article_topic
 from .readability import extract_readable
+from .topics import classify_topic as classify_topic_unified
 
 # Allowed HTML tags for sanitized content (safe formatting only)
 ALLOWED_HTML_TAGS = ["p", "br", "b", "i", "em", "strong", "ul", "ol", "li", "a"]
@@ -1056,229 +1057,31 @@ def _calculate_ranking_score_legacy(
 
 
 def classify_topic(article_data: dict) -> tuple[str, float]:
-    """Classify article topic based on keywords and content."""
-    title = (article_data.get("title", "") or "").lower()
-    content = (article_data.get("content", "") or "").lower()
-    summary = (article_data.get("summary", "") or "").lower()
+    """
+    Classify article topic using the unified topic classification service.
 
-    # Combine all text for analysis
-    text = f"{title} {content} {summary}"
+    This is a compatibility wrapper for the new centralized topic system.
+    Uses keyword-based classification for feed ingestion (faster).
+    LLM classification is available for reclassification operations.
 
-    # More specific and contextual tech keywords
-    tech_keywords = {
-        "ai-ml": [
-            "artificial intelligence",
-            "machine learning",
-            "neural network",
-            "deep learning",
-            "llm",
-            "gpt",
-            "chatgpt",
-            "claude",
-            "ollama",
-            "tensorflow",
-            "pytorch",
-            "openai",
-            "anthropic",
-            "hugging face",
-            "transformer",
-            "nlp",
-            "computer vision",
-            "reinforcement learning",
-            "data science",
-            "algorithm",
-            "generative ai",
-            "large language model",
-            "prompt engineering",
-            "fine-tuning",
-            "deepmind",
-            "stability ai",
-            "midjourney",
-            "dall-e",
-            "gemini",
-            "bard",
-            "machine learning model",
-            "ai model",
-            "neural network",
-            "deep learning model",
-        ],
-        "cloud-k8s": [
-            "kubernetes",
-            "k8s",
-            "docker",
-            "container",
-            "aws",
-            "azure",
-            "google cloud",
-            "gcp",
-            "microservices",
-            "serverless",
-            "lambda",
-            "terraform",
-            "helm",
-            "istio",
-            "prometheus",
-            "grafana",
-            "jenkins",
-            "ci/cd",
-            "devops",
-            "infrastructure",
-            "scaling",
-            "load balancer",
-            "dockerfile",
-            "pod",
-            "namespace",
-            "deployment",
-            "service mesh",
-            "ec2",
-            "s3",
-            "rds",
-            "elastic beanstalk",
-            "cloudflare",
-            "kubernetes cluster",
-        ],
-        "security": [
-            "cybersecurity",
-            "vulnerability",
-            "exploit",
-            "malware",
-            "phishing",
-            "ransomware",
-            "firewall",
-            "encryption",
-            "ssl",
-            "tls",
-            "authentication",
-            "authorization",
-            "oauth",
-            "jwt",
-            "penetration test",
-            "zero-day",
-            "cve",
-            "breach",
-            "privacy",
-            "gdpr",
-            "compliance",
-            "security audit",
-            "threat detection",
-            "intrusion detection",
-            "vpn",
-            "sql injection",
-            "xss",
-            "csrf",
-            "ddos",
-            "hacker",
-            "hacking",
-            "security vulnerability",
-            "data breach",
-            "cyber attack",
-        ],
-        "devtools": [
-            "programming",
-            "coding",
-            "software development",
-            "api",
-            "sdk",
-            "framework",
-            "library",
-            "git",
-            "github",
-            "gitlab",
-            "vscode",
-            "ide",
-            "debugger",
-            "testing",
-            "unit test",
-            "integration test",
-            "code review",
-            "refactoring",
-            "agile",
-            "scrum",
-            "javascript",
-            "python",
-            "java",
-            "typescript",
-            "react",
-            "vue",
-            "angular",
-            "node.js",
-            "npm",
-            "yarn",
-            "webpack",
-            "babel",
-            "eslint",
-            "github actions",
-            "pull request",
-            "merge conflict",
-            "repository",
-            "software engineering",
-            "programming language",
-            "development tool",
-        ],
-        "chips-hardware": [
-            "semiconductor",
-            "silicon",
-            "fabrication",
-            "transistor",
-            "intel",
-            "amd",
-            "nvidia",
-            "arm",
-            "risc-v",
-            "cpu",
-            "gpu",
-            "processor",
-            "chip",
-            "memory",
-            "ram",
-            "ssd",
-            "storage",
-            "motherboard",
-            "circuit",
-            "electronics",
-            "quantum",
-            "photonics",
-            "neuromorphic",
-            "asic",
-            "tsmc",
-            "samsung",
-            "micron",
-            "qualcomm",
-            "broadcom",
-            "apple silicon",
-            "microprocessor",
-            "semiconductor industry",
-            "chip manufacturing",
-        ],
-    }
+    Args:
+        article_data: Dictionary with 'title', 'content', 'summary' keys
 
-    # Calculate confidence scores for each topic
-    topic_scores = {}
-    for topic, keywords in tech_keywords.items():
-        score = 0
-        for keyword in keywords:
-            if keyword in text:
-                # Weight by keyword length and specificity
-                weight = len(keyword) * 3  # Reduced weight to be less aggressive
-                score += weight * text.count(keyword)
-        topic_scores[topic] = score
+    Returns:
+        Tuple of (topic_id, confidence)
+    """
+    title = article_data.get("title", "") or ""
+    content = article_data.get("content", "") or ""
+    summary = article_data.get("summary", "") or ""
 
-    # Find the topic with highest score
-    if not topic_scores or max(topic_scores.values()) == 0:
-        return "general", 0.0
+    # Use unified topic service (keywords only for ingestion performance)
+    result = classify_topic_unified(
+        title=title,
+        summary=f"{content} {summary}".strip(),
+        use_llm=False,  # Use keywords for feed ingestion (faster)
+    )
 
-    best_topic = max(topic_scores.keys(), key=lambda k: topic_scores[k])
-    max_score = topic_scores[best_topic]
-
-    # Much higher threshold to avoid false positives
-    # Require multiple keyword matches or very specific terms
-    if max_score < 75:  # Even higher threshold for precision
-        return "general", 0.0
-
-    # Calculate confidence (0.0 to 1.0) - more conservative
-    confidence = min(max_score / 200.0, 1.0)  # Higher normalization factor
-
-    return best_topic, confidence
+    return result.topic, result.confidence
 
 
 def recalculate_rankings_and_topics() -> dict:

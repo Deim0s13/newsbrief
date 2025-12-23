@@ -49,48 +49,35 @@ Clean text without HTML markup, either:
 
 ---
 
-### Issue 2: Story Topic Mismatch with Supporting Articles
+### Issue 2: Story Topic Mismatch with Supporting Articles ✅ FIXED (2025-12-24)
 **Severity**: HIGH  
 **User Impact**: Confusing, misleading categorization
 
-**Description**: 
-Story shows one topic badge (e.g., "Disaster Response") but ALL supporting articles display a different topic (e.g., "Devtools").
+**Status**: ✅ **FIXED** - Unified topic classification system implemented
 
-**Example**:
-- **Story**: "A devastating fire broke out in Hong Kong..."
-- **Story Topic**: "Disaster Response and Construction Safety"
-- **Article 1 Topic**: "Devtools" ❌
-- **Article 2 Topic**: "Devtools" ❌
-- **Article 3 Topic**: "Devtools" ❌
+**Root Cause**:
+- Two competing classification systems: old keyword-only in feeds.py vs. ranking.py
+- Non-tech articles incorrectly classified as tech topics (e.g., Gaza news → "chips-hardware")
+- Topic display showed raw IDs instead of human-readable names
 
-**Expected**:
-- Story topic should aggregate/reflect topics of supporting articles
-- Articles should show their actual classified topics
-- Consistency between story and article topics
+**Solution Implemented**:
+1. Created unified `app/topics.py` with centralized topic classification
+2. Expanded vocabulary: ai-ml, security, cloud-k8s, devtools, chips-hardware, **politics**, **business**, **science**, general
+3. LLM-based classification (primary) with keyword fallback
+4. Auto-migration runs on startup to reclassify existing articles
+5. Updated all templates to display human-readable topic names
 
-**Investigation Needed**:
-1. How are story topics assigned? (from synthesis, from articles, or hardcoded?)
-2. Are article topics correctly stored in database?
-3. Is the UI displaying wrong field (e.g., showing story topic instead of article topic)?
-
-**Database Queries**:
-```sql
--- Check article topics for a story
-SELECT i.id, i.title, i.topic, sa.story_id
-FROM items i
-JOIN story_articles sa ON i.id = sa.article_id
-WHERE sa.story_id = 769;  -- Example story ID
-
--- Check story topics
-SELECT id, title, topics_json
-FROM stories
-WHERE id = 769;
+**New Topic Distribution** (after migration):
+```
+general: 1170, devtools: 291, politics: 159, chips-hardware: 121, 
+science: 95, ai-ml: 74, business: 69, security: 36, cloud-k8s: 10
 ```
 
-**Files to Check**:
-- `app/stories.py` (topic assignment logic)
-- `app/templates/story_detail.html` (topic display)
-- `app/ranking.py` (topic classification for articles)
+**Files Changed**:
+- `app/topics.py` (NEW - unified classification service)
+- `app/feeds.py` (uses unified service, removed duplicate code)
+- `app/main.py` (migration hook)
+- `app/templates/*.html` (human-readable topic display)
 
 ---
 
@@ -367,7 +354,7 @@ LIMIT 5;
 
 **MUST FIX**:
 1. ~~HTML tags (HIGH - user-facing)~~ ✅ FIXED (2025-12-19)
-2. Topic mismatch (HIGH - data integrity)
+2. ~~Topic mismatch (HIGH - data integrity)~~ ✅ FIXED (2025-12-24)
 3. Importance scores (HIGH - new stories hidden from default view)
 
 **SHOULD FIX**:
