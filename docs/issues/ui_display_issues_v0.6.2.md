@@ -83,28 +83,22 @@ science: 95, ai-ml: 74, business: 69, security: 36, cloud-k8s: 10
 
 ## ⚠️ Medium Priority Issues
 
-### Issue 3: All Article Ranking Scores Show 7.000
+### Issue 3: All Article Ranking Scores Show 7.000 ✅ CLOSED (2025-12-27)
 **Severity**: MEDIUM  
 **User Impact**: Cannot differentiate article quality
 
-**Description**: 
-All articles display identical ranking score of 7.000, suggesting default values or calculation not running.
+**Status**: ✅ **CLOSED** - Working as Intended (GitHub #78)
 
-**Expected**: 
-Varied scores based on article characteristics (0.0-10.0 scale)
+**Investigation Found**:
+- Database has varied scores: 0.1 to 7.0 (average 3.66)
+- Score distribution across 2,025 articles is healthy
+- Top articles show 7.0 because they legitimately have highest scores
+- Default sort (ranking DESC) surfaces these first
 
-**Investigation**:
-- Check if ranking calculation is running during feed refresh
-- Verify database has actual varied scores
-- Check if UI is rounding/defaulting to 7.0
+**Resolution**: 
+The "all 7.000" observation came from viewing top-ranked articles which correctly have high scores. The ranking calculation is functioning correctly.
 
-**Database Query**:
-```sql
-SELECT ranking_score, COUNT(*) as count
-FROM items
-GROUP BY ranking_score
-ORDER BY ranking_score DESC;
-```
+**Future Work**: Ranking improvements tracked in v0.8.0 milestone (GitHub #84)
 
 ---
 
@@ -355,14 +349,29 @@ LIMIT 5;
 **MUST FIX**:
 1. ~~HTML tags (HIGH - user-facing)~~ ✅ FIXED (2025-12-19)
 2. ~~Topic mismatch (HIGH - data integrity)~~ ✅ FIXED (2025-12-24)
-3. Importance scores (HIGH - new stories hidden from default view)
+3. Importance scores (HIGH - new stories hidden from default view) - **IN PROGRESS**
 
 **SHOULD FIX**:
-4. Ranking scores (MEDIUM - functionality)
+4. ~~Ranking scores (MEDIUM - functionality)~~ ✅ CLOSED (2025-12-27) - Working as Intended
 5. Filter options not working (MEDIUM - functionality)
 
 **NICE TO HAVE**:
 6. Skim view (MEDIUM - UX feature)
 7. Model/Status display (LOW - metadata)
 8. Performance optimization (LOW - acceptable currently)
+
+---
+
+## 🔗 GitHub Issues
+
+| Local # | GitHub # | Status |
+|---------|----------|--------|
+| #1 | - | ✅ Fixed |
+| #2 | - | ✅ Fixed |
+| #3 | #78 | ✅ Closed |
+| #4 | #79 | 🚧 In Progress |
+| #5 | #80 | 📋 Backlog |
+| #6 | #81 | 📋 Backlog |
+| #7 | #82 | 📋 Backlog |
+| #8 | #83 | 📋 Backlog |
 

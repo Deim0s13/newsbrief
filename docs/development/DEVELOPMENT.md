@@ -65,7 +65,7 @@ NewsBrief supports several environment variables for configuration:
 ```bash
 # LLM Integration: Ollama service for AI summarization  
 export OLLAMA_BASE_URL=http://localhost:11434
-export NEWSBRIEF_LLM_MODEL=llama3.2:3b
+export NEWSBRIEF_LLM_MODEL=llama3.1:8b
 
 # Optional: Custom data directory
 export DATA_DIR=/path/to/your/data
@@ -95,7 +95,7 @@ NewsBrief includes integrated AI summarization using local LLM services via Olla
 ```bash
 # LLM Service Configuration
 export OLLAMA_BASE_URL=http://localhost:11434  # Ollama service URL
-export NEWSBRIEF_LLM_MODEL=llama3.2:3b        # Default model for summarization
+export NEWSBRIEF_LLM_MODEL=llama3.1:8b        # Default model for summarization
 
 # Production LLM settings
 export OLLAMA_BASE_URL=http://ollama-service:11434  # Internal service
@@ -113,7 +113,7 @@ export NEWSBRIEF_LLM_MODEL=mistral:7b              # Larger model for better qua
    ollama serve
    
    # Pull recommended models
-   ollama pull llama3.2:3b    # Fast, good quality
+   ollama pull llama3.1:8b    # Recommended for accuracy
    ollama pull mistral:7b     # Better quality, slower
    ```
 
@@ -124,7 +124,7 @@ export NEWSBRIEF_LLM_MODEL=mistral:7b              # Larger model for better qua
      -p 8787:8787 \
      -v ./data:/app/data \
      -e OLLAMA_BASE_URL=http://host.containers.internal:11434 \
-     -e NEWSBRIEF_LLM_MODEL=llama3.2:3b \
+     -e NEWSBRIEF_LLM_MODEL=llama3.1:8b \
      --name newsbrief newsbrief-api:latest
    ```
 
@@ -140,7 +140,7 @@ export NEWSBRIEF_LLM_MODEL=mistral:7b              # Larger model for better qua
    ```
 
 **Model Recommendations:**
-- **Development**: `llama3.2:3b` - Fast inference, good quality
+- **Development**: `llama3.1:8b` - Good balance of speed and accuracy
 - **Production**: `mistral:7b` - Higher quality, more detailed summaries  
 - **High-volume**: `llama3.2:1b` - Fastest inference for large-scale processing
 
@@ -184,7 +184,7 @@ podman run --rm -d \
   -e NEWSBRIEF_MAX_ITEMS_PER_FEED=10 \
   -e NEWSBRIEF_MAX_REFRESH_TIME=120 \
   -e OLLAMA_BASE_URL=http://host.containers.internal:11434 \
-  -e NEWSBRIEF_LLM_MODEL=llama3.2:3b \
+  -e NEWSBRIEF_LLM_MODEL=llama3.1:8b \
   -e NEWSBRIEF_CHUNKING_THRESHOLD=2000 \
   -e NEWSBRIEF_CHUNK_SIZE=1200 \
   --name newsbrief newsbrief-api:v0.3.3
@@ -241,7 +241,7 @@ podman run --rm -d \
   -p 8787:8787 \
   -v ./data:/app/data \
   -e OLLAMA_BASE_URL=http://host.containers.internal:11434 \
-  -e NEWSBRIEF_LLM_MODEL=llama3.2:3b \
+  -e NEWSBRIEF_LLM_MODEL=llama3.1:8b \
   --name newsbrief newsbrief-api:v0.4.0
 
 # Production: High-capacity + AI + Ranking (v0.4.0+)

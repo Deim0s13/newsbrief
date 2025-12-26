@@ -85,7 +85,7 @@ curl "http://localhost:8787/items?limit=10"
 curl -fsSL https://ollama.ai/install.sh | sh
 
 # Pull a model
-ollama pull llama3.2:3b
+ollama pull llama3.1:8b
 
 # Set environment variable
 export OLLAMA_BASE_URL=http://localhost:11434
@@ -93,7 +93,7 @@ export OLLAMA_BASE_URL=http://localhost:11434
 # Test AI summaries
 curl -X POST "http://localhost:8787/summarize" \
   -H "Content-Type: application/json" \
-  -d '{"item_ids": [1, 2], "model": "llama3.2:3b"}'
+  -d '{"item_ids": [1, 2], "model": "llama3.1:8b"}'
 ```
 
 ## 📚 Next Steps
