@@ -349,7 +349,7 @@ LIMIT 5;
 **MUST FIX**:
 1. ~~HTML tags (HIGH - user-facing)~~ ✅ FIXED (2025-12-19)
 2. ~~Topic mismatch (HIGH - data integrity)~~ ✅ FIXED (2025-12-24)
-3. Importance scores (HIGH - new stories hidden from default view) - **IN PROGRESS**
+3. ~~Importance scores (HIGH - new stories hidden from default view)~~ ✅ FIXED (2025-12-27)
 
 **SHOULD FIX**:
 4. ~~Ranking scores (MEDIUM - functionality)~~ ✅ CLOSED (2025-12-27) - Working as Intended
@@ -369,7 +369,7 @@ LIMIT 5;
 | #1 | - | ✅ Fixed |
 | #2 | - | ✅ Fixed |
 | #3 | #78 | ✅ Closed |
-| #4 | #79 | 🚧 In Progress |
+| #4 | #79 | ✅ Fixed |
 | #5 | #80 | 📋 Backlog |
 | #6 | #81 | 📋 Backlog |
 | #7 | #82 | 📋 Backlog |
