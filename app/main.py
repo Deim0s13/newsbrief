@@ -12,22 +12,46 @@ from sqlalchemy import text
 
 from . import scheduler
 from .db import init_db, session_scope
-from .feeds import (MAX_ITEMS_PER_FEED, MAX_ITEMS_PER_REFRESH,
-                    MAX_REFRESH_TIME_SECONDS, RefreshStats, add_feed,
-                    export_opml, fetch_and_store, import_opml,
-                    import_opml_content, list_feeds,
-                    migrate_sanitize_existing_summaries,
-                    recalculate_rankings_and_topics, update_feed_health_scores,
-                    update_feed_names)
-from .llm import (DEFAULT_MODEL, OLLAMA_BASE_URL, get_llm_service,
-                  is_llm_available)
-from .models import (FeedIn, FeedOut, FeedStats, FeedUpdate, ItemOut,
-                     LLMStatusOut, StoriesListOut, StoryGenerationRequest,
-                     StoryGenerationResponse, StoryOut, StructuredSummary,
-                     SummaryRequest, SummaryResponse, SummaryResultOut,
-                     extract_first_sentences)
-from .ranking import (calculate_ranking_score, classify_article_topic,
-                      get_available_topics, get_topic_display_name)
+from .feeds import (
+    MAX_ITEMS_PER_FEED,
+    MAX_ITEMS_PER_REFRESH,
+    MAX_REFRESH_TIME_SECONDS,
+    RefreshStats,
+    add_feed,
+    export_opml,
+    fetch_and_store,
+    import_opml,
+    import_opml_content,
+    list_feeds,
+    migrate_sanitize_existing_summaries,
+    recalculate_rankings_and_topics,
+    update_feed_health_scores,
+    update_feed_names,
+)
+from .llm import DEFAULT_MODEL, OLLAMA_BASE_URL, get_llm_service, is_llm_available
+from .models import (
+    FeedIn,
+    FeedOut,
+    FeedStats,
+    FeedUpdate,
+    ItemOut,
+    LLMStatusOut,
+    StoriesListOut,
+    StoryGenerationRequest,
+    StoryGenerationResponse,
+    StoryOut,
+    StructuredSummary,
+    SummaryRequest,
+    SummaryResponse,
+    SummaryResultOut,
+    extract_first_sentences,
+)
+from .ranking import (
+    calculate_ranking_score,
+    classify_article_topic,
+    get_available_topics,
+    get_topic_display_name,
+)
 from .stories import generate_stories_simple, get_stories, get_story_by_id
 from .topics import migrate_article_topics_v062
 
@@ -1523,7 +1547,7 @@ def list_stories_endpoint(
                 conditions.append(f"status = '{status_filter}'")
             if topic:
                 conditions.append(f"topics_json LIKE '%\"{topic}\"%'")
-            
+
             count_query = "SELECT COUNT(*) FROM stories"
             if conditions:
                 count_query += " WHERE " + " AND ".join(conditions)

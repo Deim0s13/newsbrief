@@ -23,16 +23,29 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
-from sqlalchemy import (Boolean, Column, DateTime, Float, ForeignKey, Integer,
-                        String, Text, desc, text)
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    desc,
+    text,
+)
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session, relationship
 
-from .entities import (ExtractedEntities, extract_and_cache_entities,
-                       get_entity_overlap)
+from .entities import ExtractedEntities, extract_and_cache_entities, get_entity_overlap
 from .llm import get_llm_service
-from .models import (ItemOut, StoryOut, deserialize_story_json_field,
-                     serialize_story_json_field)
+from .models import (
+    ItemOut,
+    StoryOut,
+    deserialize_story_json_field,
+    serialize_story_json_field,
+)
 
 logger = logging.getLogger(__name__)
 

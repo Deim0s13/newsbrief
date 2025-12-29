@@ -39,32 +39,36 @@ _topics_file_mtime: float = 0
 def _load_topics_config() -> Dict:
     """
     Load topic definitions from JSON config file.
-    
+
     Returns:
         Dictionary containing topics and settings from config file
     """
     global _topics_cache, _topics_file_mtime
-    
+
     if not TOPICS_CONFIG_PATH.exists():
-        logger.warning(f"Topics config not found at {TOPICS_CONFIG_PATH}, using defaults")
+        logger.warning(
+            f"Topics config not found at {TOPICS_CONFIG_PATH}, using defaults"
+        )
         return _get_default_config()
-    
+
     try:
         current_mtime = TOPICS_CONFIG_PATH.stat().st_mtime
-        
+
         # Reload if file has changed or cache is empty
         if _topics_cache is None or current_mtime > _topics_file_mtime:
             with open(TOPICS_CONFIG_PATH, encoding="utf-8") as f:
                 loaded_config = json.load(f)
                 _topics_cache = loaded_config
                 _topics_file_mtime = current_mtime
-                logger.debug(f"Loaded {len(loaded_config.get('topics', {}))} topics from config")
-        
+                logger.debug(
+                    f"Loaded {len(loaded_config.get('topics', {}))} topics from config"
+                )
+
         # At this point _topics_cache is guaranteed to be set
         if _topics_cache is not None:
             return _topics_cache
         return _get_default_config()
-    
+
     except (json.JSONDecodeError, IOError) as e:
         logger.error(f"Failed to load topics config: {e}")
         return _get_default_config()
@@ -76,15 +80,15 @@ def _get_default_config() -> Dict:
         "settings": {
             "auto_add_new_topics": True,
             "min_confidence_for_new_topic": 0.7,
-            "fallback_topic": "general"
+            "fallback_topic": "general",
         },
         "topics": {
             "general": {
                 "name": "General",
                 "description": "General news and miscellaneous topics",
-                "keywords": []
+                "keywords": [],
             }
-        }
+        },
     }
 
 
@@ -167,56 +171,60 @@ def get_available_topics() -> List[Dict[str, str]]:
 def _call_llm(prompt: str, model: Optional[str] = None) -> Optional[str]:
     """
     Helper to call LLM and return response text.
-    
+
     Args:
         prompt: The prompt to send
         model: LLM model to use
-        
+
     Returns:
         Response text or None if failed
     """
     import re
-    
+
     try:
         llm_service = get_llm_service()
         if not llm_service.is_available():
             return None
-        
+
         response = llm_service.client.generate(
             model=model or llm_service.model,
             prompt=prompt,
             options={"temperature": 0.1, "num_predict": 150},
         )
-        
+
         response_text = response.get("response", "").strip()
-        
+
         # Handle markdown code blocks
         if "```" in response_text:
-            json_match = re.search(r"```(?:json)?\s*(.*?)\s*```", response_text, re.DOTALL)
+            json_match = re.search(
+                r"```(?:json)?\s*(.*?)\s*```", response_text, re.DOTALL
+            )
             if json_match:
                 response_text = json_match.group(1)
-        
+
         return response_text
-    
+
     except Exception as e:
         logger.warning(f"LLM call failed: {e}")
         return None
 
 
-def _classify_free_form(title: str, summary: str, model: Optional[str] = None) -> Optional[str]:
+def _classify_free_form(
+    title: str, summary: str, model: Optional[str] = None
+) -> Optional[str]:
     """
     Step A: Free-form classification - ask LLM what the article is about.
-    
+
     Args:
         title: Article title
         summary: Article summary/content
         model: LLM model to use
-        
+
     Returns:
         Free-form topic description (e.g., "Gaza peace negotiations") or None
     """
     content = f"Title: {title}\n\nSummary: {summary}".strip()
-    
+
     prompt = f"""What is this article primarily about? Describe the main topic in 2-5 words.
 
 ARTICLE:
@@ -241,12 +249,12 @@ def _normalize_to_existing_or_new(
 ) -> Tuple[Optional[str], Optional[Dict], float]:
     """
     Step B: Normalize free-form topic to existing topic or suggest new one.
-    
+
     Args:
         free_form_topic: Free-form topic from Step A
         title: Article title (for context)
         model: LLM model to use
-        
+
     Returns:
         Tuple of (existing_topic_id, new_topic_dict, confidence)
         - If existing topic matches: (topic_id, None, confidence)
@@ -258,7 +266,7 @@ def _normalize_to_existing_or_new(
         for tid, config in topics.items()
         if tid != "general"  # Don't list general, use as fallback
     )
-    
+
     prompt = f"""Given this article topic: "{free_form_topic}"
 Article title: "{title}"
 
@@ -292,13 +300,13 @@ JSON:"""
     response = _call_llm(prompt, model)
     if not response:
         return None, None, 0.0
-    
+
     try:
         data = json.loads(response)
         match_type = data.get("match", "general")
         topic_id = data.get("topic_id", "general").lower().strip().replace(" ", "-")
         confidence = float(data.get("confidence", 0.5))
-        
+
         if match_type == "existing":
             # Validate it's actually an existing topic
             if topic_id in topics:
@@ -306,7 +314,7 @@ JSON:"""
             else:
                 logger.warning(f"LLM suggested non-existent topic '{topic_id}'")
                 return "general", None, 0.3
-        
+
         elif match_type == "new":
             new_topic = {
                 "id": topic_id,
@@ -314,10 +322,10 @@ JSON:"""
                 "description": data.get("description", f"Articles about {topic_id}"),
             }
             return None, new_topic, confidence
-        
+
         else:  # general
             return "general", None, confidence
-            
+
     except (json.JSONDecodeError, KeyError, ValueError) as e:
         logger.warning(f"Failed to parse normalization response: {e}")
         return None, None, 0.0
@@ -326,40 +334,40 @@ JSON:"""
 def _add_topic_to_config(topic_id: str, name: str, description: str) -> bool:
     """
     Add a new topic to the config file.
-    
+
     Args:
         topic_id: Topic ID (e.g., "sports")
         name: Display name (e.g., "Sports")
         description: Topic description
-        
+
     Returns:
         True if successfully added, False otherwise
     """
     try:
         config = _load_topics_config()
-        
+
         # Check if already exists
         if topic_id in config.get("topics", {}):
             logger.debug(f"Topic '{topic_id}' already exists")
             return True
-        
+
         # Add new topic
         config["topics"][topic_id] = {
             "name": name,
             "description": description,
             "keywords": [],  # Will be populated over time
         }
-        
+
         # Write back to file
         with open(TOPICS_CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=2, ensure_ascii=False)
-        
+
         # Clear cache to reload
         reload_topics()
-        
+
         logger.info(f"Added new topic '{topic_id}' ({name}) to config")
         return True
-        
+
     except Exception as e:
         logger.error(f"Failed to add topic to config: {e}")
         return False
@@ -372,10 +380,10 @@ def classify_topic_with_llm(
 ) -> Optional[TopicClassificationResult]:
     """
     Classify article topic using two-step LLM approach.
-    
+
     Step 1: Free-form classification - what is this article about?
     Step 2: Normalize to existing topic or suggest new one
-    
+
     Args:
         title: Article title
         summary: Article summary/content
@@ -398,14 +406,14 @@ def classify_topic_with_llm(
         if not free_form:
             logger.debug("Free-form classification failed, using fallback")
             return None
-        
+
         logger.debug(f"Free-form topic: '{free_form}'")
-        
+
         # Step B: Normalize to existing or new topic
         existing_topic, new_topic, confidence = _normalize_to_existing_or_new(
             free_form, title, model
         )
-        
+
         # Handle existing topic
         if existing_topic:
             return TopicClassificationResult(
@@ -414,13 +422,13 @@ def classify_topic_with_llm(
                 method="llm",
                 display_name=get_topic_display_name(existing_topic),
             )
-        
+
         # Handle new topic suggestion
         if new_topic:
             settings = get_topic_settings()
             min_confidence = settings.get("min_confidence_for_new_topic", 0.7)
             auto_add = settings.get("auto_add_new_topics", True)
-            
+
             if confidence >= min_confidence and auto_add:
                 # Add the new topic
                 if _add_topic_to_config(
@@ -435,13 +443,13 @@ def classify_topic_with_llm(
                         method="llm-new",
                         display_name=new_topic["name"],
                     )
-            
+
             # New topic suggested but not added (low confidence or auto-add disabled)
             logger.debug(
                 f"New topic '{new_topic['id']}' suggested but not added "
                 f"(confidence={confidence:.2f}, min={min_confidence}, auto_add={auto_add})"
             )
-        
+
         # Fallback to general
         return TopicClassificationResult(
             topic="general",
@@ -613,7 +621,9 @@ def reclassify_articles_batch(
     if article_ids:
         placeholders = ", ".join([f":id_{i}" for i in range(len(article_ids))])
         params = {f"id_{i}": aid for i, aid in enumerate(article_ids)}
-        query = f"SELECT id, title, summary, topic FROM items WHERE id IN ({placeholders})"
+        query = (
+            f"SELECT id, title, summary, topic FROM items WHERE id IN ({placeholders})"
+        )
     else:
         params = {}
         query = "SELECT id, title, summary, topic FROM items"
@@ -709,4 +719,3 @@ def migrate_article_topics_v062() -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Topic migration v0.6.2 failed: {e}")
         return {"error": 1, "message": str(e)}
-

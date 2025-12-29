@@ -62,7 +62,9 @@ def migrate_sanitize_existing_summaries() -> int:
     with session_scope() as session:
         # Get all articles with non-empty summaries
         rows = session.execute(
-            text("SELECT id, summary FROM items WHERE summary IS NOT NULL AND summary != ''")
+            text(
+                "SELECT id, summary FROM items WHERE summary IS NOT NULL AND summary != ''"
+            )
         ).fetchall()
 
         for row in rows:
