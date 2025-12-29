@@ -101,3 +101,7 @@ docs/_build/
 *.temp
 .temp/
 temp/
+
+# Node.js (for Tailwind CSS build)
+node_modules/
+package-lock.json

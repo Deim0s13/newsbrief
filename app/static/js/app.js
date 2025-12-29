@@ -56,18 +56,8 @@ function setupEventListeners() {
     function applyViewMode(mode) {
         if (mode === 'skim') {
             articlesContainer.classList.add('skim-view');
-            
-            // Directly modify article padding to override Tailwind's p-6
-            articlesContainer.querySelectorAll('article').forEach(article => {
-                article.style.padding = '0.75rem';
-            });
         } else {
             articlesContainer.classList.remove('skim-view');
-            
-            // Restore default padding
-            articlesContainer.querySelectorAll('article').forEach(article => {
-                article.style.padding = '';
-            });
         }
         
         // Update button active states based on saved preference
@@ -136,14 +126,6 @@ async function loadArticles(selectedTopic = '') {
             container.appendChild(articleElement);
         });
         
-        // Apply skim view to articles if that mode is active
-        const savedView = localStorage.getItem('articlesViewMode') || 'detailed';
-        if (savedView === 'skim') {
-            container.querySelectorAll('article').forEach(article => {
-                article.style.padding = '0.75rem';
-            });
-        }
-        
         // Show load more button if we have full page
         if (articles.length === 20) {
             document.getElementById('load-more-container').classList.remove('hidden');
@@ -178,13 +160,6 @@ async function loadMoreArticles() {
             const articleElement = createArticleElement(article);
             container.appendChild(articleElement);
         });
-        
-        // Apply skim view to newly loaded articles if active
-        if (container.classList.contains('skim-view')) {
-            container.querySelectorAll('article').forEach(article => {
-                article.style.padding = '0.75rem';
-            });
-        }
         
         if (articles.length < 20) {
             loadMoreBtn.style.display = 'none';
