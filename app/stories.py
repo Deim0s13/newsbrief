@@ -529,6 +529,8 @@ def _story_db_to_model(  # type: ignore[misc]
         last_updated=story.last_updated,  # type: ignore[arg-type]
         supporting_articles=articles,
         primary_article_id=primary_article_id,
+        model=story.model,  # type: ignore[arg-type]
+        status=story.status or "active",  # type: ignore[arg-type]
     )
     # fmt: on
 

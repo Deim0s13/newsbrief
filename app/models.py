@@ -346,6 +346,8 @@ class StoryOut(BaseModel):
     last_updated: Optional[datetime] = None
     supporting_articles: List[ItemOut] = Field(default_factory=list)
     primary_article_id: Optional[int] = None
+    model: Optional[str] = None  # LLM model used for synthesis
+    status: str = "active"  # Story status: active or archived
 
     @validator("title")
     def validate_title(cls, v):
