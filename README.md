@@ -45,9 +45,9 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 ### **🎨 Web Interface**
 - **Story-First Landing**: Browse synthesized stories (not individual articles)
 - **Story Detail Pages**: Full synthesis with key points, entities, and supporting articles
-- **Article Browsing**: Secondary view for exploring individual articles
+- **Article Browsing**: Secondary view for exploring individual articles with skim/detail toggle
 - **Topic Filtering**: Filter by Security, AI/ML, DevTools, Cloud/K8s, etc.
-- **Responsive Design**: Professional Tailwind CSS with dark mode support
+- **Responsive Design**: Locally-built Tailwind CSS with dark mode support
 - **Feed Management Dashboard**: CRUD operations, health monitoring, bulk operations
 
 ### **🚀 DevOps & CI/CD (v0.3.4)**
@@ -295,8 +295,16 @@ cd newsbrief
 python3 -m venv .venv
 source .venv/bin/activate
 
-# Install dependencies
+# Install Python dependencies
 pip install -r requirements.txt
+
+# Install Node.js dependencies (for CSS build)
+npm install
+
+# Build CSS (required after CSS changes)
+npm run build:css
+# Or watch for changes during development:
+npm run watch:css
 
 # Run locally
 uvicorn app.main:app --reload --port 8787
