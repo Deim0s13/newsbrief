@@ -8,7 +8,7 @@ NewsBrief is a self-hosted, privacy-focused news aggregator that replaces readin
 
 ## 🌟 Features
 
-### **🎯 Story-Based Aggregation (v0.6.1)** - *Current Release*
+### **🎯 Story-Based Aggregation (v0.6.2)** - *Current Release*
 Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **Time to informed: 30 min → 2 min**
 
 - **Automated Story Generation**: Daily scheduled generation at 6 AM (configurable timezone)
@@ -58,6 +58,14 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 - **GitOps-Ready Deployments**: Environment-specific Kubernetes manifests with health checks and rollback support
 - **Automated Dependency Management**: Weekly security audits, dependency updates, and base image maintenance
 - **Comprehensive Documentation**: Complete CI/CD guides, API documentation, and architecture decision records
+
+### **✅ Completed (v0.6.2 - UI Polish & Fixes)** - Dec 2025
+- ✅ **HTML Sanitization**: Clean article summaries with `bleach` library (Issue #77)
+- ✅ **Topic Classification**: Unified topic system with LLM-based classification (Issue #77)
+- ✅ **Skim View Fixed**: Local Tailwind CSS build for proper styling (Issue #80)
+- ✅ **Story Filters**: Topic filtering on Stories page (Issue #81)
+- ✅ **Model/Status Display**: Story detail page shows LLM model and status (Issue #82)
+- ✅ **Default LLM Upgrade**: Changed default model to `llama3.1:8b` for better accuracy
 
 ### **✅ Completed (v0.6.1 - Enhanced Intelligence)** - Dec 2025
 - ✅ **Entity Extraction**: LLM-based extraction of companies, products, people, technologies, locations (Issue #40)
@@ -417,9 +425,9 @@ Transform from article-centric to story-based aggregation
 
 **See**: [Implementation Plan](docs/project-management/IMPLEMENTATION_PLAN.md) | [Detailed Backlog](docs/planning/STORY_ARCHITECTURE_BACKLOG.md)
 
-### **v0.6.0 - Enhanced Intelligence** - 🚧 IN PROGRESS
+### **v0.6.0 - Enhanced Intelligence** - ✅ COMPLETE
 - [x] **v0.6.1 - Enhanced Clustering**: Entity extraction, semantic similarity, quality scoring ✅ COMPLETE (Dec 2025)
-- [ ] **v0.6.2 - Performance & Quality**: UI polish, score refinements, filter fixes (Q1 2026)
+- [x] **v0.6.2 - UI Polish & Fixes**: Local Tailwind build, topic filters, HTML sanitization ✅ COMPLETE (Dec 2025)
 - [ ] **v0.6.3 - Personalization**: User preferences, topic prioritization, bookmarks (Q1 2026)
 - [ ] Vector embeddings for better clustering
 - [ ] Full-text search (SQLite FTS5)
