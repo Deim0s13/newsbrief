@@ -1470,6 +1470,9 @@ def list_stories_endpoint(
     order_by: str = Query(
         "importance", description="Sort field: importance, freshness, or generated_at"
     ),
+    topic: str = Query(
+        None, description="Filter by topic (e.g., 'ai-ml', 'security', 'politics')"
+    ),
 ):
     """
     List stories with filtering, sorting, and pagination.
@@ -1482,6 +1485,7 @@ def list_stories_endpoint(
         offset: Pagination offset (default: 0)
         status: Filter by status - 'active', 'archived', or 'all' (default: active)
         order_by: Sort field - 'importance', 'freshness', or 'generated_at' (default: importance)
+        topic: Filter by topic (optional)
 
     Returns:
         List of stories with metadata and supporting article summaries
@@ -1510,12 +1514,19 @@ def list_stories_endpoint(
                 offset=offset,
                 status=status_filter,
                 order_by=order_by,
+                topic=topic,
             )
 
             # Get total count for pagination
-            count_query = "SELECT COUNT(*) FROM stories"
+            conditions = []
             if status_filter:
-                count_query += f" WHERE status = '{status_filter}'"
+                conditions.append(f"status = '{status_filter}'")
+            if topic:
+                conditions.append(f"topics_json LIKE '%\"{topic}\"%'")
+            
+            count_query = "SELECT COUNT(*) FROM stories"
+            if conditions:
+                count_query += " WHERE " + " AND ".join(conditions)
 
             total = s.execute(text(count_query)).scalar() or 0
 

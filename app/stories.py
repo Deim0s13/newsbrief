@@ -328,6 +328,7 @@ def get_stories(
     offset: int = 0,
     status: Optional[str] = "active",
     order_by: str = "importance",
+    topic: Optional[str] = None,
 ) -> List[StoryOut]:
     """
     Query stories with filters and sorting.
@@ -338,6 +339,7 @@ def get_stories(
         offset: Number of stories to skip (for pagination)
         status: Filter by status ('active', 'archived', or None for all)
         order_by: Sort order ('importance', 'freshness', or 'generated_at')
+        topic: Filter by topic (matches if topic is in story's topics list)
 
     Returns:
         List of StoryOut models
@@ -347,6 +349,11 @@ def get_stories(
     # Apply status filter if provided
     if status:
         query = query.filter(Story.status == status)
+
+    # Apply topic filter if provided
+    # Topics are stored as JSON array, so we use LIKE to check if topic is present
+    if topic:
+        query = query.filter(Story.topics_json.like(f'%"{topic}"%'))
 
     # Apply sorting
     if order_by == "importance":

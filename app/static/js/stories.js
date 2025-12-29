@@ -9,18 +9,18 @@ document.addEventListener('DOMContentLoaded', function() {
 // Setup all event listeners
 function setupEventListeners() {
     // Filter changes
-    const timeFilter = document.getElementById('time-filter');
     const statusFilter = document.getElementById('status-filter');
     const sortFilter = document.getElementById('sort-filter');
+    const topicFilter = document.getElementById('topic-filter');
     
-    if (timeFilter) {
-        timeFilter.addEventListener('change', loadStories);
-    }
     if (statusFilter) {
         statusFilter.addEventListener('change', loadStories);
     }
     if (sortFilter) {
         sortFilter.addEventListener('change', loadStories);
+    }
+    if (topicFilter) {
+        topicFilter.addEventListener('change', loadStories);
     }
     
     // Load more button
@@ -44,6 +44,7 @@ async function loadStories() {
         // Get filter values
         const status = document.getElementById('status-filter').value;
         const orderBy = document.getElementById('sort-filter').value;
+        const topic = document.getElementById('topic-filter')?.value || '';
         
         // Build API URL
         const params = new URLSearchParams({
@@ -52,6 +53,11 @@ async function loadStories() {
             status: status,
             order_by: orderBy
         });
+        
+        // Add topic filter if selected
+        if (topic) {
+            params.set('topic', topic);
+        }
         
         const apiUrl = `/stories?${params.toString()}`;
         console.log('Loading stories from:', apiUrl);
@@ -131,6 +137,7 @@ async function loadMoreStories() {
         
         const status = document.getElementById('status-filter').value;
         const orderBy = document.getElementById('sort-filter').value;
+        const topic = document.getElementById('topic-filter')?.value || '';
         
         const params = new URLSearchParams({
             limit: '20',
@@ -138,6 +145,11 @@ async function loadMoreStories() {
             status: status,
             order_by: orderBy
         });
+        
+        // Add topic filter if selected
+        if (topic) {
+            params.set('topic', topic);
+        }
         
         const response = await fetch(`/stories?${params.toString()}`);
         const data = await response.json();

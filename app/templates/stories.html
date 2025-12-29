@@ -12,16 +12,6 @@
     
     <!-- Filters and Actions -->
     <div class="mb-6 flex flex-wrap gap-4 items-center">
-        <!-- Time Window Filter -->
-        <div class="flex items-center space-x-2">
-            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Time:</label>
-            <select id="time-filter" class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                <option value="24">Last 24 Hours</option>
-                <option value="48">Last 2 Days</option>
-                <option value="168">Last Week</option>
-            </select>
-        </div>
-        
         <!-- Status Filter -->
         <div class="flex items-center space-x-2">
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Show:</label>
@@ -39,6 +29,23 @@
                 <option value="importance">Importance</option>
                 <option value="freshness">Freshness</option>
                 <option value="generated_at">Latest Generated</option>
+            </select>
+        </div>
+        
+        <!-- Topic Filter -->
+        <div class="flex items-center space-x-2">
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Topic:</label>
+            <select id="topic-filter" class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                <option value="">All Topics</option>
+                <option value="AI/ML">AI/ML</option>
+                <option value="Security">Security</option>
+                <option value="Cloud">Cloud</option>
+                <option value="DevTools">DevTools</option>
+                <option value="Politics">Politics</option>
+                <option value="Business">Business</option>
+                <option value="Technology">Technology</option>
+                <option value="Gaming">Gaming</option>
+                <option value="Space">Space</option>
             </select>
         </div>
         
@@ -150,7 +157,9 @@
     </article>
 </template>
 
-<!-- Custom JavaScript for Stories Page -->
+{% endblock %}
+
+{% block scripts %}
 <script src="{{ url_for('static', path='js/stories.js') }}"></script>
 {% endblock %}
 

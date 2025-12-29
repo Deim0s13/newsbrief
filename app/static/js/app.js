@@ -3,12 +3,16 @@
 
 document.addEventListener('DOMContentLoaded', function() {
     initializeDarkMode();
-    loadArticles();
-    setupEventListeners();
+    
+    // Only run articles-specific code on the Articles page
+    if (document.getElementById('articles-container')) {
+        loadArticles();
+        setupArticleEventListeners();
+    }
 });
 
-// Setup all event listeners
-function setupEventListeners() {
+// Setup event listeners for Articles page
+function setupArticleEventListeners() {
     // Dark mode toggle
     const darkModeToggle = document.getElementById('dark-mode-toggle');
     if (darkModeToggle) {
