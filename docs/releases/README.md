@@ -4,7 +4,46 @@ Release documentation and version history for NewsBrief.
 
 ## 🚀 Version History
 
-### v0.5.5 - Story-Based Aggregation (Current)
+### v0.6.2 - UI Polish & Fixes (Current)
+**Released**: December 2025
+
+UI polish, bug fixes, and infrastructure improvements.
+
+**Documentation**:
+- [Release Notes](v0.6.2/RELEASE_NOTES.md) - Full release documentation
+
+**Key Changes**:
+- 🎨 Local Tailwind CSS build (production-ready styling)
+- 🧹 HTML sanitization for article summaries
+- 🏷️ Unified topic classification with LLM
+- 🔍 Topic filter on Stories page
+- 📊 Model/status display on story detail page
+- 🤖 Default LLM upgraded to `llama3.1:8b`
+
+**Issues Resolved**: #77, #78, #79, #80, #81, #82, #83
+
+---
+
+### v0.6.1 - Enhanced Intelligence
+**Released**: December 2025
+
+Enhanced clustering and story quality scoring.
+
+**Documentation**:
+- [Release Notes](v0.6.1/RELEASE_NOTES.md) - Full release documentation
+
+**Key Features**:
+- 🧠 Entity extraction (companies, products, people, technologies)
+- 🔗 Semantic similarity with entity overlap
+- ⭐ Three-dimensional story quality scoring
+- 💬 Enhanced UX feedback messages
+- 👁️ Skim/detail view toggle
+
+**Issues Resolved**: #40, #41, #43, #67, #70, #76
+
+---
+
+### v0.5.5 - Story-Based Aggregation
 **Released**: November 18, 2025
 
 Major release implementing the story-based aggregation architecture.
@@ -56,7 +95,7 @@ See [../development/BRANCHING_STRATEGY.md](../development/BRANCHING_STRATEGY.md)
 
 ## 🔗 Quick Links
 
-- **Latest Release**: [v0.5.5](v0.5.5/RELEASE_v0.5.5.md)
+- **Latest Release**: [v0.6.2](v0.6.2/RELEASE_NOTES.md)
 - **GitHub Releases**: [github.com/Deim0s13/newsbrief/releases](https://github.com/Deim0s13/newsbrief/releases)
 - **Changelog**: See individual release notes
 
