@@ -163,6 +163,7 @@ jobs:
           output: 'trivy-results.sarif'
           severity: 'CRITICAL'
           exit-code: '1'  # Fail pipeline on CRITICAL vulnerabilities
+          limit-severities-for-sarif: true  # Required: ensures exit-code respects severity filter
 
       - name: Upload Trivy scan results
         uses: github/codeql-action/upload-sarif@v3
