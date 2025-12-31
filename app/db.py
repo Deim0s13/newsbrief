@@ -203,6 +203,9 @@ def init_db() -> None:
             "ALTER TABLE stories ADD COLUMN importance_score REAL DEFAULT 0.5;",
             "ALTER TABLE stories ADD COLUMN freshness_score REAL DEFAULT 0.5;",
             "ALTER TABLE stories ADD COLUMN quality_score REAL DEFAULT 0.5;",
+            # Story versioning columns (v0.6.3 - ADR 0004)
+            "ALTER TABLE stories ADD COLUMN version INTEGER DEFAULT 1;",
+            "ALTER TABLE stories ADD COLUMN previous_version_id INTEGER;",
             # Feeds table migrations (v0.5.3)
             "ALTER TABLE feeds ADD COLUMN name TEXT;",
             "ALTER TABLE feeds ADD COLUMN description TEXT;",
@@ -290,6 +293,12 @@ def init_db() -> None:
         conn.exec_driver_sql(
             """
         CREATE INDEX IF NOT EXISTS idx_story_articles_article ON story_articles(article_id);
+        """
+        )
+        # Story versioning index (v0.6.3)
+        conn.exec_driver_sql(
+            """
+        CREATE INDEX IF NOT EXISTS idx_stories_previous_version ON stories(previous_version_id);
         """
         )
         # Synthesis cache indexes (v0.6.3)
