@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, Response
@@ -745,56 +745,136 @@ def bulk_assign_priority(feed_ids: List[int], priority: int):
 
 @app.post("/refresh")
 def refresh_endpoint():
-    stats = fetch_and_store()
-    return {
-        # Backward compatibility
-        "ingested": stats.total_items,
-        # Enhanced statistics
-        "stats": {
-            "items": {
-                "total": stats.total_items,
-                "per_feed": stats.items_per_feed,
-                "robots_blocked": stats.robots_txt_blocked_articles,
+    # Set in-progress flag to prevent scheduled refresh overlap
+    from app.scheduler import set_feed_refresh_in_progress
+
+    set_feed_refresh_in_progress(True)
+    try:
+        stats = fetch_and_store()
+        return {
+            # Backward compatibility
+            "ingested": stats.total_items,
+            # Enhanced statistics
+            "stats": {
+                "items": {
+                    "total": stats.total_items,
+                    "per_feed": stats.items_per_feed,
+                    "robots_blocked": stats.robots_txt_blocked_articles,
+                },
+                "feeds": {
+                    "processed": stats.total_feeds_processed,
+                    "skipped_disabled": stats.feeds_skipped_disabled,
+                    "skipped_robots": stats.feeds_skipped_robots,
+                    "cached_304": stats.feeds_cached_304,
+                    "errors": stats.feeds_error,
+                },
+                "performance": {
+                    "refresh_time_seconds": round(stats.refresh_time_seconds, 2),
+                    "hit_global_limit": stats.hit_global_limit,
+                    "hit_time_limit": stats.hit_time_limit,
+                },
+                "config": {
+                    "max_items_per_refresh": MAX_ITEMS_PER_REFRESH,
+                    "max_items_per_feed": MAX_ITEMS_PER_FEED,
+                    "max_refresh_time_seconds": MAX_REFRESH_TIME_SECONDS,
+                },
             },
-            "feeds": {
-                "processed": stats.total_feeds_processed,
-                "skipped_disabled": stats.feeds_skipped_disabled,
-                "skipped_robots": stats.feeds_skipped_robots,
-                "cached_304": stats.feeds_cached_304,
-                "errors": stats.feeds_error,
-            },
-            "performance": {
-                "refresh_time_seconds": round(stats.refresh_time_seconds, 2),
-                "hit_global_limit": stats.hit_global_limit,
-                "hit_time_limit": stats.hit_time_limit,
-            },
-            "config": {
-                "max_items_per_refresh": MAX_ITEMS_PER_REFRESH,
-                "max_items_per_feed": MAX_ITEMS_PER_FEED,
-                "max_refresh_time_seconds": MAX_REFRESH_TIME_SECONDS,
-            },
-        },
-    }
+        }
+    finally:
+        set_feed_refresh_in_progress(False)
 
 
 @app.get("/items", response_model=List[ItemOut])
-def list_items(limit: int = Query(50, le=200)):
+def list_items(
+    limit: int = Query(50, le=200),
+    story_id: Optional[int] = Query(None, description="Filter by story ID"),
+    topic: Optional[str] = Query(None, description="Filter by topic"),
+    feed_id: Optional[int] = Query(None, description="Filter by feed ID"),
+    published_after: Optional[datetime] = Query(
+        None, description="Filter articles published after this date (ISO format)"
+    ),
+    published_before: Optional[datetime] = Query(
+        None, description="Filter articles published before this date (ISO format)"
+    ),
+    has_story: Optional[bool] = Query(
+        None, description="Filter by story association (true/false)"
+    ),
+):
     with session_scope() as s:
-        rows = s.execute(
-            text(
-                """
-        SELECT id, title, url, published, summary, content_hash, content,
-               ai_summary, ai_model, ai_generated_at,
-               structured_summary_json, structured_summary_model, 
-               structured_summary_content_hash, structured_summary_generated_at,
-               ranking_score, topic, topic_confidence, source_weight
-        FROM items
-        ORDER BY ranking_score DESC, COALESCE(published, created_at) DESC
-        LIMIT :lim
+        # Validate story_id if provided
+        if story_id is not None:
+            story_exists = s.execute(
+                text("SELECT id FROM stories WHERE id = :sid"),
+                {"sid": story_id},
+            ).first()
+            if not story_exists:
+                raise HTTPException(
+                    status_code=404, detail=f"Story with ID {story_id} not found"
+                )
+
+        # Build dynamic query
+        select_clause = """
+        SELECT DISTINCT i.id, i.title, i.url, i.published, i.summary, i.content_hash, i.content,
+               i.ai_summary, i.ai_model, i.ai_generated_at,
+               i.structured_summary_json, i.structured_summary_model,
+               i.structured_summary_content_hash, i.structured_summary_generated_at,
+               i.ranking_score, i.topic, i.topic_confidence, i.source_weight
+        FROM items i
         """
-            ),
-            {"lim": limit},
-        ).all()
+
+        joins = []
+        where_clauses = []
+        params = {"lim": limit}
+
+        # story_id filter - join with story_articles
+        if story_id is not None:
+            joins.append("JOIN story_articles sa ON i.id = sa.article_id")
+            where_clauses.append("sa.story_id = :story_id")
+            params["story_id"] = story_id
+
+        # topic filter
+        if topic is not None:
+            where_clauses.append("i.topic = :topic")
+            params["topic"] = topic
+
+        # feed_id filter
+        if feed_id is not None:
+            where_clauses.append("i.feed_id = :feed_id")
+            params["feed_id"] = feed_id
+
+        # published_after filter
+        if published_after is not None:
+            where_clauses.append("i.published >= :published_after")
+            params["published_after"] = published_after.isoformat()
+
+        # published_before filter
+        if published_before is not None:
+            where_clauses.append("i.published <= :published_before")
+            params["published_before"] = published_before.isoformat()
+
+        # has_story filter
+        if has_story is not None:
+            if has_story:
+                where_clauses.append(
+                    "EXISTS (SELECT 1 FROM story_articles sa2 WHERE sa2.article_id = i.id)"
+                )
+            else:
+                where_clauses.append(
+                    "NOT EXISTS (SELECT 1 FROM story_articles sa2 WHERE sa2.article_id = i.id)"
+                )
+
+        # Build final query
+        query = select_clause
+        if joins:
+            query += " " + " ".join(joins)
+        if where_clauses:
+            query += " WHERE " + " AND ".join(where_clauses)
+        query += (
+            " ORDER BY i.ranking_score DESC, COALESCE(i.published, i.created_at) DESC"
+        )
+        query += " LIMIT :lim"
+
+        rows = s.execute(text(query), params).all()
 
         items = []
         for r in rows:
@@ -1647,18 +1727,84 @@ def get_story_stats():
         )
 
 
+@app.get("/stories/cache/stats")
+def get_synthesis_cache_stats():
+    """
+    Get synthesis cache statistics.
+
+    Returns information about the LLM synthesis cache including:
+    - Cache configuration (enabled, TTL)
+    - Entry counts (total, valid, expired, invalidated)
+    - Performance metrics (average generation time, token usage)
+
+    Returns:
+        Cache statistics and configuration
+    """
+    from .synthesis_cache import get_cache_stats
+
+    try:
+        with session_scope() as s:
+            stats = get_cache_stats(s)
+            return stats
+    except Exception as e:
+        logger.error(f"Failed to get cache stats: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve cache statistics: {str(e)}"
+        )
+
+
+@app.post("/stories/cache/clear")
+def clear_synthesis_cache(
+    expired_only: bool = Query(
+        True, description="Only clear expired/invalidated entries"
+    )
+):
+    """
+    Clear the synthesis cache.
+
+    By default, only removes expired and invalidated entries (safe cleanup).
+    Set expired_only=false to clear all cache entries (forces regeneration).
+
+    Args:
+        expired_only: If True, only clear expired/invalidated entries. If False, clear everything.
+
+    Returns:
+        Number of entries cleared
+    """
+    from .synthesis_cache import SynthesisCache, cleanup_expired_cache
+
+    try:
+        with session_scope() as s:
+            if expired_only:
+                # Safe cleanup - only expired/invalidated
+                deleted_count = cleanup_expired_cache(s)
+            else:
+                # Full clear - delete all entries
+                deleted_count = s.query(SynthesisCache).delete()
+                logger.info(
+                    f"Cleared entire synthesis cache: {deleted_count} entries deleted"
+                )
+
+            return {
+                "cleared": deleted_count,
+                "mode": "expired_only" if expired_only else "full_clear",
+            }
+    except Exception as e:
+        logger.error(f"Failed to clear cache: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to clear cache: {str(e)}")
+
+
 @app.get("/scheduler/status")
 def get_scheduler_status():
     """
     Get background scheduler status.
 
-    Returns information about the automated story generation scheduler:
-    - Whether scheduler is running
-    - Next scheduled run time
-    - Configuration (schedule, time window, archive settings)
+    Returns information about scheduled background tasks:
+    - Feed refresh status (enabled, schedule, next run, in progress)
+    - Story generation status (schedule, next run, configuration)
 
     Returns:
-        Scheduler status and configuration
+        Scheduler status and configuration for all scheduled jobs
     """
     try:
         status = scheduler.get_scheduler_status()
@@ -1709,3 +1855,89 @@ def get_story_endpoint(story_id: int):
         raise HTTPException(
             status_code=500, detail=f"Failed to retrieve story: {str(e)}"
         )
+
+
+@app.get("/stories/{story_id}/articles", response_model=List[ItemOut])
+def get_story_articles(story_id: int):
+    """
+    Get all articles associated with a specific story.
+
+    Convenience endpoint that returns all articles linked to a story,
+    ordered by relevance score (primary articles first).
+
+    Args:
+        story_id: The ID of the story
+
+    Returns:
+        List of articles in the story
+
+    Raises:
+        404: Story not found
+    """
+    with session_scope() as s:
+        # Verify story exists
+        story_exists = s.execute(
+            text("SELECT id FROM stories WHERE id = :sid"),
+            {"sid": story_id},
+        ).first()
+        if not story_exists:
+            raise HTTPException(
+                status_code=404, detail=f"Story with ID {story_id} not found"
+            )
+
+        # Get articles for this story, ordered by relevance
+        rows = s.execute(
+            text(
+                """
+                SELECT i.id, i.title, i.url, i.published, i.summary, i.content_hash, i.content,
+                       i.ai_summary, i.ai_model, i.ai_generated_at,
+                       i.structured_summary_json, i.structured_summary_model,
+                       i.structured_summary_content_hash, i.structured_summary_generated_at,
+                       i.ranking_score, i.topic, i.topic_confidence, i.source_weight
+                FROM items i
+                JOIN story_articles sa ON i.id = sa.article_id
+                WHERE sa.story_id = :story_id
+                ORDER BY sa.is_primary DESC, sa.relevance_score DESC, i.published DESC
+                """
+            ),
+            {"story_id": story_id},
+        ).all()
+
+        items = []
+        for r in rows:
+            # Parse structured summary if available
+            structured_summary = None
+            if r[10] and r[11]:
+                try:
+                    structured_summary = StructuredSummary.from_json_string(
+                        r[10],
+                        r[12] or r[5] or "",
+                        r[11],
+                        datetime.fromisoformat(r[13]) if r[13] else datetime.now(),
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to parse structured summary for item {r[0]}: {e}"
+                    )
+
+            items.append(
+                ItemOut(
+                    id=r[0],
+                    title=r[1],
+                    url=r[2],
+                    published=r[3],
+                    summary=r[4],
+                    ai_summary=r[7],
+                    ai_model=r[8],
+                    ai_generated_at=r[9],
+                    structured_summary=structured_summary,
+                    fallback_summary=None,
+                    is_fallback_summary=False,
+                    ranking_score=float(r[14]) if r[14] is not None else 0.0,
+                    topic=r[15],
+                    topic_confidence=float(r[16]) if r[16] is not None else 0.0,
+                    source_weight=float(r[17]) if r[17] is not None else 1.0,
+                )
+            )
+
+        return items

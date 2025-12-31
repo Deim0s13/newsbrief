@@ -51,13 +51,18 @@ def migrate_sanitize_existing_summaries() -> int:
     This function runs automatically on app startup to ensure all existing
     summaries are sanitized. It's idempotent - running multiple times is safe.
 
+    Also invalidates synthesis cache for any modified articles.
+
     Returns:
         Number of articles updated
     """
     import logging
 
+    from .synthesis_cache import invalidate_cache_for_articles
+
     logger = logging.getLogger(__name__)
     updated_count = 0
+    updated_article_ids = []
 
     with session_scope() as session:
         # Get all articles with non-empty summaries
@@ -78,6 +83,11 @@ def migrate_sanitize_existing_summaries() -> int:
                     {"summary": sanitized, "id": article_id},
                 )
                 updated_count += 1
+                updated_article_ids.append(article_id)
+
+        # Invalidate synthesis cache for modified articles
+        if updated_article_ids:
+            invalidate_cache_for_articles(session, updated_article_ids)
 
         session.commit()
 

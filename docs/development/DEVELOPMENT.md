@@ -71,6 +71,23 @@ export NEWSBRIEF_LLM_MODEL=llama3.1:8b
 export DATA_DIR=/path/to/your/data
 ```
 
+#### **Scheduler Configuration** ⭐ *New in v0.6.3*
+```bash
+# Feed Refresh (automatic before story generation)
+export FEED_REFRESH_ENABLED=true           # Enable/disable scheduled refresh
+export FEED_REFRESH_SCHEDULE="30 5 * * *"  # Cron: 5:30 AM daily
+
+# Story Generation
+export STORY_GENERATION_SCHEDULE="0 6 * * *"  # Cron: 6:00 AM daily
+export STORY_GENERATION_TIMEZONE="Pacific/Auckland"
+
+# Story Configuration
+export STORY_ARCHIVE_DAYS=7           # Archive stories older than 7 days
+export STORY_TIME_WINDOW_HOURS=24     # Generate from last 24 hours
+export STORY_MIN_ARTICLES=2           # Minimum articles per story
+export STORY_MODEL=llama3.1:8b        # LLM model for synthesis
+```
+
 #### **Fetch Limits & Performance** ⭐ *New in v0.2.4*
 ```bash
 # Global item limit per refresh (default: 150)

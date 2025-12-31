@@ -100,6 +100,9 @@ class Story(Base):  # type: ignore[misc,valid-type]
     time_window_end = Column(DateTime)
     model = Column(String)
     status = Column(String, default="active")
+    # Versioning (v0.6.3 - ADR 0004)
+    version = Column(Integer, default=1)
+    previous_version_id = Column(Integer)  # References stories.id
 
     # Relationship to articles via junction table
     story_articles = relationship(
@@ -147,6 +150,8 @@ def create_story(
     cluster_method: str = "naive",
     story_hash: Optional[str] = None,
     first_seen: Optional[datetime] = None,
+    version: int = 1,
+    previous_version_id: Optional[int] = None,
 ) -> int:
     """
     Create a new story.
@@ -167,6 +172,8 @@ def create_story(
         cluster_method: Clustering algorithm used
         story_hash: Unique hash for deduplication
         first_seen: When story was first generated
+        version: Story version number (default 1)
+        previous_version_id: ID of previous version if this is an update
 
     Returns:
         Story ID
@@ -190,6 +197,8 @@ def create_story(
         time_window_end=time_window_end,
         model=model,
         status="active",
+        version=version,
+        previous_version_id=previous_version_id,
     )
 
     session.add(story)
@@ -447,6 +456,161 @@ def archive_story(session: Session, story_id: int) -> bool:
 
     logger.info(f"Archived story #{story_id}")
     return True
+
+
+def find_overlapping_story(
+    session: Session,
+    cluster_article_ids: List[int],
+    overlap_threshold: float = 0.70,
+) -> Optional[Tuple[Story, Set[int], float]]:
+    """
+    Find an active story that shares significant article overlap with a cluster.
+
+    Used for incremental updates: if a new cluster overlaps 70%+ with an
+    existing story, we should update that story rather than create a duplicate.
+
+    Args:
+        session: SQLAlchemy session
+        cluster_article_ids: Article IDs in the new cluster
+        overlap_threshold: Minimum overlap ratio to consider a match (default 0.70)
+
+    Returns:
+        Tuple of (Story, existing_article_ids, overlap_ratio) if found, None otherwise
+    """
+    if not cluster_article_ids:
+        return None
+
+    cluster_set = set(cluster_article_ids)
+
+    # Get all active stories with their article IDs
+    active_stories = session.query(Story).filter(Story.status == "active").all()
+
+    best_match: Optional[Tuple[Story, Set[int], float]] = None
+    best_overlap = 0.0
+
+    for story in active_stories:
+        # Get article IDs for this story
+        story_article_ids = {
+            sa.article_id
+            for sa in session.query(StoryArticle)
+            .filter(StoryArticle.story_id == story.id)
+            .all()
+        }
+
+        if not story_article_ids:
+            continue
+
+        # Calculate overlap ratio (intersection / cluster size)
+        overlap = cluster_set & story_article_ids
+        overlap_ratio = len(overlap) / len(cluster_set)
+
+        if overlap_ratio >= overlap_threshold and overlap_ratio > best_overlap:
+            best_overlap = overlap_ratio
+            best_match = (story, story_article_ids, overlap_ratio)
+
+    if best_match:
+        story, existing_ids, ratio = best_match
+        logger.debug(
+            f"Found overlapping story #{story.id} v{story.version} "
+            f"with {ratio:.0%} overlap ({len(existing_ids)} articles)"
+        )
+
+    return best_match
+
+
+def update_story_with_new_articles(
+    session: Session,
+    existing_story: Story,
+    existing_article_ids: Set[int],
+    merged_article_ids: List[int],
+    synthesis_data: Dict[str, Any],
+    model: str,
+    cluster_data: Dict[str, Any],
+) -> int:
+    """
+    Create a new version of an existing story with additional articles.
+
+    Implements ADR 0004: Incremental Story Updates with Versioning.
+    - Marks existing story as 'superseded'
+    - Creates new story with version + 1
+    - Links new story to merged article set
+
+    Args:
+        session: SQLAlchemy session
+        existing_story: The story to update
+        existing_article_ids: Article IDs already in the existing story
+        merged_article_ids: All article IDs for the new version
+        synthesis_data: New synthesis from LLM
+        model: LLM model used
+        cluster_data: Cluster metadata (scores, time window, etc.)
+
+    Returns:
+        New story ID
+    """
+    old_version = existing_story.version or 1
+    new_version = old_version + 1
+    old_story_id = existing_story.id
+
+    # Calculate new articles added
+    new_articles = set(merged_article_ids) - existing_article_ids
+    logger.info(
+        f"Updating story #{old_story_id} v{old_version} → v{new_version}: "
+        f"adding {len(new_articles)} new articles "
+        f"(total: {len(merged_article_ids)})"
+    )
+
+    # Mark existing story as superseded
+    existing_story.status = "superseded"  # type: ignore[assignment]
+    existing_story.last_updated = datetime.now(UTC)  # type: ignore[assignment]
+
+    # Create new version
+    new_story = Story(
+        title=synthesis_data.get("synthesis", "")[:200],
+        synthesis=synthesis_data.get("synthesis", ""),
+        key_points_json=serialize_story_json_field(
+            synthesis_data.get("key_points", [])
+        ),
+        why_it_matters=synthesis_data.get("why_it_matters", ""),
+        topics_json=serialize_story_json_field(synthesis_data.get("topics", [])),
+        entities_json=serialize_story_json_field(synthesis_data.get("entities", [])),
+        article_count=len(merged_article_ids),
+        importance_score=cluster_data.get("importance_score", 0.5),
+        freshness_score=cluster_data.get("freshness_score", 0.5),
+        quality_score=cluster_data.get("quality_score", 0.5),
+        cluster_method="incremental_update",
+        story_hash=cluster_data.get("cluster_hash"),
+        generated_at=datetime.now(UTC),
+        first_seen=existing_story.first_seen,  # Preserve original first_seen
+        last_updated=datetime.now(UTC),
+        time_window_start=cluster_data.get("time_window_start"),
+        time_window_end=cluster_data.get("time_window_end"),
+        model=model,
+        status="active",
+        version=new_version,
+        previous_version_id=old_story_id,
+    )
+
+    session.add(new_story)
+    session.flush()  # Get the new story ID
+
+    new_story_id = new_story.id
+
+    # Link all articles to new story
+    for article_id in merged_article_ids:
+        story_article = StoryArticle(
+            story_id=new_story_id,
+            article_id=article_id,
+            relevance_score=1.0,
+            is_primary=(article_id == merged_article_ids[0]),
+        )
+        session.add(story_article)
+
+    logger.info(
+        f"Created story #{new_story_id} v{new_version} "
+        f"(supersedes #{old_story_id} v{old_version})"
+    )
+
+    return new_story_id  # type: ignore[return-value]
 
 
 def delete_story(session: Session, story_id: int) -> bool:
@@ -921,19 +1085,43 @@ def _generate_story_synthesis(
     article_ids: List[int],
     model: str = "llama3.1:8b",
     articles_cache: Optional[Dict[int, Any]] = None,
+    skip_cache: bool = False,
 ) -> Dict[str, Any]:
     """
     Generate story synthesis from multiple articles using LLM.
+
+    Checks synthesis cache first to avoid redundant LLM calls.
+    Stores successful results in cache for future reuse.
 
     Args:
         session: Database session
         article_ids: List of article IDs to synthesize
         model: LLM model to use
         articles_cache: Optional cached article data to avoid DB queries
+        skip_cache: If True, bypass cache lookup (but still stores result)
 
     Returns:
         Dict with synthesis, key_points, why_it_matters, topics, entities
     """
+    from .synthesis_cache import (
+        count_tokens,
+        get_cached_synthesis,
+        store_synthesis_in_cache,
+    )
+
+    # Check synthesis cache first (unless explicitly skipped)
+    if not skip_cache:
+        cached_result = get_cached_synthesis(session, article_ids, model)
+        if cached_result:
+            logger.info(
+                f"Using cached synthesis for {len(article_ids)} articles "
+                f"(key: {cached_result.get('_cache_key', 'unknown')[:12]}...)"
+            )
+            return cached_result
+
+    # Track generation time for cache storage
+    generation_start = time.time()
+
     # Use cached article data if available, otherwise fetch
     if articles_cache:
         articles = [articles_cache[aid] for aid in article_ids if aid in articles_cache]
@@ -1007,6 +1195,9 @@ Example format:
 
 JSON:"""
 
+    # Count input tokens for metrics
+    token_count_input = count_tokens(prompt)
+
     try:
         llm_service = get_llm_service()
 
@@ -1061,13 +1252,35 @@ JSON:"""
                     elif len(key_points) == 2:
                         key_points.append(f"Based on {len(articles)} sources")
 
-                return {
+                synthesis_result = {
                     "synthesis": result["synthesis"],
                     "key_points": key_points,
                     "why_it_matters": result.get("why_it_matters", ""),
                     "topics": result.get("topics", []),
                     "entities": result.get("entities", []),
                 }
+
+                # Count output tokens for metrics
+                token_count_output = count_tokens(response_text)
+
+                # Store successful result in cache with metrics
+                generation_time_ms = int((time.time() - generation_start) * 1000)
+                store_synthesis_in_cache(
+                    session=session,
+                    article_ids=article_ids,
+                    model=model,
+                    synthesis_result=synthesis_result,
+                    generation_time_ms=generation_time_ms,
+                    token_count_input=token_count_input,
+                    token_count_output=token_count_output,
+                )
+
+                logger.debug(
+                    f"Synthesis complete: {token_count_input} input tokens, "
+                    f"{token_count_output} output tokens, {generation_time_ms}ms"
+                )
+
+                return synthesis_result
 
         logger.warning("LLM response invalid, using fallback")
         return _fallback_synthesis(articles)
@@ -1518,6 +1731,7 @@ def generate_stories_simple(
     # Collect all stories to create without committing
     stories_to_create = []
     skipped_duplicates = 0
+    updated_stories = 0
 
     for result in synthesis_results:
         if not result["success"]:
@@ -1525,8 +1739,9 @@ def generate_stories_simple(
 
         cluster_data = result["cluster_data"]
         synthesis_data = result["synthesis_data"]
+        cluster_article_ids = cluster_data["article_ids"]
 
-        # Skip if story already exists
+        # Skip if exact story already exists (same hash)
         if cluster_data["cluster_hash"] in existing_hash_set:
             skipped_duplicates += 1
             logger.debug(
@@ -1534,6 +1749,56 @@ def generate_stories_simple(
             )
             continue
 
+        # Check for overlapping story to update (v0.6.3 - ADR 0004)
+        overlap_result = find_overlapping_story(
+            session, cluster_article_ids, overlap_threshold=0.70
+        )
+
+        if overlap_result:
+            existing_story, existing_article_ids, overlap_ratio = overlap_result
+            merged_article_ids = list(existing_article_ids | set(cluster_article_ids))
+
+            # Only update if there are actually new articles
+            new_article_count = len(set(cluster_article_ids) - existing_article_ids)
+            if new_article_count > 0:
+                try:
+                    # Re-synthesize with merged articles
+                    merged_synthesis = _generate_story_synthesis(
+                        session, merged_article_ids, model, skip_cache=True
+                    )
+
+                    # Create new version
+                    new_story_id = update_story_with_new_articles(
+                        session=session,
+                        existing_story=existing_story,
+                        existing_article_ids=existing_article_ids,
+                        merged_article_ids=merged_article_ids,
+                        synthesis_data=merged_synthesis,
+                        model=model,
+                        cluster_data={
+                            **cluster_data,
+                            "cluster_hash": hashlib.md5(
+                                str(sorted(merged_article_ids)).encode()
+                            ).hexdigest(),
+                        },
+                    )
+                    story_ids.append(new_story_id)
+                    updated_stories += 1
+                    logger.info(
+                        f"Updated story #{existing_story.id} → #{new_story_id} "
+                        f"(+{new_article_count} articles, {overlap_ratio:.0%} overlap)"
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to update story: {e}", exc_info=True)
+            else:
+                # No new articles, skip
+                skipped_duplicates += 1
+                logger.debug(
+                    f"Skipping update - no new articles for story #{existing_story.id}"
+                )
+            continue
+
+        # No overlap - create new story
         try:
             # Create story WITHOUT commit (will batch commit at end)
             story = Story(
@@ -1558,6 +1823,7 @@ def generate_stories_simple(
                 time_window_end=cluster_data["time_window_end"],
                 model=model,
                 status="active",
+                version=1,
             )
             session.add(story)
             stories_to_create.append((story, cluster_data["article_ids"]))
@@ -1568,6 +1834,8 @@ def generate_stories_simple(
 
     if skipped_duplicates > 0:
         logger.info(f"Skipped {skipped_duplicates} duplicate stories")
+    if updated_stories > 0:
+        logger.info(f"Updated {updated_stories} existing stories with new articles")
 
     # Single flush to assign IDs
     session.flush()
@@ -1606,6 +1874,7 @@ def generate_stories_simple(
             "articles_found": len(articles),
             "clusters_created": len(clusters),
             "duplicates_skipped": skipped_duplicates,
+            "stories_updated": updated_stories,
         }
 
     overall_time = time.time() - overall_start
@@ -1622,9 +1891,11 @@ def generate_stories_simple(
         )
 
     # v0.6.1: Return detailed stats for better UX
+    # v0.6.3: Added stories_updated count
     return {
         "story_ids": story_ids,
         "articles_found": len(articles),
         "clusters_created": len(clusters),
         "duplicates_skipped": skipped_duplicates,
+        "stories_updated": updated_stories,
     }
