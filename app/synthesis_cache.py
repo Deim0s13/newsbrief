@@ -161,10 +161,15 @@ def get_cached_synthesis(
         logger.debug(f"Cache MISS: entry invalidated at {cache_entry.invalidated_at}")
         return None
 
-    # Check if expired
-    if cache_entry.expires_at and cache_entry.expires_at < now:
-        logger.debug(f"Cache MISS: entry expired at {cache_entry.expires_at}")
-        return None
+    # Check if expired (handle timezone-naive datetimes from SQLite)
+    expires_at = cache_entry.expires_at
+    if expires_at:
+        # Make timezone-aware if needed
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+        if expires_at < now:
+            logger.debug(f"Cache MISS: entry expired at {cache_entry.expires_at}")
+            return None
 
     logger.info(f"Cache HIT: using cached synthesis for key {cache_key[:12]}...")
 
