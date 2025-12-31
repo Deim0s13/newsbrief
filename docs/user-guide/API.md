@@ -120,6 +120,60 @@ curl http://localhost:8787/stories/1 | jq .
 
 ---
 
+#### **GET /stories/{id}/articles** ⭐ *New in v0.6.3*
+
+Get all articles associated with a specific story. Convenience endpoint that returns articles ordered by relevance (primary articles first).
+
+**Parameters**
+- `id` (path): Story ID
+
+**Response (200)**
+```json
+[
+  {
+    "id": 123,
+    "title": "Google's Gemini 2.0 arrives with major AI improvements",
+    "url": "https://techcrunch.com/...",
+    "published": "2024-12-06T06:30:00Z",
+    "summary": "Article summary...",
+    "ai_summary": "AI-generated summary...",
+    "ranking_score": 1.125,
+    "topic": "ai-ml",
+    "topic_confidence": 0.92
+  },
+  {
+    "id": 124,
+    "title": "Gemini 2.0 benchmarks show impressive gains",
+    "url": "https://arstechnica.com/...",
+    "published": "2024-12-06T07:15:00Z",
+    "summary": "Benchmark analysis...",
+    "ranking_score": 0.98,
+    "topic": "ai-ml"
+  }
+]
+```
+
+**Error Response (404)**
+```json
+{
+  "detail": "Story with ID 999 not found"
+}
+```
+
+**Example**
+```bash
+# Get all articles for story #5
+curl http://localhost:8787/stories/5/articles | jq .
+
+# Get just titles and URLs
+curl http://localhost:8787/stories/5/articles | jq '.[] | {title, url}'
+
+# Count articles in a story
+curl http://localhost:8787/stories/5/articles | jq 'length'
+```
+
+---
+
 #### **POST /stories/generate**
 
 Manually trigger story generation. Clusters articles from last 24 hours and generates synthesized stories.
@@ -578,6 +632,12 @@ GET /items?limit=10 HTTP/1.1
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `limit` | integer | No | 50 | Number of items to return (max: 200) |
+| `story_id` | integer | No | - | Filter by story ID (returns 404 if story not found) ⭐ *v0.6.3* |
+| `topic` | string | No | - | Filter by topic (e.g., `ai-ml`, `security`) ⭐ *v0.6.3* |
+| `feed_id` | integer | No | - | Filter by source feed ID ⭐ *v0.6.3* |
+| `published_after` | datetime | No | - | Filter articles published after this date (ISO format) ⭐ *v0.6.3* |
+| `published_before` | datetime | No | - | Filter articles published before this date (ISO format) ⭐ *v0.6.3* |
+| `has_story` | boolean | No | - | Filter by story association (`true`/`false`) ⭐ *v0.6.3* |
 
 #### Response
 
@@ -652,7 +712,7 @@ GET /items?limit=10 HTTP/1.1
 | **`topic_confidence`** ⭐ | **number** | **Classification confidence level (0.0-1.0)** |
 | **`source_weight`** ⭐ | **number** | **Importance weight of the source feed** |
 
-#### Example ⭐ *Enhanced in v0.4.0*
+#### Example ⭐ *Enhanced in v0.4.0, v0.6.3*
 
 ```bash
 # Get top-ranked articles (default behavior in v0.4.0+)
@@ -672,6 +732,27 @@ curl "http://localhost:8787/items?limit=20" | jq '.[] | select(.topic == "ai-ml"
 
 # Compare ranking scores and topics
 curl "http://localhost:8787/items?limit=10" | jq '.[] | {title: .title[:60], score: .ranking_score, topic, confidence: .topic_confidence}'
+
+# ⭐ NEW v0.6.3: Filter by story ID (get articles in a specific story)
+curl "http://localhost:8787/items?story_id=5" | jq '.[] | {id, title}'
+
+# ⭐ NEW v0.6.3: Filter by topic
+curl "http://localhost:8787/items?topic=security&limit=10" | jq .
+
+# ⭐ NEW v0.6.3: Filter by feed source
+curl "http://localhost:8787/items?feed_id=3&limit=20" | jq .
+
+# ⭐ NEW v0.6.3: Filter by date range
+curl "http://localhost:8787/items?published_after=2026-01-01T00:00:00&published_before=2026-01-15T23:59:59" | jq .
+
+# ⭐ NEW v0.6.3: Get articles that are part of stories
+curl "http://localhost:8787/items?has_story=true&limit=20" | jq .
+
+# ⭐ NEW v0.6.3: Get orphan articles (not in any story)
+curl "http://localhost:8787/items?has_story=false&limit=20" | jq .
+
+# ⭐ NEW v0.6.3: Combine filters
+curl "http://localhost:8787/items?topic=ai-ml&has_story=true&limit=10" | jq .
 ```
 
 ---

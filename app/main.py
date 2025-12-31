@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, Response
@@ -778,23 +778,96 @@ def refresh_endpoint():
 
 
 @app.get("/items", response_model=List[ItemOut])
-def list_items(limit: int = Query(50, le=200)):
+def list_items(
+    limit: int = Query(50, le=200),
+    story_id: Optional[int] = Query(None, description="Filter by story ID"),
+    topic: Optional[str] = Query(None, description="Filter by topic"),
+    feed_id: Optional[int] = Query(None, description="Filter by feed ID"),
+    published_after: Optional[datetime] = Query(
+        None, description="Filter articles published after this date (ISO format)"
+    ),
+    published_before: Optional[datetime] = Query(
+        None, description="Filter articles published before this date (ISO format)"
+    ),
+    has_story: Optional[bool] = Query(
+        None, description="Filter by story association (true/false)"
+    ),
+):
     with session_scope() as s:
-        rows = s.execute(
-            text(
-                """
-        SELECT id, title, url, published, summary, content_hash, content,
-               ai_summary, ai_model, ai_generated_at,
-               structured_summary_json, structured_summary_model, 
-               structured_summary_content_hash, structured_summary_generated_at,
-               ranking_score, topic, topic_confidence, source_weight
-        FROM items
-        ORDER BY ranking_score DESC, COALESCE(published, created_at) DESC
-        LIMIT :lim
+        # Validate story_id if provided
+        if story_id is not None:
+            story_exists = s.execute(
+                text("SELECT id FROM stories WHERE id = :sid"),
+                {"sid": story_id},
+            ).first()
+            if not story_exists:
+                raise HTTPException(
+                    status_code=404, detail=f"Story with ID {story_id} not found"
+                )
+
+        # Build dynamic query
+        select_clause = """
+        SELECT DISTINCT i.id, i.title, i.url, i.published, i.summary, i.content_hash, i.content,
+               i.ai_summary, i.ai_model, i.ai_generated_at,
+               i.structured_summary_json, i.structured_summary_model,
+               i.structured_summary_content_hash, i.structured_summary_generated_at,
+               i.ranking_score, i.topic, i.topic_confidence, i.source_weight
+        FROM items i
         """
-            ),
-            {"lim": limit},
-        ).all()
+
+        joins = []
+        where_clauses = []
+        params = {"lim": limit}
+
+        # story_id filter - join with story_articles
+        if story_id is not None:
+            joins.append("JOIN story_articles sa ON i.id = sa.article_id")
+            where_clauses.append("sa.story_id = :story_id")
+            params["story_id"] = story_id
+
+        # topic filter
+        if topic is not None:
+            where_clauses.append("i.topic = :topic")
+            params["topic"] = topic
+
+        # feed_id filter
+        if feed_id is not None:
+            where_clauses.append("i.feed_id = :feed_id")
+            params["feed_id"] = feed_id
+
+        # published_after filter
+        if published_after is not None:
+            where_clauses.append("i.published >= :published_after")
+            params["published_after"] = published_after.isoformat()
+
+        # published_before filter
+        if published_before is not None:
+            where_clauses.append("i.published <= :published_before")
+            params["published_before"] = published_before.isoformat()
+
+        # has_story filter
+        if has_story is not None:
+            if has_story:
+                where_clauses.append(
+                    "EXISTS (SELECT 1 FROM story_articles sa2 WHERE sa2.article_id = i.id)"
+                )
+            else:
+                where_clauses.append(
+                    "NOT EXISTS (SELECT 1 FROM story_articles sa2 WHERE sa2.article_id = i.id)"
+                )
+
+        # Build final query
+        query = select_clause
+        if joins:
+            query += " " + " ".join(joins)
+        if where_clauses:
+            query += " WHERE " + " AND ".join(where_clauses)
+        query += (
+            " ORDER BY i.ranking_score DESC, COALESCE(i.published, i.created_at) DESC"
+        )
+        query += " LIMIT :lim"
+
+        rows = s.execute(text(query), params).all()
 
         items = []
         for r in rows:
@@ -1776,3 +1849,89 @@ def get_story_endpoint(story_id: int):
         raise HTTPException(
             status_code=500, detail=f"Failed to retrieve story: {str(e)}"
         )
+
+
+@app.get("/stories/{story_id}/articles", response_model=List[ItemOut])
+def get_story_articles(story_id: int):
+    """
+    Get all articles associated with a specific story.
+
+    Convenience endpoint that returns all articles linked to a story,
+    ordered by relevance score (primary articles first).
+
+    Args:
+        story_id: The ID of the story
+
+    Returns:
+        List of articles in the story
+
+    Raises:
+        404: Story not found
+    """
+    with session_scope() as s:
+        # Verify story exists
+        story_exists = s.execute(
+            text("SELECT id FROM stories WHERE id = :sid"),
+            {"sid": story_id},
+        ).first()
+        if not story_exists:
+            raise HTTPException(
+                status_code=404, detail=f"Story with ID {story_id} not found"
+            )
+
+        # Get articles for this story, ordered by relevance
+        rows = s.execute(
+            text(
+                """
+                SELECT i.id, i.title, i.url, i.published, i.summary, i.content_hash, i.content,
+                       i.ai_summary, i.ai_model, i.ai_generated_at,
+                       i.structured_summary_json, i.structured_summary_model,
+                       i.structured_summary_content_hash, i.structured_summary_generated_at,
+                       i.ranking_score, i.topic, i.topic_confidence, i.source_weight
+                FROM items i
+                JOIN story_articles sa ON i.id = sa.article_id
+                WHERE sa.story_id = :story_id
+                ORDER BY sa.is_primary DESC, sa.relevance_score DESC, i.published DESC
+                """
+            ),
+            {"story_id": story_id},
+        ).all()
+
+        items = []
+        for r in rows:
+            # Parse structured summary if available
+            structured_summary = None
+            if r[10] and r[11]:
+                try:
+                    structured_summary = StructuredSummary.from_json_string(
+                        r[10],
+                        r[12] or r[5] or "",
+                        r[11],
+                        datetime.fromisoformat(r[13]) if r[13] else datetime.now(),
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to parse structured summary for item {r[0]}: {e}"
+                    )
+
+            items.append(
+                ItemOut(
+                    id=r[0],
+                    title=r[1],
+                    url=r[2],
+                    published=r[3],
+                    summary=r[4],
+                    ai_summary=r[7],
+                    ai_model=r[8],
+                    ai_generated_at=r[9],
+                    structured_summary=structured_summary,
+                    fallback_summary=None,
+                    is_fallback_summary=False,
+                    ranking_score=float(r[14]) if r[14] is not None else 0.0,
+                    topic=r[15],
+                    topic_confidence=float(r[16]) if r[16] is not None else 0.0,
+                    source_weight=float(r[17]) if r[17] is not None else 1.0,
+                )
+            )
+
+        return items
