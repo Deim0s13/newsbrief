@@ -4,7 +4,23 @@ Release documentation and version history for NewsBrief.
 
 ## 🚀 Version History
 
-### v0.6.2 - UI Polish & Fixes (Current)
+### v0.6.3 - Performance (Current)
+**Released**: January 2026
+
+Performance optimizations and API enhancements.
+
+**Key Changes**:
+- 🗄️ LLM synthesis caching with TTL and invalidation
+- 🔄 Incremental story updates with version history
+- 🔍 Advanced API filters on `/items` endpoint
+- 📰 New `/stories/{id}/articles` convenience endpoint
+- ⏰ Scheduled automatic feed refresh
+
+**Issues Resolved**: #46, #49, #56, #87
+
+---
+
+### v0.6.2 - UI Polish & Fixes
 **Released**: December 2025
 
 UI polish, bug fixes, and infrastructure improvements.
@@ -95,7 +111,7 @@ See [../development/BRANCHING_STRATEGY.md](../development/BRANCHING_STRATEGY.md)
 
 ## 🔗 Quick Links
 
-- **Latest Release**: [v0.6.2](v0.6.2/RELEASE_NOTES.md)
+- **Latest Release**: v0.6.3 (Performance)
 - **GitHub Releases**: [github.com/Deim0s13/newsbrief/releases](https://github.com/Deim0s13/newsbrief/releases)
 - **Changelog**: See individual release notes
 
