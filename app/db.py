@@ -153,6 +153,29 @@ def init_db() -> None:
         """
         )
 
+        # Synthesis cache table (v0.6.3 - ADR 0003)
+        conn.exec_driver_sql(
+            """
+        CREATE TABLE IF NOT EXISTS synthesis_cache (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          cache_key TEXT UNIQUE NOT NULL,
+          article_ids_json TEXT NOT NULL,
+          model TEXT NOT NULL,
+          synthesis TEXT NOT NULL,
+          key_points_json TEXT,
+          why_it_matters TEXT,
+          topics_json TEXT,
+          entities_json TEXT,
+          token_count_input INTEGER,
+          token_count_output INTEGER,
+          generation_time_ms INTEGER,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          expires_at DATETIME,
+          invalidated_at DATETIME
+        );
+        """
+        )
+
         if is_migration:
             logger.info("✅ Story tables created successfully")
 
@@ -267,6 +290,17 @@ def init_db() -> None:
         conn.exec_driver_sql(
             """
         CREATE INDEX IF NOT EXISTS idx_story_articles_article ON story_articles(article_id);
+        """
+        )
+        # Synthesis cache indexes (v0.6.3)
+        conn.exec_driver_sql(
+            """
+        CREATE INDEX IF NOT EXISTS idx_synthesis_cache_key ON synthesis_cache(cache_key);
+        """
+        )
+        conn.exec_driver_sql(
+            """
+        CREATE INDEX IF NOT EXISTS idx_synthesis_cache_expires ON synthesis_cache(expires_at);
         """
         )
 

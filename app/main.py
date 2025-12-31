@@ -1647,6 +1647,73 @@ def get_story_stats():
         )
 
 
+@app.get("/stories/cache/stats")
+def get_synthesis_cache_stats():
+    """
+    Get synthesis cache statistics.
+
+    Returns information about the LLM synthesis cache including:
+    - Cache configuration (enabled, TTL)
+    - Entry counts (total, valid, expired, invalidated)
+    - Performance metrics (average generation time, token usage)
+
+    Returns:
+        Cache statistics and configuration
+    """
+    from .synthesis_cache import get_cache_stats
+
+    try:
+        with session_scope() as s:
+            stats = get_cache_stats(s)
+            return stats
+    except Exception as e:
+        logger.error(f"Failed to get cache stats: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve cache statistics: {str(e)}"
+        )
+
+
+@app.post("/stories/cache/clear")
+def clear_synthesis_cache(
+    expired_only: bool = Query(
+        True, description="Only clear expired/invalidated entries"
+    )
+):
+    """
+    Clear the synthesis cache.
+
+    By default, only removes expired and invalidated entries (safe cleanup).
+    Set expired_only=false to clear all cache entries (forces regeneration).
+
+    Args:
+        expired_only: If True, only clear expired/invalidated entries. If False, clear everything.
+
+    Returns:
+        Number of entries cleared
+    """
+    from .synthesis_cache import SynthesisCache, cleanup_expired_cache
+
+    try:
+        with session_scope() as s:
+            if expired_only:
+                # Safe cleanup - only expired/invalidated
+                deleted_count = cleanup_expired_cache(s)
+            else:
+                # Full clear - delete all entries
+                deleted_count = s.query(SynthesisCache).delete()
+                logger.info(
+                    f"Cleared entire synthesis cache: {deleted_count} entries deleted"
+                )
+
+            return {
+                "cleared": deleted_count,
+                "mode": "expired_only" if expired_only else "full_clear",
+            }
+    except Exception as e:
+        logger.error(f"Failed to clear cache: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to clear cache: {str(e)}")
+
+
 @app.get("/scheduler/status")
 def get_scheduler_status():
     """

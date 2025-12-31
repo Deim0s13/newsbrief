@@ -921,19 +921,43 @@ def _generate_story_synthesis(
     article_ids: List[int],
     model: str = "llama3.1:8b",
     articles_cache: Optional[Dict[int, Any]] = None,
+    skip_cache: bool = False,
 ) -> Dict[str, Any]:
     """
     Generate story synthesis from multiple articles using LLM.
+
+    Checks synthesis cache first to avoid redundant LLM calls.
+    Stores successful results in cache for future reuse.
 
     Args:
         session: Database session
         article_ids: List of article IDs to synthesize
         model: LLM model to use
         articles_cache: Optional cached article data to avoid DB queries
+        skip_cache: If True, bypass cache lookup (but still stores result)
 
     Returns:
         Dict with synthesis, key_points, why_it_matters, topics, entities
     """
+    from .synthesis_cache import (
+        count_tokens,
+        get_cached_synthesis,
+        store_synthesis_in_cache,
+    )
+
+    # Check synthesis cache first (unless explicitly skipped)
+    if not skip_cache:
+        cached_result = get_cached_synthesis(session, article_ids, model)
+        if cached_result:
+            logger.info(
+                f"Using cached synthesis for {len(article_ids)} articles "
+                f"(key: {cached_result.get('_cache_key', 'unknown')[:12]}...)"
+            )
+            return cached_result
+
+    # Track generation time for cache storage
+    generation_start = time.time()
+
     # Use cached article data if available, otherwise fetch
     if articles_cache:
         articles = [articles_cache[aid] for aid in article_ids if aid in articles_cache]
@@ -1007,6 +1031,9 @@ Example format:
 
 JSON:"""
 
+    # Count input tokens for metrics
+    token_count_input = count_tokens(prompt)
+
     try:
         llm_service = get_llm_service()
 
@@ -1061,13 +1088,35 @@ JSON:"""
                     elif len(key_points) == 2:
                         key_points.append(f"Based on {len(articles)} sources")
 
-                return {
+                synthesis_result = {
                     "synthesis": result["synthesis"],
                     "key_points": key_points,
                     "why_it_matters": result.get("why_it_matters", ""),
                     "topics": result.get("topics", []),
                     "entities": result.get("entities", []),
                 }
+
+                # Count output tokens for metrics
+                token_count_output = count_tokens(response_text)
+
+                # Store successful result in cache with metrics
+                generation_time_ms = int((time.time() - generation_start) * 1000)
+                store_synthesis_in_cache(
+                    session=session,
+                    article_ids=article_ids,
+                    model=model,
+                    synthesis_result=synthesis_result,
+                    generation_time_ms=generation_time_ms,
+                    token_count_input=token_count_input,
+                    token_count_output=token_count_output,
+                )
+
+                logger.debug(
+                    f"Synthesis complete: {token_count_input} input tokens, "
+                    f"{token_count_output} output tokens, {generation_time_ms}ms"
+                )
+
+                return synthesis_result
 
         logger.warning("LLM response invalid, using fallback")
         return _fallback_synthesis(articles)
