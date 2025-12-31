@@ -745,36 +745,43 @@ def bulk_assign_priority(feed_ids: List[int], priority: int):
 
 @app.post("/refresh")
 def refresh_endpoint():
-    stats = fetch_and_store()
-    return {
-        # Backward compatibility
-        "ingested": stats.total_items,
-        # Enhanced statistics
-        "stats": {
-            "items": {
-                "total": stats.total_items,
-                "per_feed": stats.items_per_feed,
-                "robots_blocked": stats.robots_txt_blocked_articles,
+    # Set in-progress flag to prevent scheduled refresh overlap
+    from app.scheduler import set_feed_refresh_in_progress
+
+    set_feed_refresh_in_progress(True)
+    try:
+        stats = fetch_and_store()
+        return {
+            # Backward compatibility
+            "ingested": stats.total_items,
+            # Enhanced statistics
+            "stats": {
+                "items": {
+                    "total": stats.total_items,
+                    "per_feed": stats.items_per_feed,
+                    "robots_blocked": stats.robots_txt_blocked_articles,
+                },
+                "feeds": {
+                    "processed": stats.total_feeds_processed,
+                    "skipped_disabled": stats.feeds_skipped_disabled,
+                    "skipped_robots": stats.feeds_skipped_robots,
+                    "cached_304": stats.feeds_cached_304,
+                    "errors": stats.feeds_error,
+                },
+                "performance": {
+                    "refresh_time_seconds": round(stats.refresh_time_seconds, 2),
+                    "hit_global_limit": stats.hit_global_limit,
+                    "hit_time_limit": stats.hit_time_limit,
+                },
+                "config": {
+                    "max_items_per_refresh": MAX_ITEMS_PER_REFRESH,
+                    "max_items_per_feed": MAX_ITEMS_PER_FEED,
+                    "max_refresh_time_seconds": MAX_REFRESH_TIME_SECONDS,
+                },
             },
-            "feeds": {
-                "processed": stats.total_feeds_processed,
-                "skipped_disabled": stats.feeds_skipped_disabled,
-                "skipped_robots": stats.feeds_skipped_robots,
-                "cached_304": stats.feeds_cached_304,
-                "errors": stats.feeds_error,
-            },
-            "performance": {
-                "refresh_time_seconds": round(stats.refresh_time_seconds, 2),
-                "hit_global_limit": stats.hit_global_limit,
-                "hit_time_limit": stats.hit_time_limit,
-            },
-            "config": {
-                "max_items_per_refresh": MAX_ITEMS_PER_REFRESH,
-                "max_items_per_feed": MAX_ITEMS_PER_FEED,
-                "max_refresh_time_seconds": MAX_REFRESH_TIME_SECONDS,
-            },
-        },
-    }
+        }
+    finally:
+        set_feed_refresh_in_progress(False)
 
 
 @app.get("/items", response_model=List[ItemOut])
@@ -1792,13 +1799,12 @@ def get_scheduler_status():
     """
     Get background scheduler status.
 
-    Returns information about the automated story generation scheduler:
-    - Whether scheduler is running
-    - Next scheduled run time
-    - Configuration (schedule, time window, archive settings)
+    Returns information about scheduled background tasks:
+    - Feed refresh status (enabled, schedule, next run, in progress)
+    - Story generation status (schedule, next run, configuration)
 
     Returns:
-        Scheduler status and configuration
+        Scheduler status and configuration for all scheduled jobs
     """
     try:
         status = scheduler.get_scheduler_status()

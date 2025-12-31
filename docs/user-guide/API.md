@@ -207,6 +207,54 @@ curl -X POST http://localhost:8787/stories/generate | jq .
 
 ---
 
+#### **GET /scheduler/status** ⭐ *Updated in v0.6.3*
+
+Get background scheduler status including feed refresh and story generation jobs.
+
+**Response (200)**
+```json
+{
+  "running": true,
+  "timezone": "Pacific/Auckland",
+  "feed_refresh": {
+    "enabled": true,
+    "schedule": "30 5 * * *",
+    "next_run": "2026-01-02T05:30:00+13:00",
+    "in_progress": false
+  },
+  "story_generation": {
+    "schedule": "0 6 * * *",
+    "next_run": "2026-01-02T06:00:00+13:00",
+    "configuration": {
+      "time_window_hours": 24,
+      "archive_days": 7,
+      "min_articles": 2,
+      "model": "llama3.1:8b"
+    }
+  }
+}
+```
+
+**Environment Variables** ⭐ *New in v0.6.3*
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FEED_REFRESH_ENABLED` | `true` | Enable/disable scheduled feed refresh |
+| `FEED_REFRESH_SCHEDULE` | `30 5 * * *` | Cron schedule for feed refresh (default: 5:30 AM) |
+| `STORY_GENERATION_SCHEDULE` | `0 6 * * *` | Cron schedule for story generation (default: 6:00 AM) |
+| `STORY_GENERATION_TIMEZONE` | `Pacific/Auckland` | Timezone for all scheduled jobs |
+
+**Example**
+```bash
+# Check scheduler status
+curl http://localhost:8787/scheduler/status | jq .
+
+# View next scheduled runs
+curl http://localhost:8787/scheduler/status | jq '{feed_refresh: .feed_refresh.next_run, story_generation: .story_generation.next_run}'
+```
+
+---
+
 #### **GET /stories/stats**
 
 Get story generation statistics.

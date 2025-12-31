@@ -1,12 +1,15 @@
 """
-Background scheduler for automated story generation.
+Background scheduler for automated feed refresh and story generation.
 
-Uses APScheduler to run story generation on a configurable schedule.
-Default: Daily at 6 AM.
+Uses APScheduler to run background tasks on configurable schedules.
+Default schedules:
+- Feed refresh: 5:30 AM daily
+- Story generation: 6:00 AM daily
 """
 
 import logging
 import os
+import threading
 from datetime import UTC, datetime, timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -17,7 +20,17 @@ from app.stories import generate_stories_simple
 
 logger = logging.getLogger(__name__)
 
+# =============================================================================
 # Configuration from environment variables
+# =============================================================================
+
+# Feed refresh configuration (v0.6.3)
+FEED_REFRESH_ENABLED = os.getenv("FEED_REFRESH_ENABLED", "true").lower() == "true"
+FEED_REFRESH_SCHEDULE = os.getenv(
+    "FEED_REFRESH_SCHEDULE", "30 5 * * *"
+)  # Default: 5:30 AM daily (30 min before story generation)
+
+# Story generation configuration
 STORY_GENERATION_SCHEDULE = os.getenv(
     "STORY_GENERATION_SCHEDULE", "0 6 * * *"
 )  # Default: 6 AM daily (cron format)
@@ -35,8 +48,16 @@ STORY_MIN_ARTICLES = int(
 )  # Minimum articles per story
 STORY_MODEL = os.getenv("STORY_MODEL", "llama3.1:8b")  # LLM model for synthesis
 
+# =============================================================================
+# Global state
+# =============================================================================
+
 # Global scheduler instance
 scheduler: BackgroundScheduler = None  # type: ignore
+
+# Lock to prevent overlapping feed refreshes (manual vs scheduled)
+_feed_refresh_lock = threading.Lock()
+_feed_refresh_in_progress = False
 
 
 def archive_old_stories() -> int:
@@ -84,6 +105,89 @@ def archive_old_stories() -> int:
     except Exception as e:
         logger.error(f"Failed to archive old stories: {e}", exc_info=True)
         return 0
+
+
+def is_feed_refresh_in_progress() -> bool:
+    """Check if a feed refresh is currently in progress."""
+    return _feed_refresh_in_progress
+
+
+def set_feed_refresh_in_progress(in_progress: bool):
+    """Set the feed refresh in-progress flag (for manual refresh coordination)."""
+    global _feed_refresh_in_progress
+    _feed_refresh_in_progress = in_progress
+
+
+def scheduled_feed_refresh() -> dict:
+    """
+    Refresh all feeds on schedule.
+
+    This function is called by APScheduler according to the configured cron schedule.
+    It fetches new articles from all configured feeds.
+
+    Skips if a manual refresh is already in progress.
+
+    Returns:
+        Dict with refresh statistics
+    """
+    global _feed_refresh_in_progress
+
+    # Check if manual refresh is in progress
+    if not _feed_refresh_lock.acquire(blocking=False):
+        logger.info("Scheduled feed refresh skipped - manual refresh in progress")
+        return {
+            "success": True,
+            "skipped": True,
+            "reason": "Manual refresh in progress",
+        }
+
+    try:
+        _feed_refresh_in_progress = True
+        logger.info("Starting scheduled feed refresh")
+        start_time = datetime.now(UTC)
+
+        # Import here to avoid circular imports
+        from app.feeds import fetch_and_store_all_feeds
+
+        # Run the feed refresh
+        with session_scope() as session:
+            result = fetch_and_store_all_feeds(session)
+
+        elapsed = (datetime.now(UTC) - start_time).total_seconds()
+
+        # Extract stats from result
+        ingested = result.get("ingested", 0) if isinstance(result, dict) else result
+        stats = result.get("stats", {}) if isinstance(result, dict) else {}
+
+        logger.info(
+            f"Scheduled feed refresh complete: "
+            f"{ingested} articles ingested, "
+            f"took {elapsed:.1f}s"
+        )
+
+        return {
+            "success": True,
+            "skipped": False,
+            "articles_ingested": ingested,
+            "elapsed_seconds": elapsed,
+            "stats": stats,
+        }
+
+    except Exception as e:
+        elapsed = (datetime.now(UTC) - start_time).total_seconds()
+        logger.error(
+            f"Scheduled feed refresh failed after {elapsed:.1f}s: {e}",
+            exc_info=True,
+        )
+        return {
+            "success": False,
+            "error": str(e),
+            "elapsed_seconds": elapsed,
+        }
+
+    finally:
+        _feed_refresh_in_progress = False
+        _feed_refresh_lock.release()
 
 
 def scheduled_story_generation():
@@ -144,8 +248,9 @@ def start_scheduler():
     """
     Start the background scheduler.
 
-    Initializes APScheduler and schedules story generation according to
-    the configured cron schedule.
+    Initializes APScheduler and schedules:
+    - Feed refresh (if enabled)
+    - Story generation
 
     Should be called once during application startup.
     """
@@ -157,14 +262,33 @@ def start_scheduler():
 
     scheduler = BackgroundScheduler(timezone=STORY_GENERATION_TIMEZONE)
 
-    # Add scheduled story generation job
     try:
-        trigger = CronTrigger.from_crontab(
+        # Add scheduled feed refresh job (v0.6.3)
+        if FEED_REFRESH_ENABLED:
+            feed_trigger = CronTrigger.from_crontab(
+                FEED_REFRESH_SCHEDULE, timezone=STORY_GENERATION_TIMEZONE
+            )
+            scheduler.add_job(
+                scheduled_feed_refresh,
+                trigger=feed_trigger,
+                id="feed_refresh",
+                name="Scheduled Feed Refresh",
+                replace_existing=True,
+                max_instances=1,  # Only one instance running at a time
+            )
+            logger.info(
+                f"Feed refresh scheduled: {FEED_REFRESH_SCHEDULE} {STORY_GENERATION_TIMEZONE}"
+            )
+        else:
+            logger.info("Feed refresh disabled (FEED_REFRESH_ENABLED=false)")
+
+        # Add scheduled story generation job
+        story_trigger = CronTrigger.from_crontab(
             STORY_GENERATION_SCHEDULE, timezone=STORY_GENERATION_TIMEZONE
         )
         scheduler.add_job(
             scheduled_story_generation,
-            trigger=trigger,
+            trigger=story_trigger,
             id="story_generation",
             name="Scheduled Story Generation",
             replace_existing=True,
@@ -209,28 +333,38 @@ def get_scheduler_status() -> dict:
     Get current scheduler status.
 
     Returns:
-        Dict with scheduler status information
+        Dict with scheduler status information including feed refresh and story generation
     """
     global scheduler
 
     if scheduler is None or not scheduler.running:
         return {
             "running": False,
-            "next_run": None,
+            "feed_refresh": None,
+            "story_generation": None,
         }
 
     jobs = scheduler.get_jobs()
     story_job = next((j for j in jobs if j.id == "story_generation"), None)
+    feed_job = next((j for j in jobs if j.id == "feed_refresh"), None)
 
     return {
         "running": True,
-        "schedule": STORY_GENERATION_SCHEDULE,
         "timezone": STORY_GENERATION_TIMEZONE,
-        "next_run": story_job.next_run_time.isoformat() if story_job else None,
-        "configuration": {
-            "time_window_hours": STORY_TIME_WINDOW_HOURS,
-            "archive_days": STORY_ARCHIVE_DAYS,
-            "min_articles": STORY_MIN_ARTICLES,
-            "model": STORY_MODEL,
+        "feed_refresh": {
+            "enabled": FEED_REFRESH_ENABLED,
+            "schedule": FEED_REFRESH_SCHEDULE if FEED_REFRESH_ENABLED else None,
+            "next_run": feed_job.next_run_time.isoformat() if feed_job else None,
+            "in_progress": _feed_refresh_in_progress,
+        },
+        "story_generation": {
+            "schedule": STORY_GENERATION_SCHEDULE,
+            "next_run": story_job.next_run_time.isoformat() if story_job else None,
+            "configuration": {
+                "time_window_hours": STORY_TIME_WINDOW_HOURS,
+                "archive_days": STORY_ARCHIVE_DAYS,
+                "min_articles": STORY_MIN_ARTICLES,
+                "model": STORY_MODEL,
+            },
         },
     }

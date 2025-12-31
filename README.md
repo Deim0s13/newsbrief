@@ -25,7 +25,7 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 - **Performance Optimized**: Parallel LLM synthesis (3 workers), caching, batching - 80% faster
 - **RESTful Story API**: Complete endpoints for generation, retrieval, filtering, and monitoring
 - **Automatic Archiving**: Old stories archived after 7 days (configurable)
-- **Scheduler Monitoring**: Real-time status of automated generation
+- **Scheduler Monitoring**: Real-time status of automated feed refresh and story generation
 
 ### **📰 RSS Feed Management**
 - **OPML Import/Export**: Bulk feed management with category preservation
@@ -176,7 +176,7 @@ curl "http://localhost:8787/items?limit=10" | jq .
 | `/stories/{id}` | GET | Get story with supporting articles | ✅ v0.5.5 |
 | `/stories/generate` | POST | Generate/refresh stories | ✅ v0.5.5 |
 | `/stories/stats` | GET | Story generation statistics | ✅ v0.5.5 |
-| `/scheduler/status` | GET | Monitor automated story generation | ✅ v0.5.5 |
+| `/scheduler/status` | GET | Monitor automated feed refresh & story generation | ✅ v0.6.3 |
 | `/items` | GET | List articles (secondary feature) | ✅ Available |
 | `/docs` | GET | Interactive API documentation | ✅ Available |
 
@@ -402,7 +402,7 @@ Transform from article-centric to story-based aggregation
   - [x] GET /stories (list with filtering/sorting/pagination)
   - [x] GET /stories/{id} (single story details)
   - [x] GET /stories/stats (generation statistics)
-  - [x] GET /scheduler/status (monitor automated generation)
+  - [x] GET /scheduler/status (monitor feed refresh & story generation)
 - [x] Python API fully functional
 - [x] Real data testing (150 articles → 379 stories)
 
