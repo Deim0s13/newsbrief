@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, Response
@@ -22,7 +22,6 @@ from .feeds import (
     fetch_and_store,
     import_opml,
     import_opml_content,
-    list_feeds,
     migrate_sanitize_existing_summaries,
     recalculate_rankings_and_topics,
     update_feed_health_scores,
@@ -388,8 +387,8 @@ def update_feed(feed_id: int, feed_update: FeedUpdate):
             raise HTTPException(status_code=404, detail="Feed not found")
 
         # Build update query dynamically
-        update_fields = []
-        params = {"feed_id": feed_id}
+        update_fields: list[str] = []
+        params: dict[str, Any] = {"feed_id": feed_id}
 
         if feed_update.name is not None:
             update_fields.append("name = :name")
@@ -822,9 +821,9 @@ def list_items(
         FROM items i
         """
 
-        joins = []
-        where_clauses = []
-        params = {"lim": limit}
+        joins: list[str] = []
+        where_clauses: list[str] = []
+        params: dict[str, Any] = {"lim": limit}
 
         # story_id filter - join with story_articles
         if story_id is not None:
@@ -929,6 +928,7 @@ def list_items(
                     url=r[2],
                     published=r[3],
                     summary=r[4],
+                    feed_id=None,  # Not included in query, default to None
                     ai_summary=r[7],  # Updated index
                     ai_model=r[8],  # Updated index
                     ai_generated_at=r[9],  # Updated index
@@ -1255,6 +1255,7 @@ def get_item(item_id: int):
             url=row[2],
             published=row[3],
             summary=row[4],
+            feed_id=None,  # Not included in query
             ai_summary=row[7],  # Updated index
             ai_model=row[8],  # Updated index
             ai_generated_at=row[9],  # Updated index
@@ -1372,6 +1373,7 @@ def get_items_by_topic(topic_key: str, limit: int = Query(50, le=200)):
                     url=r[2],
                     published=r[3],
                     summary=r[4],
+                    feed_id=None,  # Not included in query
                     ai_summary=r[7],
                     ai_model=r[8],
                     ai_generated_at=r[9],
@@ -1514,7 +1516,8 @@ def generate_stories_endpoint(request: StoryGenerationRequest = None):  # type: 
     try:
         # Use default request if none provided
         if request is None:
-            request = StoryGenerationRequest()
+            # All fields have defaults via Pydantic Field()
+            request = StoryGenerationRequest()  # type: ignore[call-arg]
 
         with session_scope() as s:
             result = generate_stories_simple(
@@ -1927,6 +1930,7 @@ def get_story_articles(story_id: int):
                     url=r[2],
                     published=r[3],
                     summary=r[4],
+                    feed_id=None,  # Not included in query
                     ai_summary=r[7],
                     ai_model=r[8],
                     ai_generated_at=r[9],

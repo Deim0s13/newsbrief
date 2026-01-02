@@ -21,7 +21,7 @@ import json
 import logging
 import os
 from datetime import UTC, datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from sqlalchemy import Column, DateTime, Integer, String, Text
 from sqlalchemy.orm import Session
@@ -173,13 +173,13 @@ def get_cached_synthesis(
 
     logger.info(f"Cache HIT: using cached synthesis for key {cache_key[:12]}...")
 
-    # Return cached result
+    # Return cached result - cast Column types to str for json.loads
     return {
         "synthesis": cache_entry.synthesis,
-        "key_points": json.loads(cache_entry.key_points_json or "[]"),
+        "key_points": json.loads(cast(str, cache_entry.key_points_json) or "[]"),
         "why_it_matters": cache_entry.why_it_matters or "",
-        "topics": json.loads(cache_entry.topics_json or "[]"),
-        "entities": json.loads(cache_entry.entities_json or "[]"),
+        "topics": json.loads(cast(str, cache_entry.topics_json) or "[]"),
+        "entities": json.loads(cast(str, cache_entry.entities_json) or "[]"),
         "_cached": True,
         "_cache_key": cache_key,
         "_cached_at": (
@@ -227,18 +227,18 @@ def store_synthesis_in_cache(
     )
 
     if existing:
-        # Update existing entry
-        existing.synthesis = synthesis_result.get("synthesis", "")
-        existing.key_points_json = json.dumps(synthesis_result.get("key_points", []))
-        existing.why_it_matters = synthesis_result.get("why_it_matters", "")
-        existing.topics_json = json.dumps(synthesis_result.get("topics", []))
-        existing.entities_json = json.dumps(synthesis_result.get("entities", []))
-        existing.generation_time_ms = generation_time_ms
-        existing.token_count_input = token_count_input
-        existing.token_count_output = token_count_output
-        existing.created_at = now
-        existing.expires_at = expires_at
-        existing.invalidated_at = None  # Clear any invalidation
+        # Update existing entry (type: ignore for SQLAlchemy Column assignments)
+        existing.synthesis = synthesis_result.get("synthesis", "")  # type: ignore[assignment]
+        existing.key_points_json = json.dumps(synthesis_result.get("key_points", []))  # type: ignore[assignment]
+        existing.why_it_matters = synthesis_result.get("why_it_matters", "")  # type: ignore[assignment]
+        existing.topics_json = json.dumps(synthesis_result.get("topics", []))  # type: ignore[assignment]
+        existing.entities_json = json.dumps(synthesis_result.get("entities", []))  # type: ignore[assignment]
+        existing.generation_time_ms = generation_time_ms  # type: ignore[assignment]
+        existing.token_count_input = token_count_input  # type: ignore[assignment]
+        existing.token_count_output = token_count_output  # type: ignore[assignment]
+        existing.created_at = now  # type: ignore[assignment]
+        existing.expires_at = expires_at  # type: ignore[assignment]
+        existing.invalidated_at = None  # type: ignore[assignment]
         logger.debug(f"Cache UPDATE: refreshed entry for key {cache_key[:12]}...")
     else:
         # Create new entry
@@ -295,9 +295,9 @@ def invalidate_cache_for_articles(
 
     for entry in all_entries:
         try:
-            cached_article_ids = set(json.loads(entry.article_ids_json))
+            cached_article_ids = set(json.loads(cast(str, entry.article_ids_json)))
             if cached_article_ids.intersection(set(article_ids)):
-                entry.invalidated_at = now
+                entry.invalidated_at = now  # type: ignore[assignment]
                 invalidated_count += 1
                 logger.debug(
                     f"Invalidated cache entry {entry.cache_key[:12]}... "
