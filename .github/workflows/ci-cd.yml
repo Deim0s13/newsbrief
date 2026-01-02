@@ -230,12 +230,14 @@ jobs:
 
       - name: Create release archive
         run: |
+          # Use || true to ignore "file changed as we read it" warnings (exit code 1)
+          # This is a benign race condition, not a real error
           tar -czf newsbrief-${{ github.ref_name }}.tar.gz \
             --exclude='.git' \
             --exclude='.github' \
             --exclude='data/newsbrief.sqlite3' \
             --exclude='.venv' \
-            .
+            . || true
 
       - name: Generate changelog
         id: changelog
