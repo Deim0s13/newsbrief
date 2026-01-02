@@ -19,8 +19,9 @@ def setup_test_db():
     engine = create_engine("sqlite:///:memory:", echo=False)
     Base.metadata.create_all(engine)
 
-    # Create items table
+    # Create additional tables needed for story generation
     with engine.connect() as conn:
+        # Items table
         conn.execute(
             text(
                 """
@@ -32,7 +33,55 @@ def setup_test_db():
                 summary TEXT,
                 ai_summary TEXT,
                 topic TEXT,
-                content TEXT
+                content TEXT,
+                feed_id INTEGER,
+                entities_json TEXT,
+                entities_extracted_at DATETIME,
+                entities_model TEXT
+            )
+        """
+            )
+        )
+        
+        # Feeds table (required for health score lookups)
+        conn.execute(
+            text(
+                """
+            CREATE TABLE IF NOT EXISTS feeds (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT,
+                url TEXT,
+                health_score REAL DEFAULT 100.0
+            )
+        """
+            )
+        )
+        
+        # Insert a default feed
+        conn.execute(
+            text("INSERT INTO feeds (id, name, url, health_score) VALUES (1, 'Test Feed', 'http://test.com', 100.0)")
+        )
+        
+        # Synthesis cache table
+        conn.execute(
+            text(
+                """
+            CREATE TABLE IF NOT EXISTS synthesis_cache (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cache_key TEXT UNIQUE NOT NULL,
+                article_ids_json TEXT NOT NULL,
+                model TEXT NOT NULL,
+                synthesis TEXT NOT NULL,
+                key_points_json TEXT NOT NULL,
+                why_it_matters TEXT,
+                topics_json TEXT,
+                entities_json TEXT,
+                token_count_input INTEGER,
+                token_count_output INTEGER,
+                generation_time_ms INTEGER,
+                created_at DATETIME NOT NULL,
+                expires_at DATETIME NOT NULL,
+                invalidated_at DATETIME
             )
         """
             )
@@ -50,9 +99,9 @@ def test_llm_availability():
     llm_service = get_llm_service()
 
     if not llm_service.is_available():
-        print("❌ Ollama is not available!")
-        print("   Make sure Ollama is running: ollama serve")
-        return False
+        print("⚠️ Ollama is not available - skipping LLM tests")
+        import pytest
+        pytest.skip("Ollama not available")
 
     print("✅ Ollama is available")
 
@@ -61,12 +110,11 @@ def test_llm_availability():
     print(f"🔍 Checking model: {model}...")
 
     if not llm_service.ensure_model(model):
-        print(f"❌ Model {model} not available!")
-        print(f"   Run: ollama pull {model}")
-        return False
+        print(f"⚠️ Model {model} not available - skipping")
+        import pytest
+        pytest.skip(f"Model {model} not available")
 
     print(f"✅ Model {model} is ready")
-    return True
 
 
 def test_synthesis_with_llm():
@@ -106,8 +154,8 @@ def test_synthesis_with_llm():
             result = session.execute(
                 text(
                     """
-                    INSERT INTO items (title, summary, ai_summary, topic, published, url, content)
-                    VALUES (:title, :summary, :ai_summary, :topic, :published, :url, :content)
+                    INSERT INTO items (title, summary, ai_summary, topic, published, url, content, feed_id)
+                    VALUES (:title, :summary, :ai_summary, :topic, :published, :url, :content, :feed_id)
                 """
                 ),
                 {
@@ -118,6 +166,7 @@ def test_synthesis_with_llm():
                     "published": now - timedelta(hours=1),
                     "url": f"https://example.com/article-{len(article_ids)}",
                     "content": article["summary"],
+                    "feed_id": 1,
                 },
             )
             session.commit()
@@ -173,15 +222,6 @@ def test_synthesis_with_llm():
             print("   - Proper structured output")
         else:
             print("\n⚠️  May have used fallback synthesis")
-
-        return True, "LLM synthesis successful"
-
-    except Exception as e:
-        print(f"\n❌ Test failed: {e}")
-        import traceback
-
-        traceback.print_exc()
-        return False, str(e)
     finally:
         session.close()
 
@@ -211,8 +251,8 @@ def test_full_pipeline_with_llm():
             session.execute(
                 text(
                     """
-                    INSERT INTO items (title, summary, ai_summary, topic, published, url, content)
-                    VALUES (:title, :summary, :ai_summary, :topic, :published, :url, :content)
+                    INSERT INTO items (title, summary, ai_summary, topic, published, url, content, feed_id)
+                    VALUES (:title, :summary, :ai_summary, :topic, :published, :url, :content, :feed_id)
                 """
                 ),
                 {
@@ -223,6 +263,7 @@ def test_full_pipeline_with_llm():
                     "published": now - timedelta(hours=2),
                     "url": f"https://example.com/{title.replace(' ', '-')}",
                     "content": summary,
+                    "feed_id": 1,
                 },
             )
         session.commit()
@@ -251,15 +292,9 @@ def test_full_pipeline_with_llm():
             print(f"   ✅ Story count in expected range (2-4)")
         else:
             print(f"   ⚠️  Story count outside expected range: {len(story_ids)}")
-
-        return True, "Full pipeline successful"
-
-    except Exception as e:
-        print(f"\n❌ Test failed: {e}")
-        import traceback
-
-        traceback.print_exc()
-        return False, str(e)
+        
+        # Still pass if we got stories, the count range is just informational
+        assert len(story_ids) > 0, "Should generate at least one story"
     finally:
         session.close()
 

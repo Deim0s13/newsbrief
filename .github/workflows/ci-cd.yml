@@ -51,15 +51,20 @@ jobs:
         run: |
           python -m py_compile app/*.py
 
-      - name: Run tests
+      - name: Run tests with coverage
         run: |
-          echo "Running model validation tests..."
-          PYTHONPATH=. python tests/test_models.py
-          
-          echo "Running CRUD operation tests..."
-          PYTHONPATH=. python tests/test_story_crud.py
-          
+          pip install pytest-cov
+          pytest tests/ --cov=app --cov-report=term --cov-report=xml -v --tb=short
           echo "✅ All tests passed"
+        continue-on-error: false
+        
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+          verbose: true
           
       - name: Security scan
         uses: github/super-linter@v5

@@ -101,10 +101,6 @@ def test_create_story():
         assert story.title == "Test Story: Major AI Breakthrough"
         assert story.article_count == 0  # No articles linked yet
         assert story.status == "active"
-
-        return True, "Create story"
-    except Exception as e:
-        return False, f"Create story: {e}"
     finally:
         session.close()
 
@@ -158,10 +154,6 @@ def test_link_articles():
         assert (
             primary.article_id == 2
         ), f"Primary should be article 2, got {primary.article_id}"
-
-        return True, "Link articles to story"
-    except Exception as e:
-        return False, f"Link articles: {e}"
     finally:
         session.close()
 
@@ -198,10 +190,6 @@ def test_get_story_by_id():
         assert story.article_count == 3
         assert len(story.topics) == 2
         assert "Cloud" in story.topics
-
-        return True, "Get story by ID"
-    except Exception as e:
-        return False, f"Get story by ID: {e}"
     finally:
         session.close()
 
@@ -212,9 +200,6 @@ def test_get_story_not_found():
     try:
         story = get_story_by_id(session, 99999)
         assert story is None, "Non-existent story should return None"
-        return True, "Get non-existent story"
-    except Exception as e:
-        return False, f"Get non-existent story: {e}"
     finally:
         session.close()
 
@@ -255,10 +240,6 @@ def test_get_stories_list():
         assert (
             len(stories_limited) == 3
         ), f"Expected 3 stories, got {len(stories_limited)}"
-
-        return True, "Get stories (list/filter/sort)"
-    except Exception as e:
-        return False, f"Get stories: {e}"
     finally:
         session.close()
 
@@ -295,10 +276,6 @@ def test_update_story():
         story = session.query(Story).filter(Story.id == story_id).first()
         assert story.title == "Updated Title"
         assert story.importance_score == 0.95
-
-        return True, "Update story"
-    except Exception as e:
-        return False, f"Update story: {e}"
     finally:
         session.close()
 
@@ -309,9 +286,6 @@ def test_update_nonexistent():
     try:
         success = update_story(session, 99999, title="Won't work")
         assert not success, "Update non-existent should return False"
-        return True, "Update non-existent story"
-    except Exception as e:
-        return False, f"Update non-existent: {e}"
     finally:
         session.close()
 
@@ -345,10 +319,6 @@ def test_archive_story():
         assert (
             story.status == "archived"
         ), f"Status should be 'archived', got '{story.status}'"
-
-        return True, "Archive story (soft delete)"
-    except Exception as e:
-        return False, f"Archive story: {e}"
     finally:
         session.close()
 
@@ -388,10 +358,6 @@ def test_delete_story():
             session.query(StoryArticle).filter(StoryArticle.story_id == story_id).all()
         )
         assert len(links) == 0, "Article links should be deleted (CASCADE)"
-
-        return True, "Delete story (hard delete with CASCADE)"
-    except Exception as e:
-        return False, f"Delete story: {e}"
     finally:
         session.close()
 
@@ -449,10 +415,6 @@ def test_cleanup_archived():
 
         recent = session.query(Story).filter(Story.id == recent_story_id).first()
         assert recent is not None, "Recent archived story should remain"
-
-        return True, "Cleanup archived stories"
-    except Exception as e:
-        return False, f"Cleanup archived: {e}"
     finally:
         session.close()
 
