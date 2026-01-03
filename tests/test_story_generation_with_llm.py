@@ -2,10 +2,16 @@
 """
 Manual test for story generation with real Ollama LLM.
 Tests the complete synthesis pipeline with actual AI generation.
+
+NOTE: These tests require Ollama to be running with llama3.1:8b model.
+They will be skipped in CI where Ollama is not available.
 """
 
+import os
+import tempfile
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
@@ -13,10 +19,30 @@ from app.llm import get_llm_service
 from app.stories import (Base, _generate_story_synthesis,
                          generate_stories_simple)
 
+# Use a temporary file-based database for threading support
+_test_db_path = None
+
+
+def _check_llm_available():
+    """Check if LLM is available, skip test if not."""
+    llm_service = get_llm_service()
+    if not llm_service.is_available():
+        pytest.skip("Ollama not available - skipping LLM test")
+    if not llm_service.ensure_model("llama3.1:8b"):
+        pytest.skip("Model llama3.1:8b not available - skipping LLM test")
+
 
 def setup_test_db():
     """Create a temporary test database with articles."""
-    engine = create_engine("sqlite:///:memory:", echo=False)
+    global _test_db_path
+    
+    # Use file-based SQLite with check_same_thread=False for threading support
+    _test_db_path = tempfile.mktemp(suffix=".db")
+    engine = create_engine(
+        f"sqlite:///{_test_db_path}",
+        echo=False,
+        connect_args={"check_same_thread": False}
+    )
     Base.metadata.create_all(engine)
 
     # Create additional tables needed for story generation
@@ -119,6 +145,9 @@ def test_llm_availability():
 
 def test_synthesis_with_llm():
     """Test story synthesis with real LLM."""
+    # Skip if LLM not available (e.g., in CI)
+    _check_llm_available()
+    
     print("\n🧪 Testing Story Synthesis with Real LLM")
     print("=" * 70)
 
@@ -224,10 +253,24 @@ def test_synthesis_with_llm():
             print("\n⚠️  May have used fallback synthesis")
     finally:
         session.close()
+        _cleanup_test_db()
+
+
+def _cleanup_test_db():
+    """Clean up temporary database file."""
+    global _test_db_path
+    if _test_db_path and os.path.exists(_test_db_path):
+        try:
+            os.unlink(_test_db_path)
+        except OSError:
+            pass  # Ignore cleanup errors
 
 
 def test_full_pipeline_with_llm():
     """Test the complete story generation pipeline."""
+    # Skip if LLM not available (e.g., in CI)
+    _check_llm_available()
+    
     print("\n\n🧪 Testing Full Pipeline with LLM")
     print("=" * 70)
 
@@ -297,6 +340,7 @@ def test_full_pipeline_with_llm():
         assert len(story_ids) > 0, "Should generate at least one story"
     finally:
         session.close()
+        _cleanup_test_db()
 
 
 def main():

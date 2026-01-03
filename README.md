@@ -8,7 +8,7 @@ NewsBrief is a self-hosted, privacy-focused news aggregator that replaces readin
 
 ## 🌟 Features
 
-### **🎯 Story-Based Aggregation (v0.6.2)** - *Current Release*
+### **🎯 Story-Based Aggregation (v0.6.4)** - *Current Release*
 Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **Time to informed: 30 min → 2 min**
 
 - **Automated Story Generation**: Daily scheduled generation at 6 AM (configurable timezone)
@@ -58,6 +58,18 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 - **GitOps-Ready Deployments**: Environment-specific Kubernetes manifests with health checks and rollback support
 - **Automated Dependency Management**: Weekly security audits, dependency updates, and base image maintenance
 - **Comprehensive Documentation**: Complete CI/CD guides, API documentation, and architecture decision records
+
+### **✅ Completed (v0.6.4 - Code Quality)** - Jan 2026
+- ✅ **Type Safety**: mypy passes with 0 errors in 13 source files (Issue #74)
+- ✅ **Test Coverage**: Coverage improved 30% → 41% with 192 tests (Issue #75)
+- ✅ **Ranking Tests**: Comprehensive tests for recency, keywords, topic classification (Issue #22)
+- ✅ **CI/CD Improvements**: pytest-cov integration, coverage reporting
+
+### **✅ Completed (v0.6.3 - Performance)** - Jan 2026
+- ✅ **Synthesis Caching**: LLM results cached with TTL and invalidation (Issue #46)
+- ✅ **Incremental Updates**: Story versioning with 70% article overlap detection (Issue #49)
+- ✅ **API Enhancements**: 6 new filters on `/items`, `/stories/{id}/articles` endpoint (Issue #56)
+- ✅ **Scheduled Refresh**: Automatic feed refresh at 5:30 AM (configurable) (Issue #87)
 
 ### **✅ Completed (v0.6.2 - UI Polish & Fixes)** - Dec 2025
 - ✅ **HTML Sanitization**: Clean article summaries with `bleach` library (Issue #77)
@@ -428,9 +440,9 @@ Transform from article-centric to story-based aggregation
 ### **v0.6.0 - Enhanced Intelligence** - ✅ COMPLETE
 - [x] **v0.6.1 - Enhanced Clustering**: Entity extraction, semantic similarity, quality scoring ✅ COMPLETE (Dec 2025)
 - [x] **v0.6.2 - UI Polish & Fixes**: Local Tailwind build, topic filters, HTML sanitization ✅ COMPLETE (Dec 2025)
-- [ ] **v0.6.3 - Personalization**: User preferences, topic prioritization, bookmarks (Q1 2026)
-- [ ] Vector embeddings for better clustering
-- [ ] Full-text search (SQLite FTS5)
+- [x] **v0.6.3 - Performance**: Synthesis caching, incremental updates, scheduled refresh ✅ COMPLETE (Jan 2026)
+- [x] **v0.6.4 - Code Quality**: Type safety, test coverage, CI/CD improvements ✅ COMPLETE (Jan 2026)
+- [ ] **v0.6.5 - Personalization**: User preferences, source weighting, mobile navigation (Q1 2026)
 
 ### **Project Tracking**
 
@@ -443,8 +455,11 @@ Development is organized with GitHub Projects and Milestones for clear visibilit
 **Milestones**:
 - [v0.5.5 - Story Architecture](https://github.com/Deim0s13/newsbrief/milestone/1) - ✅ **COMPLETE** (Nov 2025)
 - [v0.6.1 - Enhanced Clustering](https://github.com/Deim0s13/newsbrief/releases/tag/v0.6.1) - ✅ **COMPLETE** (Dec 2025)
-- [v0.6.0 - Intelligence & Polish](https://github.com/Deim0s13/newsbrief/milestone/2) - 🚧 IN PROGRESS (Q1 2026)
-- [v0.7.0 - Infrastructure](https://github.com/Deim0s13/newsbrief/milestone/3) (13 issues) - Due: Q2 2026
+- [v0.6.2 - UI Polish & Fixes](https://github.com/Deim0s13/newsbrief/releases/tag/v0.6.2) - ✅ **COMPLETE** (Dec 2025)
+- [v0.6.3 - Performance](https://github.com/Deim0s13/newsbrief/releases/tag/v0.6.3) - ✅ **COMPLETE** (Jan 2026)
+- [v0.6.4 - Code Quality](https://github.com/Deim0s13/newsbrief/releases/tag/v0.6.4) - ✅ **COMPLETE** (Jan 2026)
+- [v0.6.5 - Personalization](https://github.com/Deim0s13/newsbrief/milestone/9) - 🚧 IN PROGRESS (Q1 2026)
+- [v0.7.0 - Infrastructure](https://github.com/Deim0s13/newsbrief/milestone/3) - Due: Q2 2026
 
 **Epics** (via labels):
 - **epic:stories** - Story-based aggregation and synthesis
