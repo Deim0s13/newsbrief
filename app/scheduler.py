@@ -147,17 +147,21 @@ def scheduled_feed_refresh() -> dict:
         start_time = datetime.now(UTC)
 
         # Import here to avoid circular imports
-        from app.feeds import fetch_and_store_all_feeds
+        from app.feeds import fetch_and_store
 
-        # Run the feed refresh
-        with session_scope() as session:
-            result = fetch_and_store_all_feeds(session)
+        # Run the feed refresh (no session needed - function manages its own)
+        result = fetch_and_store()
 
         elapsed = (datetime.now(UTC) - start_time).total_seconds()
 
-        # Extract stats from result
-        ingested = result.get("ingested", 0) if isinstance(result, dict) else result
-        stats = result.get("stats", {}) if isinstance(result, dict) else {}
+        # Extract stats from RefreshStats dataclass
+        ingested = result.total_items
+        stats = {
+            "feeds_processed": result.total_feeds_processed,
+            "feeds_skipped_disabled": result.feeds_skipped_disabled,
+            "feeds_cached_304": result.feeds_cached_304,
+            "feeds_error": result.feeds_error,
+        }
 
         logger.info(
             f"Scheduled feed refresh complete: "

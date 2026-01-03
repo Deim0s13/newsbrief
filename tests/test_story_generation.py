@@ -22,8 +22,9 @@ def setup_test_db():
     # Create all tables (stories, story_articles, and items)
     Base.metadata.create_all(engine)
 
-    # Create items table (not ORM yet, so manual SQL)
+    # Create additional tables needed for story generation
     with engine.connect() as conn:
+        # Items table
         conn.execute(
             text(
                 """
@@ -35,7 +36,55 @@ def setup_test_db():
                 summary TEXT,
                 ai_summary TEXT,
                 topic TEXT,
-                content TEXT
+                content TEXT,
+                feed_id INTEGER,
+                entities_json TEXT,
+                entities_extracted_at DATETIME,
+                entities_model TEXT
+            )
+        """
+            )
+        )
+        
+        # Feeds table (required for health score lookups)
+        conn.execute(
+            text(
+                """
+            CREATE TABLE IF NOT EXISTS feeds (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT,
+                url TEXT,
+                health_score REAL DEFAULT 100.0
+            )
+        """
+            )
+        )
+        
+        # Insert a default feed
+        conn.execute(
+            text("INSERT INTO feeds (id, name, url, health_score) VALUES (1, 'Test Feed', 'http://test.com', 100.0)")
+        )
+        
+        # Synthesis cache table
+        conn.execute(
+            text(
+                """
+            CREATE TABLE IF NOT EXISTS synthesis_cache (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cache_key TEXT UNIQUE NOT NULL,
+                article_ids_json TEXT NOT NULL,
+                model TEXT NOT NULL,
+                synthesis TEXT NOT NULL,
+                key_points_json TEXT NOT NULL,
+                why_it_matters TEXT,
+                topics_json TEXT,
+                entities_json TEXT,
+                token_count_input INTEGER,
+                token_count_output INTEGER,
+                generation_time_ms INTEGER,
+                created_at DATETIME NOT NULL,
+                expires_at DATETIME NOT NULL,
+                invalidated_at DATETIME
             )
         """
             )
@@ -111,8 +160,8 @@ def insert_test_articles(session):
         result = session.execute(
             text(
                 """
-                INSERT INTO items (title, summary, ai_summary, topic, published, url, content)
-                VALUES (:title, :summary, :ai_summary, :topic, :published, :url, :content)
+                INSERT INTO items (title, summary, ai_summary, topic, published, url, content, feed_id)
+                VALUES (:title, :summary, :ai_summary, :topic, :published, :url, :content, :feed_id)
             """
             ),
             {
@@ -123,6 +172,7 @@ def insert_test_articles(session):
                 "published": now - timedelta(hours=2),  # 2 hours ago
                 "url": f"https://example.com/{len(article_ids)}",
                 "content": f"Full content: {summary}",
+                "feed_id": 1,  # Default test feed
             },
         )
         session.commit()
@@ -158,18 +208,12 @@ def test_story_generation():
         # Validate stories
         print("\n🔍 Validating generated stories...")
 
-        if len(story_ids) == 0:
-            print("❌ No stories generated!")
-            return False, "No stories generated"
+        assert len(story_ids) > 0, "No stories generated"
 
         # Retrieve stories
         stories = get_stories(session, limit=10, status="active")
 
-        if len(stories) != len(story_ids):
-            print(
-                f"❌ Story count mismatch: created {len(story_ids)}, retrieved {len(stories)}"
-            )
-            return False, "Story count mismatch"
+        assert len(stories) == len(story_ids), f"Story count mismatch: created {len(story_ids)}, retrieved {len(stories)}"
 
         # Validate each story
         for i, story in enumerate(stories, 1):
@@ -215,14 +259,6 @@ def test_story_generation():
             )
 
         print("\n✅ All validation tests passed!")
-        return True, "Story generation successful"
-
-    except Exception as e:
-        print(f"\n❌ Test failed: {e}")
-        import traceback
-
-        traceback.print_exc()
-        return False, str(e)
     finally:
         session.close()
 

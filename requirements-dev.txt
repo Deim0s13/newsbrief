@@ -12,6 +12,7 @@ black>=23.0.0
 isort>=5.12.0
 flake8>=6.0.0
 mypy>=1.0.0
+types-bleach>=6.0.0  # Type stubs for bleach library
 
 # Security
 safety>=2.3.0

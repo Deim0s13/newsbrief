@@ -5,7 +5,7 @@ import os
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Iterable, Optional, Tuple
+from typing import Any, Iterable, Optional, Tuple
 
 import bleach
 import certifi
@@ -484,12 +484,12 @@ def import_opml(path: str) -> int:
         return 0
 
 
-def import_opml_content(opml_content: str) -> dict:
+def import_opml_content(opml_content: str) -> dict[str, Any]:
     """Enhanced OPML import with detailed parsing and metadata extraction."""
     import xml.etree.ElementTree as ET
     from urllib.parse import urlparse
 
-    result = {
+    result: dict[str, Any] = {
         "feeds_added": 0,
         "feeds_updated": 0,
         "feeds_skipped": 0,
@@ -515,8 +515,10 @@ def import_opml_content(opml_content: str) -> dict:
                     category = outline.get("category", "")
 
                     # Extract category from parent outline if not set
-                    if not category:
-                        parent = outline.getparent()
+                    # Note: getparent() is lxml-specific; for stdlib ElementTree,
+                    # we'd need a different approach or skip this logic
+                    if not category and hasattr(outline, "getparent"):
+                        parent = outline.getparent()  # type: ignore[union-attr]
                         if parent is not None and parent.get("text"):
                             category = parent.get("text")
 
@@ -627,8 +629,8 @@ def export_opml() -> str:
             )
         ).fetchall()
 
-        feeds_by_category = {}
-        uncategorized_feeds = []
+        feeds_by_category: dict[str, list[dict[str, Any]]] = {}
+        uncategorized_feeds: list[dict[str, Any]] = []
 
         for feed in feeds_result:
             category = feed.category if feed.category else None
@@ -820,7 +822,7 @@ def fetch_and_store() -> RefreshStats:
                         / (prev_success_count + 1)
                     )
                 else:
-                    new_avg = response_time_ms
+                    new_avg = int(response_time_ms)
 
                 s.execute(
                     text(

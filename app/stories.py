@@ -21,7 +21,7 @@ import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timedelta
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, cast
 
 from sqlalchemy import (
     Boolean,
@@ -489,9 +489,9 @@ def find_overlapping_story(
     best_overlap = 0.0
 
     for story in active_stories:
-        # Get article IDs for this story
-        story_article_ids = {
-            sa.article_id
+        # Get article IDs for this story (cast to int for mypy)
+        story_article_ids: Set[int] = {
+            cast(int, sa.article_id)
             for sa in session.query(StoryArticle)
             .filter(StoryArticle.story_id == story.id)
             .all()
@@ -1131,17 +1131,19 @@ def _generate_story_synthesis(
         placeholders = ", ".join([f":id_{i}" for i in range(len(article_ids))])
         params = {f"id_{i}": aid for i, aid in enumerate(article_ids)}
 
-        articles = session.execute(
-            text(
-                f"""
+        articles = list(
+            session.execute(
+                text(
+                    f"""
             SELECT id, title, summary, ai_summary, topic
             FROM items 
             WHERE id IN ({placeholders})
             ORDER BY published DESC
         """
-            ),
-            params,
-        ).fetchall()
+                ),
+                params,
+            ).fetchall()
+        )
 
     if not articles:
         raise ValueError("No articles found for synthesis")
