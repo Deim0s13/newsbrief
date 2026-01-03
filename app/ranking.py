@@ -20,7 +20,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -327,7 +327,7 @@ class RankingCalculator:
         max_score = 0.0
         for topic_key in topics_to_check:
             topic_config = TOPICS[topic_key]
-            keywords = topic_config.get("keywords", [])
+            keywords = cast(List[str], topic_config.get("keywords", []))
             matches = sum(1 for keyword in keywords if keyword in text)
 
             if matches > 0:
@@ -382,8 +382,8 @@ class TopicClassifier:
         all_matches = {}
 
         for topic_key, topic_config in TOPICS.items():
-            matches = []
-            keywords = topic_config.get("keywords", [])
+            matches: List[str] = []
+            keywords = cast(List[str], topic_config.get("keywords", []))
             for keyword in keywords:
                 if keyword in text:
                     matches.append(keyword)
@@ -445,17 +445,15 @@ def classify_article_topic(
 def get_topic_display_name(topic_key: str) -> str:
     """Get human-readable name for a topic."""
     topic_config = TOPICS.get(topic_key, {})
-    return (
-        topic_config.get("name", topic_key)
-        if isinstance(topic_config, dict)
-        else topic_key
-    )
+    if isinstance(topic_config, dict):
+        return cast(str, topic_config.get("name", topic_key))
+    return topic_key
 
 
 def get_available_topics() -> List[Dict[str, str]]:
     """Get list of available topics with their display names."""
     return [
-        {"key": key, "name": config.get("name", key)}
+        {"key": key, "name": cast(str, config.get("name", key))}
         for key, config in TOPICS.items()
         if isinstance(config, dict)
     ]
