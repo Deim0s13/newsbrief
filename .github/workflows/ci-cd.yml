@@ -54,17 +54,18 @@ jobs:
       - name: Run tests with coverage
         run: |
           pip install pytest-cov
-          pytest tests/ --cov=app --cov-report=term --cov-report=xml -v --tb=short
+          pytest tests/ --cov=app --cov-report=term -v --tb=short
           echo "✅ All tests passed"
         continue-on-error: false
-        
-      - name: Upload coverage reports
-        uses: codecov/codecov-action@v4
-        if: always()
-        with:
-          file: ./coverage.xml
-          fail_ci_if_error: false
-          verbose: true
+
+      # Codecov upload disabled - can be re-enabled with CODECOV_TOKEN secret
+      # - name: Upload coverage reports
+      #   uses: codecov/codecov-action@v4
+      #   if: always()
+      #   with:
+      #     file: ./coverage.xml
+      #     fail_ci_if_error: false
+      #     verbose: true
           
       - name: Security scan
         uses: github/super-linter@v5
