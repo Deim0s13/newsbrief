@@ -200,8 +200,23 @@ def insert_test_articles(session):
     return article_ids
 
 
+def _check_llm_available():
+    """Check if Ollama LLM is available for testing."""
+    try:
+        import httpx
+
+        response = httpx.get("http://localhost:11434/api/tags", timeout=2.0)
+        return response.status_code == 200
+    except Exception:
+        return False
+
+
 def test_story_generation():
     """Test the full story generation pipeline."""
+    # Skip if LLM is not available (e.g., in CI environment)
+    if not _check_llm_available():
+        pytest.skip("Ollama LLM not available - skipping story generation test")
+
     print("🧪 Testing Story Generation Pipeline\n")
     print("=" * 60)
 
