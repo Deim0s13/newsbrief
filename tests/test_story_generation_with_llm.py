@@ -16,8 +16,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 from app.llm import get_llm_service
-from app.stories import (Base, _generate_story_synthesis,
-                         generate_stories_simple)
+from app.stories import Base, _generate_story_synthesis, generate_stories_simple
 
 # Use a temporary file-based database for threading support
 _test_db_path = None
@@ -35,13 +34,13 @@ def _check_llm_available():
 def setup_test_db():
     """Create a temporary test database with articles."""
     global _test_db_path
-    
+
     # Use file-based SQLite with check_same_thread=False for threading support
     _test_db_path = tempfile.mktemp(suffix=".db")
     engine = create_engine(
         f"sqlite:///{_test_db_path}",
         echo=False,
-        connect_args={"check_same_thread": False}
+        connect_args={"check_same_thread": False},
     )
     Base.metadata.create_all(engine)
 
@@ -68,7 +67,7 @@ def setup_test_db():
         """
             )
         )
-        
+
         # Feeds table (required for health score lookups)
         conn.execute(
             text(
@@ -82,12 +81,14 @@ def setup_test_db():
         """
             )
         )
-        
+
         # Insert a default feed
         conn.execute(
-            text("INSERT INTO feeds (id, name, url, health_score) VALUES (1, 'Test Feed', 'http://test.com', 100.0)")
+            text(
+                "INSERT INTO feeds (id, name, url, health_score) VALUES (1, 'Test Feed', 'http://test.com', 100.0)"
+            )
         )
-        
+
         # Synthesis cache table
         conn.execute(
             text(
@@ -127,6 +128,7 @@ def test_llm_availability():
     if not llm_service.is_available():
         print("⚠️ Ollama is not available - skipping LLM tests")
         import pytest
+
         pytest.skip("Ollama not available")
 
     print("✅ Ollama is available")
@@ -138,6 +140,7 @@ def test_llm_availability():
     if not llm_service.ensure_model(model):
         print(f"⚠️ Model {model} not available - skipping")
         import pytest
+
         pytest.skip(f"Model {model} not available")
 
     print(f"✅ Model {model} is ready")
@@ -147,7 +150,7 @@ def test_synthesis_with_llm():
     """Test story synthesis with real LLM."""
     # Skip if LLM not available (e.g., in CI)
     _check_llm_available()
-    
+
     print("\n🧪 Testing Story Synthesis with Real LLM")
     print("=" * 70)
 
@@ -270,7 +273,7 @@ def test_full_pipeline_with_llm():
     """Test the complete story generation pipeline."""
     # Skip if LLM not available (e.g., in CI)
     _check_llm_available()
-    
+
     print("\n\n🧪 Testing Full Pipeline with LLM")
     print("=" * 70)
 
@@ -335,7 +338,7 @@ def test_full_pipeline_with_llm():
             print(f"   ✅ Story count in expected range (2-4)")
         else:
             print(f"   ⚠️  Story count outside expected range: {len(story_ids)}")
-        
+
         # Still pass if we got stories, the count range is just informational
         assert len(story_ids) > 0, "Should generate at least one story"
     finally:

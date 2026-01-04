@@ -159,7 +159,7 @@ class TestStoryBlendedScore:
         low_interest = get_story_blended_score(0.8, ["Politics"], 1.0)
 
         assert high_interest > low_interest
-    
+
     def test_high_source_weight_boosts_score(self):
         from app.interests import get_story_blended_score
 
@@ -227,4 +227,3 @@ class TestInterestsSummary:
         assert "ai-ml" in topic_weights
         assert "politics" in topic_weights
         assert "security" in topic_weights
-

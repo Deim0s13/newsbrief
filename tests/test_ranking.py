@@ -9,16 +9,17 @@ Tests cover:
 - Topic definitions
 """
 
-import pytest
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from app.ranking import (
-    RankingCalculator,
-    TopicClassifier,
-    RankingResult,
-    TopicResult,
     TOPICS,
+    RankingCalculator,
+    RankingResult,
+    TopicClassifier,
+    TopicResult,
 )
 
 
@@ -32,7 +33,7 @@ class TestRankingCalculator:
     def test_calculate_score_all_components(self):
         """Test full score calculation with all components."""
         now = datetime.now(timezone.utc)
-        
+
         result = self.calculator.calculate_score(
             published=now - timedelta(hours=6),  # Recent
             source_weight=1.5,  # High-quality source
@@ -362,17 +363,27 @@ class TestTopicDefinitions:
     def test_all_topics_have_keywords(self):
         """Test that all topics have at least some keywords."""
         for topic_id, topic_config in TOPICS.items():
-            assert len(topic_config["keywords"]) > 0, f"Topic {topic_id} has no keywords"
+            assert (
+                len(topic_config["keywords"]) > 0
+            ), f"Topic {topic_id} has no keywords"
 
     def test_topic_weights_in_valid_range(self):
         """Test that topic weights are in valid range."""
         for topic_id, topic_config in TOPICS.items():
             weight = topic_config["weight"]
-            assert 0.5 <= weight <= 2.0, f"Topic {topic_id} weight {weight} out of range"
+            assert (
+                0.5 <= weight <= 2.0
+            ), f"Topic {topic_id} weight {weight} out of range"
 
     def test_expected_topics_exist(self):
         """Test that expected topics are defined."""
-        expected_topics = ["ai-ml", "cloud-k8s", "security", "devtools", "chips-hardware"]
+        expected_topics = [
+            "ai-ml",
+            "cloud-k8s",
+            "security",
+            "devtools",
+            "chips-hardware",
+        ]
 
         for topic in expected_topics:
             assert topic in TOPICS, f"Expected topic {topic} not found"
@@ -422,4 +433,3 @@ class TestTopicResult:
         )
 
         assert result.matched_keywords == []
-

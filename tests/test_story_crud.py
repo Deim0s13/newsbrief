@@ -10,10 +10,19 @@ from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.stories import (Base, Story, StoryArticle, archive_story,
-                         cleanup_archived_stories, create_story, delete_story,
-                         get_stories, get_story_by_id, link_articles_to_story,
-                         update_story)
+from app.stories import (
+    Base,
+    Story,
+    StoryArticle,
+    archive_story,
+    cleanup_archived_stories,
+    create_story,
+    delete_story,
+    get_stories,
+    get_story_by_id,
+    link_articles_to_story,
+    update_story,
+)
 
 
 def setup_test_db():
@@ -55,15 +64,52 @@ def setup_test_db():
             )
         )
 
+        # Create feeds table for source weighting tests
+        conn.execute(
+            text(
+                """
+            CREATE TABLE IF NOT EXISTS feeds (
+                id INTEGER PRIMARY KEY,
+                url TEXT,
+                name TEXT,
+                category TEXT,
+                enabled INTEGER DEFAULT 1,
+                created_at DATETIME,
+                last_fetched DATETIME,
+                last_modified TEXT,
+                etag TEXT,
+                http_status INTEGER,
+                error_count INTEGER DEFAULT 0,
+                consecutive_failures INTEGER DEFAULT 0,
+                last_success_at DATETIME,
+                last_failure_at DATETIME,
+                robots_txt_status TEXT,
+                avg_response_time_ms REAL,
+                last_response_time_ms REAL
+            )
+        """
+            )
+        )
+
+        # Insert a default feed
+        conn.execute(
+            text(
+                """
+            INSERT INTO feeds (id, url, name, enabled)
+            VALUES (1, 'http://example.com/feed', 'Test Feed', 1)
+        """
+            )
+        )
+
         # Insert test articles
         conn.execute(
             text(
                 """
-            INSERT INTO items (id, title, url, summary, ranking_score, topic)
+            INSERT INTO items (id, title, url, summary, ranking_score, topic, feed_id)
             VALUES 
-                (10, 'Test Article 1', 'http://example.com/1', 'Summary 1', 0.9, 'AI/ML'),
-                (20, 'Test Article 2', 'http://example.com/2', 'Summary 2', 0.8, 'Cloud'),
-                (30, 'Test Article 3', 'http://example.com/3', 'Summary 3', 0.7, 'Security')
+                (10, 'Test Article 1', 'http://example.com/1', 'Summary 1', 0.9, 'AI/ML', 1),
+                (20, 'Test Article 2', 'http://example.com/2', 'Summary 2', 0.8, 'Cloud', 1),
+                (30, 'Test Article 3', 'http://example.com/3', 'Summary 3', 0.7, 'Security', 1)
         """
             )
         )

@@ -22,7 +22,10 @@ class TestDomainExtraction:
     def test_extract_domain_with_subdomain(self):
         from app.source_weights import _extract_domain
 
-        assert _extract_domain("https://news.ycombinator.com/rss") == "news.ycombinator.com"
+        assert (
+            _extract_domain("https://news.ycombinator.com/rss")
+            == "news.ycombinator.com"
+        )
 
     def test_extract_domain_empty(self):
         from app.source_weights import _extract_domain
@@ -201,4 +204,3 @@ class TestBlendedScoreWithSource:
         score2 = get_story_blended_score(0.7, ["Politics"], 0.5)
 
         assert score1 > score2
-

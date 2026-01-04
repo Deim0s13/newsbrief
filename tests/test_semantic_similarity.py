@@ -1,8 +1,11 @@
 """Unit tests for enhanced semantic similarity (v0.6.1)."""
 
 from app.entities import ExtractedEntities
-from app.stories import (_calculate_combined_similarity,
-                         _calculate_keyword_overlap, _extract_keywords)
+from app.stories import (
+    _calculate_combined_similarity,
+    _calculate_keyword_overlap,
+    _extract_keywords,
+)
 
 
 class TestEnhancedKeywordExtraction:
