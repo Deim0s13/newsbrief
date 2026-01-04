@@ -470,10 +470,11 @@ def get_feed_stats(feed_id: int):
             {"feed_id": feed_id},
         ).fetchone()
 
-        # Get feed info for error tracking
+        # Get feed info for error tracking and response times
         feed_info = s.execute(
             text(
-                "SELECT last_error, fetch_count, success_count FROM feeds WHERE id = :feed_id"
+                """SELECT last_error, fetch_count, success_count, avg_response_time_ms 
+                   FROM feeds WHERE id = :feed_id"""
             ),
             {"feed_id": feed_id},
         ).fetchone()
@@ -485,6 +486,7 @@ def get_feed_stats(feed_id: int):
         total_articles = stats_data["total_articles"]
         fetch_count = feed_data["fetch_count"] or 0
         success_count = feed_data["success_count"] or 0
+        avg_response_time_ms = feed_data["avg_response_time_ms"] or 0.0
 
         success_rate = (success_count / fetch_count * 100) if fetch_count > 0 else 0.0
         avg_articles_per_day = (
@@ -501,7 +503,7 @@ def get_feed_stats(feed_id: int):
             last_fetch_at=stats_data["last_fetch_at"],
             last_error=feed_data["last_error"],
             success_rate=round(success_rate, 1),
-            avg_response_time_ms=0.0,  # TODO: Implement response time tracking
+            avg_response_time_ms=round(avg_response_time_ms, 1),
         )
 
 
@@ -749,36 +751,36 @@ def refresh_endpoint():
 
     set_feed_refresh_in_progress(True)
     try:
-        stats = fetch_and_store()
-        return {
-            # Backward compatibility
-            "ingested": stats.total_items,
-            # Enhanced statistics
-            "stats": {
-                "items": {
-                    "total": stats.total_items,
-                    "per_feed": stats.items_per_feed,
-                    "robots_blocked": stats.robots_txt_blocked_articles,
-                },
-                "feeds": {
-                    "processed": stats.total_feeds_processed,
-                    "skipped_disabled": stats.feeds_skipped_disabled,
-                    "skipped_robots": stats.feeds_skipped_robots,
-                    "cached_304": stats.feeds_cached_304,
-                    "errors": stats.feeds_error,
-                },
-                "performance": {
-                    "refresh_time_seconds": round(stats.refresh_time_seconds, 2),
-                    "hit_global_limit": stats.hit_global_limit,
-                    "hit_time_limit": stats.hit_time_limit,
-                },
-                "config": {
-                    "max_items_per_refresh": MAX_ITEMS_PER_REFRESH,
-                    "max_items_per_feed": MAX_ITEMS_PER_FEED,
-                    "max_refresh_time_seconds": MAX_REFRESH_TIME_SECONDS,
-                },
+    stats = fetch_and_store()
+    return {
+        # Backward compatibility
+        "ingested": stats.total_items,
+        # Enhanced statistics
+        "stats": {
+            "items": {
+                "total": stats.total_items,
+                "per_feed": stats.items_per_feed,
+                "robots_blocked": stats.robots_txt_blocked_articles,
             },
-        }
+            "feeds": {
+                "processed": stats.total_feeds_processed,
+                "skipped_disabled": stats.feeds_skipped_disabled,
+                "skipped_robots": stats.feeds_skipped_robots,
+                "cached_304": stats.feeds_cached_304,
+                "errors": stats.feeds_error,
+            },
+            "performance": {
+                "refresh_time_seconds": round(stats.refresh_time_seconds, 2),
+                "hit_global_limit": stats.hit_global_limit,
+                "hit_time_limit": stats.hit_time_limit,
+            },
+            "config": {
+                "max_items_per_refresh": MAX_ITEMS_PER_REFRESH,
+                "max_items_per_feed": MAX_ITEMS_PER_FEED,
+                "max_refresh_time_seconds": MAX_REFRESH_TIME_SECONDS,
+            },
+        },
+    }
     finally:
         set_feed_refresh_in_progress(False)
 
@@ -1580,12 +1582,16 @@ def list_stories_endpoint(
     topic: str = Query(
         None, description="Filter by topic (e.g., 'ai-ml', 'security', 'politics')"
     ),
+    apply_interests: bool = Query(
+        True,
+        description="Apply interest-based ranking (blends importance with topic preferences)",
+    ),
 ):
     """
     List stories with filtering, sorting, and pagination.
 
     Stories are the main aggregated news briefs synthesized from multiple articles.
-    By default, returns the top 10 most important active stories.
+    By default, returns the top 10 most important active stories, weighted by interest preferences.
 
     Query Parameters:
         limit: Maximum stories to return (default: 10, max: 50)
@@ -1593,6 +1599,7 @@ def list_stories_endpoint(
         status: Filter by status - 'active', 'archived', or 'all' (default: active)
         order_by: Sort field - 'importance', 'freshness', or 'generated_at' (default: importance)
         topic: Filter by topic (optional)
+        apply_interests: Apply interest-based ranking (default: true)
 
     Returns:
         List of stories with metadata and supporting article summaries
@@ -1622,6 +1629,7 @@ def list_stories_endpoint(
                 status=status_filter,
                 order_by=order_by,
                 topic=topic,
+                apply_interests=apply_interests,
             )
 
             # Get total count for pagination

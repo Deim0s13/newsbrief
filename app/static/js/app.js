@@ -6,7 +6,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Only run articles-specific code on the Articles page
     if (document.getElementById('articles-container')) {
-        loadArticles();
+    loadArticles();
         setupArticleEventListeners();
     }
 });

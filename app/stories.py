@@ -351,6 +351,7 @@ def get_stories(
     status: Optional[str] = "active",
     order_by: str = "importance",
     topic: Optional[str] = None,
+    apply_interests: bool = True,
 ) -> List[StoryOut]:
     """
     Query stories with filters and sorting.
@@ -362,10 +363,17 @@ def get_stories(
         status: Filter by status ('active', 'archived', or None for all)
         order_by: Sort order ('importance', 'freshness', or 'generated_at')
         topic: Filter by topic (matches if topic is in story's topics list)
+        apply_interests: If True and order_by is 'importance', blend with interest scores
 
     Returns:
         List of StoryOut models
     """
+    from .interests import get_story_blended_score, is_interest_ranking_enabled
+    from .source_weights import (
+        calculate_story_source_weight,
+        is_source_weighting_enabled,
+    )
+
     query = session.query(Story)
 
     # Apply status filter if provided
@@ -377,16 +385,85 @@ def get_stories(
     if topic:
         query = query.filter(Story.topics_json.like(f'%"{topic}"%'))
 
-    # Apply sorting
-    if order_by == "importance":
-        query = query.order_by(desc(Story.importance_score))
-    elif order_by == "freshness":
-        query = query.order_by(desc(Story.freshness_score))
-    else:  # generated_at
-        query = query.order_by(desc(Story.generated_at))
+    # Check if we should apply personalized ranking
+    use_interest_ranking = (
+        apply_interests
+        and order_by == "importance"
+        and is_interest_ranking_enabled()
+    )
+    
+    use_source_weighting = (
+        apply_interests  # Source weighting tied to interests toggle for now
+        and order_by == "importance"
+        and is_source_weighting_enabled()
+    )
 
-    query = query.offset(offset).limit(limit)
-    stories = query.all()
+    if use_interest_ranking or use_source_weighting:
+        # For personalized ranking, we need to fetch more stories and sort in Python
+        # This allows us to calculate blended scores at query time
+        # Fetch more than needed to account for offset, then slice
+        fetch_limit = offset + limit + 50  # Buffer for accurate ranking
+        query = query.order_by(desc(Story.importance_score))  # Initial ordering
+        query = query.limit(fetch_limit)
+        stories = query.all()
+
+        # Pre-fetch feed info for source weighting if enabled
+        story_feed_info: Dict[int, tuple[List[str], List[str]]] = {}
+        if use_source_weighting and stories:
+            story_ids = [s.id for s in stories]
+            # Get feed names and URLs for each story's articles
+            feed_query = text("""
+                SELECT sa.story_id, f.name, f.url
+                FROM story_articles sa
+                JOIN items i ON sa.article_id = i.id
+                JOIN feeds f ON i.feed_id = f.id
+                WHERE sa.story_id IN :story_ids
+            """)
+            feed_results = session.execute(
+                feed_query, {"story_ids": tuple(story_ids)}
+            ).fetchall()
+            
+            for story_id, feed_name, feed_url in feed_results:
+                if story_id not in story_feed_info:
+                    story_feed_info[story_id] = ([], [])
+                story_feed_info[story_id][0].append(feed_name or "")
+                story_feed_info[story_id][1].append(feed_url or "")
+
+        # Calculate blended scores and sort
+        scored_stories = []
+        for story in stories:
+            story_topics = deserialize_story_json_field(story.topics_json) or []
+            
+            # Calculate source weight if enabled
+            source_weight = 1.0
+            if use_source_weighting and story.id in story_feed_info:
+                feed_names, feed_urls = story_feed_info[story.id]
+                source_weight = calculate_story_source_weight(feed_names, feed_urls)
+            
+            blended_score = get_story_blended_score(
+                story.importance_score or 0.0,
+                story_topics,
+                source_weight,
+            )
+            scored_stories.append((blended_score, story))
+
+        # Sort by blended score (descending)
+        scored_stories.sort(key=lambda x: x[0], reverse=True)
+
+        # Apply offset and limit
+        paginated = scored_stories[offset : offset + limit]
+        stories = [s[1] for s in paginated]
+    else:
+        # Standard database sorting
+        if order_by == "importance":
+            query = query.order_by(desc(Story.importance_score))
+        elif order_by == "freshness":
+            query = query.order_by(desc(Story.freshness_score))
+        else:  # generated_at
+            query = query.order_by(desc(Story.generated_at))
+
+        query = query.offset(offset).limit(limit)
+        stories = query.all()
 
     # Convert to StoryOut models
     # For list view, we don't need full article details
