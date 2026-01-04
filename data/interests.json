@@ -1,0 +1,23 @@
+{
+  "version": "1.0",
+  "description": "User interest weights for story ranking. Edit topic_weights to prioritize topics you care about. Higher = more important, 0 = demoted to bottom.",
+  "enabled": true,
+  "blend": {
+    "importance_weight": 0.5,
+    "interest_weight": 0.3
+  },
+  "topic_weights": {
+    "ai-ml": 1.5,
+    "security": 1.2,
+    "cloud-k8s": 1.0,
+    "devtools": 1.0,
+    "chips-hardware": 0.8,
+    "politics": 0.5,
+    "business": 0.7,
+    "science": 1.0,
+    "general": 0.5,
+    "sports": 0.3
+  },
+  "default_weight": 1.0
+}
+

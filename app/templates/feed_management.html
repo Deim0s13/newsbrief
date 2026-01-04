@@ -627,9 +627,9 @@ function renderStats() {
         .sort((a, b) => (b.health_score || 100) - (a.health_score || 100))
         .slice(0, 3);
     
-    // Problem feeds
+    // Problem feeds (failures, low health, or slow response >5s)
     const problemFeeds = [...feeds]
-        .filter(f => (f.consecutive_failures || 0) > 0 || (f.health_score || 100) < 60)
+        .filter(f => (f.consecutive_failures || 0) > 0 || (f.health_score || 100) < 60 || (f.avg_response_time_ms || 0) > 5000)
         .sort((a, b) => (a.health_score || 100) - (b.health_score || 100))
         .slice(0, 3);
     
@@ -803,8 +803,8 @@ function renderStats() {
                                     <div class="text-sm font-medium text-green-600 dark:text-green-400">
                                         ${Math.round(feed.health_score || 100)}%
                                     </div>
-                                    <div class="text-xs text-gray-500 dark:text-gray-400">
-                                        ${feed.avg_response_time_ms ? Math.round(feed.avg_response_time_ms) + 'ms' : '-'}
+                                    <div class="text-xs ${feed.avg_response_time_ms > 5000 ? 'text-red-500 dark:text-red-400 font-medium' : 'text-gray-500 dark:text-gray-400'}">
+                                        ${feed.avg_response_time_ms ? Math.round(feed.avg_response_time_ms) + 'ms' + (feed.avg_response_time_ms > 5000 ? ' ⚠️' : '') : '-'}
                                     </div>
                                 </div>
                             </div>
@@ -835,7 +835,8 @@ function renderStats() {
                                             ${feed.name || feed.url.substring(0, 30) + '...'}
                                         </div>
                                         <div class="text-xs text-red-500 dark:text-red-400">
-                                            ${feed.consecutive_failures > 0 ? `${feed.consecutive_failures} consecutive failures` : 'Low health score'}
+                                            ${feed.consecutive_failures > 0 ? `${feed.consecutive_failures} consecutive failures` : 
+                                              (feed.avg_response_time_ms > 5000 ? `Slow: ${Math.round(feed.avg_response_time_ms)}ms` : 'Low health score')}
                                         </div>
                                     </div>
                                 </div>

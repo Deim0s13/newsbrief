@@ -12,6 +12,7 @@ function setupEventListeners() {
     const statusFilter = document.getElementById('status-filter');
     const sortFilter = document.getElementById('sort-filter');
     const topicFilter = document.getElementById('topic-filter');
+    const interestsToggle = document.getElementById('interests-toggle');
     
     if (statusFilter) {
         statusFilter.addEventListener('change', loadStories);
@@ -21,6 +22,9 @@ function setupEventListeners() {
     }
     if (topicFilter) {
         topicFilter.addEventListener('change', loadStories);
+    }
+    if (interestsToggle) {
+        interestsToggle.addEventListener('change', loadStories);
     }
     
     // Load more button
@@ -45,13 +49,15 @@ async function loadStories() {
         const status = document.getElementById('status-filter').value;
         const orderBy = document.getElementById('sort-filter').value;
         const topic = document.getElementById('topic-filter')?.value || '';
+        const applyInterests = document.getElementById('interests-toggle')?.checked ?? true;
         
         // Build API URL
         const params = new URLSearchParams({
             limit: '20',
             offset: '0',
             status: status,
-            order_by: orderBy
+            order_by: orderBy,
+            apply_interests: applyInterests.toString()
         });
         
         // Add topic filter if selected
@@ -138,12 +144,14 @@ async function loadMoreStories() {
         const status = document.getElementById('status-filter').value;
         const orderBy = document.getElementById('sort-filter').value;
         const topic = document.getElementById('topic-filter')?.value || '';
+        const applyInterests = document.getElementById('interests-toggle')?.checked ?? true;
         
         const params = new URLSearchParams({
             limit: '20',
             offset: currentStories.toString(),
             status: status,
-            order_by: orderBy
+            order_by: orderBy,
+            apply_interests: applyInterests.toString()
         });
         
         // Add topic filter if selected
