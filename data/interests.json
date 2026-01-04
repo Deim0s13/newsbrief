@@ -3,8 +3,8 @@
   "description": "User interest weights for story ranking. Edit topic_weights to prioritize topics you care about. Higher = more important, 0 = demoted to bottom.",
   "enabled": true,
   "blend": {
-    "importance_weight": 0.6,
-    "interest_weight": 0.4
+    "importance_weight": 0.5,
+    "interest_weight": 0.3
   },
   "topic_weights": {
     "ai-ml": 1.5,

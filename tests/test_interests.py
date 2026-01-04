@@ -96,69 +96,77 @@ class TestInterestScoreCalculation:
 
 
 class TestBlendedScoreCalculation:
-    """Tests for blended score calculation."""
+    """Tests for blended score calculation (50% importance + 30% interest + 20% source)."""
 
     def test_calculate_blended_score_basic(self):
         from app.interests import calculate_blended_score
 
-        # importance=0.8, interest=1.0 (normalized to 0.5)
-        # blended = (0.8 * 0.6) + (0.5 * 0.4) = 0.48 + 0.2 = 0.68
-        score = calculate_blended_score(0.8, 1.0)
-        assert score == pytest.approx(0.68, rel=0.01)
+        # importance=0.8, interest=1.0 (normalized to 0.5), source=1.0 (normalized to 0.5)
+        # blended = (0.8 * 0.5) + (0.5 * 0.3) + (0.5 * 0.2) = 0.4 + 0.15 + 0.1 = 0.65
+        score = calculate_blended_score(0.8, 1.0, 1.0)
+        assert score == pytest.approx(0.65, rel=0.01)
 
     def test_calculate_blended_score_high_interest(self):
         from app.interests import calculate_blended_score
 
-        # importance=0.5, interest=2.0 (normalized to 1.0)
-        # blended = (0.5 * 0.6) + (1.0 * 0.4) = 0.3 + 0.4 = 0.7
-        score = calculate_blended_score(0.5, 2.0)
-        assert score == pytest.approx(0.7, rel=0.01)
+        # importance=0.5, interest=2.0 (normalized to 1.0), source=1.0 (normalized to 0.5)
+        # blended = (0.5 * 0.5) + (1.0 * 0.3) + (0.5 * 0.2) = 0.25 + 0.3 + 0.1 = 0.65
+        score = calculate_blended_score(0.5, 2.0, 1.0)
+        assert score == pytest.approx(0.65, rel=0.01)
 
     def test_calculate_blended_score_low_interest(self):
         from app.interests import calculate_blended_score
 
-        # importance=0.9, interest=0.3 (normalized to 0.15)
-        # blended = (0.9 * 0.6) + (0.15 * 0.4) = 0.54 + 0.06 = 0.6
-        score = calculate_blended_score(0.9, 0.3)
-        assert score == pytest.approx(0.6, rel=0.01)
+        # importance=0.9, interest=0.3 (normalized to 0.15), source=1.0 (normalized to 0.5)
+        # blended = (0.9 * 0.5) + (0.15 * 0.3) + (0.5 * 0.2) = 0.45 + 0.045 + 0.1 = 0.595
+        score = calculate_blended_score(0.9, 0.3, 1.0)
+        assert score == pytest.approx(0.595, rel=0.02)
 
-    def test_calculate_blended_score_caps_interest_at_max(self):
+    def test_calculate_blended_score_caps_at_max(self):
         from app.interests import calculate_blended_score
 
-        # Interest score above max should be capped at 1.0 after normalization
-        score1 = calculate_blended_score(0.5, 2.0)  # At max
-        score2 = calculate_blended_score(0.5, 3.0)  # Above max
+        # Scores above max should be capped at 1.0 after normalization
+        score1 = calculate_blended_score(0.5, 2.0, 2.0)  # At max
+        score2 = calculate_blended_score(0.5, 3.0, 3.0)  # Above max
         assert score1 == score2  # Both should cap at normalized 1.0
 
 
 class TestStoryBlendedScore:
-    """Tests for convenience function combining interest and blending."""
+    """Tests for convenience function combining interest, source, and blending."""
 
     def test_get_story_blended_score_high_interest(self):
         from app.interests import get_story_blended_score
 
-        # High importance + high interest topics
-        score = get_story_blended_score(0.8, ["AI/ML", "Security"])
-        # interest = 1.35, normalized = 0.675
-        # blended = (0.8 * 0.6) + (0.675 * 0.4) = 0.48 + 0.27 = 0.75
-        assert score == pytest.approx(0.75, rel=0.02)
+        # High importance + high interest topics + default source
+        score = get_story_blended_score(0.8, ["AI/ML", "Security"], 1.0)
+        # interest = 1.35, normalized = 0.675, source = 1.0, normalized = 0.5
+        # blended = (0.8 * 0.5) + (0.675 * 0.3) + (0.5 * 0.2) = 0.4 + 0.2025 + 0.1 = 0.7025
+        assert score == pytest.approx(0.70, rel=0.02)
 
     def test_get_story_blended_score_low_interest(self):
         from app.interests import get_story_blended_score
 
-        # High importance + low interest topics
-        score = get_story_blended_score(0.8, ["Politics", "Sports"])
-        # interest = 0.4, normalized = 0.2
-        # blended = (0.8 * 0.6) + (0.2 * 0.4) = 0.48 + 0.08 = 0.56
+        # High importance + low interest topics + default source
+        score = get_story_blended_score(0.8, ["Politics", "Sports"], 1.0)
+        # interest = 0.4, normalized = 0.2, source = 1.0, normalized = 0.5
+        # blended = (0.8 * 0.5) + (0.2 * 0.3) + (0.5 * 0.2) = 0.4 + 0.06 + 0.1 = 0.56
         assert score == pytest.approx(0.56, rel=0.02)
 
     def test_high_interest_beats_low_interest_same_importance(self):
         from app.interests import get_story_blended_score
 
-        high_interest = get_story_blended_score(0.8, ["AI/ML"])
-        low_interest = get_story_blended_score(0.8, ["Politics"])
+        high_interest = get_story_blended_score(0.8, ["AI/ML"], 1.0)
+        low_interest = get_story_blended_score(0.8, ["Politics"], 1.0)
 
         assert high_interest > low_interest
+    
+    def test_high_source_weight_boosts_score(self):
+        from app.interests import get_story_blended_score
+
+        low_source = get_story_blended_score(0.8, ["AI/ML"], 0.5)
+        high_source = get_story_blended_score(0.8, ["AI/ML"], 1.5)
+
+        assert high_source > low_source
 
 
 class TestConfigLoading:
@@ -181,10 +189,11 @@ class TestConfigLoading:
     def test_get_blend_weights_returns_tuple(self):
         from app.interests import get_blend_weights
 
-        importance_weight, interest_weight = get_blend_weights()
-        assert importance_weight == pytest.approx(0.6)
-        assert interest_weight == pytest.approx(0.4)
-        assert importance_weight + interest_weight == pytest.approx(1.0)
+        importance_weight, interest_weight, source_weight = get_blend_weights()
+        assert importance_weight == pytest.approx(0.5)
+        assert interest_weight == pytest.approx(0.3)
+        assert source_weight == pytest.approx(0.2)
+        assert importance_weight + interest_weight + source_weight == pytest.approx(1.0)
 
     def test_get_topic_weight_known_topic(self):
         from app.interests import get_topic_weight

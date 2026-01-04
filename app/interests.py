@@ -90,18 +90,27 @@ def get_topic_weight(topic: str) -> float:
     return topic_weights.get(topic, default_weight)
 
 
-def get_blend_weights() -> tuple[float, float]:
+def get_blend_weights() -> tuple[float, float, float]:
     """
-    Get the importance and interest blend weights.
+    Get the importance, interest, and source blend weights.
 
     Returns:
-        Tuple of (importance_weight, interest_weight)
+        Tuple of (importance_weight, interest_weight, source_weight)
     """
+    from .source_weights import get_blend_weight as get_source_blend_weight
+    
     config = load_interests_config()
     blend = config.get("blend", {})
-    importance_weight = blend.get("importance_weight", 0.6)
-    interest_weight = blend.get("interest_weight", 0.4)
-    return importance_weight, interest_weight
+    
+    # Get source weight from source_weights.json
+    source_weight = get_source_blend_weight()
+    
+    # Adjust importance and interest weights to accommodate source weight
+    # Default: 50% importance, 30% interest, 20% source
+    importance_weight = blend.get("importance_weight", 0.5)
+    interest_weight = blend.get("interest_weight", 0.3)
+    
+    return importance_weight, interest_weight, source_weight
 
 
 def _normalize_topic(topic: str) -> str:
@@ -189,29 +198,34 @@ def calculate_interest_score(story_topics: List[str]) -> float:
 def calculate_blended_score(
     importance_score: float,
     interest_score: float,
-    max_interest_weight: float = 2.0,
+    source_weight: float = 1.0,
+    max_weight: float = 2.0,
 ) -> float:
     """
-    Calculate blended score combining importance and interest.
+    Calculate blended score combining importance, interest, and source quality.
 
-    The interest score is normalized to 0-1 range before blending.
+    All scores are normalized to 0-1 range before blending.
 
     Args:
         importance_score: Story's importance score (0.0 to 1.0)
         interest_score: Story's interest score (typically 0.0 to 2.0)
-        max_interest_weight: Maximum expected interest weight for normalization
+        source_weight: Story's source quality weight (typically 0.5 to 2.0)
+        max_weight: Maximum expected weight for normalization
 
     Returns:
         Blended score (0.0 to 1.0)
     """
-    importance_weight, interest_weight = get_blend_weights()
+    importance_w, interest_w, source_w = get_blend_weights()
 
-    # Normalize interest score to 0-1 range
-    normalized_interest = min(interest_score / max_interest_weight, 1.0)
+    # Normalize interest and source scores to 0-1 range
+    normalized_interest = min(interest_score / max_weight, 1.0)
+    normalized_source = min(source_weight / max_weight, 1.0)
 
-    # Calculate blended score
-    blended = (importance_score * importance_weight) + (
-        normalized_interest * interest_weight
+    # Calculate blended score (50% importance + 30% interest + 20% source)
+    blended = (
+        (importance_score * importance_w) +
+        (normalized_interest * interest_w) +
+        (normalized_source * source_w)
     )
 
     return blended
@@ -220,6 +234,7 @@ def calculate_blended_score(
 def get_story_blended_score(
     importance_score: float,
     story_topics: List[str],
+    source_weight: float = 1.0,
 ) -> float:
     """
     Convenience function to get the blended score for a story.
@@ -229,12 +244,13 @@ def get_story_blended_score(
     Args:
         importance_score: Story's importance score
         story_topics: List of topic IDs for the story
+        source_weight: Story's source quality weight (default 1.0)
 
     Returns:
         Blended score for ranking
     """
     interest_score = calculate_interest_score(story_topics)
-    return calculate_blended_score(importance_score, interest_score)
+    return calculate_blended_score(importance_score, interest_score, source_weight)
 
 
 def get_interests_summary() -> Dict[str, Any]:

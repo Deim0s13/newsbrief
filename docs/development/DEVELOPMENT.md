@@ -117,6 +117,34 @@ Configure topic preferences for personalized story ranking in `data/interests.js
 
 See [ADR 0005](../adr/0005-interest-based-ranking.md) for full details.
 
+#### **Source Quality Weighting** ⭐ *New in v0.6.5*
+
+Configure source reputation weights in `data/source_weights.json`:
+
+```json
+{
+  "enabled": true,
+  "blend_weight": 0.2,
+  "feed_weights": {
+    "Hacker News": 1.5,
+    "Ars Technica": 1.3,
+    "TechCrunch": 1.2
+  },
+  "domain_weights": {
+    "news.ycombinator.com": 1.5,
+    "arstechnica.com": 1.3
+  },
+  "default_weight": 1.0
+}
+```
+
+**How it works:**
+- Stories ranked by: `(importance × 0.5) + (interest × 0.3) + (source × 0.2)`
+- Matches by feed name first, then domain fallback
+- Higher weights boost stories from reputable sources
+
+See [ADR 0006](../adr/0006-source-quality-weighting.md) for full details.
+
 #### **Fetch Limits & Performance** ⭐ *New in v0.2.4*
 ```bash
 # Global item limit per refresh (default: 150)
