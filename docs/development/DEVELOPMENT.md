@@ -88,6 +88,35 @@ export STORY_MIN_ARTICLES=2           # Minimum articles per story
 export STORY_MODEL=llama3.1:8b        # LLM model for synthesis
 ```
 
+#### **Interest-Based Ranking** ⭐ *New in v0.6.5*
+
+Configure topic preferences for personalized story ranking in `data/interests.json`:
+
+```json
+{
+  "enabled": true,
+  "blend": {
+    "importance_weight": 0.6,
+    "interest_weight": 0.4
+  },
+  "topic_weights": {
+    "ai-ml": 1.5,        // Boost AI/ML stories 50%
+    "security": 1.2,     // Boost security 20%
+    "politics": 0.5,     // Demote politics 50%
+    "sports": 0.3        // Demote sports 70%
+  },
+  "default_weight": 1.0
+}
+```
+
+**How it works:**
+- Stories are ranked by blended score: `(importance × 0.6) + (interest × 0.4)`
+- Higher `topic_weights` boost stories, lower weights demote them
+- Weight of `0` demotes to bottom (doesn't hide)
+- Toggle in UI or via API: `?apply_interests=false`
+
+See [ADR 0005](../adr/0005-interest-based-ranking.md) for full details.
+
 #### **Fetch Limits & Performance** ⭐ *New in v0.2.4*
 ```bash
 # Global item limit per refresh (default: 150)

@@ -35,6 +35,24 @@ All story endpoints are now available via HTTP and Python APIs.
 
 List all active stories (5-10 synthesized stories from last 24 hours).
 
+**Query Parameters**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `limit` | int | 10 | Maximum stories to return (max: 50) |
+| `offset` | int | 0 | Pagination offset |
+| `status` | string | "active" | Filter: "active", "archived", or "all" |
+| `order_by` | string | "importance" | Sort: "importance", "freshness", "generated_at" |
+| `topic` | string | null | Filter by topic |
+| `apply_interests` | bool | true | Apply interest-based ranking (v0.6.5) |
+
+**Interest-Based Ranking (v0.6.5)**
+
+When `apply_interests=true` (default), stories are ranked by a blended score combining:
+- **Importance** (60%): Article count, source quality, recency
+- **Interest** (40%): Topic preference weights from `data/interests.json`
+
+This allows high-interest topics (e.g., AI/ML) to rank above higher-importance but low-interest topics (e.g., politics).
+
 **Response (200)**
 ```json
 {

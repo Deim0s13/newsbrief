@@ -1580,12 +1580,16 @@ def list_stories_endpoint(
     topic: str = Query(
         None, description="Filter by topic (e.g., 'ai-ml', 'security', 'politics')"
     ),
+    apply_interests: bool = Query(
+        True,
+        description="Apply interest-based ranking (blends importance with topic preferences)",
+    ),
 ):
     """
     List stories with filtering, sorting, and pagination.
 
     Stories are the main aggregated news briefs synthesized from multiple articles.
-    By default, returns the top 10 most important active stories.
+    By default, returns the top 10 most important active stories, weighted by interest preferences.
 
     Query Parameters:
         limit: Maximum stories to return (default: 10, max: 50)
@@ -1593,6 +1597,7 @@ def list_stories_endpoint(
         status: Filter by status - 'active', 'archived', or 'all' (default: active)
         order_by: Sort field - 'importance', 'freshness', or 'generated_at' (default: importance)
         topic: Filter by topic (optional)
+        apply_interests: Apply interest-based ranking (default: true)
 
     Returns:
         List of stories with metadata and supporting article summaries
@@ -1622,6 +1627,7 @@ def list_stories_endpoint(
                 status=status_filter,
                 order_by=order_by,
                 topic=topic,
+                apply_interests=apply_interests,
             )
 
             # Get total count for pagination
