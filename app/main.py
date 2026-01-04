@@ -470,10 +470,11 @@ def get_feed_stats(feed_id: int):
             {"feed_id": feed_id},
         ).fetchone()
 
-        # Get feed info for error tracking
+        # Get feed info for error tracking and response times
         feed_info = s.execute(
             text(
-                "SELECT last_error, fetch_count, success_count FROM feeds WHERE id = :feed_id"
+                """SELECT last_error, fetch_count, success_count, avg_response_time_ms 
+                   FROM feeds WHERE id = :feed_id"""
             ),
             {"feed_id": feed_id},
         ).fetchone()
@@ -485,6 +486,7 @@ def get_feed_stats(feed_id: int):
         total_articles = stats_data["total_articles"]
         fetch_count = feed_data["fetch_count"] or 0
         success_count = feed_data["success_count"] or 0
+        avg_response_time_ms = feed_data["avg_response_time_ms"] or 0.0
 
         success_rate = (success_count / fetch_count * 100) if fetch_count > 0 else 0.0
         avg_articles_per_day = (
@@ -501,7 +503,7 @@ def get_feed_stats(feed_id: int):
             last_fetch_at=stats_data["last_fetch_at"],
             last_error=feed_data["last_error"],
             success_rate=round(success_rate, 1),
-            avg_response_time_ms=0.0,  # TODO: Implement response time tracking
+            avg_response_time_ms=round(avg_response_time_ms, 1),
         )
 
 
