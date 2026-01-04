@@ -98,25 +98,25 @@ def get_blend_weights() -> tuple[float, float, float]:
         Tuple of (importance_weight, interest_weight, source_weight)
     """
     from .source_weights import get_blend_weight as get_source_blend_weight
-    
+
     config = load_interests_config()
     blend = config.get("blend", {})
-    
+
     # Get source weight from source_weights.json
     source_weight = get_source_blend_weight()
-    
+
     # Adjust importance and interest weights to accommodate source weight
     # Default: 50% importance, 30% interest, 20% source
     importance_weight = blend.get("importance_weight", 0.5)
     interest_weight = blend.get("interest_weight", 0.3)
-    
+
     return importance_weight, interest_weight, source_weight
 
 
 def _normalize_topic(topic: str) -> str:
     """
     Normalize a topic name to match config keys.
-    
+
     Handles both display names ("AI/ML") and IDs ("ai-ml").
     """
     # Common mappings from display name to config ID
@@ -160,7 +160,7 @@ def _normalize_topic(topic: str) -> str:
         "sports": "sports",
         "general": "general",
     }
-    
+
     normalized = topic.lower().strip()
     return mappings.get(normalized, normalized)
 
@@ -191,7 +191,7 @@ def calculate_interest_score(story_topics: List[str]) -> float:
         normalized = _normalize_topic(topic)
         weight = topic_weights.get(normalized, default_weight)
         weights.append(weight)
-    
+
     return sum(weights) / len(weights)
 
 
@@ -223,9 +223,9 @@ def calculate_blended_score(
 
     # Calculate blended score (50% importance + 30% interest + 20% source)
     blended = (
-        (importance_score * importance_w) +
-        (normalized_interest * interest_w) +
-        (normalized_source * source_w)
+        (importance_score * importance_w)
+        + (normalized_interest * interest_w)
+        + (normalized_source * source_w)
     )
 
     return blended
@@ -269,4 +269,3 @@ def get_interests_summary() -> Dict[str, Any]:
         "topic_weights": config.get("topic_weights", {}),
         "default_weight": config.get("default_weight", 1.0),
     }
-

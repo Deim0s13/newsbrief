@@ -8,7 +8,7 @@ NewsBrief is a self-hosted, privacy-focused news aggregator that replaces readin
 
 ## 🌟 Features
 
-### **🎯 Story-Based Aggregation (v0.6.4)** - *Current Release*
+### **🎯 Story-Based Aggregation (v0.6.5)** - *Current Release*
 Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **Time to informed: 30 min → 2 min**
 
 - **Automated Story Generation**: Daily scheduled generation at 6 AM (configurable timezone)
@@ -58,6 +58,13 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 - **GitOps-Ready Deployments**: Environment-specific Kubernetes manifests with health checks and rollback support
 - **Automated Dependency Management**: Weekly security audits, dependency updates, and base image maintenance
 - **Comprehensive Documentation**: Complete CI/CD guides, API documentation, and architecture decision records
+
+### **✅ Completed (v0.6.5 - Personalization)** - Jan 2026
+- ✅ **Interest-Based Ranking**: Topic weights for personalized story ordering (Issue #57)
+- ✅ **Source Quality Weighting**: Feed/domain reputation weights blended into scoring (Issue #58)
+- ✅ **Feed Health Improvements**: Response time tracking with slow feed indicators (Issue #71)
+- ✅ **Configurable Blending**: 50% importance + 30% interest + 20% source quality
+- ✅ **Personalization Toggle**: Enable/disable personalized ranking in UI
 
 ### **✅ Completed (v0.6.4 - Code Quality)** - Jan 2026
 - ✅ **Type Safety**: mypy passes with 0 errors in 13 source files (Issue #74)
@@ -442,7 +449,7 @@ Transform from article-centric to story-based aggregation
 - [x] **v0.6.2 - UI Polish & Fixes**: Local Tailwind build, topic filters, HTML sanitization ✅ COMPLETE (Dec 2025)
 - [x] **v0.6.3 - Performance**: Synthesis caching, incremental updates, scheduled refresh ✅ COMPLETE (Jan 2026)
 - [x] **v0.6.4 - Code Quality**: Type safety, test coverage, CI/CD improvements ✅ COMPLETE (Jan 2026)
-- [ ] **v0.6.5 - Personalization**: User preferences, source weighting, mobile navigation (Q1 2026)
+- [x] **v0.6.5 - Personalization**: Interest-based ranking, source quality weighting, feed health improvements ✅ COMPLETE (Jan 2026)
 
 ### **Project Tracking**
 
@@ -458,7 +465,7 @@ Development is organized with GitHub Projects and Milestones for clear visibilit
 - [v0.6.2 - UI Polish & Fixes](https://github.com/Deim0s13/newsbrief/releases/tag/v0.6.2) - ✅ **COMPLETE** (Dec 2025)
 - [v0.6.3 - Performance](https://github.com/Deim0s13/newsbrief/releases/tag/v0.6.3) - ✅ **COMPLETE** (Jan 2026)
 - [v0.6.4 - Code Quality](https://github.com/Deim0s13/newsbrief/releases/tag/v0.6.4) - ✅ **COMPLETE** (Jan 2026)
-- [v0.6.5 - Personalization](https://github.com/Deim0s13/newsbrief/milestone/9) - 🚧 IN PROGRESS (Q1 2026)
+- [v0.6.5 - Personalization](https://github.com/Deim0s13/newsbrief/releases/tag/v0.6.5) - ✅ **COMPLETE** (Jan 2026)
 - [v0.7.0 - Infrastructure](https://github.com/Deim0s13/newsbrief/milestone/3) - Due: Q2 2026
 
 **Epics** (via labels):

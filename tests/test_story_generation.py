@@ -22,14 +22,14 @@ _test_db_path = None
 def setup_test_db():
     """Create a temporary test database with articles."""
     global _test_db_path
-    
+
     # Use file-based SQLite with check_same_thread=False for threading support
     # This is required because story generation uses ThreadPoolExecutor
     _test_db_path = tempfile.mktemp(suffix=".db")
     engine = create_engine(
         f"sqlite:///{_test_db_path}",
         echo=False,
-        connect_args={"check_same_thread": False}
+        connect_args={"check_same_thread": False},
     )
 
     # Create all tables (stories, story_articles, and items)
@@ -58,7 +58,7 @@ def setup_test_db():
         """
             )
         )
-        
+
         # Feeds table (required for health score lookups)
         conn.execute(
             text(
@@ -72,12 +72,14 @@ def setup_test_db():
         """
             )
         )
-        
+
         # Insert a default feed
         conn.execute(
-            text("INSERT INTO feeds (id, name, url, health_score) VALUES (1, 'Test Feed', 'http://test.com', 100.0)")
+            text(
+                "INSERT INTO feeds (id, name, url, health_score) VALUES (1, 'Test Feed', 'http://test.com', 100.0)"
+            )
         )
-        
+
         # Synthesis cache table
         conn.execute(
             text(
@@ -110,8 +112,10 @@ def setup_test_db():
 
 def insert_test_articles(session):
     """Insert test articles into database."""
-    # Current time
+    # Current time - use ISO format string for consistent SQLite comparison
     now = datetime.now(UTC)
+    # Convert to ISO format string (without timezone) for SQLite compatibility
+    now_str = now.replace(tzinfo=None).isoformat()
 
     # Test articles about AI/ML topic
     ai_articles = [
@@ -182,7 +186,9 @@ def insert_test_articles(session):
                 "summary": summary,
                 "ai_summary": f"AI Summary: {summary}",  # Simulate AI summary
                 "topic": topic,
-                "published": now - timedelta(hours=2),  # 2 hours ago
+                "published": (now - timedelta(hours=2))
+                .replace(tzinfo=None)
+                .isoformat(),  # 2 hours ago, ISO format
                 "url": f"https://example.com/{len(article_ids)}",
                 "content": f"Full content: {summary}",
                 "feed_id": 1,  # Default test feed
@@ -215,7 +221,7 @@ def test_story_generation():
             similarity_threshold=0.3,
             model="llama3.1:8b",  # Will fall back if not available
         )
-        
+
         # Handle both dict return (new format) and list return (old format)
         if isinstance(result, dict):
             story_ids = result.get("story_ids", [])

@@ -2,10 +2,12 @@
 
 from datetime import UTC, datetime, timedelta
 
-from app.stories import (_calculate_freshness_score,
-                         _calculate_importance_score,
-                         _calculate_source_quality_score,
-                         _calculate_story_scores)
+from app.stories import (
+    _calculate_freshness_score,
+    _calculate_importance_score,
+    _calculate_source_quality_score,
+    _calculate_story_scores,
+)
 
 
 class TestImportanceScoring:

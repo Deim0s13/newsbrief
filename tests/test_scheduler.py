@@ -8,9 +8,10 @@ Tests cover:
 - Status reporting
 """
 
+from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock, patch
+
 import pytest
-from datetime import datetime, timedelta, UTC
-from unittest.mock import patch, MagicMock
 
 
 class TestArchiveOldStories:
@@ -66,7 +67,10 @@ class TestFeedRefreshState:
 
     def test_is_feed_refresh_in_progress_default(self):
         """Test default state is not in progress."""
-        from app.scheduler import is_feed_refresh_in_progress, set_feed_refresh_in_progress
+        from app.scheduler import (
+            is_feed_refresh_in_progress,
+            set_feed_refresh_in_progress,
+        )
 
         # Reset to known state
         set_feed_refresh_in_progress(False)
@@ -75,7 +79,10 @@ class TestFeedRefreshState:
 
     def test_set_feed_refresh_in_progress(self):
         """Test setting feed refresh state."""
-        from app.scheduler import is_feed_refresh_in_progress, set_feed_refresh_in_progress
+        from app.scheduler import (
+            is_feed_refresh_in_progress,
+            set_feed_refresh_in_progress,
+        )
 
         set_feed_refresh_in_progress(True)
         assert is_feed_refresh_in_progress() is True
@@ -165,7 +172,9 @@ class TestScheduledStoryGeneration:
 
     @patch("app.scheduler.archive_old_stories")
     @patch("app.scheduler.session_scope")
-    def test_scheduled_story_generation_exception(self, mock_session_scope, mock_archive):
+    def test_scheduled_story_generation_exception(
+        self, mock_session_scope, mock_archive
+    ):
         """Test exception handling in scheduled story generation."""
         from app.scheduler import scheduled_story_generation
 
@@ -311,11 +320,11 @@ class TestConfigurationEnvironmentVariables:
         from app.scheduler import (
             FEED_REFRESH_ENABLED,
             FEED_REFRESH_SCHEDULE,
-            STORY_GENERATION_SCHEDULE,
             STORY_ARCHIVE_DAYS,
-            STORY_TIME_WINDOW_HOURS,
+            STORY_GENERATION_SCHEDULE,
             STORY_MIN_ARTICLES,
             STORY_MODEL,
+            STORY_TIME_WINDOW_HOURS,
         )
 
         # These are the defaults from the module
@@ -326,4 +335,3 @@ class TestConfigurationEnvironmentVariables:
         assert STORY_TIME_WINDOW_HOURS == 24
         assert STORY_MIN_ARTICLES == 2
         assert STORY_MODEL == "llama3.1:8b"
-

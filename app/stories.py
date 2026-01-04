@@ -387,11 +387,9 @@ def get_stories(
 
     # Check if we should apply personalized ranking
     use_interest_ranking = (
-        apply_interests
-        and order_by == "importance"
-        and is_interest_ranking_enabled()
+        apply_interests and order_by == "importance" and is_interest_ranking_enabled()
     )
-    
+
     use_source_weighting = (
         apply_interests  # Source weighting tied to interests toggle for now
         and order_by == "importance"
@@ -412,17 +410,20 @@ def get_stories(
         if use_source_weighting and stories:
             story_ids = [s.id for s in stories]
             # Get feed names and URLs for each story's articles
-            feed_query = text("""
+            # Build placeholders dynamically for IN clause
+            placeholders = ", ".join([f":id_{i}" for i in range(len(story_ids))])
+            feed_query = text(
+                f"""
                 SELECT sa.story_id, f.name, f.url
                 FROM story_articles sa
                 JOIN items i ON sa.article_id = i.id
                 JOIN feeds f ON i.feed_id = f.id
-                WHERE sa.story_id IN :story_ids
-            """)
-            feed_results = session.execute(
-                feed_query, {"story_ids": tuple(story_ids)}
-            ).fetchall()
-            
+                WHERE sa.story_id IN ({placeholders})
+            """
+            )
+            params = {f"id_{i}": sid for i, sid in enumerate(story_ids)}
+            feed_results = session.execute(feed_query, params).fetchall()
+
             for story_id, feed_name, feed_url in feed_results:
                 if story_id not in story_feed_info:
                     story_feed_info[story_id] = ([], [])
@@ -433,13 +434,13 @@ def get_stories(
         scored_stories = []
         for story in stories:
             story_topics = deserialize_story_json_field(story.topics_json) or []
-            
+
             # Calculate source weight if enabled
             source_weight = 1.0
             if use_source_weighting and story.id in story_feed_info:
                 feed_names, feed_urls = story_feed_info[story.id]
                 source_weight = calculate_story_source_weight(feed_names, feed_urls)
-            
+
             blended_score = get_story_blended_score(
                 story.importance_score or 0.0,
                 story_topics,

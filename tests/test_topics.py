@@ -8,21 +8,22 @@ Tests cover:
 - TopicClassificationResult dataclass
 """
 
-import pytest
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from app.topics import (
-    get_topic_definitions,
-    get_valid_topics,
-    get_topic_display_name,
-    get_available_topics,
     TopicClassificationResult,
-    classify_topic_with_keywords,
-    classify_topic,
     _get_default_config,
+    classify_topic,
+    classify_topic_with_keywords,
+    get_available_topics,
+    get_topic_definitions,
+    get_topic_display_name,
+    get_valid_topics,
 )
 
 
@@ -32,14 +33,14 @@ class TestTopicConfiguration:
     def test_get_topic_definitions_returns_dict(self):
         """Test that get_topic_definitions returns a dictionary."""
         result = get_topic_definitions()
-        
+
         assert isinstance(result, dict)
         assert len(result) > 0
 
     def test_get_topic_definitions_has_required_keys(self):
         """Test that each topic has required configuration keys."""
         topics = get_topic_definitions()
-        
+
         for topic_id, config in topics.items():
             assert "name" in config, f"Topic {topic_id} missing 'name'"
             assert "keywords" in config, f"Topic {topic_id} missing 'keywords'"
@@ -48,7 +49,7 @@ class TestTopicConfiguration:
     def test_get_valid_topics_returns_list(self):
         """Test that get_valid_topics returns a list of topic IDs."""
         topics = get_valid_topics()
-        
+
         assert isinstance(topics, list)
         assert len(topics) > 0
         assert all(isinstance(t, str) for t in topics)
@@ -56,7 +57,7 @@ class TestTopicConfiguration:
     def test_get_default_config(self):
         """Test that default config has expected structure."""
         config = _get_default_config()
-        
+
         assert "settings" in config
         assert "topics" in config
         assert "general" in config["topics"]  # Should have at least general
@@ -76,23 +77,23 @@ class TestTopicDisplayNames:
     def test_get_topic_display_name_unknown_topic(self):
         """Test display name for unknown topic."""
         name = get_topic_display_name("unknown-topic")
-        
+
         # Should return formatted version of the ID
         assert name == "Unknown/Topic"
 
     def test_get_topic_display_name_empty(self):
         """Test display name for empty string."""
         name = get_topic_display_name("")
-        
+
         assert isinstance(name, str)
 
     def test_get_available_topics_structure(self):
         """Test that get_available_topics returns correct structure."""
         topics = get_available_topics()
-        
+
         assert isinstance(topics, list)
         assert len(topics) > 0
-        
+
         for topic in topics:
             assert "id" in topic
             assert "name" in topic
@@ -276,7 +277,7 @@ class TestTopicKeywords:
     def test_ai_ml_keywords_include_core_terms(self):
         """Test that AI/ML topic has core keywords."""
         topics = get_topic_definitions()
-        
+
         if "ai-ml" in topics:
             keywords = topics["ai-ml"]["keywords"]
             # Check for some expected keywords
@@ -287,7 +288,7 @@ class TestTopicKeywords:
     def test_security_keywords_include_core_terms(self):
         """Test that Security topic has core keywords."""
         topics = get_topic_definitions()
-        
+
         if "security" in topics:
             keywords = topics["security"]["keywords"]
             core_terms = ["vulnerability", "security", "exploit"]
@@ -297,13 +298,15 @@ class TestTopicKeywords:
     def test_core_topics_have_minimum_keywords(self):
         """Test that core/predefined topics have at least 3 keywords."""
         topics = get_topic_definitions()
-        
+
         # Core topics that should have keywords defined
         core_topics = ["ai-ml", "security", "cloud-k8s", "devtools", "chips-hardware"]
-        
+
         for topic_id in core_topics:
             if topic_id in topics:
-                assert len(topics[topic_id]["keywords"]) >= 3, f"Topic {topic_id} has too few keywords"
+                assert (
+                    len(topics[topic_id]["keywords"]) >= 3
+                ), f"Topic {topic_id} has too few keywords"
 
 
 class TestTopicMatching:
@@ -335,4 +338,3 @@ class TestTopicMatching:
 
         # Should match AI/ML from summary keywords
         assert result.topic == "ai-ml"
-
