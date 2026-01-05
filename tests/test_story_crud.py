@@ -42,7 +42,8 @@ def setup_test_db():
             CREATE TABLE IF NOT EXISTS items (
                 id INTEGER PRIMARY KEY,
                 title TEXT,
-                url TEXT,
+                url TEXT NOT NULL,
+                url_hash TEXT NOT NULL UNIQUE,
                 published DATETIME,
                 summary TEXT,
                 content_hash TEXT,
@@ -58,7 +59,9 @@ def setup_test_db():
                 topic TEXT,
                 topic_confidence REAL,
                 source_weight REAL DEFAULT 1.0,
-                feed_id INTEGER
+                feed_id INTEGER NOT NULL,
+                created_at DATETIME,
+                FOREIGN KEY(feed_id) REFERENCES feeds(id)
             )
         """
             )
@@ -70,22 +73,24 @@ def setup_test_db():
                 """
             CREATE TABLE IF NOT EXISTS feeds (
                 id INTEGER PRIMARY KEY,
-                url TEXT,
+                url TEXT UNIQUE NOT NULL,
                 name TEXT,
                 category TEXT,
-                enabled INTEGER DEFAULT 1,
+                disabled INTEGER DEFAULT 0,
+                robots_allowed INTEGER DEFAULT 1,
                 created_at DATETIME,
-                last_fetched DATETIME,
+                updated_at DATETIME,
+                last_fetch_at DATETIME,
+                last_success_at DATETIME,
                 last_modified TEXT,
                 etag TEXT,
-                http_status INTEGER,
-                error_count INTEGER DEFAULT 0,
+                fetch_count INTEGER DEFAULT 0,
+                success_count INTEGER DEFAULT 0,
                 consecutive_failures INTEGER DEFAULT 0,
-                last_success_at DATETIME,
-                last_failure_at DATETIME,
-                robots_txt_status TEXT,
-                avg_response_time_ms REAL,
-                last_response_time_ms REAL
+                avg_response_time_ms INTEGER,
+                last_response_time_ms INTEGER,
+                health_score REAL DEFAULT 100.0,
+                last_error TEXT
             )
         """
             )
@@ -95,8 +100,8 @@ def setup_test_db():
         conn.execute(
             text(
                 """
-            INSERT INTO feeds (id, url, name, enabled)
-            VALUES (1, 'http://example.com/feed', 'Test Feed', 1)
+            INSERT INTO feeds (id, url, name, disabled)
+            VALUES (1, 'http://example.com/feed', 'Test Feed', 0)
         """
             )
         )
@@ -105,11 +110,11 @@ def setup_test_db():
         conn.execute(
             text(
                 """
-            INSERT INTO items (id, title, url, summary, ranking_score, topic, feed_id)
+            INSERT INTO items (id, title, url, url_hash, summary, ranking_score, topic, feed_id)
             VALUES 
-                (10, 'Test Article 1', 'http://example.com/1', 'Summary 1', 0.9, 'AI/ML', 1),
-                (20, 'Test Article 2', 'http://example.com/2', 'Summary 2', 0.8, 'Cloud', 1),
-                (30, 'Test Article 3', 'http://example.com/3', 'Summary 3', 0.7, 'Security', 1)
+                (10, 'Test Article 1', 'http://example.com/1', 'hash1', 'Summary 1', 0.9, 'AI/ML', 1),
+                (20, 'Test Article 2', 'http://example.com/2', 'hash2', 'Summary 2', 0.8, 'Cloud', 1),
+                (30, 'Test Article 3', 'http://example.com/3', 'hash3', 'Summary 3', 0.7, 'Security', 1)
         """
             )
         )

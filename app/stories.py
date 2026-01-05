@@ -23,20 +23,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, cast
 
-from sqlalchemy import (
-    Boolean,
-    Column,
-    DateTime,
-    Float,
-    ForeignKey,
-    Integer,
-    String,
-    Text,
-    desc,
-    text,
-)
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import Session, relationship
+from sqlalchemy import desc, text
+from sqlalchemy.orm import Session
 
 from .entities import ExtractedEntities, extract_and_cache_entities, get_entity_overlap
 from .llm import get_llm_service
@@ -68,67 +56,8 @@ SIMILARITY_TOPIC_WEIGHT = float(
     os.getenv("SIMILARITY_TOPIC_WEIGHT", "0.2")
 )  # Weight for same-topic bonus
 
-# ORM Base
-Base = declarative_base()  # type: ignore
-
-
-# ORM Models
-
-
-class Story(Base):  # type: ignore[misc,valid-type]
-    """ORM model for stories table."""
-
-    __tablename__ = "stories"
-
-    id = Column(Integer, primary_key=True)
-    title = Column(String(200), nullable=False)
-    synthesis = Column(Text, nullable=False)
-    key_points_json = Column(Text)
-    why_it_matters = Column(Text)
-    topics_json = Column(Text)
-    entities_json = Column(Text)
-    article_count = Column(Integer, default=0)
-    importance_score = Column(Float, default=0.0)
-    freshness_score = Column(Float, default=0.0)
-    quality_score = Column(Float, default=0.0)
-    cluster_method = Column(String)
-    story_hash = Column(String, unique=True)
-    generated_at = Column(DateTime, default=lambda: datetime.now(UTC))
-    first_seen = Column(DateTime)
-    last_updated = Column(DateTime)
-    time_window_start = Column(DateTime)
-    time_window_end = Column(DateTime)
-    model = Column(String)
-    status = Column(String, default="active")
-    # Versioning (v0.6.3 - ADR 0004)
-    version = Column(Integer, default=1)
-    previous_version_id = Column(Integer)  # References stories.id
-
-    # Relationship to articles via junction table
-    story_articles = relationship(
-        "StoryArticle", back_populates="story", cascade="all, delete-orphan"
-    )
-
-
-class StoryArticle(Base):  # type: ignore[misc,valid-type]
-    """ORM model for story_articles junction table."""
-
-    __tablename__ = "story_articles"
-
-    id = Column(Integer, primary_key=True)
-    story_id = Column(
-        Integer, ForeignKey("stories.id", ondelete="CASCADE"), nullable=False
-    )
-    article_id = Column(
-        Integer, nullable=False
-    )  # FK to items table (not ORM yet, so no ForeignKey constraint)
-    relevance_score = Column(Float, default=1.0)
-    is_primary = Column(Boolean, default=False)
-    added_at = Column(DateTime, default=lambda: datetime.now(UTC))
-
-    # Relationships
-    story = relationship("Story", back_populates="story_articles")
-    # Note: items table is not ORM yet, so we don't define relationship to it
+# Import ORM models from central location
+from .orm_models import Base, Story, StoryArticle
 
 
 # CRUD Operations

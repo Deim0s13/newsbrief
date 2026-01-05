@@ -84,141 +84,29 @@ def init_db() -> None:
             raise
         return
 
-    # SQLite: Create tables directly (development/local use)
-    with engine.begin() as conn:
-        # Check if this is a migration (stories table doesn't exist yet)
+    # SQLite: Create tables using SQLAlchemy ORM models
+    from .orm_models import Base as ORMBase
+
+    # Check if this is a fresh database or existing
+    with engine.connect() as conn:
         result = conn.exec_driver_sql(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='stories'"
         )
-        is_migration = len(result.fetchall()) == 0
+        is_fresh = len(result.fetchall()) == 0
 
-        if is_migration:
-            logger.info("🔄 Migrating database to v0.5.0 (story architecture)...")
-        else:
-            logger.info("✅ Database already has story tables, verifying schema...")
-        conn.exec_driver_sql(
-            """
-        CREATE TABLE IF NOT EXISTS feeds (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          url TEXT UNIQUE NOT NULL,
-          name TEXT,
-          etag TEXT,
-          last_modified TEXT,
-          robots_allowed INTEGER DEFAULT 1,
-          disabled INTEGER DEFAULT 0,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          last_fetch_at DATETIME,
-          last_success_at DATETIME,
-          fetch_count INTEGER DEFAULT 0,
-          success_count INTEGER DEFAULT 0,
-          consecutive_failures INTEGER DEFAULT 0,
-          last_response_time_ms INTEGER,
-          avg_response_time_ms INTEGER,
-          last_error TEXT,
-          health_score REAL DEFAULT 100.0
-        );
-        """
-        )
-        conn.exec_driver_sql(
-            """
-        CREATE TABLE IF NOT EXISTS items (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          feed_id INTEGER NOT NULL,
-          title TEXT,
-          url TEXT NOT NULL,
-          url_hash TEXT NOT NULL UNIQUE,
-          published DATETIME,
-          author TEXT,
-          summary TEXT,
-          content TEXT,
-          content_hash TEXT,
-          ai_summary TEXT,
-          ai_model TEXT,
-          ai_generated_at DATETIME,
-          structured_summary_json TEXT,
-          structured_summary_model TEXT,
-          structured_summary_content_hash TEXT,
-          structured_summary_generated_at DATETIME,
-          ranking_score REAL DEFAULT 0.0,
-          topic TEXT,
-          topic_confidence REAL DEFAULT 0.0,
-          source_weight REAL DEFAULT 1.0,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY(feed_id) REFERENCES feeds(id)
-        );
-        """
-        )
+    if is_fresh:
+        logger.info("🔄 Creating database schema from ORM models...")
+    else:
+        logger.info("✅ Database exists, verifying schema...")
 
-        # Stories table - aggregated/synthesized news stories
-        conn.exec_driver_sql(
-            """
-        CREATE TABLE IF NOT EXISTS stories (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          title TEXT NOT NULL,
-          synthesis TEXT NOT NULL,
-          key_points_json TEXT,
-          why_it_matters TEXT,
-          topics_json TEXT,
-          entities_json TEXT,
-          article_count INTEGER DEFAULT 0,
-          importance_score REAL DEFAULT 0.0,
-          freshness_score REAL DEFAULT 0.0,
-          cluster_method TEXT,
-          story_hash TEXT UNIQUE,
-          generated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          first_seen DATETIME,
-          last_updated DATETIME,
-          time_window_start DATETIME,
-          time_window_end DATETIME,
-          model TEXT,
-          status TEXT DEFAULT 'active'
-        );
-        """
-        )
+    # Create all tables from ORM models (uses CREATE TABLE IF NOT EXISTS)
+    ORMBase.metadata.create_all(engine)
 
-        # Story-Article junction table
-        conn.exec_driver_sql(
-            """
-        CREATE TABLE IF NOT EXISTS story_articles (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          story_id INTEGER NOT NULL,
-          article_id INTEGER NOT NULL,
-          relevance_score REAL DEFAULT 1.0,
-          is_primary BOOLEAN DEFAULT 0,
-          added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY(story_id) REFERENCES stories(id) ON DELETE CASCADE,
-          FOREIGN KEY(article_id) REFERENCES items(id) ON DELETE CASCADE,
-          UNIQUE(story_id, article_id)
-        );
-        """
-        )
+    if is_fresh:
+        logger.info("✅ Database schema created successfully")
 
-        # Synthesis cache table (v0.6.3 - ADR 0003)
-        conn.exec_driver_sql(
-            """
-        CREATE TABLE IF NOT EXISTS synthesis_cache (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          cache_key TEXT UNIQUE NOT NULL,
-          article_ids_json TEXT NOT NULL,
-          model TEXT NOT NULL,
-          synthesis TEXT NOT NULL,
-          key_points_json TEXT,
-          why_it_matters TEXT,
-          topics_json TEXT,
-          entities_json TEXT,
-          token_count_input INTEGER,
-          token_count_output INTEGER,
-          generation_time_ms INTEGER,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          expires_at DATETIME,
-          invalidated_at DATETIME
-        );
-        """
-        )
-
-        if is_migration:
-            logger.info("✅ Story tables created successfully")
+    # Migration: Add columns for existing databases (backward compatibility)
+    with engine.begin() as conn:
 
         # Migration: Add columns if they don't exist (for existing databases)
         migration_columns = [
@@ -354,7 +242,7 @@ def init_db() -> None:
         """
         )
 
-        if is_migration:
-            logger.info("🎉 Database migration to v0.5.0 complete!")
+        if is_fresh:
+            logger.info("🎉 Database schema created successfully!")
         else:
             logger.info("✅ Database schema verification complete")

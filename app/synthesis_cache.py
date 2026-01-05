@@ -23,10 +23,9 @@ import os
 from datetime import UTC, datetime, timedelta
 from typing import Any, Dict, List, Optional, cast
 
-from sqlalchemy import Column, DateTime, Integer, String, Text
 from sqlalchemy.orm import Session
 
-from .stories import Base
+from .orm_models import SynthesisCache
 
 logger = logging.getLogger(__name__)
 
@@ -71,38 +70,7 @@ SYNTHESIS_TOKEN_TRACKING = (
     os.getenv("SYNTHESIS_TOKEN_TRACKING", "true").lower() == "true"
 )
 
-
-class SynthesisCache(Base):  # type: ignore[misc,valid-type]
-    """
-    ORM model for synthesis_cache table.
-
-    Stores LLM synthesis results keyed by a deterministic hash
-    of the input (sorted article IDs + model name).
-    """
-
-    __tablename__ = "synthesis_cache"
-
-    id = Column(Integer, primary_key=True)
-    cache_key = Column(String(64), unique=True, nullable=False, index=True)
-    article_ids_json = Column(Text, nullable=False)  # For verification/debugging
-    model = Column(String(50), nullable=False)
-
-    # Synthesis results
-    synthesis = Column(Text, nullable=False)
-    key_points_json = Column(Text)
-    why_it_matters = Column(Text)
-    topics_json = Column(Text)
-    entities_json = Column(Text)
-
-    # Metrics
-    token_count_input = Column(Integer)
-    token_count_output = Column(Integer)
-    generation_time_ms = Column(Integer)
-
-    # Timestamps
-    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
-    expires_at = Column(DateTime, index=True)
-    invalidated_at = Column(DateTime)  # Soft invalidation
+# SynthesisCache ORM model is imported from orm_models
 
 
 def generate_cache_key(article_ids: List[int], model: str) -> str:
