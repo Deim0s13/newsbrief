@@ -1,24 +1,48 @@
-# sqlite db utils
+# Database utilities - supports SQLite (dev) and PostgreSQL (prod)
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path("data")
-DATA_DIR.mkdir(exist_ok=True, parents=True)
-DB_PATH = DATA_DIR / "newsbrief.sqlite3"
+# Database configuration
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-engine = create_engine(
-    f"sqlite:///{DB_PATH}", future=True, connect_args={"check_same_thread": False}
-)
+if DATABASE_URL:
+    # PostgreSQL mode (production)
+    # Normalize URL for psycopg3 driver (handles both postgresql:// and postgresql+psycopg://)
+    db_url = DATABASE_URL
+    if db_url.startswith("postgresql://"):
+        db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    elif db_url.startswith("postgres://"):
+        # Handle Heroku-style URLs
+        db_url = db_url.replace("postgres://", "postgresql+psycopg://", 1)
+    # pool_pre_ping: Test connections before use (handles dropped connections)
+    engine = create_engine(db_url, future=True, pool_pre_ping=True)
+    logger.info("🐘 Using PostgreSQL database")
+else:
+    # SQLite mode (development)
+    DATA_DIR = Path("data")
+    DATA_DIR.mkdir(exist_ok=True, parents=True)
+    DB_PATH = DATA_DIR / "newsbrief.sqlite3"
+    engine = create_engine(
+        f"sqlite:///{DB_PATH}", future=True, connect_args={"check_same_thread": False}
+    )
+    logger.info("📦 Using SQLite database")
+
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+
+
+def is_postgres() -> bool:
+    """Check if using PostgreSQL backend."""
+    return DATABASE_URL is not None and "postgres" in DATABASE_URL.lower()
 
 
 @contextmanager
@@ -38,12 +62,29 @@ def init_db() -> None:
     """
     Initialize database with all required tables and indexes.
 
-    Handles both:
-    - New databases: Creates all tables from scratch
-    - Existing databases: Adds missing tables/columns (migration)
+    For SQLite (development):
+    - Creates all tables from scratch if needed
+    - Adds missing tables/columns (migration)
+    - Uses CREATE TABLE IF NOT EXISTS for idempotent migrations
 
-    Uses CREATE TABLE IF NOT EXISTS for idempotent migrations.
+    For PostgreSQL (production):
+    - Skips table creation (expects Alembic migrations to have been run)
+    - Verifies database connection is working
     """
+    if is_postgres():
+        # PostgreSQL: Verify connection, but don't create tables
+        # Schema management is handled by Alembic migrations (Issue #31)
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+                logger.info("✅ PostgreSQL connection verified")
+        except Exception as e:
+            logger.error(f"❌ PostgreSQL connection failed: {e}")
+            logger.error("   Ensure DATABASE_URL is correct and Postgres is running")
+            raise
+        return
+
+    # SQLite: Create tables directly (development/local use)
     with engine.begin() as conn:
         # Check if this is a migration (stories table doesn't exist yet)
         result = conn.exec_driver_sql(
