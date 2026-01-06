@@ -8,7 +8,7 @@ NewsBrief is a self-hosted, privacy-focused news aggregator that replaces readin
 
 ## 🌟 Features
 
-### **🎯 Story-Based Aggregation (v0.6.5)** - *Current Release*
+### **🎯 Story-Based Aggregation (v0.7.1)** - *Current Release*
 Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **Time to informed: 30 min → 2 min**
 
 - **Automated Story Generation**: Daily scheduled generation at 6 AM (configurable timezone)
@@ -58,6 +58,13 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 - **GitOps-Ready Deployments**: Environment-specific Kubernetes manifests with health checks and rollback support
 - **Automated Dependency Management**: Weekly security audits, dependency updates, and base image maintenance
 - **Comprehensive Documentation**: Complete CI/CD guides, API documentation, and architecture decision records
+
+### **✅ Completed (v0.7.1 - PostgreSQL Migration)** - Jan 2026
+- ✅ **PostgreSQL Support**: Production-ready database via DATABASE_URL
+- ✅ **Dual Database Mode**: SQLite for development, PostgreSQL for production
+- ✅ **ORM Models**: Central orm_models.py with portable schema
+- ✅ **Alembic Migrations**: Schema versioning and migration tooling
+- ✅ **Database Commands**: make db-up, db-down, db-psql, db-reset
 
 ### **✅ Completed (v0.6.5 - Personalization)** - Jan 2026
 - ✅ **Interest-Based Ranking**: Topic weights for personalized story ordering (Issue #57)
@@ -518,11 +525,7 @@ Development is organized with GitHub Projects and Milestones for clear visibilit
 - [v0.6.3 - Performance](https://github.com/Deim0s13/newsbrief/releases/tag/v0.6.3) - ✅ **COMPLETE** (Jan 2026)
 - [v0.6.4 - Code Quality](https://github.com/Deim0s13/newsbrief/releases/tag/v0.6.4) - ✅ **COMPLETE** (Jan 2026)
 - [v0.6.5 - Personalization](https://github.com/Deim0s13/newsbrief/releases/tag/v0.6.5) - ✅ **COMPLETE** (Jan 2026)
-- [v0.7.1 - PostgreSQL Migration](https://github.com/Deim0s13/newsbrief/milestone/10) - 🔄 **IN PROGRESS**
-  - PostgreSQL support via DATABASE_URL
-  - SQLAlchemy ORM models for portable schema
-  - Alembic migrations for schema management
-  - Dual database support (SQLite dev, PostgreSQL prod)
+- [v0.7.1 - PostgreSQL Migration](https://github.com/Deim0s13/newsbrief/releases/tag/v0.7.1) - ✅ **COMPLETE** (Jan 2026)
 
 **Epics** (via labels):
 - **epic:stories** - Story-based aggregation and synthesis
