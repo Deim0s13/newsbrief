@@ -23,20 +23,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, cast
 
-from sqlalchemy import (
-    Boolean,
-    Column,
-    DateTime,
-    Float,
-    ForeignKey,
-    Integer,
-    String,
-    Text,
-    desc,
-    text,
-)
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import Session, relationship
+from sqlalchemy import desc, text
+from sqlalchemy.orm import Session
 
 from .entities import ExtractedEntities, extract_and_cache_entities, get_entity_overlap
 from .llm import get_llm_service
@@ -68,67 +56,25 @@ SIMILARITY_TOPIC_WEIGHT = float(
     os.getenv("SIMILARITY_TOPIC_WEIGHT", "0.2")
 )  # Weight for same-topic bonus
 
-# ORM Base
-Base = declarative_base()  # type: ignore
+# Import ORM models from central location
+from .orm_models import Base, Story, StoryArticle
 
 
-# ORM Models
+def _parse_datetime(value: Any) -> Optional[datetime]:
+    """
+    Parse datetime from database value.
 
-
-class Story(Base):  # type: ignore[misc,valid-type]
-    """ORM model for stories table."""
-
-    __tablename__ = "stories"
-
-    id = Column(Integer, primary_key=True)
-    title = Column(String(200), nullable=False)
-    synthesis = Column(Text, nullable=False)
-    key_points_json = Column(Text)
-    why_it_matters = Column(Text)
-    topics_json = Column(Text)
-    entities_json = Column(Text)
-    article_count = Column(Integer, default=0)
-    importance_score = Column(Float, default=0.0)
-    freshness_score = Column(Float, default=0.0)
-    quality_score = Column(Float, default=0.0)
-    cluster_method = Column(String)
-    story_hash = Column(String, unique=True)
-    generated_at = Column(DateTime, default=lambda: datetime.now(UTC))
-    first_seen = Column(DateTime)
-    last_updated = Column(DateTime)
-    time_window_start = Column(DateTime)
-    time_window_end = Column(DateTime)
-    model = Column(String)
-    status = Column(String, default="active")
-    # Versioning (v0.6.3 - ADR 0004)
-    version = Column(Integer, default=1)
-    previous_version_id = Column(Integer)  # References stories.id
-
-    # Relationship to articles via junction table
-    story_articles = relationship(
-        "StoryArticle", back_populates="story", cascade="all, delete-orphan"
-    )
-
-
-class StoryArticle(Base):  # type: ignore[misc,valid-type]
-    """ORM model for story_articles junction table."""
-
-    __tablename__ = "story_articles"
-
-    id = Column(Integer, primary_key=True)
-    story_id = Column(
-        Integer, ForeignKey("stories.id", ondelete="CASCADE"), nullable=False
-    )
-    article_id = Column(
-        Integer, nullable=False
-    )  # FK to items table (not ORM yet, so no ForeignKey constraint)
-    relevance_score = Column(Float, default=1.0)
-    is_primary = Column(Boolean, default=False)
-    added_at = Column(DateTime, default=lambda: datetime.now(UTC))
-
-    # Relationships
-    story = relationship("Story", back_populates="story_articles")
-    # Note: items table is not ORM yet, so we don't define relationship to it
+    Handles both:
+    - String (SQLite returns ISO format strings)
+    - datetime object (PostgreSQL returns native datetime)
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        return datetime.fromisoformat(value)
+    return None
 
 
 # CRUD Operations
@@ -304,7 +250,7 @@ def get_story_by_id(session: Session, story_id: int) -> Optional[StoryOut]:
                         or r[5]
                         or "",  # structured content_hash, fallback to main content_hash
                         r[11],
-                        datetime.fromisoformat(r[13]) if r[13] else datetime.now(UTC),
+                        _parse_datetime(r[13]) or datetime.now(UTC),
                     )
                 except Exception:
                     pass  # Skip if parsing fails
@@ -325,11 +271,11 @@ def get_story_by_id(session: Session, story_id: int) -> Optional[StoryOut]:
                     id=r[0],
                     title=r[1],
                     url=r[2],
-                    published=datetime.fromisoformat(r[3]) if r[3] else None,
+                    published=_parse_datetime(r[3]),
                     summary=r[4],
                     ai_summary=r[7],
                     ai_model=r[8],
-                    ai_generated_at=datetime.fromisoformat(r[9]) if r[9] else None,
+                    ai_generated_at=_parse_datetime(r[9]),
                     structured_summary=structured_summary,
                     fallback_summary=fallback_summary,
                     is_fallback_summary=is_fallback,
