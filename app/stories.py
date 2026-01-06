@@ -60,6 +60,23 @@ SIMILARITY_TOPIC_WEIGHT = float(
 from .orm_models import Base, Story, StoryArticle
 
 
+def _parse_datetime(value: Any) -> Optional[datetime]:
+    """
+    Parse datetime from database value.
+
+    Handles both:
+    - String (SQLite returns ISO format strings)
+    - datetime object (PostgreSQL returns native datetime)
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        return datetime.fromisoformat(value)
+    return None
+
+
 # CRUD Operations
 
 
@@ -233,7 +250,7 @@ def get_story_by_id(session: Session, story_id: int) -> Optional[StoryOut]:
                         or r[5]
                         or "",  # structured content_hash, fallback to main content_hash
                         r[11],
-                        datetime.fromisoformat(r[13]) if r[13] else datetime.now(UTC),
+                        _parse_datetime(r[13]) or datetime.now(UTC),
                     )
                 except Exception:
                     pass  # Skip if parsing fails
@@ -254,11 +271,11 @@ def get_story_by_id(session: Session, story_id: int) -> Optional[StoryOut]:
                     id=r[0],
                     title=r[1],
                     url=r[2],
-                    published=datetime.fromisoformat(r[3]) if r[3] else None,
+                    published=_parse_datetime(r[3]),
                     summary=r[4],
                     ai_summary=r[7],
                     ai_model=r[8],
-                    ai_generated_at=datetime.fromisoformat(r[9]) if r[9] else None,
+                    ai_generated_at=_parse_datetime(r[9]),
                     structured_summary=structured_summary,
                     fallback_summary=fallback_summary,
                     is_fallback_summary=is_fallback,
