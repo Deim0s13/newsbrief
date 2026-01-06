@@ -337,6 +337,53 @@ npm run watch:css
 uvicorn app.main:app --reload --port 8787
 ```
 
+### **Database Configuration**
+
+NewsBrief supports two database backends:
+- **SQLite** (default): Zero-config, perfect for development and single-user
+- **PostgreSQL**: Production-ready, concurrent access, recommended for deployment
+
+#### SQLite (Default)
+No configuration needed. Database is created at `data/newsbrief.sqlite3`.
+
+#### PostgreSQL Setup
+
+```bash
+# 1. Create environment file
+cp .env.example .env
+# Edit .env and set POSTGRES_PASSWORD
+
+# 2. Start PostgreSQL container
+make db-up
+
+# 3. Run database migrations
+make migrate
+
+# 4. Run app with PostgreSQL
+source .env && make run-local
+```
+
+#### Database Commands
+
+```bash
+make db-up          # Start PostgreSQL container
+make db-down        # Stop PostgreSQL container
+make db-logs        # View PostgreSQL logs
+make db-psql        # Connect with psql
+make db-reset       # Reset database (WARNING: deletes all data)
+
+make migrate        # Run migrations to latest
+make migrate-stamp  # Mark existing DB as current
+make migrate-new MSG="description"  # Create new migration
+```
+
+#### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DATABASE_URL` | PostgreSQL connection string | *(SQLite if not set)* |
+| `POSTGRES_PASSWORD` | Password for docker-compose | *(required for Postgres)* |
+
 ### **Development Workflow**
 
 NewsBrief uses **modern CI/CD practices** with automated testing, security scanning, and deployment:
@@ -375,11 +422,16 @@ safety check -r requirements.txt    # Security audit
 newsbrief/
 ├── app/                    # Application code
 │   ├── main.py            # FastAPI app and routes  
-│   ├── db.py              # Database connection and schema
+│   ├── db.py              # Database connection (SQLite/PostgreSQL)
+│   ├── orm_models.py      # SQLAlchemy ORM models
+│   ├── models.py          # Pydantic schemas
 │   ├── feeds.py           # RSS fetching and processing
-│   ├── models.py          # Pydantic models
+│   ├── stories.py         # Story generation and CRUD
 │   ├── readability.py     # Content extraction
 │   └── llm.py             # LLM integration with Ollama
+├── alembic/               # Database migrations
+│   ├── env.py            # Migration environment config
+│   └── versions/         # Migration scripts
 ├── .github/workflows/      # CI/CD automation
 │   ├── ci-cd.yml          # Main pipeline (test, build, deploy)
 │   ├── dependencies.yml   # Automated dependency updates
@@ -466,7 +518,11 @@ Development is organized with GitHub Projects and Milestones for clear visibilit
 - [v0.6.3 - Performance](https://github.com/Deim0s13/newsbrief/releases/tag/v0.6.3) - ✅ **COMPLETE** (Jan 2026)
 - [v0.6.4 - Code Quality](https://github.com/Deim0s13/newsbrief/releases/tag/v0.6.4) - ✅ **COMPLETE** (Jan 2026)
 - [v0.6.5 - Personalization](https://github.com/Deim0s13/newsbrief/releases/tag/v0.6.5) - ✅ **COMPLETE** (Jan 2026)
-- [v0.7.0 - Infrastructure](https://github.com/Deim0s13/newsbrief/milestone/3) - Due: Q2 2026
+- [v0.7.1 - PostgreSQL Migration](https://github.com/Deim0s13/newsbrief/milestone/10) - 🔄 **IN PROGRESS**
+  - PostgreSQL support via DATABASE_URL
+  - SQLAlchemy ORM models for portable schema
+  - Alembic migrations for schema management
+  - Dual database support (SQLite dev, PostgreSQL prod)
 
 **Epics** (via labels):
 - **epic:stories** - Story-based aggregation and synthesis

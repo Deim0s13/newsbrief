@@ -109,6 +109,44 @@ down:
 logs:
 	$(RUNTIME)-compose logs -f
 
+# ---------- Database (PostgreSQL) ----------
+db-up:                              ## Start PostgreSQL container only
+	$(RUNTIME)-compose up db -d
+
+db-down:                            ## Stop PostgreSQL container
+	$(RUNTIME)-compose stop db
+
+db-logs:                            ## View PostgreSQL logs
+	$(RUNTIME)-compose logs -f db
+
+db-psql:                            ## Connect to PostgreSQL with psql
+	$(RUNTIME) exec -it newsbrief-db psql -U newsbrief -d newsbrief
+
+db-reset:                           ## Reset PostgreSQL database (WARNING: deletes all data)
+	$(RUNTIME)-compose down -v
+	$(RUNTIME)-compose up db -d
+	@echo "Waiting for PostgreSQL to be ready..."
+	@sleep 5
+	. .venv/bin/activate && . .env && DATABASE_URL="$$DATABASE_URL" alembic upgrade head
+	@echo "✅ Database reset and migrations applied"
+
+# ---------- Database Migrations ----------
+migrate:                            ## Run database migrations to latest
+	.venv/bin/alembic upgrade head
+
+migrate-new:                        ## Create a new migration: make migrate-new MSG="add xyz column"
+	@test -n "$(MSG)" || (echo "Set MSG=\"description\"" && exit 1)
+	.venv/bin/alembic revision --autogenerate -m "$(MSG)"
+
+migrate-stamp:                      ## Mark existing DB as current (no migration run)
+	.venv/bin/alembic stamp head
+
+migrate-history:                    ## Show migration history
+	.venv/bin/alembic history
+
+migrate-current:                    ## Show current migration version
+	.venv/bin/alembic current
+
 # ---------- Defaults ----------
 .DEFAULT_GOAL := run
-.PHONY: venv run-local build tag push release local-release clean-release cleanup-old-images run up down logs
+.PHONY: venv run-local build tag push release local-release clean-release cleanup-old-images run up down logs db-up db-down db-logs db-psql db-reset migrate migrate-new migrate-stamp migrate-history migrate-current
