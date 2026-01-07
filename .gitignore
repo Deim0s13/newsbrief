@@ -93,7 +93,6 @@ dmypy.json
 config.local.*
 
 # Container/Build artifacts
-.dockerignore
 docker-compose.override.yml
 docker-compose.local.yml
 

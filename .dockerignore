@@ -1,0 +1,83 @@
+# =============================================================================
+# Docker Build Context Exclusions
+# =============================================================================
+# Reduces build context size and prevents sensitive/unnecessary files from
+# being sent to the Docker daemon.
+# =============================================================================
+
+# Git
+.git/
+.gitignore
+
+# GitHub
+.github/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+.eggs/
+*.egg-info/
+*.egg
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+tests/
+
+# IDE/Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Node.js (Tailwind build tools)
+node_modules/
+package-lock.json
+
+# Local data (mounted as volume in production)
+data/
+*.sqlite3
+*.db
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Build artifacts
+dist/
+build/
+*.tar.gz
+
+# macOS
+.DS_Store
+
+# Temporary files
+*.log
+*.tmp
+tmp/
+
+# Scripts (not needed in container)
+scripts/
+
+# Pre-commit
+.pre-commit-config.yaml
+
+# Development requirements
+requirements-dev.txt
