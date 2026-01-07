@@ -96,6 +96,70 @@ def _shutdown() -> None:
         logger.error(f"Error stopping scheduler: {e}", exc_info=True)
 
 
+# Health Check Endpoint
+@app.get("/health")
+def health_check() -> dict:
+    """
+    Health check endpoint for container orchestration.
+
+    Returns status of core dependencies:
+    - database: SQLite/PostgreSQL connectivity
+    - llm: Ollama LLM availability (optional, doesn't fail health check)
+    - scheduler: Background job scheduler status
+
+    Returns:
+        dict: Health status with component details
+    """
+    health_status = {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "components": {},
+    }
+
+    # Check database connectivity
+    try:
+        with session_scope() as session:
+            session.execute(text("SELECT 1"))
+        health_status["components"]["database"] = {"status": "healthy"}
+    except Exception as e:
+        health_status["status"] = "unhealthy"
+        health_status["components"]["database"] = {
+            "status": "unhealthy",
+            "error": str(e),
+        }
+
+    # Check LLM availability (non-critical)
+    try:
+        llm_available = is_llm_available()
+        health_status["components"]["llm"] = {
+            "status": "healthy" if llm_available else "unavailable",
+            "url": OLLAMA_BASE_URL,
+        }
+    except Exception as e:
+        health_status["components"]["llm"] = {
+            "status": "unavailable",
+            "error": str(e),
+        }
+
+    # Check scheduler status
+    try:
+        scheduler_running = scheduler.is_scheduler_running()
+        health_status["components"]["scheduler"] = {
+            "status": "healthy" if scheduler_running else "stopped",
+        }
+    except Exception as e:
+        health_status["components"]["scheduler"] = {
+            "status": "unknown",
+            "error": str(e),
+        }
+
+    # Return 503 if unhealthy for container orchestration
+    if health_status["status"] == "unhealthy":
+        raise HTTPException(status_code=503, detail=health_status)
+
+    return health_status
+
+
 # Web Interface Routes
 @app.get("/", response_class=HTMLResponse)
 def home_page(request: Request):

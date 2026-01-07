@@ -332,6 +332,12 @@ def stop_scheduler():
         logger.debug("Scheduler not running")
 
 
+def is_scheduler_running() -> bool:
+    """Check if the scheduler is currently running."""
+    global scheduler
+    return scheduler is not None and scheduler.running
+
+
 def get_scheduler_status() -> dict:
     """
     Get current scheduler status.

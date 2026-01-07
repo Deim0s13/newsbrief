@@ -81,9 +81,9 @@ RUN mkdir -p /app/data && chown newsbrief:newsbrief /app/data
 # Switch to non-root user
 USER newsbrief
 
-# Health check (uses root endpoint until dedicated /health is added in #152)
+# Health check endpoint
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8787/ || exit 1
+    CMD curl -f http://localhost:8787/health || exit 1
 
 EXPOSE 8787
 
