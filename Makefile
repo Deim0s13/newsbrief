@@ -4,6 +4,7 @@ REGISTRY         ?=                         # e.g. ghcr.io/Deim0s13
 IMAGE_NAME       ?= newsbrief-api
 PORT             ?= 8787
 DATA_DIR         ?= $(PWD)/data
+BACKUP_DIR       ?= $(PWD)/backups
 
 # Version metadata
 GIT_SHA          := $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
@@ -150,6 +151,22 @@ db-reset:                           ## Reset PostgreSQL database (WARNING: delet
 	. .venv/bin/activate && . .env && DATABASE_URL="$$DATABASE_URL" alembic upgrade head
 	@echo "✅ Database reset and migrations applied"
 
+# ---------- Database Backup/Restore ----------
+db-backup:                          ## Backup production database to BACKUP_DIR
+	@mkdir -p "$(BACKUP_DIR)"
+	@BACKUP_FILE="$(BACKUP_DIR)/newsbrief-$$(date +%Y%m%d-%H%M%S).sql"; \
+	$(RUNTIME) exec newsbrief-db pg_dump -U newsbrief newsbrief > "$$BACKUP_FILE"; \
+	echo "✅ Backup saved to $$BACKUP_FILE"
+
+db-restore:                         ## Restore from backup: make db-restore FILE=path/to/backup.sql
+	@test -n "$(FILE)" || (echo "Usage: make db-restore FILE=path/to/backup.sql" && exit 1)
+	@test -f "$(FILE)" || (echo "File not found: $(FILE)" && exit 1)
+	$(RUNTIME) exec -i newsbrief-db psql -U newsbrief newsbrief < "$(FILE)"
+	@echo "✅ Restored from $(FILE)"
+
+db-backup-list:                     ## List available backups
+	@ls -lah "$(BACKUP_DIR)"/*.sql 2>/dev/null || echo "No backups found in $(BACKUP_DIR)/"
+
 # ---------- Database Migrations ----------
 migrate:                            ## Run database migrations to latest
 	.venv/bin/alembic upgrade head
@@ -169,4 +186,4 @@ migrate-current:                    ## Show current migration version
 
 # ---------- Defaults ----------
 .DEFAULT_GOAL := run
-.PHONY: venv run-local build tag push release local-release clean-release cleanup-old-images run deploy deploy-stop deploy-status deploy-init up down logs db-up db-down db-logs db-psql db-reset migrate migrate-new migrate-stamp migrate-history migrate-current
+.PHONY: venv run-local build tag push release local-release clean-release cleanup-old-images run deploy deploy-stop deploy-status deploy-init up down logs db-up db-down db-logs db-psql db-reset db-backup db-restore db-backup-list migrate migrate-new migrate-stamp migrate-history migrate-current
