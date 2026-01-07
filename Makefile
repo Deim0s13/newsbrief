@@ -99,7 +99,27 @@ run:
 		-e OLLAMA_BASE_URL=$${OLLAMA_BASE_URL:-http://host.containers.internal:11434} \
 		--name newsbrief $(IMAGE_BASE):$(word 1,$(TAGS))
 
-# ---------- Compose (optional; requires podman-compose or docker-compose shim) ----------
+# ---------- Production Deployment ----------
+deploy:                           ## Deploy production stack (containers + PostgreSQL)
+	@echo "🚀 Deploying NewsBrief production stack..."
+	$(RUNTIME)-compose up -d --build
+	@echo "✅ Production deployed at http://localhost:$(PORT)"
+	@echo "📊 View logs: make logs"
+
+deploy-stop:                      ## Stop production stack (preserves data)
+	@echo "🛑 Stopping production stack..."
+	$(RUNTIME)-compose down
+	@echo "✅ Stopped. Data preserved in volumes."
+
+deploy-status:                    ## Check production stack status
+	@$(RUNTIME)-compose ps
+
+deploy-init:                      ## First-time setup: run migrations on fresh database
+	@echo "🔧 Initializing production database..."
+	$(RUNTIME)-compose exec api alembic upgrade head
+	@echo "✅ Database initialized"
+
+# ---------- Compose (dev/debugging) ----------
 up:
 	$(RUNTIME)-compose up -d --build
 
@@ -149,4 +169,4 @@ migrate-current:                    ## Show current migration version
 
 # ---------- Defaults ----------
 .DEFAULT_GOAL := run
-.PHONY: venv run-local build tag push release local-release clean-release cleanup-old-images run up down logs db-up db-down db-logs db-psql db-reset migrate migrate-new migrate-stamp migrate-history migrate-current
+.PHONY: venv run-local build tag push release local-release clean-release cleanup-old-images run deploy deploy-stop deploy-status deploy-init up down logs db-up db-down db-logs db-psql db-reset migrate migrate-new migrate-stamp migrate-history migrate-current
