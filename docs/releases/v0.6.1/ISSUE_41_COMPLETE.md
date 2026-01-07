@@ -1,9 +1,9 @@
 # Issue #41 Complete: Enhanced Semantic Similarity for Clustering
 
-**Date**: November 27, 2025  
-**Issue**: #41 - Semantic similarity for article clustering  
-**Status**: ✅ Complete  
-**Commit**: `a1857a7`  
+**Date**: November 27, 2025
+**Issue**: #41 - Semantic similarity for article clustering
+**Status**: ✅ Complete
+**Commit**: `a1857a7`
 **Branch**: `feature/enhanced-clustering`
 
 ---
@@ -86,7 +86,7 @@ def _calculate_combined_similarity(
 
 **New Similarity Formula**:
 ```
-similarity = (0.3 * keyword_overlap) 
+similarity = (0.3 * keyword_overlap)
            + (0.5 * entity_overlap)
            + (0.2 * topic_bonus)
 ```
@@ -317,7 +317,7 @@ bigrams = {
 
 ### Stop Words Expansion
 
-**Before**: 24 stop words  
+**Before**: 24 stop words
 **After**: 67 stop words
 
 **Added stop words**:
@@ -410,7 +410,7 @@ similarity = 0.8 * keyword + 0.0 * entity + 0.2 * topic
 
 ### Clustering Example: Google AI Articles
 
-**Article A**: "Google Announces Gemini 2.0"  
+**Article A**: "Google Announces Gemini 2.0"
 **Article B**: "Google's Advanced AI System Unveiled"
 
 #### Before (v0.6.0)
@@ -431,7 +431,7 @@ similarity ≈ 0.4 * 0.167 + 0.6 * 0.5 = 0.367
 #### After (v0.6.1)
 ```python
 # Keywords (title + summary + bigrams)
-keywords_a = {'google', 'announces', 'gemini', 'google_announces', 
+keywords_a = {'google', 'announces', 'gemini', 'google_announces',
               'announces_gemini', 'released', 'model', ...}
 keywords_b = {'google', 'advanced', 'system', 'unveiled', 'google_advanced',
               'capabilities', 'model', ...}
@@ -448,7 +448,6 @@ similarity ≈ 0.3 * 0.3 + 0.5 * 0.5 + 0.2 * 1.0 = 0.49
 
 ---
 
-**Status**: ✅ Ready for production  
-**Next Action**: Proceed to Issue #43 (Story Quality Scoring)  
+**Status**: ✅ Ready for production
+**Next Action**: Proceed to Issue #43 (Story Quality Scoring)
 **Last Updated**: November 27, 2025
-

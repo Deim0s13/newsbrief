@@ -14,24 +14,24 @@
     .dark .topic-card:hover {
         box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
     }
-    
+
     /* Topic-specific colors */
     .topic-ai-ml { @apply bg-purple-50 border-purple-200 dark:bg-purple-900/20 dark:border-purple-800; }
     .topic-ai-ml .topic-icon { @apply text-purple-600 dark:text-purple-400; }
     .topic-ai-ml .topic-badge { @apply bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200; }
-    
+
     .topic-cloud-k8s { @apply bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800; }
     .topic-cloud-k8s .topic-icon { @apply text-blue-600 dark:text-blue-400; }
     .topic-cloud-k8s .topic-badge { @apply bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200; }
-    
+
     .topic-security { @apply bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800; }
     .topic-security .topic-icon { @apply text-red-600 dark:text-red-400; }
     .topic-security .topic-badge { @apply bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200; }
-    
+
     .topic-devtools { @apply bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800; }
     .topic-devtools .topic-icon { @apply text-green-600 dark:text-green-400; }
     .topic-devtools .topic-badge { @apply bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200; }
-    
+
     .topic-chips-hardware { @apply bg-yellow-50 border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800; }
     .topic-chips-hardware .topic-icon { @apply text-yellow-600 dark:text-yellow-400; }
     .topic-chips-hardware .topic-badge { @apply bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200; }
@@ -70,7 +70,7 @@
                             AI Topic Classification
                         </h3>
                         <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">
-                            Our AI system automatically categorizes articles into {{ topics|length }} topic areas based on content analysis. 
+                            Our AI system automatically categorizes articles into {{ topics|length }} topic areas based on content analysis.
                             {% set total_articles = topics|sum(attribute='article_count') %}
                             Currently tracking <strong>{{ total_articles }}</strong> classified articles.
                         </p>
@@ -117,7 +117,7 @@
                     {{ topic.article_count }} articles
                 </span>
             </div>
-            
+
             <div class="mb-4">
                 <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">
                     {{ topic.name }}
@@ -138,7 +138,7 @@
                     {% endif %}
                 </p>
             </div>
-            
+
             <div class="flex items-center justify-between">
                 <div class="flex items-center text-sm text-gray-500 dark:text-gray-400">
                     <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -171,8 +171,8 @@
                 </h3>
                 <div class="mt-2 text-sm text-blue-800 dark:text-blue-200">
                     <p>
-                        Our AI system analyzes article content, titles, and metadata to automatically categorize articles into relevant topics. 
-                        Articles are ranked within each topic based on relevance, recency, and source authority. 
+                        Our AI system analyzes article content, titles, and metadata to automatically categorize articles into relevant topics.
+                        Articles are ranked within each topic based on relevance, recency, and source authority.
                         Click any topic card above to explore articles in that category.
                     </p>
                 </div>

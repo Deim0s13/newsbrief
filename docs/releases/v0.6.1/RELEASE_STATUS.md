@@ -1,7 +1,7 @@
 # v0.6.1 Release Status
 
-**Date**: 2025-12-01  
-**Branch**: `feature/enhanced-clustering`  
+**Date**: 2025-12-01
+**Branch**: `feature/enhanced-clustering`
 **Status**: ✅ **READY FOR RELEASE**
 
 ---
@@ -86,23 +86,23 @@ See: `docs/releases/v0.6.1/KNOWN_ISSUES.md`
 ## 🐛 Critical Bugs Fixed
 
 ### Bug 1: DateTime Format Mismatch
-**Impact**: Story generation completely broken  
-**Root Cause**: SQLite TEXT comparison failure  
-**Fix**: Convert datetime to ISO format before binding  
-**Result**: Time window filtering now works correctly  
+**Impact**: Story generation completely broken
+**Root Cause**: SQLite TEXT comparison failure
+**Fix**: Convert datetime to ISO format before binding
+**Result**: Time window filtering now works correctly
 **Commit**: `4f676ce`
 
 ### Bug 2: Similarity Threshold Too Strict
-**Impact**: 0 stories generated despite 78 unclustered articles  
-**Root Cause**: Entity-based similarity more strict than keyword-only  
-**Fix**: Lower default threshold from 0.3 to 0.25  
-**Result**: 53 stories generated, 0 unclustered articles  
+**Impact**: 0 stories generated despite 78 unclustered articles
+**Root Cause**: Entity-based similarity more strict than keyword-only
+**Fix**: Lower default threshold from 0.3 to 0.25
+**Result**: 53 stories generated, 0 unclustered articles
 **Commit**: `72527a1`
 
 ### Bug 3: Story Model Missing quality_score Column
-**Impact**: Story creation failed with SQL error  
-**Root Cause**: SQLAlchemy model missing field  
-**Fix**: Added quality_score column to Story model  
+**Impact**: Story creation failed with SQL error
+**Root Cause**: SQLAlchemy model missing field
+**Fix**: Added quality_score column to Story model
 **Commit**: `7387bc8`
 
 ---
@@ -247,8 +247,7 @@ git push origin main --force
 
 ---
 
-**Prepared By**: AI Assistant  
-**Approved By**: User  
-**Ready For**: Production Release  
+**Prepared By**: AI Assistant
+**Approved By**: User
+**Ready For**: Production Release
 **Confidence Level**: HIGH ✅
-

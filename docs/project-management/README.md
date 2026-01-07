@@ -48,4 +48,3 @@ Story architecture implementation plan:
 - **Releases**: See [../releases/](../releases/)
 - **Planning**: See [../planning/](../planning/)
 - **Development**: See [../development/](../development/)
-

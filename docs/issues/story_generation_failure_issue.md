@@ -13,9 +13,9 @@ Story generation is not creating new stories despite having 78 unclustered artic
 
 ## Verified Working
 
-✅ Entity extraction (all 119 articles have entities)  
-✅ Feed refresh (22 feeds, 2.5 min)  
-✅ Clustering algorithm (creates 19 clusters)  
+✅ Entity extraction (all 119 articles have entities)
+✅ Feed refresh (22 feeds, 2.5 min)
+✅ Clustering algorithm (creates 19 clusters)
 ✅ Duplicate detection (works, but may be too aggressive)
 
 ## Investigation Needed
@@ -46,7 +46,7 @@ Current logic uses MD5 hash of sorted article IDs:
 - Are similarity scores too low to cluster these articles?
 
 ### 3. Time Window Logic
-**Default**: 24 hours  
+**Default**: 24 hours
 **Question**: Are old and new articles clustering together, triggering duplicate detection?
 
 ## Debugging Queries
@@ -121,7 +121,6 @@ v0.6.0 - Enhanced Intelligence & Polish
 
 ---
 
-**Created**: 2025-12-01  
-**Found During**: v0.6.1 manual testing  
+**Created**: 2025-12-01
+**Found During**: v0.6.1 manual testing
 **Assignee**: TBD
-

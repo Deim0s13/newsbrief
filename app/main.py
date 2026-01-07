@@ -139,11 +139,11 @@ def article_detail_page(request: Request, item_id: int):
                 """
                 SELECT id, title, url, published, author, summary, content, content_hash,
                        ai_summary, ai_model, ai_generated_at,
-                       structured_summary_json, structured_summary_model, 
+                       structured_summary_json, structured_summary_model,
                        structured_summary_content_hash, structured_summary_generated_at,
                        ranking_score, topic, topic_confidence, source_weight,
                        created_at
-                FROM items 
+                FROM items
                 WHERE id = :item_id
             """
             ),
@@ -230,13 +230,13 @@ def search_page(request: Request, q: str = ""):
             results = s.execute(
                 text(
                     """
-                    SELECT id, title, url, published, author, summary, 
+                    SELECT id, title, url, published, author, summary,
                            ai_summary, ai_model, ai_generated_at,
                            structured_summary_json, structured_summary_model,
                            structured_summary_content_hash, structured_summary_generated_at,
                            ranking_score, topic, topic_confidence, source_weight,
                            created_at
-                    FROM items 
+                    FROM items
                     WHERE title LIKE :query OR summary LIKE :query OR ai_summary LIKE :query
                     ORDER BY ranking_score DESC, COALESCE(published, created_at) DESC
                     LIMIT 50
@@ -291,7 +291,7 @@ def list_feeds():
         results = s.execute(
             text(
                 """
-                SELECT f.*, 
+                SELECT f.*,
                        COUNT(i.id) as total_articles,
                        MAX(i.created_at) as last_article_at
                 FROM feeds f
@@ -319,7 +319,7 @@ def get_feed(feed_id: int):
         result = s.execute(
             text(
                 """
-                SELECT f.*, 
+                SELECT f.*,
                        COUNT(i.id) as total_articles,
                        MAX(i.created_at) as last_article_at
                 FROM feeds f
@@ -354,7 +354,7 @@ def add_feed_endpoint(feed: FeedIn):
             s.execute(
                 text(
                     """
-                    UPDATE feeds 
+                    UPDATE feeds
                     SET name = :name, description = :description, category = :category,
                         priority = :priority, disabled = :disabled, updated_at = CURRENT_TIMESTAMP
                     WHERE id = :feed_id
@@ -457,13 +457,13 @@ def get_feed_stats(feed_id: int):
         stats_result = s.execute(
             text(
                 """
-                SELECT 
+                SELECT
                     COUNT(*) as total_articles,
                     COUNT(CASE WHEN created_at >= datetime('now', '-1 day') THEN 1 END) as articles_last_24h,
                     COUNT(CASE WHEN created_at >= datetime('now', '-7 days') THEN 1 END) as articles_last_7d,
                     COUNT(CASE WHEN created_at >= datetime('now', '-30 days') THEN 1 END) as articles_last_30d,
                     MAX(created_at) as last_fetch_at
-                FROM items 
+                FROM items
                 WHERE feed_id = :feed_id
             """
             ),
@@ -473,7 +473,7 @@ def get_feed_stats(feed_id: int):
         # Get feed info for error tracking and response times
         feed_info = s.execute(
             text(
-                """SELECT last_error, fetch_count, success_count, avg_response_time_ms 
+                """SELECT last_error, fetch_count, success_count, avg_response_time_ms
                    FROM feeds WHERE id = :feed_id"""
             ),
             {"feed_id": feed_id},
@@ -597,12 +597,12 @@ def get_feed_categories():
         results = s.execute(
             text(
                 """
-                SELECT category, 
+                SELECT category,
                        COUNT(*) as feed_count,
                        SUM(CASE WHEN disabled = 0 THEN 1 ELSE 0 END) as active_count,
                        AVG(health_score) as avg_health,
                        SUM((SELECT COUNT(*) FROM items WHERE feed_id = feeds.id)) as total_articles
-                FROM feeds 
+                FROM feeds
                 WHERE category IS NOT NULL AND category != ''
                 GROUP BY category
                 ORDER BY feed_count DESC, category
@@ -684,7 +684,7 @@ def bulk_assign_category(feed_ids: List[int], category: str):
         s.execute(
             text(
                 """
-                UPDATE feeds 
+                UPDATE feeds
                 SET category = :category, updated_at = CURRENT_TIMESTAMP
                 WHERE id IN :feed_ids
             """
@@ -728,7 +728,7 @@ def bulk_assign_priority(feed_ids: List[int], priority: int):
         s.execute(
             text(
                 """
-                UPDATE feeds 
+                UPDATE feeds
                 SET priority = :priority, updated_at = CURRENT_TIMESTAMP
                 WHERE id IN :feed_ids
             """
@@ -1008,11 +1008,11 @@ def generate_summaries(request: SummaryRequest):
                 row = s.execute(
                     text(
                         """
-                    SELECT id, title, content, content_hash, 
+                    SELECT id, title, content, content_hash,
                            ai_summary, ai_model, ai_generated_at,
-                           structured_summary_json, structured_summary_model, 
+                           structured_summary_json, structured_summary_model,
                            structured_summary_content_hash, structured_summary_generated_at
-                    FROM items 
+                    FROM items
                     WHERE id = :item_id
                 """
                     ),
@@ -1115,7 +1115,7 @@ def generate_summaries(request: SummaryRequest):
                         s.execute(
                             text(
                                 """
-                            UPDATE items 
+                            UPDATE items
                             SET structured_summary_json = :json_data,
                                 structured_summary_model = :model,
                                 structured_summary_content_hash = :content_hash,
@@ -1136,7 +1136,7 @@ def generate_summaries(request: SummaryRequest):
                         s.execute(
                             text(
                                 """
-                            UPDATE items 
+                            UPDATE items
                             SET ai_summary = :summary, ai_model = :model, ai_generated_at = :generated_at
                             WHERE id = :item_id
                         """
@@ -1194,10 +1194,10 @@ def get_item(item_id: int):
                 """
             SELECT id, title, url, published, summary, content_hash, content,
                    ai_summary, ai_model, ai_generated_at,
-                   structured_summary_json, structured_summary_model, 
+                   structured_summary_json, structured_summary_model,
                    structured_summary_content_hash, structured_summary_generated_at,
                    ranking_score, topic, topic_confidence, source_weight
-            FROM items 
+            FROM items
             WHERE id = :item_id
         """
             ),
@@ -1321,7 +1321,7 @@ def get_items_by_topic(topic_key: str, limit: int = Query(50, le=200)):
                 """
         SELECT id, title, url, published, summary, content_hash, content,
                ai_summary, ai_model, ai_generated_at,
-               structured_summary_json, structured_summary_model, 
+               structured_summary_json, structured_summary_model,
                structured_summary_content_hash, structured_summary_generated_at,
                ranking_score, topic, topic_confidence, source_weight
         FROM items
@@ -1408,7 +1408,7 @@ def recalculate_rankings():
             text(
                 """
         SELECT id, title, published, summary, content, source_weight, topic
-        FROM items 
+        FROM items
         ORDER BY id
         """
             )
@@ -1457,7 +1457,7 @@ def recalculate_rankings():
                 s.execute(
                     text(
                         """
-                UPDATE items 
+                UPDATE items
                 SET ranking_score = :ranking_score,
                     topic = :topic,
                     topic_confidence = :topic_confidence
@@ -1470,7 +1470,7 @@ def recalculate_rankings():
                 s.execute(
                     text(
                         """
-                UPDATE items 
+                UPDATE items
                 SET ranking_score = :ranking_score
                 WHERE id = :item_id
                 """
@@ -1680,7 +1680,7 @@ def get_story_stats():
             # Get basic counts
             stats_query = text(
                 """
-                SELECT 
+                SELECT
                     COUNT(*) as total_stories,
                     COUNT(CASE WHEN status = 'active' THEN 1 END) as active_stories,
                     COUNT(CASE WHEN status = 'archived' THEN 1 END) as archived_stories,

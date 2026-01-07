@@ -3,7 +3,7 @@
 
 document.addEventListener('DOMContentLoaded', function() {
     initializeDarkMode();
-    
+
     // Only run articles-specific code on the Articles page
     if (document.getElementById('articles-container')) {
     loadArticles();
@@ -18,7 +18,7 @@ function setupArticleEventListeners() {
     if (darkModeToggle) {
         darkModeToggle.addEventListener('click', toggleDarkMode);
     }
-    
+
     // Topic filter dropdown
     const topicSelect = document.querySelector('select');
     if (topicSelect) {
@@ -27,15 +27,15 @@ function setupArticleEventListeners() {
             loadArticles(selectedTopic);
         });
     }
-    
+
     // View toggle buttons (skim/detail) - v0.6.1 implementation
     const viewButtons = document.querySelectorAll('.flex.bg-gray-100 button');
     const articlesContainer = document.getElementById('articles-container');
-    
+
     // Load saved view preference from localStorage (default to 'detailed')
     const savedView = localStorage.getItem('articlesViewMode') || 'detailed';
     applyViewMode(savedView);
-    
+
     viewButtons.forEach(button => {
         button.addEventListener('click', function() {
             // Remove active class from all buttons
@@ -44,26 +44,26 @@ function setupArticleEventListeners() {
             });
             // Add active class to clicked button
             this.className = 'px-3 py-1 text-sm font-medium bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm rounded-md';
-            
+
             // Apply view mode
             const isSkimView = this.textContent.trim() === 'Skim';
             const viewMode = isSkimView ? 'skim' : 'detailed';
             applyViewMode(viewMode);
-            
+
             // Save preference to localStorage
             localStorage.setItem('articlesViewMode', viewMode);
-            
+
             console.log('View switched to:', viewMode);
         });
     });
-    
+
     function applyViewMode(mode) {
         if (mode === 'skim') {
             articlesContainer.classList.add('skim-view');
         } else {
             articlesContainer.classList.remove('skim-view');
         }
-        
+
         // Update button active states based on saved preference
         viewButtons.forEach(btn => {
             const btnText = btn.textContent.trim();
@@ -74,7 +74,7 @@ function setupArticleEventListeners() {
             }
         });
     }
-    
+
     // Load more button
     const loadMoreBtn = document.getElementById('load-more-btn');
     if (loadMoreBtn) {
@@ -85,24 +85,24 @@ function setupArticleEventListeners() {
 async function loadArticles(selectedTopic = '') {
     const container = document.getElementById('articles-container');
     const loading = document.getElementById('loading');
-    
+
     try {
         loading.classList.remove('hidden');
         container.innerHTML = '';
-        
+
         // Use topic-specific endpoint if topic is selected
         let apiUrl = '/items?limit=20';
         if (selectedTopic) {
             apiUrl = `/items/topic/${selectedTopic}?limit=20`;
         }
-        
+
         console.log('Loading articles from:', apiUrl);
         const response = await fetch(apiUrl);
-        
+
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-        
+
         let articles;
         if (selectedTopic) {
             // Topic endpoint returns {topic, display_name, count, items}
@@ -112,9 +112,9 @@ async function loadArticles(selectedTopic = '') {
             // Main endpoint returns array directly
             articles = await response.json();
         }
-        
+
         loading.classList.add('hidden');
-        
+
         if (articles.length === 0) {
             container.innerHTML = `
                 <div class="text-center py-12 text-gray-500 dark:text-gray-400">
@@ -124,17 +124,17 @@ async function loadArticles(selectedTopic = '') {
             `;
             return;
         }
-        
+
         articles.forEach(article => {
             const articleElement = createArticleElement(article);
             container.appendChild(articleElement);
         });
-        
+
         // Show load more button if we have full page
         if (articles.length === 20) {
             document.getElementById('load-more-container').classList.remove('hidden');
         }
-        
+
     } catch (error) {
         loading.classList.add('hidden');
         container.innerHTML = `
@@ -152,26 +152,26 @@ async function loadMoreArticles() {
     const container = document.getElementById('articles-container');
     const loadMoreBtn = document.getElementById('load-more-btn');
     const currentArticles = container.querySelectorAll('article').length;
-    
+
     try {
         loadMoreBtn.textContent = 'Loading...';
         loadMoreBtn.disabled = true;
-        
+
         const response = await fetch(`/items?limit=20&offset=${currentArticles}`);
         const articles = await response.json();
-        
+
         articles.forEach(article => {
             const articleElement = createArticleElement(article);
             container.appendChild(articleElement);
         });
-        
+
         if (articles.length < 20) {
             loadMoreBtn.style.display = 'none';
         } else {
             loadMoreBtn.textContent = 'Load More Articles';
             loadMoreBtn.disabled = false;
         }
-        
+
     } catch (error) {
         loadMoreBtn.textContent = 'Error - Try Again';
         loadMoreBtn.disabled = false;
@@ -182,7 +182,7 @@ async function loadMoreArticles() {
 function createArticleElement(article) {
     const template = document.getElementById('article-template');
     const element = template.content.cloneNode(true);
-    
+
     // Set topic badge
     const topicBadge = element.querySelector('.topic-badge');
     if (article.topic) {
@@ -191,11 +191,11 @@ function createArticleElement(article) {
     } else {
         topicBadge.style.display = 'none';
     }
-    
+
     // Set ranking score
     const rankingScore = element.querySelector('.ranking-score');
     rankingScore.textContent = `Score: ${article.ranking_score?.toFixed(3) || 'N/A'}`;
-    
+
     // Set published date
     const publishedDate = element.querySelector('.published-date');
     if (article.published) {
@@ -203,19 +203,19 @@ function createArticleElement(article) {
     } else {
         publishedDate.textContent = 'No date';
     }
-    
+
     // Set title with link to detail page
     const titleLink = element.querySelector('.article-title-link');
     titleLink.textContent = article.title || 'Untitled';
     titleLink.href = `/article/${article.id}`;
-    
+
     // Set content (AI summary or fallback)
     const content = element.querySelector('.article-content');
     if (article.structured_summary) {
         // Show structured summary
         const bullets = article.structured_summary.bullets || [];
         const whyItMatters = article.structured_summary.why_it_matters || '';
-        
+
         content.innerHTML = `
             <div class="space-y-3">
                 ${bullets.length > 0 ? `
@@ -242,16 +242,16 @@ function createArticleElement(article) {
     } else {
         content.innerHTML = `<p class="text-gray-500 dark:text-gray-400 italic">No summary available</p>`;
     }
-    
+
     // Set article detail link
     const articleDetailLink = element.querySelector('.article-detail-link');
     articleDetailLink.href = `/article/${article.id}`;
-    
+
     // Set external article link
     const articleExternalLink = element.querySelector('.article-external-link');
     articleExternalLink.href = article.url;
     articleExternalLink.target = '_blank';
-    
+
     return element;
 }
 
@@ -285,7 +285,7 @@ function formatDate(dateString) {
     const diffMs = now - date;
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffDays = Math.floor(diffHours / 24);
-    
+
     if (diffHours < 1) return 'Just now';
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 7) return `${diffDays}d ago`;
@@ -296,42 +296,42 @@ function formatDate(dateString) {
 async function refreshFeeds() {
     console.log('refreshFeeds() called');
     const refreshBtn = document.querySelector('button[onclick="refreshFeeds()"]');
-    
+
     if (!refreshBtn) {
         console.error('Refresh button not found');
         return;
     }
-    
+
     const originalText = refreshBtn.innerHTML;
-    
+
     refreshBtn.innerHTML = `
         <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
         <span>Refreshing...</span>
     `;
     refreshBtn.disabled = true;
-    
+
     try {
         console.log('Calling /refresh API...');
         const response = await fetch('/refresh', { method: 'POST' });
-        
+
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-        
+
         const result = await response.json();
         console.log('Refresh result:', result);
-        
+
         // Show success notification
         showNotification(`Refreshed! Added ${result.items_added || 0} new articles`, 'success');
-        
+
         // Reload articles with current topic filter
         const topicSelect = document.querySelector('select');
         const currentTopic = topicSelect ? topicSelect.value : '';
-        
+
         setTimeout(() => {
             loadArticles(currentTopic);
         }, 1000);
-        
+
     } catch (error) {
         console.error('Refresh error:', error);
         showNotification(`Failed to refresh feeds: ${error.message}`, 'error');
@@ -350,9 +350,9 @@ function showNotification(message, type = 'info') {
         'bg-blue-500'
     }`;
     notification.textContent = message;
-    
+
     document.body.appendChild(notification);
-    
+
     // Auto-remove after 3 seconds
     setTimeout(() => {
         notification.remove();
@@ -365,17 +365,17 @@ function initializeDarkMode() {
     // Check for saved theme preference or default to light mode
     const savedTheme = localStorage.getItem('newsbrief-theme');
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    
+
     // Determine initial theme
     const initialTheme = savedTheme || (prefersDark ? 'dark' : 'light');
-    
+
     // Apply theme
     if (initialTheme === 'dark') {
         document.documentElement.classList.add('dark');
     } else {
         document.documentElement.classList.remove('dark');
     }
-    
+
     // Listen for system theme changes
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
         if (!localStorage.getItem('newsbrief-theme')) {
@@ -392,7 +392,7 @@ function initializeDarkMode() {
 function toggleDarkMode() {
     const html = document.documentElement;
     const isDark = html.classList.contains('dark');
-    
+
     if (isDark) {
         // Switch to light mode
         html.classList.remove('dark');

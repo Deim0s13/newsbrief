@@ -296,7 +296,7 @@ Extract the key information from this chunk in JSON format:
 
 INSTRUCTIONS:
 - Focus only on information present in this chunk
-- Create 2-4 bullet points for key facts/developments  
+- Create 2-4 bullet points for key facts/developments
 - Identify 2-5 key topics/themes
 - Write 1-2 sentences summarizing the chunk
 - Output ONLY valid JSON, no additional text
@@ -504,7 +504,7 @@ Content:
 
 INSTRUCTIONS:
 Generate a JSON response with exactly these fields:
-- "bullets": Array of 3-5 key points, each as a concise sentence (max 80 chars each)  
+- "bullets": Array of 3-5 key points, each as a concise sentence (max 80 chars each)
 - "why_it_matters": Single paragraph explaining significance/impact (50-150 words)
 - "tags": Array of 3-6 relevant topic tags (lowercase, single words or hyphenated phrases)
 
@@ -512,7 +512,7 @@ EXAMPLE OUTPUT FORMAT:
 {{
   "bullets": [
     "Company announces major product launch with AI features",
-    "Stock price rises 15% on positive investor reaction", 
+    "Stock price rises 15% on positive investor reaction",
     "New technology could disrupt existing market leaders"
   ],
   "why_it_matters": "This development signals a significant shift in the industry toward AI integration, potentially affecting millions of users and reshaping competitive dynamics among tech giants.",
@@ -522,7 +522,7 @@ EXAMPLE OUTPUT FORMAT:
 IMPORTANT:
 - Output ONLY valid JSON, no additional text or explanation
 - Keep bullets factual and specific
-- Make tags relevant and searchable  
+- Make tags relevant and searchable
 - Ensure "why_it_matters" explains broader implications
 
 JSON Response:"""
@@ -563,8 +563,8 @@ JSON Response:"""
                     text(
                         """
                     SELECT structured_summary_json, structured_summary_generated_at
-                    FROM items 
-                    WHERE structured_summary_content_hash = :content_hash 
+                    FROM items
+                    WHERE structured_summary_content_hash = :content_hash
                     AND structured_summary_model = :model
                     AND structured_summary_json IS NOT NULL
                     LIMIT 1
@@ -600,7 +600,7 @@ JSON Response:"""
                     s.execute(
                         text(
                             """
-                        UPDATE items 
+                        UPDATE items
                         SET structured_summary_json = :json_data,
                             structured_summary_model = :model,
                             structured_summary_content_hash = :content_hash,
@@ -621,7 +621,7 @@ JSON Response:"""
                     s.execute(
                         text(
                             """
-                        UPDATE items 
+                        UPDATE items
                         SET structured_summary_json = :json_data,
                             structured_summary_model = :model,
                             structured_summary_content_hash = :content_hash,

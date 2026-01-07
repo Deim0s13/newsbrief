@@ -1,7 +1,7 @@
 # v0.6.1 Known Issues
 
-**Release**: v0.6.1 - Enhanced Clustering  
-**Date**: 2025-12-01  
+**Release**: v0.6.1 - Enhanced Clustering
+**Date**: 2025-12-01
 **Status**: Ready for Release
 
 ---
@@ -25,17 +25,17 @@ All primary v0.6.1 features are **fully functional**:
 The following UI/display issues were identified during manual testing and will be addressed in **v0.6.2**:
 
 ### 1. HTML Tags Visible in Supporting Articles
-**Impact**: Cosmetic - affects readability  
-**Workaround**: None  
+**Impact**: Cosmetic - affects readability
+**Workaround**: None
 **Status**: Tracked for v0.6.2
 
 When viewing a story's supporting articles, some summaries may display raw HTML tags like `<p>text</p>` instead of plain text.
 
 ---
 
-### 2. Topic Display Inconsistency  
-**Impact**: Cosmetic - topics may not match  
-**Workaround**: Topics are correct in database, just display issue  
+### 2. Topic Display Inconsistency
+**Impact**: Cosmetic - topics may not match
+**Workaround**: Topics are correct in database, just display issue
 **Status**: Tracked for v0.6.2
 
 Story topic badges may not accurately reflect the topics of supporting articles. This is a display issue; article classification is working correctly.
@@ -43,8 +43,8 @@ Story topic badges may not accurately reflect the topics of supporting articles.
 ---
 
 ### 3. Article Ranking Scores
-**Impact**: Minor - all scores show 7.000  
-**Workaround**: Sorting still works  
+**Impact**: Minor - all scores show 7.000
+**Workaround**: Sorting still works
 **Status**: Under investigation for v0.6.2
 
 All articles display a ranking score of 7.000. This may be a default value or calculation issue.
@@ -52,8 +52,8 @@ All articles display a ranking score of 7.000. This may be a default value or ca
 ---
 
 ### 4. Story Importance Scores
-**Impact**: Minor - limited score variation  
-**Workaround**: Scores are calculated, just limited variance  
+**Impact**: Minor - limited score variation
+**Workaround**: Scores are calculated, just limited variance
 **Status**: Under investigation for v0.6.2
 
 Most stories show importance scores around 0.66. The scoring algorithm is working, but may need tuning for better differentiation.
@@ -61,8 +61,8 @@ Most stories show importance scores around 0.66. The scoring algorithm is workin
 ---
 
 ### 5. Skim View on Main Articles Page
-**Impact**: Minor - feature partially working  
-**Workaround**: Skim view works correctly in article detail pages  
+**Impact**: Minor - feature partially working
+**Workaround**: Skim view works correctly in article detail pages
 **Status**: Tracked for v0.6.2
 
 The skim/detail view toggle on the main articles page only reduces font size instead of creating fully compact cards. This is a CSS specificity issue with Tailwind CDN.
@@ -70,8 +70,8 @@ The skim/detail view toggle on the main articles page only reduces font size ins
 ---
 
 ### 6. Filter Options Not Working
-**Impact**: Medium - cannot filter articles by topic  
-**Workaround**: Scroll through all articles  
+**Impact**: Medium - cannot filter articles by topic
+**Workaround**: Scroll through all articles
 **Status**: Tracked for v0.6.2
 
 Topic filters and sort options on the Articles page are not functional. All articles are displayed regardless of filter selection.
@@ -79,8 +79,8 @@ Topic filters and sort options on the Articles page are not functional. All arti
 ---
 
 ### 7. Missing Metadata Display
-**Impact**: Minor - informational only  
-**Workaround**: Data is in database, just not displayed  
+**Impact**: Minor - informational only
+**Workaround**: Data is in database, just not displayed
 **Status**: Tracked for v0.6.2
 
 Story detail pages don't display the LLM model used or story status, though this information is stored in the database.
@@ -88,8 +88,8 @@ Story detail pages don't display the LLM model used or story status, though this
 ---
 
 ### 8. Feed Refresh Performance
-**Impact**: Low - acceptable for current scale  
-**Workaround**: None needed  
+**Impact**: Low - acceptable for current scale
+**Workaround**: None needed
 **Status**: Monitoring
 
 Refreshing all 22 feeds takes approximately 2.5 minutes. This is acceptable for the current number of feeds but could be optimized in the future.
@@ -197,6 +197,5 @@ If you encounter issues beyond those listed here, please:
 
 ---
 
-**Last Updated**: 2025-12-01  
+**Last Updated**: 2025-12-01
 **Next Review**: v0.6.2 Planning
-

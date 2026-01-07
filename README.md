@@ -400,7 +400,7 @@ NewsBrief uses **modern CI/CD practices** with automated testing, security scann
 pip install -r requirements.txt -r requirements-dev.txt
 pip install pre-commit && pre-commit install
 
-# 🔧 Development with Quality Gates  
+# 🔧 Development with Quality Gates
 # Pre-commit hooks run automatically on commit:
 # ✅ Black formatting, isort imports, security scanning
 # ✅ Secrets detection, YAML validation, Dockerfile linting
@@ -428,7 +428,7 @@ safety check -r requirements.txt    # Security audit
 ```
 newsbrief/
 ├── app/                    # Application code
-│   ├── main.py            # FastAPI app and routes  
+│   ├── main.py            # FastAPI app and routes
 │   ├── db.py              # Database connection (SQLite/PostgreSQL)
 │   ├── orm_models.py      # SQLAlchemy ORM models
 │   ├── models.py          # Pydantic schemas
@@ -462,7 +462,7 @@ newsbrief/
 
 ## 🎯 Roadmap
 
-> **📋 Live Project Board**: Track detailed progress and epic breakdowns at  
+> **📋 Live Project Board**: Track detailed progress and epic breakdowns at
 > **[GitHub Project Board](https://github.com/users/Deim0s13/projects/7/views/1?layout=board)**
 
 ### **v0.5.5 - Story Architecture** ✅ **COMPLETE** (Nov 2025)
@@ -514,8 +514,8 @@ Transform from article-centric to story-based aggregation
 
 Development is organized with GitHub Projects and Milestones for clear visibility:
 
-📋 **[GitHub Issues](https://github.com/Deim0s13/newsbrief/issues)** - All issues with labels and milestones  
-🎯 **[Milestones](https://github.com/Deim0s13/newsbrief/milestones)** - Release targets with progress tracking  
+📋 **[GitHub Issues](https://github.com/Deim0s13/newsbrief/issues)** - All issues with labels and milestones
+🎯 **[Milestones](https://github.com/Deim0s13/newsbrief/milestones)** - Release targets with progress tracking
 📊 **GitHub Project Board** - Kanban board (Backlog → Next → In Progress → Done)
 
 **Milestones**:
@@ -532,7 +532,7 @@ Development is organized with GitHub Projects and Milestones for clear visibilit
 - **epic:ui** - Web interface and user experience
 - **epic:database** - Data layer and migrations
 - **epic:security** - Authentication, encryption, hardening
-- **epic:ops** - CI/CD, deployment, monitoring  
+- **epic:ops** - CI/CD, deployment, monitoring
 - **Epic: Operations** - DevOps, monitoring, and deployment tooling
 - **Epic: Embeddings** - Semantic search and advanced clustering (Future)
 - **Epic: Search** - Full-text and semantic search capabilities (Future)
@@ -543,7 +543,7 @@ We welcome contributions! Here's how to get started:
 
 ### **Find Work to Do**
 1. **Check the [GitHub Project Board](https://github.com/users/Deim0s13/projects/7/views/1?layout=board)** for current epics and open issues
-2. **Look for issues labeled** `good first issue` or `help wanted`  
+2. **Look for issues labeled** `good first issue` or `help wanted`
 3. **Comment on issues** you'd like to work on to avoid duplication
 
 ### **Development Process**
@@ -564,4 +564,3 @@ We welcome contributions! Here's how to get started:
 - [Mozilla Readability](https://github.com/mozilla/readability) for content extraction
 - [FastAPI](https://fastapi.tiangolo.com/) for the excellent web framework
 - [Ollama](https://ollama.ai/) for local LLM capabilities
-

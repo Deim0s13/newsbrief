@@ -1,6 +1,6 @@
 # Housekeeping: v0.5.5 → v0.6.0 Transition
 
-**Date**: November 18, 2025  
+**Date**: November 18, 2025
 **Purpose**: Clean up and prepare for v0.6.0 development
 
 ---
@@ -308,7 +308,6 @@ Once housekeeping is complete:
 
 ---
 
-**Status**: Housekeeping tasks identified and documented  
-**Action**: Run cleanup commands above  
+**Status**: Housekeeping tasks identified and documented
+**Action**: Run cleanup commands above
 **Next**: Ready for v0.6.0 development! 🎉
-

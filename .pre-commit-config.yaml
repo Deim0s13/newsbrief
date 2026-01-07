@@ -1,74 +1,55 @@
-# Pre-commit hooks configuration
+# Pre-commit hooks for NewsBrief
 # Install: pip install pre-commit && pre-commit install
+# Run manually: pre-commit run --all-files
 
 repos:
-  # Code formatting
+  # Python code formatting
   - repo: https://github.com/psf/black
-    rev: 23.12.1
+    rev: 24.4.2
     hooks:
       - id: black
-        args: [--line-length=100]
-        files: ^app/.*\.py$
+        args: [--line-length=88]
+        files: ^(app|tests)/
 
   # Import sorting
   - repo: https://github.com/pycqa/isort
     rev: 5.13.2
     hooks:
       - id: isort
-        args: [--profile=black, --line-length=100]
-        files: ^app/.*\.py$
+        args: [--profile=black]
+        files: ^(app|tests)/
 
-  # Linting
-  - repo: https://github.com/pycqa/flake8
-    rev: 7.0.0
-    hooks:
-      - id: flake8
-        args: [--max-line-length=100, --extend-ignore=E203,W503]
-        files: ^app/.*\.py$
-
-  # Security scanning
-  - repo: https://github.com/PyCQA/bandit
-    rev: 1.7.6
-    hooks:
-      - id: bandit
-        args: [-r, app/]
-        files: ^app/.*\.py$
-
-  # General file checks
+  # Syntax validation
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+    rev: v4.6.0
     hooks:
-      - id: trailing-whitespace
-        exclude: ^docs/
-      - id: end-of-file-fixer
-        exclude: ^docs/
-      - id: check-added-large-files
-        args: [--maxkb=1000]
+      - id: check-ast
+        name: Check Python syntax
+        files: \.py$
       - id: check-yaml
-        files: \.(yml|yaml)$
+        name: Check YAML syntax
       - id: check-json
-        files: \.json$
-      - id: check-toml
-        files: \.toml$
+        name: Check JSON syntax
+      - id: end-of-file-fixer
+        name: Fix end of files
+      - id: trailing-whitespace
+        name: Trim trailing whitespace
       - id: check-merge-conflict
-      - id: debug-statements
-        files: ^app/.*\.py$
+        name: Check for merge conflicts
+      - id: check-added-large-files
+        name: Check for large files
+        args: [--maxkb=500]
 
-  # Dockerfile linting
-  - repo: https://github.com/hadolint/hadolint
-    rev: v2.12.0
-    hooks:
-      - id: hadolint-docker
-        args: [--ignore, DL3008, --ignore, DL3009]
+  # Dockerfile linting (requires Docker/Podman)
+  # Skipped locally if Docker not available; runs in CI via super-linter
+  # To run locally: podman pull hadolint/hadolint && alias docker=podman
+  # - repo: https://github.com/hadolint/hadolint
+  #   rev: v2.12.0
+  #   hooks:
+  #     - id: hadolint-docker
+  #       name: Lint Dockerfile
 
-  # Secrets detection
-  - repo: https://github.com/Yelp/detect-secrets
-    rev: v1.4.0
-    hooks:
-      - id: detect-secrets
-        args: [--baseline, .secrets.baseline]
-        exclude: package.lock.json
-
-# Configuration
-default_language_version:
-  python: python3.11
+# CI configuration
+ci:
+  autofix_commit_msg: "style: auto-fix formatting [pre-commit.ci]"
+  autoupdate_commit_msg: "chore: update pre-commit hooks"

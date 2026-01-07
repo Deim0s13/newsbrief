@@ -8,8 +8,8 @@ Issues identified during testing of story landing page and performance optimizat
 
 **Title**: Improve UX when story generation returns 0 new stories due to duplicates
 
-**Labels**: `enhancement`, `ux`, `stories`  
-**Milestone**: v0.5.0 or v0.6.0  
+**Labels**: `enhancement`, `ux`, `stories`
+**Milestone**: v0.5.0 or v0.6.0
 **Priority**: Medium
 
 ### Problem
@@ -133,8 +133,8 @@ The duplicate detection is working as designed and provides significant value (p
 
 **Title**: Feed refresh endpoint fails with SSL permission error
 
-**Labels**: `bug`, `feeds`, `critical`  
-**Milestone**: v0.5.0  
+**Labels**: `bug`, `feeds`, `critical`
+**Milestone**: v0.5.0
 **Priority**: High
 
 ### Problem
@@ -332,4 +332,3 @@ Both issues have clear solutions and should be straightforward to implement.
 
 - Add to **v0.5.0** if should be fixed before release
 - Add to **v0.6.0** if can wait for next iteration
-

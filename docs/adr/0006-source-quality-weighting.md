@@ -1,8 +1,8 @@
 # 0006 — Architecture Decision: Source Quality Weighting for Stories
 
-**Status**: Accepted  
-**Date**: 2026-01-04  
-**Issue**: #58  
+**Status**: Accepted
+**Date**: 2026-01-04
+**Issue**: #58
 **Milestone**: v0.6.5 - Personalization
 
 ## Context
@@ -142,10 +142,10 @@ def calculate_full_blended_score(
     importance_weight = 0.5
     interest_weight = 0.3
     source_weight = 0.2
-    
+
     normalized_interest = min(interest / 2.0, 1.0)
     normalized_source = min(source_quality / 2.0, 1.0)
-    
+
     return (
         importance * importance_weight +
         normalized_interest * interest_weight +
@@ -212,17 +212,17 @@ def calculate_story_source_weight(article_feeds: List[Feed]) -> float:
 
 ### Positive
 
-✅ **Quality signal**: Reputable sources boost story ranking  
-✅ **Consistent pattern**: Same approach as interest-based ranking  
-✅ **Three dimensions**: Importance, interest, source quality - transparent ranking  
-✅ **Configurable**: Easy to adjust weights per source  
-✅ **Fallback matching**: Feed name OR domain for flexibility  
+✅ **Quality signal**: Reputable sources boost story ranking
+✅ **Consistent pattern**: Same approach as interest-based ranking
+✅ **Three dimensions**: Importance, interest, source quality - transparent ranking
+✅ **Configurable**: Easy to adjust weights per source
+✅ **Fallback matching**: Feed name OR domain for flexibility
 
 ### Negative
 
-⚠️ **Subjectivity**: Source quality is subjective - what's "reputable"?  
-⚠️ **Maintenance**: Need to add weights for new sources  
-⚠️ **Complexity**: Three-dimensional blending is more complex  
+⚠️ **Subjectivity**: Source quality is subjective - what's "reputable"?
+⚠️ **Maintenance**: Need to add weights for new sources
+⚠️ **Complexity**: Three-dimensional blending is more complex
 
 ### Mitigation
 
@@ -248,6 +248,5 @@ def calculate_story_source_weight(article_feeds: List[Feed]) -> float:
 
 ---
 
-**Accepted**: 2026-01-04  
+**Accepted**: 2026-01-04
 **Implementation**: v0.6.5
-

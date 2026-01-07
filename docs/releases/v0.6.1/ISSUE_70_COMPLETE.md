@@ -1,8 +1,8 @@
 # Issue #70: Skim/Detail View Toggle - COMPLETE
 
-**Issue**: [#70] Skim/detail view toggle  
-**Milestone**: v0.6.0 - Enhanced Intelligence & Polish  
-**Status**: ✅ COMPLETE  
+**Issue**: [#70] Skim/detail view toggle
+**Milestone**: v0.6.0 - Enhanced Intelligence & Polish
+**Status**: ✅ COMPLETE
 **Completed**: 2025-11-27
 
 ---
@@ -171,9 +171,9 @@ app/templates/base.html        - CSS cache-busting
 ## Known Issues
 
 ### Skim View on Main Articles Page
-**Status**: Partial implementation  
-**Impact**: Medium - UX feature not fully functional on main page  
-**Cause**: Tailwind CSS CDN specificity overriding custom styles  
+**Status**: Partial implementation
+**Impact**: Medium - UX feature not fully functional on main page
+**Cause**: Tailwind CSS CDN specificity overriding custom styles
 **Tracked**: v0.6.2 UI issues
 
 **Current Behavior**:
@@ -211,7 +211,6 @@ The localStorage persistence is particularly valuable as it allows users to set 
 
 ---
 
-**Status**: ✅ COMPLETE (with known limitation documented)  
-**Quality**: GOOD - Core functionality working  
+**Status**: ✅ COMPLETE (with known limitation documented)
+**Quality**: GOOD - Core functionality working
 **Issue**: Already closed (#70)
-

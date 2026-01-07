@@ -24,7 +24,7 @@ Story-based aggregation endpoints for synthesized news briefs.
 
 **Why Story-Based?** NewsBrief v0.5.0 returns to the original vision: replace reading 50+ article summaries with 5-10 synthesized stories. Instead of an article-centric RSS reader, NewsBrief now aggregates related articles into unified narratives—a true TLDR-killer. See [ADR 0002](adr/0002-story-based-aggregation.md) for full context.
 
-**Status**: 
+**Status**:
 - ✅ **Story Generation Pipeline**: Complete (Issue #39)
 - ✅ **HTTP Endpoints**: Complete (Issues #47, #55)
 - ✅ **Python API**: Available for advanced use cases
@@ -415,7 +415,7 @@ Update an existing feed's metadata.
 {
   "name": "Updated Feed Name",
   "description": "Updated description",
-  "category": "Technology", 
+  "category": "Technology",
   "priority": 5,
   "disabled": false
 }
@@ -541,7 +541,7 @@ Export all feeds as an OPML file with metadata and categories.
   </head>
   <body>
     <outline text="Technology" title="Technology">
-      <outline type="rss" xmlUrl="https://example.com/tech.xml" text="Tech News" 
+      <outline type="rss" xmlUrl="https://example.com/tech.xml" text="Tech News"
                title="Tech News" description="Latest technology news"
                nb:articleCount="45" nb:disabled="false" nb:added="2025-10-01T10:00:00"/>
     </outline>
@@ -790,7 +790,7 @@ curl http://localhost:8787/items
 # ⭐ NEW: View article ranking and topic data
 curl "http://localhost:8787/items?limit=5" | jq '.[] | {id, title, ranking_score, topic, topic_confidence}'
 
-# Extract structured summaries from top articles  
+# Extract structured summaries from top articles
 curl "http://localhost:8787/items?limit=5" | jq '.[] | select(.structured_summary != null) | {id, title, ranking_score, bullets: .structured_summary.bullets, tags: .structured_summary.tags}'
 
 # Find high-confidence AI/ML articles
@@ -1102,7 +1102,7 @@ Content-Type: application/json
         "why_it_matters": "This breakthrough in GPU kernel optimization significantly improves AI model inference speed, enabling more efficient deployment of large language models.",
         "tags": ["ai-processing", "gpu-technology", "cuda-kernels", "performance"],
         "content_hash": "b2c3d4e5f6789ab1",
-        "model": "llama3.2:3b", 
+        "model": "llama3.2:3b",
         "generated_at": "2024-01-15T15:46:10Z"
       },
       "content_hash": "b2c3d4e5f6789ab1",
@@ -1161,7 +1161,7 @@ When AI services are unavailable or summary generation fails, the API automatica
 **Structured JSON Summaries (v0.3.2)** ⭐ *ENHANCED*
 - **Default Format**: `use_structured=true` generates structured JSON with:
   - `bullets`: 3-5 key points as concise sentences (max 80 chars each)
-  - `why_it_matters`: Significance explanation (50-150 words) 
+  - `why_it_matters`: Significance explanation (50-150 words)
   - `tags`: 3-6 relevant topic tags for categorization and search
 - **Legacy Support**: `use_structured=false` generates plain text summaries
 - **JSON Validation**: Strict validation with automatic fallback on malformed responses
@@ -1173,7 +1173,7 @@ When AI services are unavailable or summary generation fails, the API automatica
 - **REDUCE Phase**: Synthesis of chunk summaries into coherent final result
 - **Processing Transparency**: All responses include processing method and chunking metadata
 
-**Hash+Model Caching System** ⭐ *NEW*  
+**Hash+Model Caching System** ⭐ *NEW*
 - **Content Hashing**: SHA256-based deduplication during article ingestion
 - **Cache Keys**: `{content_hash}:{model}` for precise cache invalidation
 - **Instant Cache Hits**: Sub-second responses for repeated content/model combinations
@@ -1187,7 +1187,7 @@ When AI services are unavailable or summary generation fails, the API automatica
 - Optimized prompts for consistent structured JSON generation
 
 **Intelligent Processing:**
-- Skips items with existing summaries unless `force_regenerate=true` 
+- Skips items with existing summaries unless `force_regenerate=true`
 - Smart caching checks both legacy and structured summary formats
 - Handles missing items gracefully with detailed error reporting
 - Processes content through Mozilla Readability for clean text input
@@ -1195,7 +1195,7 @@ When AI services are unavailable or summary generation fails, the API automatica
 
 **Performance & Reliability:**
 - Tracks generation time, token usage, and cache hit rates for monitoring
-- Implements fallback summarization when LLM service unavailable  
+- Implements fallback summarization when LLM service unavailable
 - Database persistence with optimized indexing for cache lookups
 - Graceful fallbacks to extractive summaries when JSON parsing fails
 
@@ -1213,7 +1213,7 @@ curl -X POST http://localhost:8787/summarize \
   -H "Content-Type: application/json" \
   -d '{"item_ids": [1], "use_structured": true}'
 
-# Extract bullets, significance, and tags from response  
+# Extract bullets, significance, and tags from response
 curl -X POST http://localhost:8787/summarize \
   -H "Content-Type: application/json" \
   -d '{"item_ids": [1]}' | jq '.results[0].structured_summary | {bullets, why_it_matters, tags}'
@@ -1228,7 +1228,7 @@ curl -X POST http://localhost:8787/summarize \
   -H "Content-Type: application/json" \
   -d '{"item_ids": [1,2,3], "model": "mistral:7b", "use_structured": true}'
 
-# Legacy plain text summaries (backward compatibility)  
+# Legacy plain text summaries (backward compatibility)
 curl -X POST http://localhost:8787/summarize \
   -H "Content-Type: application/json" \
   -d '{"item_ids": [1], "use_structured": false}'
@@ -1499,9 +1499,9 @@ Place an OPML file at `data/feeds.opml` and restart the application. Feeds will 
     <title>My Feeds</title>
   </head>
   <body>
-    <outline text="BBC News" 
+    <outline text="BBC News"
              xmlUrl="https://feeds.bbci.co.uk/news/rss.xml"/>
-    <outline text="Hacker News" 
+    <outline text="Hacker News"
              xmlUrl="https://hnrss.org/frontpage"/>
   </body>
 </opml>
@@ -1527,7 +1527,7 @@ These endpoints are planned for future releases:
 ### **GET /feeds** _(Planned)_
 List all configured feeds with metadata
 
-### **DELETE /feeds/{feed_id}** _(Planned)_  
+### **DELETE /feeds/{feed_id}** _(Planned)_
 Remove a feed and optionally its articles
 
 ### **GET /search** _(Planned)_
@@ -1604,7 +1604,7 @@ with session_scope() as session:
         status="active",         # Only active stories
         order_by="importance"    # Sort by importance_score DESC
     )
-    
+
     for story in stories:
         print(f"\n{story.title}")
         print(f"Articles: {story.article_count}")

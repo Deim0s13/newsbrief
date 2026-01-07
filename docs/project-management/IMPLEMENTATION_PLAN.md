@@ -1,14 +1,14 @@
 # Story Architecture Implementation Plan
 
-> **Status**: Ready to Start  
-> **Approved**: 2025-11-06  
+> **Status**: Ready to Start
+> **Approved**: 2025-11-06
 > **Reference**: See [STORY_ARCHITECTURE_BACKLOG.md](STORY_ARCHITECTURE_BACKLOG.md) for detailed phase breakdown
 
 ## Executive Summary
 
-**What**: Transform NewsBrief from article-centric RSS reader to story-based news aggregator  
-**Why**: Replace reading 50+ article summaries with 5-10 synthesized stories (TLDR-killer)  
-**How**: AI clustering + multi-document synthesis + story-first UI  
+**What**: Transform NewsBrief from article-centric RSS reader to story-based news aggregator
+**Why**: Replace reading 50+ article summaries with 5-10 synthesized stories (TLDR-killer)
+**How**: AI clustering + multi-document synthesis + story-first UI
 **Timeline**: ~50-70 hours across 8 phases
 
 ---
@@ -188,11 +188,11 @@ STORY_ARCHIVE_DAYS = 7
 1. **Week 1**: Phases 1-3 (Core engine: 26-37 hours)
    - Get story generation working end-to-end
    - Test via API/database inspection
-   
+
 2. **Week 2**: Phases 5-6 (UI: 10-14 hours)
    - Build story-first interface
    - Visual feedback and iteration
-   
+
 3. **Week 3**: Phases 4, 7, 8 (Polish: 11-16 hours)
    - Automation, API docs, filtering
    - Testing and refinement
@@ -286,5 +286,3 @@ STORY_ARCHIVE_DAYS=7
 - **Topic Grouping**: Future enhancement to group stories by high-level topics on landing page
 - **Embeddings**: Not in initial scope, but could enhance clustering in future (Phase 9+)
 - **Real-time Updates**: Not in scope, daily batch is sufficient for use case
-
-

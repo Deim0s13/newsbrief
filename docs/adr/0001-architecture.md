@@ -1,8 +1,8 @@
 # 0001 — Architecture Decision: Local-First RSS Aggregator
 
-**Status**: Accepted  
-**Date**: 2025-09-27  
-**Updated**: 2025-09-27  
+**Status**: Accepted
+**Date**: 2025-09-27
+**Updated**: 2025-09-27
 
 ## Context
 
@@ -27,7 +27,7 @@ Modern RSS readers are often cloud-based services that compromise privacy, requi
 
 **Database**: SQLite with planned FTS5 integration
 - Zero-configuration, serverless database
-- Single file for easy backup and migration  
+- Single file for easy backup and migration
 - Excellent performance for read-heavy workloads
 - Built-in full-text search capabilities (FTS5)
 - ACID compliance and robust concurrent access
@@ -44,7 +44,7 @@ Modern RSS readers are often cloud-based services that compromise privacy, requi
 - Privacy-first AI summarization using local Ollama models
 - No external API dependencies or data sharing
 - Support for multiple models (Llama 3.2, Mistral, etc.)
-- Configurable model selection for performance vs quality trade-offs  
+- Configurable model selection for performance vs quality trade-offs
 - Batch processing capabilities for efficient resource utilization
 - **Map-Reduce Processing**: Intelligent chunking for long articles exceeding context limits
   - Automatic threshold detection and processing method selection
@@ -224,7 +224,7 @@ Modern RSS readers are often cloud-based services that compromise privacy, requi
 
 ## Future Considerations
 
-> **📋 Implementation Tracking**: Detailed epic breakdowns and current development status available at  
+> **📋 Implementation Tracking**: Detailed epic breakdowns and current development status available at
 > **[GitHub Project Board](https://github.com/users/Deim0s13/projects/7/views/1?layout=board)**
 
 ### Planned Enhancements (v0.3.x - v0.5.x)
@@ -237,9 +237,9 @@ The following enhancements are organized into epics with detailed user stories a
 - Feed management dashboard
 - Search and filtering capabilities
 
-**AI Integration** ✅ (v0.3.0) - Epic: Summaries 
+**AI Integration** ✅ (v0.3.0) - Epic: Summaries
 - ✅ Ollama integration for article summarization with local privacy
-- ✅ Multi-model support (Llama, Mistral, etc.)  
+- ✅ Multi-model support (Llama, Mistral, etc.)
 - ✅ Batch processing and performance monitoring
 - 🚧 Future (v0.4.0): Automatic content categorization via embeddings
 - Duplicate detection improvement

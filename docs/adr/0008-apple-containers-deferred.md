@@ -119,4 +119,3 @@ Consider implementing Apple Containers support when:
 - Issue #24: Host access to Ollama in Apple Containers
 - Issue #25: Document differences vs Podman
 - [Apple Container Documentation](https://developer.apple.com/documentation/) (when available)
-

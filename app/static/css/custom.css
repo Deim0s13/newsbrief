@@ -87,7 +87,7 @@
     .mobile-hide {
         display: none !important;
     }
-    
+
     .mobile-full {
         width: 100% !important;
         margin-left: 0 !important;
@@ -107,18 +107,18 @@
     .no-print {
         display: none !important;
     }
-    
+
     .article-card {
         break-inside: avoid;
         box-shadow: none !important;
         border: 1px solid #e5e7eb;
         margin-bottom: 1rem;
     }
-    
+
     .article-link {
         color: #1f2937 !important;
     }
-    
+
     .topic-badge {
         background: #f3f4f6 !important;
         color: #374151 !important;

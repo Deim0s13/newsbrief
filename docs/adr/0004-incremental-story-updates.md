@@ -1,8 +1,8 @@
 # 0004 — Architecture Decision: Incremental Story Updates with Versioning
 
-**Status**: Accepted  
-**Date**: 2025-12-31  
-**Issue**: #49  
+**Status**: Accepted
+**Date**: 2025-12-31
+**Issue**: #49
 **Milestone**: v0.6.3 - Performance
 
 ## Context
@@ -31,7 +31,7 @@ This approach has limitations:
 Day 1: Articles A, B, C → Story v1 "OpenAI Announces GPT-5"
 Day 2: Articles B, C, D, E arrive (D, E are new developments)
 
-Current behavior: 
+Current behavior:
   - Cluster [B,C,D,E] has different hash → Creates Story v2 (duplicate)
   - Or if exact match → Skips entirely (misses new info)
 
@@ -181,7 +181,7 @@ In `generate_stories_simple()`, after clustering but before synthesis:
 for cluster in clusters:
     # Check for overlapping existing story
     existing = find_overlapping_story(session, cluster.article_ids)
-    
+
     if existing:
         # Merge article sets
         merged_ids = set(existing.article_ids) | set(cluster.article_ids)
@@ -198,17 +198,17 @@ for cluster in clusters:
 
 ### Positive
 
-✅ **Living stories**: Stories evolve with new developments  
-✅ **Complete context**: Users see full picture, not fragmented stories  
-✅ **Audit trail**: Full version history preserved  
-✅ **Efficient**: Synthesis cache reduces re-synthesis cost  
-✅ **User value**: "Story timeline" feature enabled for future  
+✅ **Living stories**: Stories evolve with new developments
+✅ **Complete context**: Users see full picture, not fragmented stories
+✅ **Audit trail**: Full version history preserved
+✅ **Efficient**: Synthesis cache reduces re-synthesis cost
+✅ **User value**: "Story timeline" feature enabled for future
 
 ### Negative
 
-⚠️ **Storage growth**: Each update creates new record (mitigated by archival)  
-⚠️ **Complexity**: More logic in generation pipeline  
-⚠️ **Query overhead**: Must check for overlaps before creating stories  
+⚠️ **Storage growth**: Each update creates new record (mitigated by archival)
+⚠️ **Complexity**: More logic in generation pipeline
+⚠️ **Query overhead**: Must check for overlaps before creating stories
 
 ### Mitigation
 
@@ -234,6 +234,5 @@ for cluster in clusters:
 
 ---
 
-**Accepted**: 2025-12-31  
+**Accepted**: 2025-12-31
 **Implementation**: v0.6.3
-

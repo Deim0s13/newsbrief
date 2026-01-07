@@ -1,6 +1,6 @@
 # Git Branching Strategy
 
-**Date**: 2025-11-12  
+**Date**: 2025-11-12
 **Status**: Active
 
 ---
@@ -295,6 +295,5 @@ git push origin --delete feature/issue-48-scheduled-generation
 
 ---
 
-**Status**: Ready to implement  
+**Status**: Ready to implement
 **Impact**: Better code quality, safer releases, clearer history
-

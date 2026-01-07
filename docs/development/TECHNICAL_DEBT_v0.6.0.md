@@ -1,6 +1,6 @@
 # Technical Debt for v0.6.0
 
-**Date**: November 18, 2025  
+**Date**: November 18, 2025
 **Purpose**: Track technical debt items to address in the next milestone
 
 ---
@@ -8,9 +8,9 @@
 ## 🔒 Security
 
 ### 1. Re-enable Security Scanning
-**Status**: Currently disabled with `continue-on-error: true`  
-**Location**: `.github/workflows/ci-cd.yml` - security-scan job  
-**Priority**: High  
+**Status**: Currently disabled with `continue-on-error: true`
+**Location**: `.github/workflows/ci-cd.yml` - security-scan job
+**Priority**: High
 
 **Current State**:
 ```yaml
@@ -32,9 +32,9 @@
 ## 📝 Code Quality
 
 ### 2. Mypy Type Annotations
-**Status**: 30 type annotation warnings remaining  
-**Documentation**: `docs/MYPY_STATUS_v0.5.5.md`  
-**Priority**: Medium  
+**Status**: 30 type annotation warnings remaining
+**Documentation**: `docs/MYPY_STATUS_v0.5.5.md`
+**Priority**: Medium
 
 **Current State**:
 - Mypy runs with `--no-strict-optional` and `continue-on-error: true`
@@ -55,8 +55,8 @@
 ## 🧪 Testing
 
 ### 3. Expand Test Coverage
-**Current Coverage**: ~60% (estimated, no coverage tool configured)  
-**Priority**: Medium  
+**Current Coverage**: ~60% (estimated, no coverage tool configured)
+**Priority**: Medium
 
 **Areas Needing Tests**:
 - Story generation edge cases
@@ -76,8 +76,8 @@
 ## 🔧 Refactoring
 
 ### 4. Clean Up Duplicate Code
-**Status**: Some duplication still exists  
-**Priority**: Low  
+**Status**: Some duplication still exists
+**Priority**: Low
 
 **Known Issues**:
 - Multiple places with similar SQL query patterns
@@ -94,8 +94,8 @@
 ## 📚 Documentation
 
 ### 5. API Documentation Completeness
-**Status**: Basic documentation exists  
-**Priority**: Low  
+**Status**: Basic documentation exists
+**Priority**: Low
 
 **Gaps**:
 - Missing examples for scheduler configuration
@@ -113,8 +113,8 @@
 ## 🏗️ Infrastructure
 
 ### 6. Deployment Automation
-**Status**: Deployments are simulated  
-**Priority**: Low (unless deploying to real infrastructure)  
+**Status**: Deployments are simulated
+**Priority**: Low (unless deploying to real infrastructure)
 
 **Current State**:
 ```yaml
@@ -180,6 +180,5 @@ Label: `technical-debt`, `v0.6.0`
 
 ---
 
-**Status**: Documented for tracking  
+**Status**: Documented for tracking
 **Next Review**: Start of v0.6.0 development
-

@@ -133,4 +133,3 @@ gh issue close 123 --comment "Fixed in v0.5.5"
 - **Project Management**: See [../project-management/](../project-management/)
 - **Testing**: See [../testing/](../testing/)
 - **Planning**: See [../planning/](../planning/)
-

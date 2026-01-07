@@ -1,8 +1,8 @@
 # 0002 — Architecture Decision: Story-Based Aggregation
 
-**Status**: Accepted  
-**Date**: 2025-11-06  
-**Supersedes**: v0.4.0 article-centric UI plans  
+**Status**: Accepted
+**Date**: 2025-11-06
+**Supersedes**: v0.4.0 article-centric UI plans
 
 ## Context
 
@@ -45,7 +45,7 @@ CREATE TABLE story_articles (
 );
 ```
 
-**Rationale**: 
+**Rationale**:
 - Stories become the primary unit of presentation, not articles
 - Articles become supporting evidence for stories
 - Many-to-many relationship allows flexible clustering
@@ -57,17 +57,17 @@ CREATE TABLE story_articles (
 def cluster_articles(articles, time_window=24h):
     # Extract entities (companies, products, people)
     entities = extract_entities(articles)
-    
+
     # Calculate similarity matrix
     similarity = (
         entity_overlap_score(articles) * 0.4 +
         text_similarity_score(articles) * 0.4 +
         time_proximity_score(articles) * 0.2
     )
-    
+
     # Cluster using threshold-based grouping
     clusters = group_by_similarity(similarity, threshold=0.65)
-    
+
     return clusters
 ```
 
@@ -97,7 +97,7 @@ Given these related articles:
 
 Synthesize into:
 1. Unified title (10-15 words)
-2. Synthesis paragraph (100-150 words) 
+2. Synthesis paragraph (100-150 words)
 3. Key points (4-6 bullets, factual)
 4. Why it matters (2-3 sentences, significance)
 5. Entities and topics
@@ -224,7 +224,7 @@ See:
 
 ## Status
 
-**Accepted** — 2025-11-06  
+**Accepted** — 2025-11-06
 **Implementation**: Phase 1 + API Complete ✅ (2025-11-12)
 
 ### Progress Update
@@ -262,6 +262,5 @@ See:
 
 ---
 
-**Last Updated**: 2025-11-12  
+**Last Updated**: 2025-11-12
 **Next Review**: After UI implementation
-

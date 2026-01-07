@@ -34,7 +34,7 @@ jobs:
         run: |
           # Generate updated requirements.txt with latest versions
           pip-compile --upgrade --output-file requirements-updated.txt requirements.txt
-          
+
           # Check if there are any changes
           if ! diff -q requirements.txt requirements-updated.txt; then
             echo "UPDATES_AVAILABLE=true" >> $GITHUB_ENV
@@ -71,19 +71,19 @@ jobs:
           title: "🔄 Automated dependency updates"
           body: |
             ## Automated Dependency Updates
-            
+
             This PR contains automated updates to Python dependencies.
-            
+
             ### Changes Made
             - Updated `requirements.txt` with latest compatible versions
             - All imports tested successfully
-            
+
             ### Testing
             - ✅ Import tests passed
             - ✅ No breaking changes detected
-            
+
             Please review and merge if CI passes.
-            
+
             ---
             _This PR was created automatically by the dependency update workflow._
           branch: feature/dependency-updates-${{ github.run_number }}
@@ -130,13 +130,13 @@ jobs:
         run: |
           current_version=$(grep "FROM python:" Dockerfile | sed 's/FROM python://' | sed 's/-slim//')
           echo "Current Python version: $current_version"
-          
+
           # Get latest Python 3.11 version
           latest_version=$(curl -s https://api.github.com/repos/python/cpython/releases | \
                           jq -r '[.[] | select(.tag_name | startswith("v3.11")) | .tag_name][0]' | \
                           sed 's/v//')
           echo "Latest Python 3.11 version: $latest_version"
-          
+
           if [ "$current_version" != "$latest_version" ]; then
             echo "BASE_IMAGE_UPDATE=true" >> $GITHUB_ENV
             echo "NEW_VERSION=$latest_version" >> $GITHUB_ENV
@@ -157,17 +157,17 @@ jobs:
           title: "📦 Update Python base image to ${{ env.NEW_VERSION }}"
           body: |
             ## Base Image Update
-            
+
             Updates Python base image in Dockerfile to the latest 3.11.x version.
-            
+
             ### Changes
             - Updated `FROM python:${{ env.NEW_VERSION }}-slim`
-            
+
             ### Benefits
             - Latest security patches
             - Performance improvements
             - Bug fixes
-            
+
             ---
             _This PR was created automatically by the dependency update workflow._
           branch: feature/base-image-update-${{ github.run_number }}

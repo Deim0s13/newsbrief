@@ -1,6 +1,6 @@
 # NewsBrief Backlog
 
-> **🚀 PRIMARY FOCUS**: Story Architecture (v0.5.0)  
+> **🚀 PRIMARY FOCUS**: Story Architecture (v0.5.0)
 > **See**: [Story Architecture Backlog](STORY_ARCHITECTURE_BACKLOG.md) | [Implementation Plan](IMPLEMENTATION_PLAN.md)
 >
 > The items below are secondary/future enhancements. Current development focuses on story-based aggregation.
@@ -15,7 +15,7 @@
 ### Issues to Address:
 
 #### 1. Refresh Time Display Enhancement
-**Current State**: 
+**Current State**:
 - Timestamps now show correctly in UTC with proper timezone handling
 - "X hours ago" calculations are accurate
 
@@ -105,4 +105,3 @@
 - [ ] Semantic search with embeddings
 - [ ] Full-text search with FTS5
 - [ ] Export/import user preferences
-

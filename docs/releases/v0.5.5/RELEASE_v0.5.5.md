@@ -1,7 +1,7 @@
 # Release Notes - v0.5.5: Story Architecture - Return to Original Scope
 
-**Release Date**: November 18, 2025  
-**Milestone**: Story Architecture  
+**Release Date**: November 18, 2025
+**Milestone**: Story Architecture
 **Status**: ✅ Complete
 
 ---
@@ -207,10 +207,10 @@ STORY_MODEL=llama3.1:8b                       # LLM model
 
 ## 🙏 Credits
 
-**Epic**: epic:stories - Story-based aggregation and synthesis  
-**Milestone**: v0.5.5 - Story Architecture  
-**Issues**: 29 issues closed  
-**Commits**: 30+ commits  
+**Epic**: epic:stories - Story-based aggregation and synthesis
+**Milestone**: v0.5.5 - Story Architecture
+**Issues**: 29 issues closed
+**Commits**: 30+ commits
 **Lines Changed**: 2,500+ lines added
 
 ---
@@ -242,8 +242,7 @@ STORY_MODEL=llama3.1:8b                       # LLM model
 
 ---
 
-**Release**: v0.5.5  
-**Version Notes**: v0.5.1-v0.5.4 explored alternative approaches. v0.5.5 represents the finalized implementation aligned with our original scope.  
-**Date**: November 18, 2025  
+**Release**: v0.5.5
+**Version Notes**: v0.5.1-v0.5.4 explored alternative approaches. v0.5.5 represents the finalized implementation aligned with our original scope.
+**Date**: November 18, 2025
 **Status**: ✅ Production Ready
-

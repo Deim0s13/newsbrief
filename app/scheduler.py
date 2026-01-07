@@ -79,9 +79,9 @@ def archive_old_stories() -> int:
             result = session.execute(
                 text(
                     """
-                    UPDATE stories 
+                    UPDATE stories
                     SET status = 'archived', last_updated = :now
-                    WHERE status = 'active' 
+                    WHERE status = 'active'
                     AND generated_at < :cutoff
                     """
                 ),

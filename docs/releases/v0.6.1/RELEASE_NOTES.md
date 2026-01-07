@@ -1,7 +1,7 @@
 # v0.6.1 Release Notes - Enhanced Clustering
 
-**Release Date**: 2025-12-01  
-**Branch**: `feature/enhanced-clustering` → `dev` → `main`  
+**Release Date**: 2025-12-01
+**Branch**: `feature/enhanced-clustering` → `dev` → `main`
 **Tag**: `v0.6.1`
 
 ---
@@ -145,19 +145,19 @@ Flexible viewing modes for articles.
 ## 🐛 Critical Bugs Fixed
 
 ### DateTime Filtering Bug (Issue #76)
-**Impact**: Story generation completely broken  
-**Cause**: SQLite TEXT comparison failing due to format mismatch  
-**Fix**: Convert datetime to ISO format before SQL binding  
+**Impact**: Story generation completely broken
+**Cause**: SQLite TEXT comparison failing due to format mismatch
+**Fix**: Convert datetime to ISO format before SQL binding
 **Result**: Time window filtering now works correctly (28 articles for 2h, not 119)
 
 ### Similarity Threshold Too Strict
-**Impact**: 0 stories generated despite available articles  
-**Cause**: Entity-based similarity stricter than keyword-only  
-**Fix**: Lowered default threshold from 0.3 to 0.25  
+**Impact**: 0 stories generated despite available articles
+**Cause**: Entity-based similarity stricter than keyword-only
+**Fix**: Lowered default threshold from 0.3 to 0.25
 **Result**: 53 stories generated, 0 unclustered articles
 
 ### Missing Story Model Column
-**Impact**: Story creation failed with SQL error  
+**Impact**: Story creation failed with SQL error
 **Fix**: Added `quality_score` column to SQLAlchemy Story model
 
 ---
@@ -356,7 +356,7 @@ uvicorn app.main:app --reload --port 8787
 
 **Issues Closed**:
 - #40 - Entity Extraction
-- #41 - Semantic Similarity  
+- #41 - Semantic Similarity
 - #43 - Story Quality Scoring
 - #67 - UX Improvements
 - #70 - Skim/Detail Toggle
@@ -399,8 +399,7 @@ uvicorn app.main:app --reload --port 8787
 
 ---
 
-**Version**: v0.6.1  
-**Status**: Production Ready ✅  
-**Quality**: High - All core features working  
+**Version**: v0.6.1
+**Status**: Production Ready ✅
+**Quality**: High - All core features working
 **Confidence**: Approved for release
-

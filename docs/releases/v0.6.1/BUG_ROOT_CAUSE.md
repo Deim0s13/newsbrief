@@ -1,7 +1,7 @@
 # Story Generation Bug - Root Cause Analysis
 
-**Date**: 2025-12-01  
-**Issue**: Story generation failing - 78 unclustered articles  
+**Date**: 2025-12-01
+**Issue**: Story generation failing - 78 unclustered articles
 **Status**: ROOT CAUSE IDENTIFIED
 
 ---
@@ -16,7 +16,7 @@ cutoff_time = datetime.now(UTC) - timedelta(hours=2)  # Nov 30 22:48
 articles = session.execute(
     text("""
         SELECT id, title, topic, published, summary, ai_summary
-        FROM items 
+        FROM items
         WHERE published >= :cutoff_time
         ...
     """),
@@ -79,7 +79,7 @@ sqlite3 data/newsbrief.sqlite3 "SELECT MIN(datetime(published)) FROM items WHERE
 ```bash
 sqlite3 data/newsbrief.sqlite3 "
 SELECT COUNT(*), MIN(published), MAX(published)
-FROM items 
+FROM items
 WHERE published >= '2025-11-30 22:48:00';
 "
 ```
@@ -108,7 +108,7 @@ cutoff_timestamp = int((datetime.now(UTC) - timedelta(hours=time_window_hours)).
 articles = session.execute(
     text("""
         SELECT id, title, topic, published, summary, ai_summary
-        FROM items 
+        FROM items
         WHERE CAST(strftime('%s', published) AS INTEGER) >= :cutoff_timestamp
         ...
     """),
@@ -126,7 +126,7 @@ articles = session.execute(
 articles = session.execute(
     text("""
         SELECT id, title, topic, published, summary, ai_summary
-        FROM items 
+        FROM items
         WHERE datetime(published) >= datetime(:cutoff_time)
         ...
     """),
@@ -160,4 +160,3 @@ articles = session.execute(
 ---
 
 **Priority**: CRITICAL - Blocks v0.6.1 release
-

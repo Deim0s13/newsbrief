@@ -1,7 +1,7 @@
 # Story-Based Architecture: Return to Original Vision
 
-> **Status**: Planning Phase  
-> **Created**: 2025-11-05  
+> **Status**: Planning Phase
+> **Created**: 2025-11-05
 > **Priority**: Critical - Foundation for product vision
 
 ## Vision Statement
@@ -29,8 +29,8 @@ A **Story** is an AI-synthesized news item that:
 ```
 Title: "Google Announces Gemini 2.0 with Multimodal Capabilities"
 
-Synthesis: Google unveiled Gemini 2.0 today, their next-generation AI model 
-featuring native image and video understanding. The model shows significant 
+Synthesis: Google unveiled Gemini 2.0 today, their next-generation AI model
+featuring native image and video understanding. The model shows significant
 improvements over GPT-4 in reasoning tasks and offers real-time API access.
 
 Key Points:
@@ -40,8 +40,8 @@ Key Points:
 • Beats GPT-4 on MMLU and HumanEval benchmarks
 
 Why It Matters:
-This represents Google's most significant AI release since Bard, positioning 
-them as a serious competitor to OpenAI. The multimodal capabilities could 
+This represents Google's most significant AI release since Bard, positioning
+them as a serious competitor to OpenAI. The multimodal capabilities could
 reshape how developers build AI applications.
 
 Supporting Articles (5):
@@ -94,7 +94,7 @@ Supporting Articles (5):
 ## Implementation Phases
 
 ### Phase 0: Planning & Cleanup ✓
-**Status**: Current Phase  
+**Status**: Current Phase
 **Effort**: 2 hours
 
 - [x] Create this backlog document
@@ -103,7 +103,7 @@ Supporting Articles (5):
 - [ ] Update README.md to reflect correct vision
 - [ ] Archive old "skim/detail" work (was misguided)
 
-**Exit Criteria**: 
+**Exit Criteria**:
 - Clear backlog approved
 - Team aligned on vision
 - No misleading features in codebase
@@ -111,7 +111,7 @@ Supporting Articles (5):
 ---
 
 ### Phase 1: Core Story Infrastructure ✅
-**Status**: Complete  
+**Status**: Complete
 **Effort**: 8-12 hours (Actual: ~10 hours)
 **Priority**: P0 (Blocking)
 
@@ -167,8 +167,8 @@ Supporting Articles (5):
 ---
 
 ### Phase 2: Story Clustering & Intelligence
-**Status**: Not Started  
-**Effort**: 10-15 hours  
+**Status**: Not Started
+**Effort**: 10-15 hours
 **Priority**: P0 (Core Feature)
 
 #### 2.1 Entity Extraction (3-4 hours)
@@ -177,7 +177,7 @@ Supporting Articles (5):
 - [ ] Store entities with articles
 - [ ] Use entities for clustering
 
-**Approach**: 
+**Approach**:
 - Prompt LLM: "Extract key entities from this title: {title}"
 - Return JSON: `{"entities": ["Google", "Gemini 2.0", "AI"]}`
 - Cache entity extractions
@@ -224,7 +224,7 @@ Supporting Articles (5):
 
 **Acceptance Criteria**:
 - Clustering groups related articles effectively
-- Test cases: 
+- Test cases:
   - Multiple articles about same announcement → 1 story
   - Unrelated articles → separate stories
   - Similar but distinct topics → separate stories
@@ -233,8 +233,8 @@ Supporting Articles (5):
 ---
 
 ### Phase 3: Multi-Document Synthesis
-**Status**: Not Started  
-**Effort**: 8-10 hours  
+**Status**: Not Started
+**Effort**: 8-10 hours
 **Priority**: P0 (Core Feature)
 
 #### 3.1 Synthesis Prompt Engineering (2-3 hours)
@@ -291,8 +291,8 @@ Format as JSON.
 ---
 
 ### Phase 4: Story Generation Scheduling
-**Status**: Not Started  
-**Effort**: 4-6 hours  
+**Status**: Not Started
+**Effort**: 4-6 hours
 **Priority**: P1 (Important)
 
 #### 4.1 On-Demand Story Generation (2 hours)
@@ -334,8 +334,8 @@ Format as JSON.
 ---
 
 ### Phase 5: UI Redesign - Landing Page
-**Status**: Not Started  
-**Effort**: 6-8 hours  
+**Status**: Not Started
+**Effort**: 6-8 hours
 **Priority**: P0 (User-Facing)
 
 #### 5.1 Stories Landing Page (4-5 hours)
@@ -380,8 +380,8 @@ Format as JSON.
 ---
 
 ### Phase 6: UI - Story Detail Page
-**Status**: Not Started  
-**Effort**: 4-6 hours  
+**Status**: Not Started
+**Effort**: 4-6 hours
 **Priority**: P0 (User-Facing)
 
 #### 6.1 Story Detail View (3-4 hours)
@@ -437,9 +437,9 @@ Format as JSON.
 ---
 
 ### Phase 7: API Layer ✅
-**Status**: Complete  
-**Effort**: 3-4 hours (Actual: ~3 hours)  
-**Priority**: P1 (Foundation)  
+**Status**: Complete
+**Effort**: 3-4 hours (Actual: ~3 hours)
+**Priority**: P1 (Foundation)
 **Completed**: 2025-11-12
 
 #### 7.1 Story Endpoints (2-3 hours) ✅
@@ -477,8 +477,8 @@ Format as JSON.
 ---
 
 ### Phase 8: Interest-Based Filtering
-**Status**: Not Started  
-**Effort**: 4-6 hours  
+**Status**: Not Started
+**Effort**: 4-6 hours
 **Priority**: P2 (Enhancement)
 
 #### 8.1 User Interests (2-3 hours)
@@ -545,19 +545,19 @@ Format as JSON.
 ## Risks & Mitigation
 
 ### Risk: Clustering Quality
-**Issue**: Articles incorrectly grouped or split  
+**Issue**: Articles incorrectly grouped or split
 **Mitigation**: Start with simple heuristics, iterate based on real data, add manual override
 
 ### Risk: LLM Hallucinations
-**Issue**: Synthesis contains false information  
+**Issue**: Synthesis contains false information
 **Mitigation**: Ground all synthesis in article text, add fact-checking prompt, show source articles
 
 ### Risk: Performance
-**Issue**: Story generation is slow (10s+ seconds)  
+**Issue**: Story generation is slow (10s+ seconds)
 **Mitigation**: Run on schedule (not on-demand), cache aggressively, batch operations
 
 ### Risk: Scope Creep
-**Issue**: Adding features that deviate from vision  
+**Issue**: Adding features that deviate from vision
 **Mitigation**: This document. Refer back frequently. Say no to article-centric features.
 
 ---
@@ -593,7 +593,7 @@ These are good ideas but NOT for initial story architecture:
 
 **Total Estimated Effort**: 50-70 hours
 
-**Recommended Approach**: 
+**Recommended Approach**:
 1. Complete Phases 1-3 first (core engine) - 26-37 hours
 2. Then Phases 5-6 (UI) - 10-14 hours
 3. Then Phase 4, 7, 8 (polish) - 11-16 hours
@@ -643,5 +643,3 @@ These are good ideas but NOT for initial story architecture:
    - Keep `/items` API endpoint
    - Add hidden "View All Articles" link in UI
    - Primary focus remains stories, not articles
-
-

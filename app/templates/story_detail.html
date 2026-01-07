@@ -13,7 +13,7 @@
             Back to Stories
         </a>
     </nav>
-    
+
     <!-- Story Header -->
     <article class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-8">
         <!-- Topics & Metadata -->
@@ -21,7 +21,7 @@
             {% if story.topics %}
             <div class="flex flex-wrap gap-2">
                 {% for topic in story.topics %}
-                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium 
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium
                     {% if topic == 'ai-ml' %}bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200
                     {% elif topic == 'security' %}bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200
                     {% elif topic == 'cloud-k8s' %}bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200
@@ -33,7 +33,7 @@
                 {% endfor %}
             </div>
             {% endif %}
-            
+
             <div class="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400 ml-auto">
                 <span class="flex items-center">
                     <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -49,19 +49,19 @@
                 </span>
             </div>
         </div>
-        
+
         <!-- Story Title -->
         <h1 class="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-6">
             {{ story.title }}
         </h1>
-        
+
         <!-- Full Synthesis -->
         <div class="prose dark:prose-invert max-w-none mb-8">
             <div class="text-lg text-gray-700 dark:text-gray-300 leading-relaxed">
                 {{ story.synthesis }}
             </div>
         </div>
-        
+
         <!-- Key Points -->
         {% if story.key_points and story.key_points|length > 0 %}
         <div class="mb-8">
@@ -83,7 +83,7 @@
             </ul>
         </div>
         {% endif %}
-        
+
         <!-- Why It Matters -->
         {% if story.why_it_matters %}
         <div class="mb-8 p-6 bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-600 dark:border-blue-400 rounded-r-lg">
@@ -96,7 +96,7 @@
             <p class="text-blue-800 dark:text-blue-200">{{ story.why_it_matters }}</p>
         </div>
         {% endif %}
-        
+
         <!-- Entities -->
         {% if story.entities and story.entities|length > 0 %}
         <div class="mb-8">
@@ -110,7 +110,7 @@
             </div>
         </div>
         {% endif %}
-        
+
         <!-- Supporting Articles -->
         {% if story.supporting_articles and story.supporting_articles|length > 0 %}
         <div class="mt-8 pt-8 border-t border-gray-200 dark:border-gray-700">
@@ -120,7 +120,7 @@
                 </svg>
                 Supporting Articles ({{ story.supporting_articles|length }})
             </h2>
-            
+
             <div class="space-y-4">
                 {% for article in story.supporting_articles %}
                 <div class="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600 hover:border-blue-300 dark:hover:border-blue-600 transition-colors">
@@ -134,13 +134,13 @@
                         </span>
                         {% endif %}
                     </div>
-                    
+
                     {% if article.summary %}
                     <p class="text-sm text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">
                         {{ article.summary | striptags }}
                     </p>
                     {% endif %}
-                    
+
                     <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
                         <span>{{ article.published if article.published else 'Unknown date' }}</span>
                         <div class="flex items-center space-x-3">
@@ -163,7 +163,7 @@
             </div>
         </div>
         {% endif %}
-        
+
         <!-- Story Metadata Footer -->
         <div class="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
@@ -181,7 +181,7 @@
                 </div>
                 <div>
                     <span class="text-gray-500 dark:text-gray-400">Status</span>
-                    <div class="font-semibold capitalize 
+                    <div class="font-semibold capitalize
                         {% if story.status == 'active' %}text-green-600 dark:text-green-400
                         {% else %}text-gray-600 dark:text-gray-400{% endif %}">
                         {{ story.status }}
@@ -206,7 +206,7 @@ function formatTimeAgo(timestamp) {
     const now = new Date();
     const past = new Date(timestamp);
     const seconds = Math.floor((now - past) / 1000);
-    
+
     if (seconds < 60) return 'just now';
     if (seconds < 3600) return `${Math.floor(seconds / 60)} minutes ago`;
     if (seconds < 86400) return `${Math.floor(seconds / 3600)} hours ago`;
@@ -215,4 +215,3 @@ function formatTimeAgo(timestamp) {
 }
 </script>
 {% endblock %}
-

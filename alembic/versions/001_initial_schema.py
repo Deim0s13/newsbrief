@@ -1,7 +1,7 @@
 """Initial schema - all tables for NewsBrief
 
 Revision ID: 001_initial
-Revises: 
+Revises:
 Create Date: 2026-01-06
 
 This migration creates all tables from scratch.
@@ -179,4 +179,3 @@ def downgrade() -> None:
     op.drop_table("stories")
     op.drop_table("items")
     op.drop_table("feeds")
-

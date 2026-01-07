@@ -1,8 +1,8 @@
 # Performance Analysis - Story Generation
 
-**Date**: 2025-11-13  
-**Current Performance**: ~171 seconds for 379 stories from 150 articles  
-**Target Performance**: < 30 seconds  
+**Date**: 2025-11-13
+**Current Performance**: ~171 seconds for 379 stories from 150 articles
+**Target Performance**: < 30 seconds
 
 ---
 
@@ -11,7 +11,7 @@
 ### 1. **Sequential LLM Calls** (CRITICAL - ~80% of time)
 **Location**: `app/stories.py:815` - `_generate_story_synthesis()`
 
-**Problem**: 
+**Problem**:
 - LLM synthesis is called sequentially for each cluster
 - Each LLM call takes ~15-20 seconds
 - 10 clusters = 150-200 seconds total
@@ -123,11 +123,11 @@ for i, cluster_article_ids in enumerate(clusters):
 
 ## Expected Results
 
-**Current**: ~171 seconds  
-**After Phase 1 (Parallel LLM)**: ~30-40 seconds ✅ **TARGET MET**  
-**After Phase 2 (Batch DB)**: ~25-35 seconds  
-**After Phase 3 (Cache data)**: ~20-30 seconds  
-**After Phase 4 (LLM cache)**: < 1 second on regeneration  
+**Current**: ~171 seconds
+**After Phase 1 (Parallel LLM)**: ~30-40 seconds ✅ **TARGET MET**
+**After Phase 2 (Batch DB)**: ~25-35 seconds
+**After Phase 3 (Cache data)**: ~20-30 seconds
+**After Phase 4 (LLM cache)**: < 1 second on regeneration
 
 ---
 
@@ -156,4 +156,3 @@ Track:
 - Ollama server itself may need tuning (num_parallel, num_gpu, etc.)
 - Consider upgrading to faster model (llama3.2:1b) for synthesis
 - May need rate limiting if Ollama server is shared
-

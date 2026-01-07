@@ -1,7 +1,7 @@
 # v0.6.1 Manual Testing Checklist
 
-**Version**: v0.6.1  
-**Branch**: `feature/enhanced-clustering`  
+**Version**: v0.6.1
+**Branch**: `feature/enhanced-clustering`
 **Date**: 2025-11-27
 
 ---
@@ -323,7 +323,7 @@ Ensure existing features still work:
 
 ### Test Results Summary
 
-**Date Tested**: _____________  
+**Date Tested**: _____________
 **Tester**: _____________
 
 #### Feature Completion
@@ -357,4 +357,3 @@ Ensure existing features still work:
 - Database changes are backward compatible (new columns have defaults)
 - All new features are non-breaking changes
 - Cache will build up gradually as stories are generated
-

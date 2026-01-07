@@ -1,8 +1,8 @@
 # 0003 — Architecture Decision: LLM Synthesis Caching
 
-**Status**: Accepted  
-**Date**: 2025-12-31  
-**Issue**: #46  
+**Status**: Accepted
+**Date**: 2025-12-31
+**Issue**: #46
 **Milestone**: v0.6.3 - Performance
 
 ## Context
@@ -123,18 +123,18 @@ CREATE INDEX idx_synthesis_cache_expires ON synthesis_cache(expires_at);
 
 ### Positive
 
-✅ **Performance**: Skip LLM calls for previously synthesized article combinations  
-✅ **Faster iteration**: Test UI/display changes without regenerating stories  
-✅ **Visibility**: Track token usage and synthesis performance over time  
-✅ **Correctness**: Invalidation ensures stale data doesn't persist  
-✅ **Operational control**: TTL + manual clear for production management  
-✅ **No new dependencies**: Uses existing SQLite database  
+✅ **Performance**: Skip LLM calls for previously synthesized article combinations
+✅ **Faster iteration**: Test UI/display changes without regenerating stories
+✅ **Visibility**: Track token usage and synthesis performance over time
+✅ **Correctness**: Invalidation ensures stale data doesn't persist
+✅ **Operational control**: TTL + manual clear for production management
+✅ **No new dependencies**: Uses existing SQLite database
 
 ### Negative
 
-⚠️ **Storage growth**: Cache table grows with unique article combinations  
-⚠️ **Complexity**: Invalidation logic adds code paths  
-⚠️ **Cache misses on first run**: No benefit for brand-new article sets  
+⚠️ **Storage growth**: Cache table grows with unique article combinations
+⚠️ **Complexity**: Invalidation logic adds code paths
+⚠️ **Cache misses on first run**: No benefit for brand-new article sets
 
 ### Mitigation
 
@@ -203,6 +203,5 @@ Store synthesis results as JSON files.
 
 ---
 
-**Accepted**: 2025-12-31  
+**Accepted**: 2025-12-31
 **Implementation**: v0.6.3
-

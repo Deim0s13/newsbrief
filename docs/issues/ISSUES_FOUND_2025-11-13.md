@@ -1,14 +1,14 @@
 # Issues Found During Testing - 2025-11-13
 
-**Date**: 2025-11-13  
-**Status**: Active Issues  
+**Date**: 2025-11-13
+**Status**: Active Issues
 **Severity**: Medium-High
 
 ---
 
 ## Issue 1: No New Stories Generated (Duplicate Detection Working Too Well)
 
-**Severity**: Medium  
+**Severity**: Medium
 **Status**: By Design (but needs UX improvement)
 
 ### Problem:
@@ -63,7 +63,7 @@ UPDATE stories SET status='archived' WHERE generated_at < datetime('now', '-24 h
 
 ## Issue 2: Feed Refresh Returns HTTP 500
 
-**Severity**: High  
+**Severity**: High
 **Status**: Needs Investigation
 
 ### Problem:
@@ -102,7 +102,7 @@ print(stats)
 
 ## Issue 3: UI Polish Items (Backlogged)
 
-**Severity**: Low  
+**Severity**: Low
 **Status**: Tracked in UI_IMPROVEMENTS_BACKLOG.md
 
 - Feed management rendering issues
@@ -201,4 +201,3 @@ User should:
 2. ✅ Be able to force regeneration if desired
 3. ✅ See how many new articles are available
 4. ✅ Have feeds refresh working properly
-

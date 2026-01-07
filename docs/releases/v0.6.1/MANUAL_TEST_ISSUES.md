@@ -1,7 +1,7 @@
 # v0.6.1 Manual Testing Issues
 
-**Date**: 2025-11-28  
-**Tester**: User  
+**Date**: 2025-11-28
+**Tester**: User
 **Branch**: `feature/enhanced-clustering`
 
 ---
@@ -9,7 +9,7 @@
 ## 🐛 Critical Issues (Blocking Release)
 
 ### Issue 1: Story Generation Not Working / Not Updating
-**Severity**: CRITICAL  
+**Severity**: CRITICAL
 **Description**: Story generation takes 5+ minutes but doesn't create new stories or update the UI. Old stories remain visible.
 
 **Steps to Reproduce**:
@@ -29,7 +29,7 @@
 ---
 
 ### Issue 2: HTML Tags Visible in Story Supporting Articles
-**Severity**: HIGH  
+**Severity**: HIGH
 **Description**: Supporting articles in stories show raw HTML tags like `<p>blah</p>` instead of plain text.
 
 **Steps to Reproduce**:
@@ -44,11 +44,11 @@
 ---
 
 ### Issue 3: Story Topic Mismatch with Supporting Articles
-**Severity**: HIGH  
+**Severity**: HIGH
 **Description**: Story shows one topic (e.g., "Disaster Response") but all supporting articles are labeled with a different topic (e.g., "Devtools")
 
 **Example**:
-- Story: "A devastating fire broke out in Hong Kong..." 
+- Story: "A devastating fire broke out in Hong Kong..."
 - Story Topic Badge: "Disaster Response and Construction Safety"
 - Supporting Articles: All labeled "Devtools"
 
@@ -64,7 +64,7 @@
 ## ⚠️ High Priority Issues
 
 ### Issue 4: All Articles Have Score 7.000
-**Severity**: MEDIUM  
+**Severity**: MEDIUM
 **Description**: All articles show identical ranking score of 7.000, suggesting default values or calculation issue.
 
 **Expected**: Articles should have varied ranking scores based on their characteristics
@@ -77,10 +77,10 @@
 ---
 
 ### Issue 5: Skim View Not Working Properly
-**Severity**: MEDIUM  
+**Severity**: MEDIUM
 **Description**: Skim view on main Articles page only reduces font size, doesn't create compact 2-line preview cards.
 
-**Expected**: 
+**Expected**:
 - Compact cards with less padding
 - Only 2 lines of text visible
 - Hidden bullet lists and headings
@@ -95,7 +95,7 @@
 ---
 
 ### Issue 6: All Story Importance Scores at 66%
-**Severity**: MEDIUM  
+**Severity**: MEDIUM
 **Description**: All stories show identical importance score of 66% (0.66)
 
 **Expected**: Stories should have varied importance scores (0.0-1.0) based on:
@@ -111,10 +111,10 @@
 ---
 
 ### Issue 7: Model and Status Fields Empty
-**Severity**: LOW  
+**Severity**: LOW
 **Description**: Model and Status fields in story detail don't show any values
 
-**Expected**: 
+**Expected**:
 - Model: Should show LLM model used (e.g., "llama3.1:8b")
 - Status: Should show "active" or other status
 
@@ -127,7 +127,7 @@
 ## 📊 Performance Issues
 
 ### Issue 8: Feed Refresh Takes Too Long
-**Severity**: MEDIUM  
+**Severity**: MEDIUM
 **Description**: Refreshing all feeds takes approximately 2.5 minutes
 
 **Expected**: Should complete in <1 minute for 22 feeds
@@ -203,4 +203,3 @@
    - Add more aggressive CSS with higher specificity
    - Consider using JavaScript to manipulate DOM directly
    - Test with different article structures
-

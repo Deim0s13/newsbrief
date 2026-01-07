@@ -52,4 +52,3 @@ Archived sessions are moved to [../archive/sessions/](../archive/sessions/).
 - **Project Management**: See [../project-management/](../project-management/)
 - **Releases**: See [../releases/](../releases/)
 - **Planning**: See [../planning/](../planning/)
-
