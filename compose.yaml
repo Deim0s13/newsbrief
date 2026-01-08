@@ -30,7 +30,7 @@ services:
       # On Podman, override to:
       # OLLAMA_BASE_URL=http://host.containers.internal:11434
     volumes:
-      - ./data:/app/data
+      - newsbrief_data:/app/data
     depends_on:
       db:
         condition: service_healthy
@@ -40,3 +40,4 @@ services:
 
 volumes:
   postgres_data:
+  newsbrief_data:
