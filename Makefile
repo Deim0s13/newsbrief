@@ -184,8 +184,12 @@ migrate-history:                    ## Show migration history
 migrate-current:                    ## Show current migration version
 	.venv/bin/alembic current
 
-# ---------- Hostname Setup ----------
+# ---------- Hostname & Autostart ----------
 HOSTNAME         ?= newsbrief.local
+PROJECT_PATH     ?= $(PWD)
+PODMAN_COMPOSE   ?= $(shell which podman-compose 2>/dev/null || echo /opt/homebrew/bin/podman-compose)
+PLIST_NAME       := com.newsbrief.plist
+PLIST_DEST       := $(HOME)/Library/LaunchAgents/$(PLIST_NAME)
 
 hostname-setup:                   ## Add newsbrief.local to /etc/hosts (requires sudo)
 	@if grep -q "$(HOSTNAME)" /etc/hosts; then \
@@ -214,6 +218,44 @@ hostname-remove:                  ## Remove newsbrief.local from /etc/hosts (req
 		echo "$(HOSTNAME) not found in /etc/hosts"; \
 	fi
 
+# ---------- Autostart (launchd) ----------
+autostart-install:                ## Install launchd plist for auto-start on login
+	@mkdir -p "$(PROJECT_PATH)/logs"
+	@mkdir -p "$$(dirname $(PLIST_DEST))"
+	@sed -e 's|__PROJECT_PATH__|$(PROJECT_PATH)|g' \
+	     -e 's|__PODMAN_COMPOSE_PATH__|$(PODMAN_COMPOSE)|g' \
+	     scripts/com.newsbrief.plist.template > $(PLIST_DEST)
+	@launchctl load $(PLIST_DEST)
+	@echo "✅ Autostart installed and enabled"
+	@echo "   NewsBrief will start automatically on login"
+	@echo "   Logs: $(PROJECT_PATH)/logs/"
+
+autostart-uninstall:              ## Remove launchd plist (disable auto-start)
+	@if [ -f "$(PLIST_DEST)" ]; then \
+		launchctl unload $(PLIST_DEST) 2>/dev/null || true; \
+		rm -f $(PLIST_DEST); \
+		echo "✅ Autostart disabled and removed"; \
+	else \
+		echo "Autostart not installed"; \
+	fi
+
+autostart-status:                 ## Check autostart status
+	@if [ -f "$(PLIST_DEST)" ]; then \
+		echo "✅ Autostart is installed"; \
+		launchctl list | grep com.newsbrief || echo "   (not currently loaded)"; \
+	else \
+		echo "❌ Autostart not installed"; \
+		echo "   Run: make autostart-install"; \
+	fi
+
+autostart-start:                  ## Manually trigger autostart (for testing)
+	@launchctl start com.newsbrief
+	@echo "✅ Triggered com.newsbrief"
+
+autostart-stop:                   ## Stop the launchd job
+	@launchctl stop com.newsbrief 2>/dev/null || true
+	@echo "✅ Stopped com.newsbrief"
+
 # ---------- Defaults ----------
 .DEFAULT_GOAL := run
-.PHONY: venv run-local build tag push release local-release clean-release cleanup-old-images run deploy deploy-stop deploy-status deploy-init up down logs db-up db-down db-logs db-psql db-reset db-backup db-restore db-backup-list migrate migrate-new migrate-stamp migrate-history migrate-current hostname-setup hostname-check hostname-remove
+.PHONY: venv run-local build tag push release local-release clean-release cleanup-old-images run deploy deploy-stop deploy-status deploy-init up down logs db-up db-down db-logs db-psql db-reset db-backup db-restore db-backup-list migrate migrate-new migrate-stamp migrate-history migrate-current hostname-setup hostname-check hostname-remove autostart-install autostart-uninstall autostart-status autostart-start autostart-stop

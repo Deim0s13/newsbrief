@@ -73,6 +73,7 @@ data/newsbrief.db
 data/newsbrief_backup_*.db
 data/.topic_migration_*
 backups/
+logs/
 *.log
 *.sqlite3
 *.sqlite3-journal
