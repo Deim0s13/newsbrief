@@ -184,6 +184,36 @@ migrate-history:                    ## Show migration history
 migrate-current:                    ## Show current migration version
 	.venv/bin/alembic current
 
+# ---------- Hostname Setup ----------
+HOSTNAME         ?= newsbrief.local
+
+hostname-setup:                   ## Add newsbrief.local to /etc/hosts (requires sudo)
+	@if grep -q "$(HOSTNAME)" /etc/hosts; then \
+		echo "✅ $(HOSTNAME) already configured in /etc/hosts"; \
+	else \
+		echo "Adding $(HOSTNAME) to /etc/hosts (requires sudo)..."; \
+		echo "127.0.0.1   $(HOSTNAME)" | sudo tee -a /etc/hosts > /dev/null; \
+		echo "✅ $(HOSTNAME) added to /etc/hosts"; \
+	fi
+
+hostname-check:                   ## Verify hostname is configured
+	@if grep -q "$(HOSTNAME)" /etc/hosts; then \
+		echo "✅ $(HOSTNAME) is configured"; \
+		echo "   Access production at: http://$(HOSTNAME)"; \
+	else \
+		echo "❌ $(HOSTNAME) not found in /etc/hosts"; \
+		echo "   Run: make hostname-setup"; \
+	fi
+
+hostname-remove:                  ## Remove newsbrief.local from /etc/hosts (requires sudo)
+	@if grep -q "$(HOSTNAME)" /etc/hosts; then \
+		echo "Removing $(HOSTNAME) from /etc/hosts (requires sudo)..."; \
+		sudo sed -i '' '/$(HOSTNAME)/d' /etc/hosts; \
+		echo "✅ $(HOSTNAME) removed"; \
+	else \
+		echo "$(HOSTNAME) not found in /etc/hosts"; \
+	fi
+
 # ---------- Defaults ----------
 .DEFAULT_GOAL := run
-.PHONY: venv run-local build tag push release local-release clean-release cleanup-old-images run deploy deploy-stop deploy-status deploy-init up down logs db-up db-down db-logs db-psql db-reset db-backup db-restore db-backup-list migrate migrate-new migrate-stamp migrate-history migrate-current
+.PHONY: venv run-local build tag push release local-release clean-release cleanup-old-images run deploy deploy-stop deploy-status deploy-init up down logs db-up db-down db-logs db-psql db-reset db-backup db-restore db-backup-list migrate migrate-new migrate-stamp migrate-history migrate-current hostname-setup hostname-check hostname-remove
