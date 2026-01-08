@@ -878,13 +878,15 @@ def list_items(
                 )
 
         # Build dynamic query
+        # Note: PostgreSQL with SELECT DISTINCT requires ORDER BY expressions to be in SELECT
+        # So we add COALESCE(published, created_at) as sort_date for ordering
         select_clause = """
         SELECT DISTINCT i.id, i.title, i.url, i.published, i.summary, i.content_hash, i.content,
                i.ai_summary, i.ai_model, i.ai_generated_at,
                i.structured_summary_json, i.structured_summary_model,
                i.structured_summary_content_hash, i.structured_summary_generated_at,
                i.ranking_score, i.topic, i.topic_confidence, i.source_weight,
-               i.created_at
+               i.created_at, COALESCE(i.published, i.created_at) AS sort_date
         FROM items i
         """
 
@@ -935,9 +937,7 @@ def list_items(
             query += " " + " ".join(joins)
         if where_clauses:
             query += " WHERE " + " AND ".join(where_clauses)
-        query += (
-            " ORDER BY i.ranking_score DESC, COALESCE(i.published, i.created_at) DESC"
-        )
+        query += " ORDER BY i.ranking_score DESC, sort_date DESC"
         query += " LIMIT :lim"
 
         rows = s.execute(text(query), params).all()
