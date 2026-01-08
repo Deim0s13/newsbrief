@@ -124,4 +124,3 @@ Migrations run automatically on startup:
 - **v0.6.3**: Personalization features (user preferences, bookmarks)
 - **v0.7.0**: LLM improvements (model evaluation, prompt engineering)
 - **v0.8.0**: Ranking & Personalization epic
-

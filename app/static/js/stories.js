@@ -13,7 +13,7 @@ function setupEventListeners() {
     const sortFilter = document.getElementById('sort-filter');
     const topicFilter = document.getElementById('topic-filter');
     const interestsToggle = document.getElementById('interests-toggle');
-    
+
     if (statusFilter) {
         statusFilter.addEventListener('change', loadStories);
     }
@@ -26,7 +26,7 @@ function setupEventListeners() {
     if (interestsToggle) {
         interestsToggle.addEventListener('change', loadStories);
     }
-    
+
     // Load more button
     const loadMoreBtn = document.getElementById('load-more-btn');
     if (loadMoreBtn) {
@@ -39,18 +39,18 @@ async function loadStories() {
     const loading = document.getElementById('loading');
     const statsDiv = document.getElementById('story-stats');
     const countText = document.getElementById('story-count-text');
-    
+
     try {
         loading.classList.remove('hidden');
         container.innerHTML = '';
         statsDiv.classList.add('hidden');
-        
+
         // Get filter values
         const status = document.getElementById('status-filter').value;
         const orderBy = document.getElementById('sort-filter').value;
         const topic = document.getElementById('topic-filter')?.value || '';
         const applyInterests = document.getElementById('interests-toggle')?.checked ?? true;
-        
+
         // Build API URL
         const params = new URLSearchParams({
             limit: '20',
@@ -59,32 +59,32 @@ async function loadStories() {
             order_by: orderBy,
             apply_interests: applyInterests.toString()
         });
-        
+
         // Add topic filter if selected
         if (topic) {
             params.set('topic', topic);
         }
-        
+
         const apiUrl = `/stories?${params.toString()}`;
         console.log('Loading stories from:', apiUrl);
-        
+
         const response = await fetch(apiUrl);
-        
+
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-        
+
         const data = await response.json();
         console.log('Loaded stories:', data);
-        
+
         loading.classList.add('hidden');
-        
+
         // Show stats
         if (data.total !== undefined) {
             countText.textContent = `Showing ${data.stories.length} of ${data.total} stories`;
             statsDiv.classList.remove('hidden');
         }
-        
+
         if (data.stories.length === 0) {
             container.innerHTML = `
                 <div class="text-center py-12 text-gray-500 dark:text-gray-400">
@@ -100,19 +100,19 @@ async function loadStories() {
             `;
             return;
         }
-        
+
         data.stories.forEach(story => {
             const storyElement = createStoryElement(story);
             container.appendChild(storyElement);
         });
-        
+
         // Show load more button if there are more stories
         if (data.stories.length === 20 && data.total > 20) {
             document.getElementById('load-more-container').classList.remove('hidden');
         } else {
             document.getElementById('load-more-container').classList.add('hidden');
         }
-        
+
     } catch (error) {
         loading.classList.add('hidden');
         container.innerHTML = `
@@ -136,16 +136,16 @@ async function loadMoreStories() {
     const container = document.getElementById('stories-container');
     const loadMoreBtn = document.getElementById('load-more-btn');
     const currentStories = container.querySelectorAll('article').length;
-    
+
     try {
         loadMoreBtn.textContent = 'Loading...';
         loadMoreBtn.disabled = true;
-        
+
         const status = document.getElementById('status-filter').value;
         const orderBy = document.getElementById('sort-filter').value;
         const topic = document.getElementById('topic-filter')?.value || '';
         const applyInterests = document.getElementById('interests-toggle')?.checked ?? true;
-        
+
         const params = new URLSearchParams({
             limit: '20',
             offset: currentStories.toString(),
@@ -153,31 +153,31 @@ async function loadMoreStories() {
             order_by: orderBy,
             apply_interests: applyInterests.toString()
         });
-        
+
         // Add topic filter if selected
         if (topic) {
             params.set('topic', topic);
         }
-        
+
         const response = await fetch(`/stories?${params.toString()}`);
         const data = await response.json();
-        
+
         data.stories.forEach(story => {
             const storyElement = createStoryElement(story);
             container.appendChild(storyElement);
         });
-        
+
         if (data.stories.length < 20 || container.querySelectorAll('article').length >= data.total) {
             document.getElementById('load-more-container').classList.add('hidden');
         } else {
             loadMoreBtn.textContent = 'Load More Stories';
             loadMoreBtn.disabled = false;
         }
-        
+
         // Update count
-        document.getElementById('story-count-text').textContent = 
+        document.getElementById('story-count-text').textContent =
             `Showing ${container.querySelectorAll('article').length} of ${data.total} stories`;
-        
+
     } catch (error) {
         loadMoreBtn.textContent = 'Error - Try Again';
         loadMoreBtn.disabled = false;
@@ -188,16 +188,16 @@ async function loadMoreStories() {
 function createStoryElement(story) {
     const template = document.getElementById('story-template');
     const element = template.content.cloneNode(true);
-    
+
     // Title
     element.querySelector('.story-title').textContent = story.title;
-    
+
     // Synthesis preview (first 200 chars)
     const synthesisDiv = element.querySelector('.story-synthesis');
-    synthesisDiv.textContent = story.synthesis.length > 200 
-        ? story.synthesis.substring(0, 200) + '...' 
+    synthesisDiv.textContent = story.synthesis.length > 200
+        ? story.synthesis.substring(0, 200) + '...'
         : story.synthesis;
-    
+
     // Topics (show first 3)
     const topicsSpan = element.querySelector('.story-topics');
     if (story.topics && story.topics.length > 0) {
@@ -207,20 +207,20 @@ function createStoryElement(story) {
         }).join(' ');
         topicsSpan.innerHTML = topicBadges;
     }
-    
+
     // Article count
     element.querySelector('.article-count-number').textContent = `${story.article_count} sources`;
-    
+
     // Scores
     const scoresSpan = element.querySelector('.story-scores');
     scoresSpan.textContent = `I:${(story.importance_score * 100).toFixed(0)} F:${(story.freshness_score * 100).toFixed(0)}`;
     scoresSpan.title = `Importance: ${(story.importance_score * 100).toFixed(0)}%, Freshness: ${(story.freshness_score * 100).toFixed(0)}%`;
-    
+
     // Time
     const timeElement = element.querySelector('.story-time');
     timeElement.textContent = formatTimeAgo(story.generated_at);
     timeElement.title = new Date(story.generated_at).toLocaleString();
-    
+
     // Key points (show first 2)
     const keyPointsList = element.querySelector('.story-key-points ul');
     if (story.key_points && story.key_points.length > 0) {
@@ -235,7 +235,7 @@ function createStoryElement(story) {
             `;
             keyPointsList.appendChild(li);
         });
-        
+
         // Add "more" indicator if there are more points
         if (story.key_points.length > 2) {
             const li = document.createElement('li');
@@ -244,7 +244,7 @@ function createStoryElement(story) {
             keyPointsList.appendChild(li);
         }
     }
-    
+
     // Why it matters
     const whyMattersDiv = element.querySelector('.story-why-matters');
     const whyMattersText = element.querySelector('.why-matters-text');
@@ -252,18 +252,18 @@ function createStoryElement(story) {
         whyMattersText.textContent = story.why_it_matters;
         whyMattersDiv.classList.remove('hidden');
     }
-    
+
     // Entities (show first 5)
     const entitiesSpan = element.querySelector('.story-entities');
     if (story.entities && story.entities.length > 0) {
         const entityList = story.entities.slice(0, 5).join(', ');
         entitiesSpan.innerHTML = `<strong>Entities:</strong> ${entityList}${story.entities.length > 5 ? '...' : ''}`;
     }
-    
+
     // Link to story detail
     const storyLink = element.querySelector('.story-link');
     storyLink.href = `/story/${story.id}`;
-    
+
     // Make entire card clickable
     const article = element.querySelector('article');
     article.addEventListener('click', function(e) {
@@ -273,7 +273,7 @@ function createStoryElement(story) {
         }
         window.location.href = `/story/${story.id}`;
     });
-    
+
     return element;
 }
 
@@ -281,7 +281,7 @@ function createStoryElement(story) {
 async function refreshStories() {
     const btn = document.getElementById('refresh-stories-btn');
     const originalContent = btn.innerHTML;
-    
+
     try {
         // Disable button and show loading state
         btn.disabled = true;
@@ -289,10 +289,10 @@ async function refreshStories() {
             <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
             <span>Generating...</span>
         `;
-        
+
         // Show notification
         showNotification('Generating stories from recent articles... This may take a few minutes.', 'info');
-        
+
         // Trigger story generation (this may take a while)
         const response = await fetch('/stories/generate', {
             method: 'POST',
@@ -306,13 +306,13 @@ async function refreshStories() {
                 model: "llama3.1:8b"
             })
         });
-        
+
         if (!response.ok) {
             throw new Error(`Generation failed: ${response.statusText}`);
         }
-        
+
         const result = await response.json();
-        
+
         // v0.6.1: Show detailed message based on results
         if (result.stories_generated > 0) {
             showNotification(`Successfully generated ${result.stories_generated} stories!`, 'success');
@@ -322,12 +322,12 @@ async function refreshStories() {
         } else {
             showNotification(`Generation complete: ${result.stories_generated} stories created.`, 'info');
         }
-        
+
         // Reload stories
         setTimeout(() => {
             loadStories();
         }, 1000);
-        
+
     } catch (error) {
         console.error('Story generation error:', error);
         showNotification(`Failed to generate stories: ${error.message}`, 'error');
@@ -357,7 +357,7 @@ function formatTimeAgo(timestamp) {
     const now = new Date();
     const past = new Date(timestamp);
     const seconds = Math.floor((now - past) / 1000);
-    
+
     if (seconds < 60) return 'just now';
     if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
     if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
@@ -374,11 +374,11 @@ function showNotification(message, type = 'info') {
         type === 'error' ? 'bg-red-50 dark:bg-red-900 border-red-200 dark:border-red-700 text-red-800 dark:text-red-200' :
         'bg-blue-50 dark:bg-blue-900 border-blue-200 dark:border-blue-700 text-blue-800 dark:text-blue-200'
     }`;
-    
+
     notification.innerHTML = `
         <div class="flex items-start">
             <svg class="h-5 w-5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                ${type === 'success' ? 
+                ${type === 'success' ?
                     '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>' :
                     '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>'
                 }
@@ -393,13 +393,12 @@ function showNotification(message, type = 'info') {
             </button>
         </div>
     `;
-    
+
     document.body.appendChild(notification);
-    
+
     // Auto-remove after 5 seconds
     setTimeout(() => {
         notification.style.opacity = '0';
         setTimeout(() => notification.remove(), 300);
     }, 5000);
 }
-

@@ -1,0 +1,6 @@
+# Caddy reverse proxy configuration for NewsBrief
+# Provides friendly URL access at http://newsbrief.local
+
+newsbrief.local {
+    reverse_proxy api:8787
+}

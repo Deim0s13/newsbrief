@@ -8,7 +8,7 @@ NewsBrief is a self-hosted, privacy-focused news aggregator that replaces readin
 
 ## 🌟 Features
 
-### **🎯 Story-Based Aggregation (v0.7.1)** - *Current Release*
+### **🎯 Story-Based Aggregation (v0.7.2)** - *Current Release*
 Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **Time to informed: 30 min → 2 min**
 
 - **Automated Story Generation**: Daily scheduled generation at 6 AM (configurable timezone)
@@ -58,6 +58,16 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 - **GitOps-Ready Deployments**: Environment-specific Kubernetes manifests with health checks and rollback support
 - **Automated Dependency Management**: Weekly security audits, dependency updates, and base image maintenance
 - **Comprehensive Documentation**: Complete CI/CD guides, API documentation, and architecture decision records
+
+### **✅ Completed (v0.7.2 - Container & Deployment)** - Jan 2026
+- ✅ **Multi-stage Dockerfile**: Optimized build with non-root user, reduced image size
+- ✅ **Health Endpoint**: `/health` with database, LLM, and scheduler status checks
+- ✅ **Production Deployment**: `make deploy`, `deploy-stop`, `deploy-status`, `deploy-init`
+- ✅ **Database Backup/Restore**: `make db-backup`, `db-restore` with configurable BACKUP_DIR
+- ✅ **Dev/Prod Separation**: Isolated Docker volumes for production data
+- ✅ **Caddy Reverse Proxy**: Access production at `http://newsbrief.local`
+- ✅ **Auto-start on Login**: launchd plist with `make autostart-install`
+- ✅ **CI/CD Stabilization**: Pre-commit hooks, locked GitHub Action versions
 
 ### **✅ Completed (v0.7.1 - PostgreSQL Migration)** - Jan 2026
 - ✅ **PostgreSQL Support**: Production-ready database via DATABASE_URL
@@ -116,44 +126,97 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 
 ## 🚀 Quick Start
 
-### **Using Container (Recommended)**
+### **Production Deployment (Recommended)**
+
+Deploy the full stack with PostgreSQL, Caddy reverse proxy, and auto-start:
 
 ```bash
-# Clone and run with Podman/Docker
+# Clone repository
 git clone https://github.com/yourusername/newsbrief.git
 cd newsbrief
 
-# Start with compose
+# First-time setup
+cp .env.example .env              # Configure environment
+make hostname-setup               # Add newsbrief.local to /etc/hosts (sudo)
+make deploy                       # Start production stack
+make deploy-init                  # Initialize database
+
+# Access at http://newsbrief.local
+
+# Optional: Auto-start on login
+make autostart-install
+```
+
+### **Development Mode**
+
+For local development with hot-reload and SQLite:
+
+```bash
+# Create virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# Run development server
+make run-local
+
+# Access at http://localhost:8787
+```
+
+### **Quick Container Test**
+
+```bash
+# Build and run with compose (dev mode)
 podman-compose up -d
 # OR
 docker-compose up -d
 
-# Access API at http://localhost:8787
+# Access at http://localhost:8787
 ```
 
-### **Using Make (Development)**
+## 🏠 Development vs Production
+
+NewsBrief supports two distinct modes to separate your development work from daily use:
+
+| Aspect | Development | Production |
+|--------|-------------|------------|
+| **Database** | SQLite (`./data/`) | PostgreSQL (Docker volume) |
+| **Data Location** | `./data/` directory | `newsbrief_data` Docker volume |
+| **URL** | `http://localhost:8787` | `http://newsbrief.local` |
+| **Hot Reload** | ✅ Yes | ❌ No |
+| **Start Command** | `make run-local` | `make deploy` |
+
+### Production Commands
 
 ```bash
-# Build and run locally
-make clean-release VERSION=v0.5.3
-make run
+# Deployment
+make deploy              # Start production stack
+make deploy-stop         # Stop stack (data preserved)
+make deploy-status       # Check running containers
+make deploy-init         # First-time database setup
 
-# Check available commands
-make help
+# Hostname
+make hostname-setup      # Add newsbrief.local to /etc/hosts
+make hostname-check      # Verify hostname configured
+
+# Auto-start
+make autostart-install   # Enable start on login
+make autostart-uninstall # Disable auto-start
+make autostart-status    # Check if enabled
+
+# Backup
+make db-backup           # Backup to ./backups/
+make db-restore FILE=... # Restore from backup
+make db-backup-list      # List available backups
 ```
 
-### **Manual Build**
+### Environment Variables
+
+Create a `.env` file (see `.env.example`):
 
 ```bash
-# Build container
-podman build -t newsbrief-api .
-
-# Run with data persistence
-podman run --rm -it \
-  -p 8787:8787 \
-  -v ./data:/app/data \
-  -e OLLAMA_BASE_URL=http://host.containers.internal:11434 \
-  --name newsbrief newsbrief-api
+POSTGRES_PASSWORD=your_secure_password
+OLLAMA_BASE_URL=http://host.containers.internal:11434
 ```
 
 ## 📖 Usage
@@ -182,20 +245,11 @@ curl http://localhost:8787/stories | jq .
 curl http://localhost:8787/stories/1 | jq .
 ```
 
-### **Current Workflow** (v0.3.4 - Article-Based)
-
-```bash
-# Refresh all feeds
-curl -X POST http://localhost:8787/refresh
-
-# Get latest articles (to be replaced by stories)
-curl "http://localhost:8787/items?limit=10" | jq .
-```
-
 ### **API Endpoints**
 
 | Endpoint | Method | Purpose | Status |
 |----------|--------|---------|--------|
+| `/health` | GET | Health check with database, LLM, scheduler status | ✅ v0.7.2 |
 | `/feeds` | POST | Add new RSS feed | ✅ Available |
 | `/refresh` | POST | Fetch latest articles from all feeds | ✅ Available |
 | `/stories` | GET | List synthesized stories | ✅ v0.5.5 |
@@ -295,7 +349,7 @@ NewsBrief follows **local-first principles** with story-first aggregation:
 │  │ Manager  │ Extract  │  Llama 3.1 8B   │  │
 │  └──────────┴──────────┴─────────────────┘  │
 ├─────────────────────────────────────────────┤
-│              SQLite Database                │
+│         Database (SQLite / PostgreSQL)      │
 │  Stories + Story-Articles + Articles        │
 │              + Feeds + Cache                │
 └─────────────────────────────────────────────┘
@@ -306,9 +360,9 @@ NewsBrief follows **local-first principles** with story-first aggregation:
 - **Local LLM**: Ollama (Llama 3.1 8B) for entity extraction and multi-doc synthesis
 - **Intelligent Clustering**: Entity overlap + text similarity + time proximity
 - **Daily Generation**: Auto-generate 5-10 stories daily + manual refresh
-- **SQLite**: Simple, fast, no external dependencies
+- **Dual Database**: SQLite for development, PostgreSQL for production
 - **FastAPI**: Modern Python web framework with automatic OpenAPI docs
-- **Container-first**: Podman/Docker for easy deployment
+- **Container-first**: Podman/Docker with Caddy reverse proxy
 - **Privacy-First**: All AI processing runs locally
 
 ## 🛠️ Development
@@ -400,7 +454,7 @@ NewsBrief uses **modern CI/CD practices** with automated testing, security scann
 pip install -r requirements.txt -r requirements-dev.txt
 pip install pre-commit && pre-commit install
 
-# 🔧 Development with Quality Gates  
+# 🔧 Development with Quality Gates
 # Pre-commit hooks run automatically on commit:
 # ✅ Black formatting, isort imports, security scanning
 # ✅ Secrets detection, YAML validation, Dockerfile linting
@@ -428,7 +482,7 @@ safety check -r requirements.txt    # Security audit
 ```
 newsbrief/
 ├── app/                    # Application code
-│   ├── main.py            # FastAPI app and routes  
+│   ├── main.py            # FastAPI app and routes
 │   ├── db.py              # Database connection (SQLite/PostgreSQL)
 │   ├── orm_models.py      # SQLAlchemy ORM models
 │   ├── models.py          # Pydantic schemas
@@ -452,17 +506,19 @@ newsbrief/
 ├── data/                   # Persistent data
 │   └── newsbrief.sqlite3  # Database (generated)
 ├── scripts/               # Automation scripts
-├── Dockerfile            # Container definition
-├── compose.yaml          # Multi-service setup
-├── Makefile             # Build automation
+├── Dockerfile            # Multi-stage container build
+├── compose.yaml          # Production stack (API + PostgreSQL + Caddy)
+├── Caddyfile            # Reverse proxy configuration
+├── Makefile             # Build, deploy, and automation commands
 ├── requirements.txt     # Production dependencies
 ├── requirements-dev.txt  # Development dependencies
-└── .pre-commit-config.yaml # Code quality automation
+├── .pre-commit-config.yaml # Code quality automation
+└── CONTRIBUTING.md      # Development setup guide
 ```
 
 ## 🎯 Roadmap
 
-> **📋 Live Project Board**: Track detailed progress and epic breakdowns at  
+> **📋 Live Project Board**: Track detailed progress and epic breakdowns at
 > **[GitHub Project Board](https://github.com/users/Deim0s13/projects/7/views/1?layout=board)**
 
 ### **v0.5.5 - Story Architecture** ✅ **COMPLETE** (Nov 2025)
@@ -510,12 +566,22 @@ Transform from article-centric to story-based aggregation
 - [x] **v0.6.4 - Code Quality**: Type safety, test coverage, CI/CD improvements ✅ COMPLETE (Jan 2026)
 - [x] **v0.6.5 - Personalization**: Interest-based ranking, source quality weighting, feed health improvements ✅ COMPLETE (Jan 2026)
 
+### **v0.7.0 - Infrastructure** - ✅ COMPLETE
+- [x] **v0.7.1 - PostgreSQL Migration**: Dual database support, ORM models, Alembic migrations ✅ COMPLETE (Jan 2026)
+- [x] **v0.7.2 - Container & Deployment**: Multi-stage Dockerfile, Caddy proxy, auto-start, CI/CD stabilization ✅ COMPLETE (Jan 2026)
+
+### **v0.7.3 - Observability** - 🔜 NEXT
+- [ ] Prometheus metrics endpoint
+- [ ] Structured JSON logging
+- [ ] Performance dashboard
+- [ ] Error tracking integration
+
 ### **Project Tracking**
 
 Development is organized with GitHub Projects and Milestones for clear visibility:
 
-📋 **[GitHub Issues](https://github.com/Deim0s13/newsbrief/issues)** - All issues with labels and milestones  
-🎯 **[Milestones](https://github.com/Deim0s13/newsbrief/milestones)** - Release targets with progress tracking  
+📋 **[GitHub Issues](https://github.com/Deim0s13/newsbrief/issues)** - All issues with labels and milestones
+🎯 **[Milestones](https://github.com/Deim0s13/newsbrief/milestones)** - Release targets with progress tracking
 📊 **GitHub Project Board** - Kanban board (Backlog → Next → In Progress → Done)
 
 **Milestones**:
@@ -526,42 +592,48 @@ Development is organized with GitHub Projects and Milestones for clear visibilit
 - [v0.6.4 - Code Quality](https://github.com/Deim0s13/newsbrief/releases/tag/v0.6.4) - ✅ **COMPLETE** (Jan 2026)
 - [v0.6.5 - Personalization](https://github.com/Deim0s13/newsbrief/releases/tag/v0.6.5) - ✅ **COMPLETE** (Jan 2026)
 - [v0.7.1 - PostgreSQL Migration](https://github.com/Deim0s13/newsbrief/releases/tag/v0.7.1) - ✅ **COMPLETE** (Jan 2026)
+- [v0.7.2 - Container & Deployment](https://github.com/Deim0s13/newsbrief/releases/tag/v0.7.2) - ✅ **COMPLETE** (Jan 2026)
 
 **Epics** (via labels):
 - **epic:stories** - Story-based aggregation and synthesis
 - **epic:ui** - Web interface and user experience
 - **epic:database** - Data layer and migrations
 - **epic:security** - Authentication, encryption, hardening
-- **epic:ops** - CI/CD, deployment, monitoring  
+- **epic:ops** - CI/CD, deployment, monitoring
 - **Epic: Operations** - DevOps, monitoring, and deployment tooling
 - **Epic: Embeddings** - Semantic search and advanced clustering (Future)
 - **Epic: Search** - Full-text and semantic search capabilities (Future)
 
 ## 🤝 Contributing
 
-We welcome contributions! Here's how to get started:
+We welcome contributions! See **[CONTRIBUTING.md](CONTRIBUTING.md)** for detailed setup instructions.
+
+### **Quick Start for Contributors**
+
+```bash
+# Clone and setup
+git clone https://github.com/yourusername/newsbrief.git
+cd newsbrief
+pip install -r requirements.txt -r requirements-dev.txt
+pre-commit install
+
+# Create feature branch
+git checkout -b feature/amazing-feature
+
+# Make changes (pre-commit hooks auto-format)
+git commit -m "feat: add amazing feature"
+git push origin feature/amazing-feature
+```
 
 ### **Find Work to Do**
-1. **Check the [GitHub Project Board](https://github.com/users/Deim0s13/projects/7/views/1?layout=board)** for current epics and open issues
-2. **Look for issues labeled** `good first issue` or `help wanted`  
-3. **Comment on issues** you'd like to work on to avoid duplication
-
-### **Development Process**
-1. **Fork the repository**
-2. **Create feature branch**: `git checkout -b feature/amazing-feature`
-3. **Make changes and test**: `make build && make run`
-4. **Commit with clear messages**: `git commit -m "Add amazing feature"`
-5. **Push and create PR**: `git push origin feature/amazing-feature`
-
-### **Development Guidelines**
-- Follow existing code style and patterns
-- Add tests for new functionality
-- Update documentation for new features
-- Use semantic versioning for releases
+1. **Check the [GitHub Project Board](https://github.com/users/Deim0s13/projects/7/views/1?layout=board)** for current epics
+2. **Look for issues labeled** `good first issue` or `help wanted`
+3. **Comment on issues** you'd like to work on
 
 ## 🙏 Acknowledgments
 
 - [Mozilla Readability](https://github.com/mozilla/readability) for content extraction
 - [FastAPI](https://fastapi.tiangolo.com/) for the excellent web framework
 - [Ollama](https://ollama.ai/) for local LLM capabilities
-
+- [Caddy](https://caddyserver.com/) for the reverse proxy
+- [PostgreSQL](https://www.postgresql.org/) for production database

@@ -1628,7 +1628,7 @@ video {
     .mobile-hide {
         display: none !important;
     }
-    
+
     .mobile-full {
         width: 100% !important;
         margin-left: 0 !important;
@@ -1648,7 +1648,7 @@ video {
     .no-print {
         display: none !important;
     }
-    
+
     .article-card {
         -moz-column-break-inside: avoid;
              break-inside: avoid;
@@ -1656,11 +1656,11 @@ video {
         border: 1px solid #e5e7eb;
         margin-bottom: 1rem;
     }
-    
+
     .article-link {
         color: #1f2937 !important;
     }
-    
+
     .topic-badge {
         background: #f3f4f6 !important;
         color: #374151 !important;
@@ -2256,4 +2256,3 @@ video {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
-

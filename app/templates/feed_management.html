@@ -68,7 +68,7 @@
                         <svg class="fill-current h-4 w-4" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
                     </div>
                 </div>
-                
+
                 <div class="relative">
                     <select id="status-filter" class="appearance-none bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 py-2 px-4 pr-8 rounded leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
                         <option value="">All Status</option>
@@ -81,7 +81,7 @@
                     </div>
                 </div>
             </div>
-            
+
             <div class="flex items-center space-x-2">
                 <button id="refresh-feeds-btn" class="px-3 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg flex items-center space-x-2">
                     <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -89,7 +89,7 @@
                     </svg>
                     <span>Refresh All</span>
                 </button>
-                
+
                 <div class="flex items-center space-x-2">
                     <button id="import-opml-btn" class="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg flex items-center space-x-2">
                         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -97,7 +97,7 @@
                         </svg>
                         <span>Import OPML</span>
                     </button>
-                    
+
                     <button id="export-opml-btn" class="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white font-medium rounded-lg flex items-center space-x-2">
                         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
@@ -108,7 +108,7 @@
             </div>
         </div>
     </div>
-    
+
     <!-- Bulk Actions Bar -->
     <div id="bulk-actions-bar" class="hidden mb-6">
         <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
@@ -128,7 +128,7 @@
                             Assign
                         </button>
                     </div>
-                    
+
                     <div class="flex items-center space-x-2">
                         <label class="text-sm text-gray-700 dark:text-gray-300">Priority:</label>
                         <select id="bulk-priority-select" class="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm px-3 py-1">
@@ -212,20 +212,20 @@
                     <label for="feed-url" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
                         Feed URL <span class="text-red-500">*</span>
                     </label>
-                    <input type="url" id="feed-url" required 
+                    <input type="url" id="feed-url" required
                            class="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
                            placeholder="https://example.com/feed.xml">
                 </div>
-                
+
                 <div>
                     <label for="feed-name" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
                         Custom Name
                     </label>
-                    <input type="text" id="feed-name" 
+                    <input type="text" id="feed-name"
                            class="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
                            placeholder="Optional custom name">
                 </div>
-                
+
                 <div>
                     <label for="feed-description" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
                         Description
@@ -234,21 +234,21 @@
                               class="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
                               placeholder="Optional description"></textarea>
                 </div>
-                
+
                 <div>
                     <label for="feed-category" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
                         Category
                     </label>
-                    <input type="text" id="feed-category" 
+                    <input type="text" id="feed-category"
                            class="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
                            placeholder="e.g., Tech, News, Blogs">
                 </div>
-                
+
                 <div>
                     <label for="feed-priority" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
                         Priority
                     </label>
-                    <select id="feed-priority" 
+                    <select id="feed-priority"
                             class="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white">
                         <option value="1">1 - Low</option>
                         <option value="2">2 - Below Normal</option>
@@ -257,9 +257,9 @@
                         <option value="5">5 - Critical</option>
                     </select>
                 </div>
-                
+
                 <div class="flex items-center">
-                    <input type="checkbox" id="feed-disabled" 
+                    <input type="checkbox" id="feed-disabled"
                            class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-600 rounded">
                     <label for="feed-disabled" class="ml-2 block text-sm text-gray-700 dark:text-gray-300">
                         Disable this feed
@@ -304,7 +304,7 @@
                             <p class="text-xs text-gray-500">OPML files only (*.opml, *.xml)</p>
                         </div>
                     </div>
-                    
+
                     <!-- Selected File Display -->
                     <div id="selected-file-info" class="hidden mt-4 p-3 bg-purple-50 dark:bg-purple-900/20 rounded-md">
                         <div class="flex items-center justify-between">
@@ -322,18 +322,18 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- Import Options -->
                 <div class="space-y-3">
                     <div class="flex items-center">
-                        <input type="checkbox" id="opml-update-existing" checked 
+                        <input type="checkbox" id="opml-update-existing" checked
                                class="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 dark:border-gray-600 rounded">
                         <label for="opml-update-existing" class="ml-2 block text-sm text-gray-700 dark:text-gray-300">
                             Update existing feeds with new metadata
                         </label>
                     </div>
                     <div class="flex items-center">
-                        <input type="checkbox" id="opml-preserve-categories" checked 
+                        <input type="checkbox" id="opml-preserve-categories" checked
                                class="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 dark:border-gray-600 rounded">
                         <label for="opml-preserve-categories" class="ml-2 block text-sm text-gray-700 dark:text-gray-300">
                             Import feed categories and organize by folders
@@ -384,34 +384,34 @@ document.addEventListener('DOMContentLoaded', function() {
 function setupEventListeners() {
     // Add feed button
     document.getElementById('add-feed-btn').addEventListener('click', () => showAddFeedModal());
-    
+
     // Modal controls
     document.getElementById('cancel-feed-btn').addEventListener('click', () => hideFeedModal());
     document.getElementById('save-feed-btn').addEventListener('click', () => saveFeed());
-    
+
     // Refresh feeds
     document.getElementById('refresh-feeds-btn').addEventListener('click', () => refreshAllFeeds());
-    
+
     // Import/Export OPML
     document.getElementById('import-opml-btn').addEventListener('click', () => showOPMLImportModal());
     document.getElementById('export-opml-btn').addEventListener('click', () => exportOPML());
-    
+
     // OPML Import Modal
     document.getElementById('cancel-opml-import-btn').addEventListener('click', () => hideOPMLImportModal());
     document.getElementById('start-opml-import-btn').addEventListener('click', () => startOPMLImport());
     document.getElementById('opml-file-input').addEventListener('change', handleOPMLFileSelection);
-    
+
     // Bulk Operations
     document.getElementById('select-all-checkbox').addEventListener('change', handleSelectAllToggle);
     document.getElementById('select-all-btn').addEventListener('click', selectAllFeeds);
     document.getElementById('clear-selection-btn').addEventListener('click', clearSelection);
     document.getElementById('bulk-assign-category-btn').addEventListener('click', bulkAssignCategory);
     document.getElementById('bulk-assign-priority-btn').addEventListener('click', bulkAssignPriority);
-    
+
     // Filters
     document.getElementById('category-filter').addEventListener('change', () => applyFilters());
     document.getElementById('status-filter').addEventListener('change', () => applyFilters());
-    
+
     // Modal backdrop click
     feedModal.addEventListener('click', (e) => {
         if (e.target === feedModal) hideFeedModal();
@@ -423,7 +423,7 @@ async function loadFeeds() {
         loading.classList.remove('hidden');
         const response = await fetch('/feeds');
         feeds = await response.json();
-        
+
         renderFeeds();
         renderStats();
         await populateFilters();
@@ -437,9 +437,9 @@ async function loadFeeds() {
 
 function renderFeeds() {
     feedsTableBody.innerHTML = '';
-    
+
     const filteredFeeds = getFilteredFeeds();
-    
+
     if (filteredFeeds.length === 0) {
         feedsTableBody.innerHTML = `
             <tr>
@@ -450,7 +450,7 @@ function renderFeeds() {
         `;
         return;
     }
-    
+
     filteredFeeds.forEach(feed => {
         const row = createFeedRow(feed);
         feedsTableBody.appendChild(row);
@@ -460,16 +460,16 @@ function renderFeeds() {
 function createFeedRow(feed) {
     const row = document.createElement('tr');
     row.className = 'feed-row';
-    
-    const statusClass = feed.disabled ? 'feed-status-disabled' : 
+
+    const statusClass = feed.disabled ? 'feed-status-disabled' :
                        feed.last_error ? 'feed-status-error' : 'feed-status-active';
-    
-    const statusText = feed.disabled ? 'Disabled' : 
+
+    const statusText = feed.disabled ? 'Disabled' :
                       feed.last_error ? 'Error' : 'Active';
-    
+
     row.innerHTML = `
         <td class="px-6 py-4 whitespace-nowrap">
-            <input type="checkbox" class="feed-checkbox h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-600 rounded" 
+            <input type="checkbox" class="feed-checkbox h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-600 rounded"
                    data-feed-id="${feed.id}" onchange="handleFeedSelection()">
         </td>
         <td class="px-6 py-4 whitespace-nowrap">
@@ -510,16 +510,16 @@ function createFeedRow(feed) {
             <button onclick="deleteFeed(${feed.id})" class="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300">Delete</button>
         </td>
     `;
-    
+
     return row;
 }
 
 function renderHealthIndicator(feed) {
     const healthScore = feed.health_score || 100;
     const consecutiveFailures = feed.consecutive_failures || 0;
-    
+
     let healthClass, healthText, healthIcon;
-    
+
     if (healthScore >= 80) {
         healthClass = 'text-green-600 dark:text-green-400';
         healthText = 'Excellent';
@@ -545,10 +545,10 @@ function renderHealthIndicator(feed) {
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
         </svg>`;
     }
-    
-    const failureWarning = consecutiveFailures > 3 ? 
+
+    const failureWarning = consecutiveFailures > 3 ?
         `<div class="text-xs text-red-500 dark:text-red-400">⚠️ ${consecutiveFailures} failures</div>` : '';
-    
+
     return `
         <div class="flex items-center ${healthClass}">
             ${healthIcon}
@@ -566,10 +566,10 @@ function renderPerformanceMetrics(feed) {
     const lastResponseTime = feed.last_response_time_ms || 0;
     const lastFetchAt = feed.last_fetch_at;
     const lastSuccessAt = feed.last_success_at;
-    
+
     let responseTimeClass = 'text-gray-500 dark:text-gray-400';
     let responseTimeText = 'No data';
-    
+
     if (avgResponseTime > 0) {
         if (avgResponseTime < 500) {
             responseTimeClass = 'text-green-600 dark:text-green-400';
@@ -580,10 +580,10 @@ function renderPerformanceMetrics(feed) {
         }
         responseTimeText = `${Math.round(avgResponseTime)}ms avg`;
     }
-    
+
     const lastFetchText = lastFetchAt ? formatDate(lastFetchAt) : 'Never';
     const lastSuccessText = lastSuccessAt ? formatDate(lastSuccessAt) : 'Never';
-    
+
     return `
         <div class="text-sm">
             <div class="${responseTimeClass} font-medium">${responseTimeText}</div>
@@ -600,17 +600,17 @@ function renderStats() {
     const activeFeeds = feeds.filter(f => !f.disabled).length;
     const disabledFeeds = feeds.filter(f => f.disabled).length;
     const totalArticles = feeds.reduce((sum, f) => sum + f.total_articles, 0);
-    
+
     // Enhanced health statistics
     const healthyFeeds = feeds.filter(f => (f.health_score || 100) >= 80).length;
     const problematicFeeds = feeds.filter(f => (f.health_score || 100) < 60).length;
-    const avgHealthScore = feeds.length > 0 ? 
+    const avgHealthScore = feeds.length > 0 ?
         feeds.reduce((sum, f) => sum + (f.health_score || 100), 0) / feeds.length : 100;
-    
+
     // Performance statistics
     const avgResponseTime = feeds.filter(f => f.avg_response_time_ms > 0)
         .reduce((sum, f, _, arr) => sum + f.avg_response_time_ms / arr.length, 0);
-    
+
     // Category breakdown
     const categories = {};
     feeds.forEach(f => {
@@ -620,19 +620,19 @@ function renderStats() {
         categories[cat].articles += f.total_articles;
         categories[cat].health.push(f.health_score || 100);
     });
-    
+
     // Top performers
     const topPerformers = [...feeds]
         .filter(f => !f.disabled && f.total_articles > 0)
         .sort((a, b) => (b.health_score || 100) - (a.health_score || 100))
         .slice(0, 3);
-    
+
     // Problem feeds (failures, low health, or slow response >5s)
     const problemFeeds = [...feeds]
         .filter(f => (f.consecutive_failures || 0) > 0 || (f.health_score || 100) < 60 || (f.avg_response_time_ms || 0) > 5000)
         .sort((a, b) => (a.health_score || 100) - (b.health_score || 100))
         .slice(0, 3);
-    
+
     statsContainer.innerHTML = `
         <!-- Primary Statistics Cards -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -653,7 +653,7 @@ function renderStats() {
                     </div>
                 </div>
             </div>
-            
+
             <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
                 <div class="p-5">
                     <div class="flex items-center">
@@ -672,7 +672,7 @@ function renderStats() {
                     </div>
                 </div>
             </div>
-            
+
             <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
                 <div class="p-5">
                     <div class="flex items-center">
@@ -691,7 +691,7 @@ function renderStats() {
                     </div>
                 </div>
             </div>
-            
+
             <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
                 <div class="p-5">
                     <div class="flex items-center">
@@ -710,7 +710,7 @@ function renderStats() {
                 </div>
             </div>
         </div>
-        
+
         <!-- Overall Health Indicator -->
         <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg mb-6">
             <div class="p-5">
@@ -739,7 +739,7 @@ function renderStats() {
                 </div>
             </div>
         </div>
-        
+
         <!-- Category Breakdown -->
         ${Object.keys(categories).length > 1 ? `
         <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg mb-6">
@@ -748,8 +748,8 @@ function renderStats() {
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     ${Object.entries(categories).map(([cat, data]) => {
                         const avgCatHealth = data.health.reduce((sum, h) => sum + h, 0) / data.health.length;
-                        const healthColor = avgCatHealth >= 80 ? 'text-green-600 dark:text-green-400' : 
-                                          avgCatHealth >= 60 ? 'text-yellow-600 dark:text-yellow-400' : 
+                        const healthColor = avgCatHealth >= 80 ? 'text-green-600 dark:text-green-400' :
+                                          avgCatHealth >= 60 ? 'text-yellow-600 dark:text-yellow-400' :
                                           'text-red-600 dark:text-red-400';
                         return `
                             <div class="p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
@@ -771,7 +771,7 @@ function renderStats() {
             </div>
         </div>
         ` : ''}
-        
+
         <!-- Performance Insights -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             ${topPerformers.length > 0 ? `
@@ -813,7 +813,7 @@ function renderStats() {
                 </div>
             </div>
             ` : ''}
-            
+
             ${problemFeeds.length > 0 ? `
             <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
                 <div class="p-5">
@@ -835,7 +835,7 @@ function renderStats() {
                                             ${feed.name || feed.url.substring(0, 30) + '...'}
                                         </div>
                                         <div class="text-xs text-red-500 dark:text-red-400">
-                                            ${feed.consecutive_failures > 0 ? `${feed.consecutive_failures} consecutive failures` : 
+                                            ${feed.consecutive_failures > 0 ? `${feed.consecutive_failures} consecutive failures` :
                                               (feed.avg_response_time_ms > 5000 ? `Slow: ${Math.round(feed.avg_response_time_ms)}ms` : 'Low health score')}
                                         </div>
                                     </div>
@@ -874,7 +874,7 @@ function renderStats() {
             </div>
             `}
         </div>
-        
+
         <!-- Performance Summary -->
         <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
             <div class="p-5">
@@ -908,15 +908,15 @@ async function populateFilters() {
         const response = await fetch('/feeds/categories');
         const data = await response.json();
         const categories = data.categories || [];
-        
+
         // Populate main category filter
         const categoryFilter = document.getElementById('category-filter');
-        
+
         // Clear existing options except first
         while (categoryFilter.children.length > 1) {
             categoryFilter.removeChild(categoryFilter.lastChild);
         }
-        
+
         // Add category options with feed counts
         categories.forEach(category => {
             if (category.feed_count > 0) {  // Only show categories with actual feeds
@@ -926,15 +926,15 @@ async function populateFilters() {
                 categoryFilter.appendChild(option);
             }
         });
-        
+
         // Populate bulk category dropdown
         const bulkCategorySelect = document.getElementById('bulk-category-select');
-        
+
         // Clear existing options except first
         while (bulkCategorySelect.children.length > 1) {
             bulkCategorySelect.removeChild(bulkCategorySelect.lastChild);
         }
-        
+
         // Add all categories (including predefined ones)
         categories.forEach(category => {
             const option = document.createElement('option');
@@ -946,25 +946,25 @@ async function populateFilters() {
             }
             bulkCategorySelect.appendChild(option);
         });
-        
+
         // Add option to clear category
         const clearOption = document.createElement('option');
         clearOption.value = '__CLEAR__';
         clearOption.textContent = '(Remove Category)';
         clearOption.classList.add('text-gray-500', 'dark:text-gray-400');
         bulkCategorySelect.appendChild(clearOption);
-        
+
     } catch (error) {
         console.error('Error loading categories:', error);
         // Fallback to existing category extraction
         const categories = [...new Set(feeds.map(f => f.category).filter(c => c))].sort();
         const categoryFilter = document.getElementById('category-filter');
-        
+
         // Clear existing options except first
         while (categoryFilter.children.length > 1) {
             categoryFilter.removeChild(categoryFilter.lastChild);
         }
-        
+
         // Add category options
         categories.forEach(category => {
             const option = document.createElement('option');
@@ -978,7 +978,7 @@ async function populateFilters() {
 function getFilteredFeeds() {
     const categoryFilter = document.getElementById('category-filter').value;
     const statusFilter = document.getElementById('status-filter').value;
-    
+
     return feeds.filter(feed => {
         if (categoryFilter && feed.category !== categoryFilter) return false;
         if (statusFilter === 'active' && feed.disabled) return false;
@@ -1002,7 +1002,7 @@ function showAddFeedModal() {
 function editFeed(feedId) {
     const feed = feeds.find(f => f.id === feedId);
     if (!feed) return;
-    
+
     currentEditingFeed = feed;
     document.getElementById('modal-title').textContent = 'Edit Feed';
     populateFeedForm(feed);
@@ -1048,11 +1048,11 @@ async function saveFeed() {
         priority: parseInt(document.getElementById('feed-priority').value),
         disabled: document.getElementById('feed-disabled').checked
     };
-    
+
     try {
         const url = currentEditingFeed ? `/feeds/${currentEditingFeed.id}` : '/feeds';
         const method = currentEditingFeed ? 'PUT' : 'POST';
-        
+
         const response = await fetch(url, {
             method: method,
             headers: {
@@ -1060,11 +1060,11 @@ async function saveFeed() {
             },
             body: JSON.stringify(feedData)
         });
-        
+
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
+
         hideFeedModal();
         await loadFeeds(); // Reload to get fresh data
         showNotification(currentEditingFeed ? 'Feed updated successfully' : 'Feed added successfully', 'success');
@@ -1077,20 +1077,20 @@ async function saveFeed() {
 async function deleteFeed(feedId) {
     const feed = feeds.find(f => f.id === feedId);
     if (!feed) return;
-    
+
     if (!confirm(`Are you sure you want to delete "${feed.name || feed.url}"? This will also delete all articles from this feed.`)) {
         return;
     }
-    
+
     try {
         const response = await fetch(`/feeds/${feedId}`, {
             method: 'DELETE'
         });
-        
+
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
+
         await loadFeeds(); // Reload to get fresh data
         showNotification('Feed deleted successfully', 'success');
     } catch (error) {
@@ -1103,7 +1103,7 @@ async function viewFeedStats(feedId) {
     try {
         const response = await fetch(`/feeds/${feedId}/stats`);
         const stats = await response.json();
-        
+
         alert(`Feed Statistics:
 Total Articles: ${stats.total_articles}
 Last 24h: ${stats.articles_last_24h}
@@ -1123,11 +1123,11 @@ async function refreshAllFeeds() {
         const response = await fetch('/refresh', {
             method: 'POST'
         });
-        
+
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
+
         const result = await response.json();
         await loadFeeds(); // Reload to get fresh data
         showNotification(`Refresh completed! Ingested ${result.ingested} new articles`, 'success');
@@ -1155,7 +1155,7 @@ function handleOPMLFileSelection(event) {
     const file = event.target.files[0];
     if (file) {
         selectedOPMLFile = file;
-        
+
         // Show selected file info
         document.getElementById('selected-file-name').textContent = file.name;
         document.getElementById('selected-file-info').classList.remove('hidden');
@@ -1175,45 +1175,45 @@ async function startOPMLImport() {
         showNotification('Please select an OPML file first', 'error');
         return;
     }
-    
+
     // Show loading state
     const importBtn = document.getElementById('start-opml-import-btn');
     const importSpinner = document.getElementById('import-spinner');
     const importBtnText = document.getElementById('import-btn-text');
-    
+
     importBtn.disabled = true;
     importSpinner.classList.remove('hidden');
     importBtnText.textContent = 'Importing...';
-    
+
     try {
         // Create FormData for file upload
         const formData = new FormData();
         formData.append('file', selectedOPMLFile);
-        
+
         const response = await fetch('/feeds/import/opml/upload', {
             method: 'POST',
             body: formData
         });
-        
+
         const result = await response.json();
-        
+
         if (response.ok && result.success) {
             hideOPMLImportModal();
             await loadFeeds(); // Reload feeds to show imported ones
-            
+
             // Show detailed success message
             const details = result.details;
             let message = result.message;
-            
+
             if (details.categories_found && details.categories_found.length > 0) {
                 message += `\nCategories found: ${details.categories_found.join(', ')}`;
             }
-            
+
             if (details.errors && details.errors.length > 0) {
                 message += `\n⚠️ ${details.errors.length} error(s) occurred during import`;
                 console.warn('OPML Import errors:', details.errors);
             }
-            
+
             showNotification(message, 'success');
         } else {
             throw new Error(result.message || 'Import failed');
@@ -1232,38 +1232,38 @@ async function startOPMLImport() {
 async function exportOPML() {
     try {
         showNotification('Generating OPML export...', 'info');
-        
+
         // Trigger download
         const response = await fetch('/feeds/export/opml');
-        
+
         if (!response.ok) {
             throw new Error(`Export failed: ${response.statusText}`);
         }
-        
+
         // Get filename from headers or create default
         const contentDisposition = response.headers.get('Content-Disposition');
         let filename = 'newsbrief_feeds.opml';
-        
+
         if (contentDisposition) {
             const filenameMatch = contentDisposition.match(/filename="?([^";]+)"?/);
             if (filenameMatch) {
                 filename = filenameMatch[1];
             }
         }
-        
+
         // Create download link
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
         link.download = filename;
-        
+
         // Trigger download
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
         window.URL.revokeObjectURL(url);
-        
+
         showNotification('OPML export completed successfully', 'success');
     } catch (error) {
         console.error('Error exporting OPML:', error);
@@ -1280,18 +1280,18 @@ function handleFeedSelection() {
     document.querySelectorAll('.feed-checkbox:checked').forEach(checkbox => {
         selectedFeedIds.add(parseInt(checkbox.dataset.feedId));
     });
-    
+
     updateBulkActionsBar();
 }
 
 function handleSelectAllToggle(event) {
     const isChecked = event.target.checked;
     const visibleCheckboxes = document.querySelectorAll('.feed-checkbox');
-    
+
     visibleCheckboxes.forEach(checkbox => {
         checkbox.checked = isChecked;
     });
-    
+
     handleFeedSelection();
 }
 
@@ -1314,15 +1314,15 @@ function updateBulkActionsBar() {
     const bulkActionsBar = document.getElementById('bulk-actions-bar');
     const selectionCount = document.getElementById('selection-count');
     const selectAllCheckbox = document.getElementById('select-all-checkbox');
-    
+
     if (selectedFeedIds.size > 0) {
         bulkActionsBar.classList.remove('hidden');
         selectionCount.textContent = `${selectedFeedIds.size} feed${selectedFeedIds.size !== 1 ? 's' : ''} selected`;
-        
+
         // Update select-all checkbox state
         const totalCheckboxes = document.querySelectorAll('.feed-checkbox').length;
         const checkedCheckboxes = document.querySelectorAll('.feed-checkbox:checked').length;
-        
+
         if (checkedCheckboxes === 0) {
             selectAllCheckbox.indeterminate = false;
             selectAllCheckbox.checked = false;
@@ -1341,20 +1341,20 @@ function updateBulkActionsBar() {
 
 async function bulkAssignCategory() {
     const category = document.getElementById('bulk-category-select').value;
-    
+
     if (selectedFeedIds.size === 0) {
         showNotification('Please select feeds first', 'error');
         return;
     }
-    
+
     if (!category) {
         showNotification('Please select a category', 'error');
         return;
     }
-    
+
     // Handle special clear category option
     const actualCategory = category === '__CLEAR__' ? '' : category;
-    
+
     try {
         const response = await fetch('/feeds/categories/bulk-assign', {
             method: 'POST',
@@ -1364,9 +1364,9 @@ async function bulkAssignCategory() {
                 category: actualCategory
             })
         });
-        
+
         const result = await response.json();
-        
+
         if (response.ok && result.success) {
             await loadFeeds(); // Reload to show changes
             clearSelection();
@@ -1382,17 +1382,17 @@ async function bulkAssignCategory() {
 
 async function bulkAssignPriority() {
     const priority = document.getElementById('bulk-priority-select').value;
-    
+
     if (selectedFeedIds.size === 0) {
         showNotification('Please select feeds first', 'error');
         return;
     }
-    
+
     if (!priority) {
         showNotification('Please select a priority', 'error');
         return;
     }
-    
+
     try {
         const response = await fetch('/feeds/categories/bulk-priority', {
             method: 'POST',
@@ -1402,9 +1402,9 @@ async function bulkAssignPriority() {
                 priority: parseInt(priority)
             })
         });
-        
+
         const result = await response.json();
-        
+
         if (response.ok && result.success) {
             await loadFeeds(); // Reload to show changes
             clearSelection();
@@ -1425,7 +1425,7 @@ function formatDate(dateString) {
     const diffMs = now - date;
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffDays = Math.floor(diffHours / 24);
-    
+
     if (diffHours < 1) return 'Just now';
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 7) return `${diffDays}d ago`;
@@ -1440,9 +1440,9 @@ function showNotification(message, type = 'info') {
         'bg-blue-500'
     }`;
     notification.textContent = message;
-    
+
     document.getElementById('notification-area').appendChild(notification);
-    
+
     setTimeout(() => {
         notification.remove();
     }, 5000);

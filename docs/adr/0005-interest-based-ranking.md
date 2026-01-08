@@ -1,8 +1,8 @@
 # 0005 — Architecture Decision: Interest-Based Story Ranking
 
-**Status**: Accepted  
-**Date**: 2026-01-04  
-**Issue**: #57  
+**Status**: Accepted
+**Date**: 2026-01-04
+**Issue**: #57
 **Milestone**: v0.6.5 - Personalization
 
 ## Context
@@ -125,20 +125,20 @@ When `apply_interests=false`:
 
 ```python
 def calculate_interest_score(
-    story_topics: List[str], 
+    story_topics: List[str],
     topic_weights: Dict[str, float],
     default_weight: float = 1.0
 ) -> float:
     """Calculate interest score for a story based on its topics."""
     if not story_topics:
         return default_weight
-    
+
     weights = [topic_weights.get(topic, default_weight) for topic in story_topics]
     return sum(weights) / len(weights)
 
 def calculate_blended_score(
-    importance: float, 
-    interest: float, 
+    importance: float,
+    interest: float,
     importance_weight: float = 0.6,
     interest_weight: float = 0.4
 ) -> float:
@@ -181,18 +181,18 @@ def calculate_blended_score(
 
 ### Positive
 
-✅ **Personalized experience**: Stories ranked by what user cares about  
-✅ **No data loss**: All stories still visible, just reordered  
-✅ **Transparent**: Two separate scores explain ranking  
-✅ **Toggle-able**: Power users can disable if desired  
-✅ **Future-ready**: Foundation for per-user preferences  
-✅ **Simple config**: Edit JSON file to adjust preferences  
+✅ **Personalized experience**: Stories ranked by what user cares about
+✅ **No data loss**: All stories still visible, just reordered
+✅ **Transparent**: Two separate scores explain ranking
+✅ **Toggle-able**: Power users can disable if desired
+✅ **Future-ready**: Foundation for per-user preferences
+✅ **Simple config**: Edit JSON file to adjust preferences
 
 ### Negative
 
-⚠️ **Query-time calculation**: Interest score computed on each request  
-⚠️ **Config file**: No UI for editing (future enhancement)  
-⚠️ **Single user**: No per-user preferences until accounts added  
+⚠️ **Query-time calculation**: Interest score computed on each request
+⚠️ **Config file**: No UI for editing (future enhancement)
+⚠️ **Single user**: No per-user preferences until accounts added
 
 ### Mitigation
 
@@ -218,5 +218,5 @@ def calculate_blended_score(
 
 ---
 
-**Accepted**: 2026-01-04  
+**Accepted**: 2026-01-04
 **Implementation**: v0.6.5

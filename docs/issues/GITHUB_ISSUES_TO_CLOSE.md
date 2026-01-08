@@ -119,4 +119,3 @@ Details in docs/PERFORMANCE_OPTIMIZATIONS_IMPLEMENTED.md
    - Check milestone page
    - Verify completed issues show as closed
    - Review remaining v0.5.0 work
-

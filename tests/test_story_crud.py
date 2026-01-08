@@ -111,7 +111,7 @@ def setup_test_db():
             text(
                 """
             INSERT INTO items (id, title, url, url_hash, summary, ranking_score, topic, feed_id)
-            VALUES 
+            VALUES
                 (10, 'Test Article 1', 'http://example.com/1', 'hash1', 'Summary 1', 0.9, 'AI/ML', 1),
                 (20, 'Test Article 2', 'http://example.com/2', 'hash2', 'Summary 2', 0.8, 'Cloud', 1),
                 (30, 'Test Article 3', 'http://example.com/3', 'hash3', 'Summary 3', 0.7, 'Security', 1)

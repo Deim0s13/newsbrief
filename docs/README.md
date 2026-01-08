@@ -89,6 +89,5 @@ Archived and obsolete documentation (no longer actively maintained)
 
 ---
 
-**Last Updated**: November 18, 2025  
+**Last Updated**: November 18, 2025
 **Documentation Version**: v0.5.5
-

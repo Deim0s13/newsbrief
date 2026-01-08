@@ -1,7 +1,7 @@
 # Story Generation Bug - Fix Summary
 
-**Date**: 2025-12-01  
-**Issue**: Story generation failing - 78 unclustered articles  
+**Date**: 2025-12-01
+**Issue**: Story generation failing - 78 unclustered articles
 **Status**: ✅ FIXED
 
 ---
@@ -11,7 +11,7 @@
 **SQLite TEXT comparison format mismatch causing incorrect datetime filtering**
 
 - **Python passed**: `'2025-11-30 22:48:00+00:00'` (space separator)
-- **Database stores**: `'2025-11-30T00:59:15'` (T separator)  
+- **Database stores**: `'2025-11-30T00:59:15'` (T separator)
 - **SQLite compared**: Text strings, where space (ASCII 32) < 'T' (ASCII 84)
 - **Result**: ALL dates appeared to be after cutoff, breaking time window filtering
 
@@ -24,14 +24,14 @@
 ```python
 # Before (broken):
 cutoff_time = datetime.now(UTC) - timedelta(hours=time_window_hours)
-articles = session.execute(text("... WHERE published >= :cutoff_time"), 
+articles = session.execute(text("... WHERE published >= :cutoff_time"),
                           {"cutoff_time": cutoff_time})
 
 # After (fixed):
 cutoff_time = datetime.now(UTC) - timedelta(hours=time_window_hours)
 cutoff_time_str = cutoff_time.replace(tzinfo=None).isoformat()
 # Produces: '2025-11-30T22:48:00.000000'
-articles = session.execute(text("... WHERE published >= :cutoff_time"), 
+articles = session.execute(text("... WHERE published >= :cutoff_time"),
                           {"cutoff_time": cutoff_time_str})
 ```
 
@@ -161,4 +161,3 @@ From manual testing, still to address:
 ---
 
 **Status**: Core bug FIXED, similarity threshold tuning recommended, UI issues remain
-

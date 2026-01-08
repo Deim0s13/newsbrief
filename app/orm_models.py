@@ -73,7 +73,9 @@ class Feed(Base):
     # Relationships
     items = relationship("Item", back_populates="feed", cascade="all, delete-orphan")
 
-    __table_args__ = (Index("idx_feeds_health_score", "health_score", postgresql_using="btree"),)
+    __table_args__ = (
+        Index("idx_feeds_health_score", "health_score", postgresql_using="btree"),
+    )
 
 
 class Item(Base):
@@ -113,7 +115,9 @@ class Item(Base):
 
     # Relationships
     feed = relationship("Feed", back_populates="items")
-    story_links = relationship("StoryArticle", back_populates="article", cascade="all, delete-orphan")
+    story_links = relationship(
+        "StoryArticle", back_populates="article", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (
         Index("idx_items_published", "published"),
@@ -121,7 +125,11 @@ class Item(Base):
         Index("idx_items_ranking_score", "ranking_score"),
         Index("idx_items_topic", "topic"),
         Index("idx_items_ranking_composite", "topic", "ranking_score", "published"),
-        Index("idx_structured_summary_cache", "structured_summary_content_hash", "structured_summary_model"),
+        Index(
+            "idx_structured_summary_cache",
+            "structured_summary_content_hash",
+            "structured_summary_model",
+        ),
     )
 
 
@@ -229,4 +237,3 @@ class SynthesisCache(Base):
         Index("idx_synthesis_cache_key", "cache_key"),
         Index("idx_synthesis_cache_expires", "expires_at"),
     )
-

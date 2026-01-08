@@ -66,4 +66,3 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for detailed development setup.
 - **User Guide**: See [../user-guide/](../user-guide/)
 - **Project Management**: See [../project-management/](../project-management/)
 - **Architecture Decisions**: See [../adr/](../adr/)
-

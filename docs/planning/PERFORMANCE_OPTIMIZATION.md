@@ -2,8 +2,8 @@
 
 ## 📊 Current Performance (Baseline)
 
-**Test Date**: 2025-11-12  
-**Environment**: Local development (MacBook)  
+**Test Date**: 2025-11-12
+**Environment**: Local development (MacBook)
 **LLM**: Ollama (llama3.1:8b)
 
 ### Metrics
@@ -30,7 +30,7 @@
 
 ### **Priority 1: Background Job Processing** ⭐️
 
-**Problem**: Story generation blocks HTTP requests for 2-3 minutes  
+**Problem**: Story generation blocks HTTP requests for 2-3 minutes
 **Solution**: Move generation to background worker
 
 **Options**:
@@ -56,7 +56,7 @@
 
 ### **Priority 2: Concurrent LLM Calls** ⭐️
 
-**Problem**: Sequential LLM calls waste time  
+**Problem**: Sequential LLM calls waste time
 **Solution**: Process story clusters concurrently
 
 **Implementation**:
@@ -80,14 +80,14 @@ async def generate_stories_concurrent(session, clusters, model):
         return await asyncio.gather(*tasks)
 ```
 
-**Expected Impact**: 5-10x speedup (171s → 20-35s)  
+**Expected Impact**: 5-10x speedup (171s → 20-35s)
 **Effort**: Low-Medium (2-4 hours)
 
 ---
 
 ### **Priority 3: LLM Response Caching** ⭐
 
-**Problem**: Similar prompts generate same content repeatedly  
+**Problem**: Similar prompts generate same content repeatedly
 **Solution**: Cache LLM responses by content hash
 
 **Implementation**:
@@ -103,14 +103,14 @@ if cached:
     return json.loads(cached)
 ```
 
-**Expected Impact**: 50-80% cache hit rate (after initial run)  
+**Expected Impact**: 50-80% cache hit rate (after initial run)
 **Effort**: Low (2-3 hours)
 
 ---
 
 ### **Priority 4: Batch LLM Requests**
 
-**Problem**: One HTTP request per story cluster  
+**Problem**: One HTTP request per story cluster
 **Solution**: Batch multiple stories into single LLM call
 
 **Note**: Ollama doesn't natively support batching. Consider:
@@ -118,14 +118,14 @@ if cached:
 - Use Ollama's experimental batch API
 - Keep current approach but optimize prompts
 
-**Expected Impact**: 2-3x speedup  
+**Expected Impact**: 2-3x speedup
 **Effort**: Medium-High (depends on API choice)
 
 ---
 
 ### **Priority 5: Progress Tracking & Webhooks**
 
-**Problem**: No feedback during long-running generation  
+**Problem**: No feedback during long-running generation
 **Solution**: WebSocket or polling endpoint for progress
 
 **Implementation**:
@@ -139,7 +139,7 @@ async def story_generation_progress(websocket: WebSocket, job_id: str):
         await asyncio.sleep(1)
 ```
 
-**Expected Impact**: Better UX, no timeouts  
+**Expected Impact**: Better UX, no timeouts
 **Effort**: Medium (3-4 hours)
 
 ---
@@ -230,6 +230,5 @@ done
 
 ---
 
-**Last Updated**: 2025-11-12  
+**Last Updated**: 2025-11-12
 **Author**: AI Assistant (based on real testing)
-

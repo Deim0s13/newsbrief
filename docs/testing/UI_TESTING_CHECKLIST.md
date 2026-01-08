@@ -1,6 +1,6 @@
 # UI Testing Checklist - Story-First Landing Page
 
-**Date**: 2025-11-18  
+**Date**: 2025-11-18
 **Context**: Testing changes for Story-First UI implementation
 
 ---
@@ -173,9 +173,7 @@ If issues found, capture:
 
 ---
 
-**Testing Date**: _____________  
-**Tested By**: _____________  
-**Result**: [ ] PASS  [ ] FAIL  
-**Notes**: 
-
-
+**Testing Date**: _____________
+**Tested By**: _____________
+**Result**: [ ] PASS  [ ] FAIL
+**Notes**:

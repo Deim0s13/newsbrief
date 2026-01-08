@@ -79,9 +79,9 @@ def archive_old_stories() -> int:
             result = session.execute(
                 text(
                     """
-                    UPDATE stories 
+                    UPDATE stories
                     SET status = 'archived', last_updated = :now
-                    WHERE status = 'active' 
+                    WHERE status = 'active'
                     AND generated_at < :cutoff
                     """
                 ),
@@ -330,6 +330,12 @@ def stop_scheduler():
         logger.info("Scheduler stopped")
     else:
         logger.debug("Scheduler not running")
+
+
+def is_scheduler_running() -> bool:
+    """Check if the scheduler is currently running."""
+    global scheduler
+    return scheduler is not None and scheduler.running
 
 
 def get_scheduler_status() -> dict:

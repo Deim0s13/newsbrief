@@ -29,8 +29,21 @@ def setup_test_db():
     engine = create_engine("sqlite:///:memory:", echo=False)
     Base.metadata.create_all(engine)
 
-    # Create items table
+    # Create items and feeds tables
     with engine.connect() as conn:
+        conn.execute(
+            text(
+                """
+            CREATE TABLE IF NOT EXISTS feeds (
+                id INTEGER PRIMARY KEY,
+                name TEXT,
+                url TEXT,
+                health_score REAL DEFAULT 100.0
+            )
+        """
+            )
+        )
+
         conn.execute(
             text(
                 """
@@ -38,13 +51,21 @@ def setup_test_db():
                 id INTEGER PRIMARY KEY,
                 title TEXT,
                 url TEXT,
+                url_hash TEXT NOT NULL,
                 published DATETIME,
                 summary TEXT,
                 ai_summary TEXT,
                 topic TEXT,
-                feed_id INTEGER
+                feed_id INTEGER NOT NULL
             )
         """
+            )
+        )
+
+        # Insert a test feed
+        conn.execute(
+            text(
+                "INSERT INTO feeds (id, name, url) VALUES (1, 'Test Feed', 'http://test.com')"
             )
         )
 
@@ -53,17 +74,19 @@ def setup_test_db():
             conn.execute(
                 text(
                     """
-                INSERT INTO items (id, title, url, summary, topic, published)
-                VALUES (:id, :title, :url, :summary, :topic, :published)
+                INSERT INTO items (id, title, url, url_hash, summary, topic, published, feed_id)
+                VALUES (:id, :title, :url, :url_hash, :summary, :topic, :published, :feed_id)
             """
                 ),
                 {
                     "id": i,
                     "title": f"Test Article {i}",
                     "url": f"http://example.com/{i}",
+                    "url_hash": f"hash{i}",
                     "summary": f"Summary for article {i}",
                     "topic": "tech",
                     "published": datetime.now(UTC) - timedelta(hours=i),
+                    "feed_id": 1,
                 },
             )
         conn.commit()

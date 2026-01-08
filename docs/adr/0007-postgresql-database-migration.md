@@ -46,7 +46,7 @@ As NewsBrief matures toward production readiness, we anticipate:
 ### Implementation Approach
 
 1. **Dual Database Support**: Application supports both SQLite and PostgreSQL via `DATABASE_URL` environment variable
-2. **Default Behavior**: 
+2. **Default Behavior**:
    - If `DATABASE_URL` is set → Use PostgreSQL
    - If `DATABASE_URL` is not set → Fall back to SQLite
 3. **Container Architecture**: Separate `db` service in Docker Compose using official `postgres:16` image
@@ -67,7 +67,7 @@ services:
   db:
     image: postgres:16
     # Separate container, persistent volume, healthcheck
-    
+
   api:
     depends_on:
       db:
@@ -167,4 +167,3 @@ For users with existing SQLite databases:
 - [SQLAlchemy PostgreSQL Dialect](https://docs.sqlalchemy.org/en/20/dialects/postgresql.html)
 - [Docker PostgreSQL Image](https://hub.docker.com/_/postgres)
 - [12-Factor App: Backing Services](https://12factor.net/backing-services)
-

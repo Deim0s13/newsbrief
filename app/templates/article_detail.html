@@ -90,7 +90,7 @@
                 </span>
                 {% endif %}
             </div>
-            
+
             <!-- View Toggle -->
             <div class="flex items-center space-x-2">
                 <span class="text-sm font-medium text-gray-700 dark:text-gray-300">View:</span>
@@ -120,7 +120,7 @@
                 <time>{{ article.published if article.published else 'No date' }}</time>
             </div>
             {% endif %}
-            
+
             {% if article.author %}
             <div class="flex items-center">
                 <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -129,7 +129,7 @@
                 <span>{{ article.author }}</span>
             </div>
             {% endif %}
-            
+
             <div class="flex items-center">
                 <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
@@ -158,7 +158,7 @@
                     </span>
                     {% endif %}
                 </div>
-                
+
                 {% if article.structured_summary.bullets %}
                 <div class="mb-4">
                     <h3 class="font-medium text-gray-900 dark:text-white mb-2">Key Points:</h3>
@@ -174,14 +174,14 @@
                     </ul>
                 </div>
                 {% endif %}
-                
+
                 {% if article.structured_summary.why_it_matters %}
                 <div class="mb-4">
                     <h3 class="font-medium text-gray-900 dark:text-white mb-2">Why it matters:</h3>
                     <p class="text-gray-700 dark:text-gray-300">{{ article.structured_summary.why_it_matters }}</p>
                 </div>
                 {% endif %}
-                
+
                 {% if article.structured_summary.tags %}
                 <div>
                     <h3 class="font-medium text-gray-900 dark:text-white mb-2">Tags:</h3>
@@ -255,7 +255,7 @@
                     </svg>
                     Read Original
                 </a>
-                
+
                 <button onclick="shareArticle()" class="inline-flex items-center px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-md">
                     <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z"></path>
@@ -263,7 +263,7 @@
                     Share
                 </button>
             </div>
-            
+
             <div class="text-sm text-gray-500 dark:text-gray-400">
                 {% if article.ai_generated_at %}
                 AI Summary generated {{ article.ai_generated_at if article.ai_generated_at else 'recently' }}
@@ -283,13 +283,13 @@ function setViewMode(mode) {
     const container = document.getElementById('article-container');
     const skimBtn = document.getElementById('skim-btn');
     const detailBtn = document.getElementById('detail-btn');
-    
+
     // Remove all mode classes
     container.classList.remove('skim-mode', 'detail-mode');
-    
+
     // Add the selected mode class
     container.classList.add(mode + '-mode');
-    
+
     // Update button states
     if (mode === 'skim') {
         skimBtn.className = 'px-3 py-1 text-sm font-medium bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm rounded-md';
@@ -298,7 +298,7 @@ function setViewMode(mode) {
         detailBtn.className = 'px-3 py-1 text-sm font-medium bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm rounded-md';
         skimBtn.className = 'px-3 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white rounded-md';
     }
-    
+
     console.log('View mode changed to:', mode);
     console.log('Container classes:', container.className);
 }
@@ -306,7 +306,7 @@ function setViewMode(mode) {
 function shareArticle() {
     const title = "{{ article.title or 'Article' }}";
     const url = window.location.href;
-    
+
     if (navigator.share) {
         navigator.share({
             title: title,
@@ -330,9 +330,9 @@ function showNotification(message, type = 'info') {
         'bg-blue-500'
     }`;
     notification.textContent = message;
-    
+
     document.body.appendChild(notification);
-    
+
     setTimeout(() => {
         notification.remove();
     }, 3000);

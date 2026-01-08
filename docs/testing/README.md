@@ -110,4 +110,3 @@ mypy app/ --ignore-missing-imports
 - **Development**: See [../development/DEVELOPMENT.md](../development/DEVELOPMENT.md)
 - **CI/CD**: See [../development/CI-CD.md](../development/CI-CD.md)
 - **Planning**: See [../planning/](../planning/)
-

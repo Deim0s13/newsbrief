@@ -63,7 +63,7 @@ NewsBrief supports several environment variables for configuration:
 
 #### **Core Configuration**
 ```bash
-# LLM Integration: Ollama service for AI summarization  
+# LLM Integration: Ollama service for AI summarization
 export OLLAMA_BASE_URL=http://localhost:11434
 export NEWSBRIEF_LLM_MODEL=llama3.1:8b
 
@@ -182,10 +182,10 @@ export NEWSBRIEF_LLM_MODEL=mistral:7b              # Larger model for better qua
    ```bash
    # macOS
    brew install ollama
-   
+
    # Start Ollama service
    ollama serve
-   
+
    # Pull recommended models
    ollama pull llama3.1:8b    # Recommended for accuracy
    ollama pull mistral:7b     # Better quality, slower
@@ -206,7 +206,7 @@ export NEWSBRIEF_LLM_MODEL=mistral:7b              # Larger model for better qua
    ```bash
    # Check LLM service status
    curl http://localhost:8787/llm/status | jq .
-   
+
    # Generate test summary
    curl -X POST http://localhost:8787/summarize \
      -H "Content-Type: application/json" \
@@ -215,7 +215,7 @@ export NEWSBRIEF_LLM_MODEL=mistral:7b              # Larger model for better qua
 
 **Model Recommendations:**
 - **Development**: `llama3.1:8b` - Good balance of speed and accuracy
-- **Production**: `mistral:7b` - Higher quality, more detailed summaries  
+- **Production**: `mistral:7b` - Higher quality, more detailed summaries
 - **High-volume**: `llama3.2:1b` - Fastest inference for large-scale processing
 
 #### **Long Article Processing (Map-Reduce)** ⭐ *New in v0.3.2*
@@ -293,7 +293,7 @@ NewsBrief now includes intelligent article ranking and topic classification to i
 # - AI/ML: 1.2x boost (hot topic)
 # - Security: 1.15x boost (always important)
 # - Cloud/K8s: 1.1x boost
-# - Chips/Hardware: 1.1x boost  
+# - Chips/Hardware: 1.1x boost
 # - DevTools: 1.0x (baseline)
 ```
 
@@ -348,7 +348,7 @@ curl -X POST http://localhost:8787/feeds \
 # Fetch articles with enhanced statistics
 curl -X POST http://localhost:8787/refresh | jq .
 
-# View just the statistics summary  
+# View just the statistics summary
 curl -X POST http://localhost:8787/refresh | jq .stats
 
 # Monitor performance metrics
@@ -370,7 +370,7 @@ watch -n 30 'curl -s -X POST http://localhost:8787/refresh | jq ".stats.performa
 # Check if limits are being hit
 curl -s -X POST http://localhost:8787/refresh | jq '
   if .stats.performance.hit_global_limit then
-    "WARNING: Global limit reached" 
+    "WARNING: Global limit reached"
   elif .stats.performance.hit_time_limit then
     "WARNING: Time limit reached"
   else
@@ -379,7 +379,7 @@ curl -s -X POST http://localhost:8787/refresh | jq '
 
 # View fairness distribution
 curl -s -X POST http://localhost:8787/refresh | jq '
-  "Per-feed distribution:", 
+  "Per-feed distribution:",
   (.stats.items.per_feed | to_entries[] | "\(.key): \(.value) items")'
 
 # Configuration check
@@ -407,7 +407,7 @@ echo "First request (cache miss):"
 time curl -s -X POST http://localhost:8787/summarize \
   -H "Content-Type: application/json" \
   -d '{"item_ids": [1]}' | jq '.results[0].cache_hit'
-  
+
 echo "Second request (cache hit):"
 time curl -s -X POST http://localhost:8787/summarize \
   -H "Content-Type: application/json" \
@@ -418,12 +418,12 @@ curl -X POST http://localhost:8787/summarize \
   -H "Content-Type: application/json" \
   -d '{"item_ids": [1], "model": "mistral:7b"}'
 
-# Legacy plain text summaries (backward compatibility)  
+# Legacy plain text summaries (backward compatibility)
 curl -X POST http://localhost:8787/summarize \
   -H "Content-Type: application/json" \
   -d '{"item_ids": [1], "use_structured": false}'
 
-# Force regenerate existing summaries  
+# Force regenerate existing summaries
 curl -X POST http://localhost:8787/summarize \
   -H "Content-Type: application/json" \
   -d '{"item_ids": [1], "force_regenerate": true}'
@@ -606,24 +606,24 @@ sqlite3 data/newsbrief.sqlite3
 SELECT id, url, robots_allowed, disabled FROM feeds;
 
 # Check recent articles with ranking data ⭐ *Updated in v0.4.0*
-SELECT id, title, published, ranking_score, topic, topic_confidence, source_weight FROM items 
-ORDER BY ranking_score DESC, COALESCE(published, created_at) DESC 
+SELECT id, title, published, ranking_score, topic, topic_confidence, source_weight FROM items
+ORDER BY ranking_score DESC, COALESCE(published, created_at) DESC
 LIMIT 5;
 
 # Analyze ranking distribution
-SELECT 
+SELECT
   topic,
   COUNT(*) as article_count,
   ROUND(AVG(ranking_score), 3) as avg_ranking,
   ROUND(AVG(topic_confidence), 3) as avg_confidence
-FROM items 
-WHERE topic IS NOT NULL 
-GROUP BY topic 
+FROM items
+WHERE topic IS NOT NULL
+GROUP BY topic
 ORDER BY avg_ranking DESC;
 
 # Find top-ranked articles
-SELECT id, title, ranking_score, topic FROM items 
-ORDER BY ranking_score DESC 
+SELECT id, title, ranking_score, topic FROM items
+ORDER BY ranking_score DESC
 LIMIT 10;
 
 # Exit SQLite
@@ -638,7 +638,7 @@ LIMIT 10;
    ```bash
    # Find process using port 8787
    lsof -i :8787
-   
+
    # Kill process or use different port
    uvicorn app.main:app --reload --port 8788
    ```
@@ -647,7 +647,7 @@ LIMIT 10;
    ```bash
    # Stop all running instances
    pkill -f "uvicorn.*newsbrief"
-   
+
    # Remove lock if exists
    rm -f data/newsbrief.sqlite3-shm data/newsbrief.sqlite3-wal
    ```
@@ -656,7 +656,7 @@ LIMIT 10;
    ```bash
    # Ensure you're in project root
    pwd  # Should end with /newsbrief
-   
+
    # Check PYTHONPATH
    export PYTHONPATH=$PWD:$PYTHONPATH
    ```
@@ -756,7 +756,7 @@ safety check -r requirements.txt
 #### **Branch Strategy**
 ```
 main (production)
- ├── staging (pre-production) 
+ ├── staging (pre-production)
  └── dev (development)
      ├── feature/new-feature
      └── bugfix/fix-issue
@@ -764,7 +764,7 @@ main (production)
 
 #### **Deployment Flow**
 - **Push to `dev`** → Deploy to Development environment
-- **Push to `main`** → Deploy to Staging environment  
+- **Push to `main`** → Deploy to Staging environment
 - **Create Release** → Deploy to Production environment
 
 #### **Monitoring Your Pipeline**
@@ -807,11 +807,11 @@ make build                  # Test locally first
 def fetch_feed(url: str, timeout: float = 20.0) -> tuple[bool, str]:
     """
     Fetch RSS feed from URL with timeout.
-    
+
     Args:
         url: RSS feed URL
         timeout: Request timeout in seconds
-        
+
     Returns:
         Tuple of (success, error_message or content)
     """
@@ -835,7 +835,7 @@ def init_db() -> None:
             version = conn.execute("SELECT version FROM schema_info").scalar()
         except:
             version = None
-            
+
         if version is None:
             # Create initial schema
             conn.exec_driver_sql("CREATE TABLE schema_info (version INTEGER)")
@@ -896,7 +896,7 @@ NewsBrief implements robots.txt checking at two levels:
 # Key functions in app/feeds.py
 
 is_robot_allowed(feed_url)           # Feed-level checking
-is_article_url_allowed(article_url)  # Article-level checking  
+is_article_url_allowed(article_url)  # Article-level checking
 _get_robots_txt(domain)             # Cached robots.txt fetching
 _check_robots_txt_path(robots_txt, path, user_agent)  # Parser
 ```
@@ -932,7 +932,7 @@ Disallow: /private/
 ```
 
 **Parsing Rules**:
-- ✅ Multiple `User-agent` sections  
+- ✅ Multiple `User-agent` sections
 - ✅ `Disallow:` patterns with path prefixes
 - ✅ `Allow:` patterns that override disallows
 - ✅ `Disallow: /` blocks entire site
@@ -995,7 +995,7 @@ podman logs newsbrief | grep -i robots
 Robots.txt behavior is configured via constants in `app/feeds.py`:
 
 ```python
-HTTP_TIMEOUT = 20.0                      # robots.txt request timeout  
+HTTP_TIMEOUT = 20.0                      # robots.txt request timeout
 _robots_txt_cache: dict[str, str | None] = {}  # cache storage
 ```
 
@@ -1018,7 +1018,7 @@ def is_robot_allowed(feed_url: str) -> bool:
 
 **Fail-Safe Principles**:
 - Network errors default to "allow"
-- Invalid robots.txt defaults to "allow"  
+- Invalid robots.txt defaults to "allow"
 - Parsing errors default to "allow"
 - Missing robots.txt defaults to "allow"
 
@@ -1076,12 +1076,12 @@ For custom feed processing:
 # In feeds.py
 def custom_feed_processor(entry, feed_url: str) -> dict:
     """Process entry with custom logic based on feed source."""
-    
+
     # Example: Special handling for certain sources
     if "github.com" in feed_url:
         # Extract GitHub-specific metadata
         pass
-    
+
     return {
         "title": entry.title,
         "custom_field": extracted_data
@@ -1120,17 +1120,17 @@ podman run --rm newsbrief-api:v0.3.0 --version
 Before starting development, check the **[GitHub Project Board](https://github.com/users/Deim0s13/projects/7/views/1?layout=board)** for:
 
 - **Current epics** and their progress status
-- **Open issues** ready for development  
+- **Open issues** ready for development
 - **Sprint planning** and release milestones
 - **Epic breakdowns** with detailed user stories
 
 The project board organizes work into focused epics:
 - **epic:ingestion** - RSS feed processing improvements
-- **epic:summaries** - ✅ Complete: AI summarization with Ollama integration  
+- **epic:summaries** - ✅ Complete: AI summarization with Ollama integration
 - **epic:ranking** - Content scoring and curation algorithms
 - **epic:ui** - Web interface development with HTMX
 - **epic:embeddings** - Semantic search and vector operations
-- **epic:search** - Full-text search and query capabilities  
+- **epic:search** - Full-text search and query capabilities
 - **epic:ops** - DevOps, monitoring, and deployment tooling
 
 ### **Pull Request Process**
@@ -1202,18 +1202,18 @@ curl -X POST http://localhost:8787/feeds/categories/bulk-priority \
 ```bash
 # View feed health data
 curl http://localhost:8787/feeds | jq '.[] | {
-  name, 
-  health_score, 
-  consecutive_failures, 
+  name,
+  health_score,
+  consecutive_failures,
   avg_response_time_ms,
   last_success_at
 }'
 
 # Check category statistics
 curl http://localhost:8787/feeds/categories | jq '.categories[] | {
-  name, 
-  feed_count, 
-  avg_health, 
+  name,
+  feed_count,
+  avg_health,
   total_articles
 }'
 
@@ -1229,9 +1229,9 @@ time curl -X POST http://localhost:8787/refresh
 
 # Monitor health score changes after refresh
 curl http://localhost:8787/feeds | jq '.[] | select(.health_score < 90) | {
-  name, 
-  health_score, 
-  consecutive_failures, 
+  name,
+  health_score,
+  consecutive_failures,
   last_error
 }'
 ```

@@ -15,7 +15,7 @@ This milestone focuses on enhancing the LLM capabilities in NewsBrief to improve
 ## Issues / Enhancement Tasks
 
 ### Issue #1: Model Selection & Configuration
-**Priority**: High  
+**Priority**: High
 **Status**: Planning
 
 **Problem**: Currently using a single model for all tasks. Different tasks may benefit from different models (speed vs accuracy trade-offs).
@@ -31,7 +31,7 @@ This milestone focuses on enhancing the LLM capabilities in NewsBrief to improve
 ---
 
 ### Issue #2: Story Generation Quality
-**Priority**: High  
+**Priority**: High
 **Status**: Planning
 
 **Problem**: Story synthesis may produce generic or inconsistent narratives.
@@ -48,7 +48,7 @@ This milestone focuses on enhancing the LLM capabilities in NewsBrief to improve
 ---
 
 ### Issue #3: Prompt Engineering & Templates
-**Priority**: Medium  
+**Priority**: Medium
 **Status**: Planning
 
 **Problem**: Prompts are scattered across code files. No systematic approach to prompt versioning or A/B testing.
@@ -64,7 +64,7 @@ This milestone focuses on enhancing the LLM capabilities in NewsBrief to improve
 ---
 
 ### Issue #4: LLM Response Caching
-**Priority**: Medium  
+**Priority**: Medium
 **Status**: Planning
 
 **Problem**: Repeated LLM calls for similar content waste compute resources.
@@ -80,7 +80,7 @@ This milestone focuses on enhancing the LLM capabilities in NewsBrief to improve
 ---
 
 ### Issue #5: Model Evaluation & Benchmarking
-**Priority**: Medium  
+**Priority**: Medium
 **Status**: Planning
 
 **Problem**: No systematic way to compare model performance on NewsBrief tasks.
@@ -97,7 +97,7 @@ This milestone focuses on enhancing the LLM capabilities in NewsBrief to improve
 ---
 
 ### Issue #6: Cloud API Integration
-**Priority**: Low (Optional)  
+**Priority**: Low (Optional)
 **Status**: Planning
 
 **Problem**: Local models have capability limits. Cloud APIs offer more powerful options.
@@ -114,7 +114,7 @@ This milestone focuses on enhancing the LLM capabilities in NewsBrief to improve
 ---
 
 ### Issue #7: Fine-tuning for Domain-Specific Tasks
-**Priority**: Low (Future)  
+**Priority**: Low (Future)
 **Status**: Research
 
 **Problem**: General models may not be optimal for news aggregation tasks.
@@ -154,4 +154,3 @@ This milestone focuses on enhancing the LLM capabilities in NewsBrief to improve
 - The upgrade from llama3.2:3b to llama3.1:8b already improved classification significantly
 - Consider memory/compute constraints when evaluating larger models
 - Cloud APIs add cost but may be worthwhile for critical tasks
-

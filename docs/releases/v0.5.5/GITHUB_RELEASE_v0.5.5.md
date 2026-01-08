@@ -6,7 +6,7 @@
 
 2. **Select Tag**: Choose `v0.5.5` from the dropdown
 
-3. **Release Title**: 
+3. **Release Title**:
    ```
    v0.5.5 - Story Architecture: Return to Original Scope
    ```
@@ -20,7 +20,7 @@
 ```markdown
 # v0.5.5 - Story Architecture: Return to Original Scope
 
-**Release Date**: November 18, 2025  
+**Release Date**: November 18, 2025
 **Status**: ✅ Production Ready
 
 ---
@@ -164,10 +164,10 @@ uvicorn app.main:app --port 8787
 
 ## 🙏 Credits
 
-**Epic**: epic:stories - Story-based aggregation and synthesis  
-**Milestone**: v0.5.5 - Story Architecture  
-**Issues Closed**: 29 issues (#36-39, #47-48, #50-55, #66, etc.)  
-**Commits**: 30+ commits  
+**Epic**: epic:stories - Story-based aggregation and synthesis
+**Milestone**: v0.5.5 - Story Architecture
+**Issues Closed**: 29 issues (#36-39, #47-48, #50-55, #66, etc.)
+**Commits**: 30+ commits
 **Lines Changed**: 4,100+ lines added
 
 ---
@@ -217,4 +217,3 @@ The release will:
 ---
 
 **Status**: Ready to publish! 🚀
-

@@ -1,9 +1,9 @@
 # Issue #43 Complete: Story Quality and Importance Scoring
 
-**Date**: November 27, 2025  
-**Issue**: #43 - Story quality and importance scoring  
-**Status**: ✅ Complete  
-**Commit**: `4105669`  
+**Date**: November 27, 2025
+**Issue**: #43 - Story quality and importance scoring
+**Status**: ✅ Complete
+**Commit**: `4105669`
 **Branch**: `feature/enhanced-clustering`
 
 ---
@@ -38,7 +38,7 @@ ALTER TABLE stories ADD COLUMN quality_score REAL DEFAULT 0.5;
 ```python
 importance = (
     0.4 * min(article_count / 10, 1.0) +      # Article volume
-    0.3 * min(unique_sources / 5, 1.0) +      # Source diversity  
+    0.3 * min(unique_sources / 5, 1.0) +      # Source diversity
     0.3 * min(entity_count / 10, 1.0)         # Entity richness
 )
 ```
@@ -154,7 +154,7 @@ quality = 0.4*0.82 + 0.3*0.95 + 0.2*0.90 + 0.1*0.5
    entity_count = estimate_from_articles()  # Will use real entities after #40
    published_times = [article.published for article in cluster_articles]
    feed_health_scores = query_from_database(feed_ids)
-   
+
    # Calculate scores
    importance, freshness, quality = _calculate_story_scores(
        article_count, unique_sources, entity_count,
@@ -451,7 +451,6 @@ engagement: 0.1 (placeholder)
 
 ---
 
-**Status**: ✅ Ready for production  
-**Next Action**: Proceed to Issue #67 (0-stories UX) or #70 (View Toggle)  
+**Status**: ✅ Ready for production
+**Next Action**: Proceed to Issue #67 (0-stories UX) or #70 (View Toggle)
 **Last Updated**: November 27, 2025
-

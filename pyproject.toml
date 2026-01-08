@@ -30,4 +30,3 @@ fail_under = 35
 
 [tool.coverage.html]
 directory = "htmlcov"
-

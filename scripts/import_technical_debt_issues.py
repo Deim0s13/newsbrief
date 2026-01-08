@@ -11,7 +11,7 @@ from pathlib import Path
 
 def create_issue(title: str, body: str, labels: list[str], milestone: str) -> bool:
     """Create a GitHub issue using gh CLI."""
-    
+
     # Build gh CLI command
     cmd = [
         "gh", "issue", "create",
@@ -19,11 +19,11 @@ def create_issue(title: str, body: str, labels: list[str], milestone: str) -> bo
         "--body", body,
         "--milestone", milestone,
     ]
-    
+
     # Add labels
     for label in labels:
         cmd.extend(["--label", label])
-    
+
     try:
         result = subprocess.run(
             cmd,
@@ -42,7 +42,7 @@ def create_issue(title: str, body: str, labels: list[str], milestone: str) -> bo
 
 def main():
     """Main function to import technical debt issues."""
-    
+
     # Check if gh CLI is available
     try:
         subprocess.run(["gh", "auth", "status"], capture_output=True, check=True)
@@ -52,19 +52,19 @@ def main():
     except FileNotFoundError:
         print("❌ GitHub CLI (gh) not found. Install from: https://cli.github.com/")
         sys.exit(1)
-    
+
     # Load issues from JSON
     json_path = Path(__file__).parent.parent / "docs" / "issues" / "TECHNICAL_DEBT_ISSUES.json"
-    
+
     if not json_path.exists():
         print(f"❌ Issue file not found: {json_path}")
         sys.exit(1)
-    
+
     with open(json_path, 'r') as f:
         issues = json.load(f)
-    
+
     print(f"📋 Found {len(issues)} technical debt issues to create\n")
-    
+
     # Create each issue
     success_count = 0
     for i, issue in enumerate(issues, 1):
@@ -76,7 +76,7 @@ def main():
             milestone=issue["milestone"]
         ):
             success_count += 1
-    
+
     # Summary
     print(f"\n{'='*60}")
     print(f"✅ Successfully created: {success_count}/{len(issues)} issues")
@@ -89,4 +89,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

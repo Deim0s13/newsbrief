@@ -1,6 +1,6 @@
 # Session Summary - Story-First UI Completion
 
-**Date**: 2025-11-18  
+**Date**: 2025-11-18
 **Session Focus**: Story-First UI audit, bug fixes, and polish
 
 ---
@@ -54,7 +54,7 @@ articles: List[ItemOut] = []  # TODO: Query items table when needed
    - Fixed `get_story_by_id()` to load supporting articles
    - Added item table querying logic
    - Added structured summary parsing
-   
+
 ### UI Polish Changes
 2. **`app/templates/base.html`** (line 99)
    - Updated footer version to v0.5.0
@@ -179,7 +179,7 @@ articles: List[ItemOut] = []  # TODO: Query items table when needed
 
 - **v0.6.0 - Intelligence & Polish** (Due: Q1 2026)
   - 8 issues planned
-  
+
 - **v0.7.0 - Infrastructure** (Due: Q2 2026)
   - 13 issues planned
 
@@ -212,11 +212,10 @@ articles: List[ItemOut] = []  # TODO: Query items table when needed
 
 ---
 
-**Session Duration**: ~1 hour  
-**Changes**: 3 files modified, 4 docs created, 1 critical bug fixed  
-**Status**: ✅ Ready to proceed to Issue #48  
+**Session Duration**: ~1 hour
+**Changes**: 3 files modified, 4 docs created, 1 critical bug fixed
+**Status**: ✅ Ready to proceed to Issue #48
 
 ---
 
 **Next Session Goal**: Implement scheduled story generation (Issue #48)
-

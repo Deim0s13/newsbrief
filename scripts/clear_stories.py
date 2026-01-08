@@ -19,26 +19,25 @@ def clear_all_stories():
         # Get count before deletion
         story_count = session.execute(text("SELECT COUNT(*) FROM stories")).scalar()
         article_links_count = session.execute(text("SELECT COUNT(*) FROM story_articles")).scalar()
-        
+
         print(f"Found {story_count} stories and {article_links_count} article links")
-        
+
         if story_count == 0:
             print("No stories to delete")
             return
-        
+
         # Confirm
         response = input(f"Delete all {story_count} stories? (yes/no): ")
         if response.lower() != 'yes':
             print("Cancelled")
             return
-        
+
         # Delete (CASCADE will handle story_articles)
         session.execute(text("DELETE FROM stories"))
         session.commit()
-        
+
         print(f"✅ Deleted {story_count} stories")
         print("You can now generate fresh stories to test performance")
 
 if __name__ == "__main__":
     clear_all_stories()
-

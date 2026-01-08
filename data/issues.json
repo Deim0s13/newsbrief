@@ -19,7 +19,7 @@
       "body": "Check robots.txt for each feed host; avoid scraping disallowed paths.",
       "labels": ["epic:ingestion"]
     },
-  
+
     {
       "title": "Structured JSON summaries with Ollama",
       "body": "Generate `bullets`, `why_it_matters`, `tags` for each article. Cache by hash+model.",
@@ -35,7 +35,7 @@
       "body": "If Ollama is offline or summary fails, show first 2 sentences instead.",
       "labels": ["epic:summaries"]
     },
-  
+
     {
       "title": "Implement ranking score",
       "body": "Score = recency boost + source weight + keyword match. Store in DB.",
@@ -46,7 +46,7 @@
       "body": "Classify articles into topics: AI/ML, Cloud/K8s, Security, DevTools, Chips/Hardware.",
       "labels": ["epic:ranking"]
     },
-  
+
     {
       "title": "Skim vs Detail view toggle",
       "body": "Allow switching between titles-only (skim) and full summaries (detail).",
@@ -67,7 +67,7 @@
       "body": "Add/remove feeds, import OPML, set per-topic source weights.",
       "labels": ["epic:ui"]
     },
-  
+
     {
       "title": "Store embeddings with Ollama",
       "body": "Generate embeddings (`nomic-embed-text`) for each item; store as BLOB in SQLite.",
@@ -83,7 +83,7 @@
       "body": "On refresh, re-cluster last 3 days to collapse duplicates.",
       "labels": ["epic:embeddings"]
     },
-  
+
     {
       "title": "Hybrid search (FTS + vectors)",
       "body": "Combine SQLite FTS5 and embeddings to rank results.",
@@ -94,7 +94,7 @@
       "body": "Implement /ask endpoint: retrieve top snippets, ask LLM to answer only from them.",
       "labels": ["epic:search"]
     },
-  
+
     {
       "title": "Health endpoints",
       "body": "Add /healthz for app and /ollamaz to probe Ollama availability.",
@@ -115,7 +115,7 @@
       "body": "Unit tests for recency/weight/keyword scoring logic.",
       "labels": ["epic:ops"]
     },
-  
+
     {
       "title": "Run image with Apple Containers CLI",
       "body": "Build OCI image and run with `container run` on macOS Tahoe. Verify port mapping and volume mount.",

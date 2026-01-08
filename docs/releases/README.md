@@ -122,4 +122,3 @@ See [../development/BRANCHING_STRATEGY.md](../development/BRANCHING_STRATEGY.md)
 - **Migration Guides**: See [../user-guide/](../user-guide/)
 - **Technical Debt**: See [../development/TECHNICAL_DEBT_v0.6.0.md](../development/TECHNICAL_DEBT_v0.6.0.md)
 - **Project Management**: See [../project-management/](../project-management/)
-

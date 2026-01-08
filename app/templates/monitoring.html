@@ -5,7 +5,7 @@
 {% block content %}
 <div class="min-h-screen bg-gray-50 dark:bg-gray-900 py-6">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        
+
         <!-- Header -->
         <div class="mb-8">
             <h1 class="text-3xl font-bold text-gray-900 dark:text-white">System Monitoring</h1>
@@ -22,7 +22,7 @@
 
         <!-- Main Monitoring Content -->
         <div id="monitoring-content" class="hidden space-y-8">
-            
+
             <!-- System Overview Cards -->
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div class="stats-card">
@@ -92,7 +92,7 @@
 
             <!-- Performance Metrics -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                
+
                 <!-- System Health -->
                 <div class="stats-card">
                     <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">System Health</h3>
@@ -151,7 +151,7 @@
                         Refresh Data
                     </button>
                 </div>
-                
+
                 <!-- Feed Health Table -->
                 <div class="overflow-x-auto">
                     <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
@@ -189,12 +189,12 @@
 // Monitoring page JavaScript
 document.addEventListener('DOMContentLoaded', function() {
     loadMonitoringData();
-    
+
     // Refresh button
     document.getElementById('refresh-monitoring').addEventListener('click', function() {
         loadMonitoringData();
     });
-    
+
     // Auto-refresh every 30 seconds
     setInterval(loadMonitoringData, 30000);
 });
@@ -202,46 +202,46 @@ document.addEventListener('DOMContentLoaded', function() {
 async function loadMonitoringData() {
     try {
         console.log('Loading monitoring data...');
-        
+
         // Show loading state
         document.getElementById('loading-state').classList.remove('hidden');
         document.getElementById('monitoring-content').classList.add('hidden');
-        
+
         // Fetch feeds data
         const feedsResponse = await fetch('/feeds');
         const feeds = await feedsResponse.json();
-        
+
         // Calculate statistics
         const totalFeeds = feeds.length;
         const healthyFeeds = feeds.filter(f => f.health_score >= 80).length;
         const feedsWithIssues = feeds.filter(f => f.health_score < 80).length;
-        const avgHealthScore = feeds.length > 0 ? 
+        const avgHealthScore = feeds.length > 0 ?
             (feeds.reduce((sum, f) => sum + f.health_score, 0) / feeds.length).toFixed(1) : 0;
         const avgResponseTime = feeds.length > 0 ?
             (feeds.reduce((sum, f) => sum + (f.avg_response_time_ms || 0), 0) / feeds.length).toFixed(0) : 0;
-        
+
         // Update overview cards
         document.getElementById('total-feeds').textContent = totalFeeds;
         document.getElementById('healthy-feeds').textContent = healthyFeeds;
         document.getElementById('feeds-with-issues').textContent = feedsWithIssues;
         document.getElementById('avg-health-score').textContent = avgHealthScore + '%';
         document.getElementById('avg-response-time').textContent = avgResponseTime + 'ms';
-        
+
         // Update system info
         document.getElementById('last-refresh').textContent = new Date().toLocaleTimeString();
         document.getElementById('system-uptime').textContent = 'Running';
-        
+
         // Update feed health table
         updateFeedHealthTable(feeds);
-        
+
         // Calculate total articles
         const totalArticles = feeds.reduce((sum, f) => sum + (f.total_articles || 0), 0);
         document.getElementById('total-articles').textContent = totalArticles.toLocaleString();
-        
+
         // Show content
         document.getElementById('loading-state').classList.add('hidden');
         document.getElementById('monitoring-content').classList.remove('hidden');
-        
+
     } catch (error) {
         console.error('Error loading monitoring data:', error);
         showError('Failed to load monitoring data');
@@ -251,10 +251,10 @@ async function loadMonitoringData() {
 function updateFeedHealthTable(feeds) {
     const tbody = document.getElementById('feed-health-table');
     tbody.innerHTML = '';
-    
+
     // Sort feeds by health score (worst first for attention)
     feeds.sort((a, b) => a.health_score - b.health_score);
-    
+
     feeds.forEach(feed => {
         const row = document.createElement('tr');
         row.innerHTML = `
@@ -293,7 +293,7 @@ function formatTimestamp(timestamp) {
     const now = new Date();
     const diffMs = now - date;
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    
+
     if (diffHours < 1) return 'Just now';
     if (diffHours < 24) return `${diffHours}h ago`;
     return date.toLocaleDateString();
@@ -309,10 +309,10 @@ function showError(message) {
     const errorDiv = document.createElement('div');
     errorDiv.className = 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded';
     errorDiv.textContent = message;
-    
+
     const container = document.querySelector('.max-w-7xl');
     container.insertBefore(errorDiv, container.firstChild);
-    
+
     setTimeout(() => errorDiv.remove(), 5000);
 }
 </script>

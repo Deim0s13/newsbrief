@@ -1,8 +1,8 @@
 # Issue #67: Improve 0-Stories UX - COMPLETE
 
-**Issue**: [#67] Improve 0-stories UX  
-**Milestone**: v0.6.0 - Enhanced Intelligence & Polish  
-**Status**: ✅ COMPLETE  
+**Issue**: [#67] Improve 0-stories UX
+**Milestone**: v0.6.0 - Enhanced Intelligence & Polish
+**Status**: ✅ COMPLETE
 **Completed**: 2025-11-27
 
 ---
@@ -30,19 +30,19 @@ Implemented context-aware messages for different scenarios:
 
 **Scenario 1: No Articles Found**
 ```
-"No new articles found in the specified time window to generate stories from. 
+"No new articles found in the specified time window to generate stories from.
 Try fetching new articles or expanding the time window."
 ```
 
 **Scenario 2: All Duplicates**
 ```
-"All 19 story clusters were duplicates of existing stories. Your stories are 
+"All 19 story clusters were duplicates of existing stories. Your stories are
 up to date! Try increasing the time window or fetch new articles."
 ```
 
 **Scenario 3: No Clusters Formed**
 ```
-"Found 136 articles, but no new story clusters were formed. Try adjusting 
+"Found 136 articles, but no new story clusters were formed. Try adjusting
 the similarity threshold or minimum articles per story."
 ```
 
@@ -159,7 +159,6 @@ This demonstrates the value of detailed user feedback - it helps both users AND 
 
 ---
 
-**Status**: ✅ COMPLETE and VERIFIED  
-**Quality**: HIGH - Significant UX improvement  
+**Status**: ✅ COMPLETE and VERIFIED
+**Quality**: HIGH - Significant UX improvement
 **Next**: Issue already closed (#67)
-

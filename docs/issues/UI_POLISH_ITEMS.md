@@ -1,6 +1,6 @@
 # UI Polish Items - Story-First Landing Page
 
-**Date**: 2025-11-18  
+**Date**: 2025-11-18
 **Context**: Post-implementation audit of Story-First UI (Issues #50-54)
 
 ---
@@ -8,10 +8,10 @@
 ## ✅ FIXED (Critical)
 
 ### 1. Supporting Articles Not Loading ⚠️ **CRITICAL BUG - FIXED**
-**Status**: ✅ Fixed  
-**Issue**: `get_story_by_id()` was returning empty list for supporting articles  
-**Impact**: Story detail pages showed no supporting articles  
-**Fix**: Updated `app/stories.py` lines 246-315 to properly query items table  
+**Status**: ✅ Fixed
+**Issue**: `get_story_by_id()` was returning empty list for supporting articles
+**Impact**: Story detail pages showed no supporting articles
+**Fix**: Updated `app/stories.py` lines 246-315 to properly query items table
 **Files**: `app/stories.py`
 
 ---
@@ -19,10 +19,10 @@
 ## 🎨 POLISH ITEMS (Minor)
 
 ### 1. Articles Page References (Low Priority)
-**Status**: 📝 Needs Update  
-**Issue**: `/articles` page (index.html) still has article-centric copy  
-**Impact**: Minor - articles page is now secondary, but still accessible  
-**Recommendation**: Update header/description to clarify it's a "legacy" view  
+**Status**: 📝 Needs Update
+**Issue**: `/articles` page (index.html) still has article-centric copy
+**Impact**: Minor - articles page is now secondary, but still accessible
+**Recommendation**: Update header/description to clarify it's a "legacy" view
 **Files**: `app/templates/index.html` (lines 3, 9-10)
 
 ```html
@@ -36,26 +36,26 @@
 ```
 
 ### 2. View Switching Not Implemented (Low Priority)
-**Status**: 📝 TODO  
-**Issue**: Skim/Detailed view toggle in articles page has no functionality  
-**Impact**: Minor - just a visual toggle with no backend logic  
-**Location**: `app/static/js/app.js` line 38  
-**Recommendation**: Either implement or remove the toggle  
+**Status**: 📝 TODO
+**Issue**: Skim/Detailed view toggle in articles page has no functionality
+**Impact**: Minor - just a visual toggle with no backend logic
+**Location**: `app/static/js/app.js` line 38
+**Recommendation**: Either implement or remove the toggle
 **Files**: `app/static/js/app.js`, `app/templates/index.html`
 
 ### 3. Version Number in Footer (Cosmetic)
-**Status**: 📝 Needs Update  
-**Issue**: Footer says "v0.5.1" but we're working on v0.5.0  
-**Impact**: Cosmetic only  
-**Recommendation**: Update to "v0.5.0" or "v0.5.0-dev"  
+**Status**: 📝 Needs Update
+**Issue**: Footer says "v0.5.1" but we're working on v0.5.0
+**Impact**: Cosmetic only
+**Recommendation**: Update to "v0.5.0" or "v0.5.0-dev"
 **Files**: `app/templates/base.html` line 99
 
 ### 4. Mobile Navigation (Enhancement)
-**Status**: 📝 Not Implemented  
-**Issue**: Mobile menu button exists but has no functionality  
-**Impact**: Minor - mobile navigation doesn't work  
-**Location**: `app/templates/base.html` lines 80-84  
-**Recommendation**: Implement mobile menu dropdown or hide button  
+**Status**: 📝 Not Implemented
+**Issue**: Mobile menu button exists but has no functionality
+**Impact**: Minor - mobile navigation doesn't work
+**Location**: `app/templates/base.html` lines 80-84
+**Recommendation**: Implement mobile menu dropdown or hide button
 **Priority**: P2 (Nice to have)
 
 ---
@@ -63,17 +63,17 @@
 ## ⚙️ FUTURE ENHANCEMENTS (Deferred)
 
 ### 1. Response Time Tracking
-**Status**: 📝 TODO (Future)  
-**Issue**: Feed health monitoring doesn't track response times  
-**Location**: `app/main.py` line 459  
-**Priority**: P2 (Future enhancement)  
+**Status**: 📝 TODO (Future)
+**Issue**: Feed health monitoring doesn't track response times
+**Location**: `app/main.py` line 459
+**Priority**: P2 (Future enhancement)
 **Milestone**: v0.6.0 or v0.7.0
 
 ### 2. LLM-Based Topic Classification
-**Status**: 📝 TODO (Future)  
-**Issue**: Currently using keyword-based classification  
-**Location**: `app/ranking.py` line 418  
-**Priority**: P2 (Future enhancement)  
+**Status**: 📝 TODO (Future)
+**Issue**: Currently using keyword-based classification
+**Location**: `app/ranking.py` line 418
+**Priority**: P2 (Future enhancement)
 **Milestone**: v0.6.0 (Intelligence enhancements)
 
 ---
@@ -117,6 +117,5 @@ Create GitHub issues for:
 
 ---
 
-**Audit Completed**: 2025-11-18  
+**Audit Completed**: 2025-11-18
 **Result**: 1 critical bug fixed, 3 minor polish items identified, UI ready for use
-

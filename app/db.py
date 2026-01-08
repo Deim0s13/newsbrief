@@ -172,7 +172,7 @@ def init_db() -> None:
         )
         conn.exec_driver_sql(
             """
-        CREATE INDEX IF NOT EXISTS idx_structured_summary_cache 
+        CREATE INDEX IF NOT EXISTS idx_structured_summary_cache
         ON items(structured_summary_content_hash, structured_summary_model);
         """
         )
@@ -189,7 +189,7 @@ def init_db() -> None:
         )
         conn.exec_driver_sql(
             """
-        CREATE INDEX IF NOT EXISTS idx_items_ranking_composite 
+        CREATE INDEX IF NOT EXISTS idx_items_ranking_composite
         ON items(topic, ranking_score DESC, published DESC);
         """
         )

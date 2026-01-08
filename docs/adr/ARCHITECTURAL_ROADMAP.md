@@ -328,4 +328,3 @@ See `docs/adr/0001-architecture.md` for format reference.
 ---
 
 *This document is reviewed and updated with each minor version release.*
-

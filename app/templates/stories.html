@@ -9,7 +9,7 @@
         <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Today's Stories</h1>
         <p class="mt-2 text-gray-600 dark:text-gray-300">AI-synthesized news from multiple sources</p>
     </div>
-    
+
     <!-- Filters and Actions -->
     <div class="mb-6 flex flex-wrap gap-4 items-center">
         <!-- Status Filter -->
@@ -21,7 +21,7 @@
                 <option value="archived">Archived</option>
             </select>
         </div>
-        
+
         <!-- Sort Order -->
         <div class="flex items-center space-x-2">
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Sort by:</label>
@@ -31,7 +31,7 @@
                 <option value="generated_at">Latest Generated</option>
             </select>
         </div>
-        
+
         <!-- Topic Filter -->
         <div class="flex items-center space-x-2">
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Topic:</label>
@@ -48,7 +48,7 @@
                 <option value="Space">Space</option>
             </select>
         </div>
-        
+
         <!-- Interest-Based Ranking Toggle -->
         <div class="flex items-center space-x-2">
             <label for="interests-toggle" class="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer" title="Rank stories by your topic preferences (configured in data/interests.json)">
@@ -59,7 +59,7 @@
                 <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
             </label>
         </div>
-        
+
         <!-- Refresh Stories Button -->
         <button id="refresh-stories-btn" onclick="refreshStories()" class="ml-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md flex items-center space-x-2">
             <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -68,12 +68,12 @@
             <span>Generate Stories</span>
         </button>
     </div>
-    
+
     <!-- Story Count & Stats -->
     <div id="story-stats" class="hidden mb-4 text-sm text-gray-600 dark:text-gray-400">
         <span id="story-count-text">Loading stories...</span>
     </div>
-    
+
     <!-- Stories Loading State -->
     <div id="loading" class="hidden">
         <div class="flex items-center justify-center py-12">
@@ -81,7 +81,7 @@
             <span class="ml-3 text-gray-600 dark:text-gray-300">Loading stories...</span>
         </div>
     </div>
-    
+
     <!-- Stories Container -->
     <div id="stories-container" class="space-y-6">
         <!-- Story items will be loaded here via JavaScript -->
@@ -93,7 +93,7 @@
             <p class="text-sm mt-1">Stories are synthesized from multiple sources</p>
         </div>
     </div>
-    
+
     <!-- Load More Button -->
     <div id="load-more-container" class="hidden text-center mt-8">
         <button id="load-more-btn" class="px-6 py-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-medium rounded-md">
@@ -122,15 +122,15 @@
                     <time class="story-time text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap"></time>
                 </div>
             </div>
-            
+
             <!-- Story Title -->
             <h2 class="story-title text-2xl font-bold text-gray-900 dark:text-white mb-3 hover:text-blue-600 dark:hover:text-blue-400">
             </h2>
-            
+
             <!-- Story Synthesis Preview -->
             <div class="story-synthesis text-gray-700 dark:text-gray-300 mb-4 line-clamp-3">
             </div>
-            
+
             <!-- Key Points Preview (first 2) -->
             <div class="story-key-points mb-4">
                 <div class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Key Points:</div>
@@ -138,7 +138,7 @@
                     <!-- Key points will be inserted here -->
                 </ul>
             </div>
-            
+
             <!-- Why It Matters Preview -->
             <div class="story-why-matters hidden">
                 <div class="flex items-start space-x-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
@@ -151,7 +151,7 @@
                     </div>
                 </div>
             </div>
-            
+
             <!-- Footer -->
             <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
                 <div class="flex items-center space-x-2 text-xs text-gray-500 dark:text-gray-400">
@@ -173,4 +173,3 @@
 {% block scripts %}
 <script src="{{ url_for('static', path='js/stories.js') }}"></script>
 {% endblock %}
-

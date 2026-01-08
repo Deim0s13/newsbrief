@@ -228,10 +228,10 @@ def get_story_by_id(session: Session, story_id: int) -> Optional[StoryOut]:
                 f"""
                 SELECT id, title, url, published, summary, content_hash, content,
                        ai_summary, ai_model, ai_generated_at,
-                       structured_summary_json, structured_summary_model, 
+                       structured_summary_json, structured_summary_model,
                        structured_summary_content_hash, structured_summary_generated_at,
                        ranking_score, topic, topic_confidence, source_weight, feed_id
-                FROM items 
+                FROM items
                 WHERE id IN ({placeholders})
                 ORDER BY ranking_score DESC
                 """
@@ -1160,7 +1160,7 @@ def _generate_story_synthesis(
                 text(
                     f"""
             SELECT id, title, summary, ai_summary, topic
-            FROM items 
+            FROM items
             WHERE id IN ({placeholders})
             ORDER BY published DESC
         """
@@ -1425,7 +1425,7 @@ def generate_stories_simple(
         text(
             """
         SELECT id, title, topic, published, summary, ai_summary
-        FROM items 
+        FROM items
         WHERE published >= :cutoff_time
         AND (ai_summary IS NOT NULL OR summary IS NOT NULL)
         ORDER BY published DESC

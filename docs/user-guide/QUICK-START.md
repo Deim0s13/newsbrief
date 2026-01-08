@@ -99,7 +99,7 @@ curl -X POST "http://localhost:8787/summarize" \
 ## 📚 Next Steps
 
 - **API Documentation**: [`docs/API.md`](API.md)
-- **Development Guide**: [`docs/DEVELOPMENT.md`](DEVELOPMENT.md)  
+- **Development Guide**: [`docs/DEVELOPMENT.md`](DEVELOPMENT.md)
 - **CI/CD Pipeline**: [`docs/CI-CD.md`](CI-CD.md)
 - **Architecture**: [`docs/adr/0001-architecture.md`](adr/0001-architecture.md)
 
@@ -150,7 +150,7 @@ python -c "from app.db import init_db; init_db()"
 # Format code
 black app/ && isort app/
 
-# Type checking  
+# Type checking
 mypy app/ --ignore-missing-imports
 
 # Security scan

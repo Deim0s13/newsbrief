@@ -41,7 +41,7 @@ jobs:
                 query($login:String!,$num:Int!){
                   user(login:$login){ projectV2(number:$num){ id } }
                 }`, { login, num: number })
-              
+
               const projectId = proj.user?.projectV2?.id
               if (!projectId) {
                 console.log(`❌ Project #${number} not found under user ${login}`)
@@ -69,7 +69,7 @@ jobs:
                 console.log(`✅ Added item to project: ${itemId}`)
               } catch (e) {
                 console.log(`ℹ️  Item might already be in project, searching...`)
-                
+
                 const items = await gql(`
                   query($projectId:ID!){
                     node(id:$projectId){
@@ -79,8 +79,8 @@ jobs:
                     }
                   }`, { projectId })
                 itemId = items.node.items.nodes.find(n => n.content?.id === contentId)?.id
-                
-                if (!itemId) { 
+
+                if (!itemId) {
                   console.log("❌ Item not found in project and cannot add")
                   return  // Don't fail the workflow
                 }
@@ -101,7 +101,7 @@ jobs:
                     }
                   }
                 }`, { projectId })
-                
+
               const fields = f.node.fields.nodes
               const findField = n => fields.find(fl => fl.name === n)
               const statusField = findField("Status")
@@ -109,14 +109,14 @@ jobs:
 
               console.log(`📊 Available fields: ${fields.map(f => f.name).join(', ')}`)
 
-              if (!statusField) { 
+              if (!statusField) {
                 console.log("ℹ️  No Status field found; exiting gracefully")
-                return 
+                return
               }
-              
+
               const statusOpts = statusField.options || []
               console.log(`📝 Status options: ${statusOpts.map(o => o.name).join(', ')}`)
-              
+
               const firstOpt   = statusOpts[0]
               const findOpt = (...candidates) => {
                 const exact = n => statusOpts.find(o => o.name.toLowerCase() === n.toLowerCase())
@@ -124,7 +124,7 @@ jobs:
                 const rx = new RegExp(candidates.join("|"), "i")
                 return statusOpts.find(o => rx.test(o.name))
               }
-              
+
               const todoOpt = firstOpt || findOpt("Todo","To do","Not started","Backlog")
               const wipOpt  = findOpt("In Progress","In progress","Doing","WIP","Started") || todoOpt
               const doneOpt = findOpt("Done","Complete","Completed","Closed","Resolved") || statusOpts[statusOpts.length-1] || todoOpt
@@ -141,7 +141,7 @@ jobs:
                   }`, { projectId, itemId, fieldId: field.id, opt: opt.id })
                 console.log(`✅ Updated ${field.name}`)
               }
-              
+
               const setStatus = (opt, reason) => setSingleSelect(statusField, opt, reason)
 
               // 5) Epic mapping from labels (issues only)
@@ -149,7 +149,7 @@ jobs:
                 const labels = (payload.labels || []).map(l => l.name)
                 const epicLabel = labels.find(l => l.startsWith("epic:"))
                 const epicName  = epicLabel ? epicLabel.replace(/^epic:/,'').trim() : null
-                
+
                 if (epicName && epicField) {
                   const epicOpt = (epicField.options || []).find(o => o.name === epicName)
                   if (epicOpt) {
@@ -184,7 +184,7 @@ jobs:
               }
 
               console.log(`✅ Project automation completed successfully`)
-              
+
             } catch (error) {
               console.error(`❌ Project automation failed: ${error.message}`)
               console.error(`Stack trace: ${error.stack}`)

@@ -72,6 +72,8 @@ data/newsbrief.sqlite3-journal
 data/newsbrief.db
 data/newsbrief_backup_*.db
 data/.topic_migration_*
+backups/
+logs/
 *.log
 *.sqlite3
 *.sqlite3-journal
@@ -93,7 +95,6 @@ dmypy.json
 config.local.*
 
 # Container/Build artifacts
-.dockerignore
 docker-compose.override.yml
 docker-compose.local.yml
 

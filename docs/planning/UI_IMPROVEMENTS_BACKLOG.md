@@ -1,7 +1,7 @@
 # UI Improvements & Fixes Backlog
 
-**Created**: 2025-11-13  
-**Status**: Backlog  
+**Created**: 2025-11-13
+**Status**: Backlog
 **Priority**: P2 (Enhancement)
 
 ## Overview
@@ -76,4 +76,3 @@ These are polish items that don't block core functionality. The story-based land
 ---
 
 **Next Steps**: Document specific issues with screenshots/descriptions once investigated further.
-

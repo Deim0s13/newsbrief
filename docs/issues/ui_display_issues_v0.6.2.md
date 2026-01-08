@@ -1,8 +1,8 @@
 # 🎨 UI/Display Issues for v0.6.2
 
-**Milestone**: v0.6.2 - Performance & Quality  
-**Priority**: HIGH (user-facing)  
-**Type**: Bug fixes and UI polish  
+**Milestone**: v0.6.2 - Performance & Quality
+**Priority**: HIGH (user-facing)
+**Type**: Bug fixes and UI polish
 **Created**: 2025-12-01
 
 ---
@@ -16,10 +16,10 @@ While v0.6.1 core intelligence features (entity extraction, semantic clustering,
 ## 🐛 High Priority Issues
 
 ### Issue 1: HTML Tags Visible in Story Supporting Articles
-**Severity**: HIGH  
+**Severity**: HIGH
 **User Impact**: Poor readability, unprofessional appearance
 
-**Description**: 
+**Description**:
 Supporting articles in story detail pages show raw HTML tags like `<p>blah</p>` instead of properly rendered or stripped text.
 
 **Steps to Reproduce**:
@@ -32,12 +32,12 @@ Supporting articles in story detail pages show raw HTML tags like `<p>blah</p>` 
 <p>The fire broke out at 2am in the apartment complex...</p>
 ```
 
-**Expected**: 
+**Expected**:
 Clean text without HTML markup, either:
 - Rendered as HTML (if intentional formatting)
 - Stripped to plain text
 
-**Root Cause**: 
+**Root Cause**:
 - Backend may be storing HTML in summary field
 - Frontend missing `| safe` filter or HTML stripping
 - Check: `app/templates/story_detail.html` supporting articles rendering
@@ -50,7 +50,7 @@ Clean text without HTML markup, either:
 ---
 
 ### Issue 2: Story Topic Mismatch with Supporting Articles ✅ FIXED (2025-12-24)
-**Severity**: HIGH  
+**Severity**: HIGH
 **User Impact**: Confusing, misleading categorization
 
 **Status**: ✅ **FIXED** - Unified topic classification system implemented
@@ -69,7 +69,7 @@ Clean text without HTML markup, either:
 
 **New Topic Distribution** (after migration):
 ```
-general: 1170, devtools: 291, politics: 159, chips-hardware: 121, 
+general: 1170, devtools: 291, politics: 159, chips-hardware: 121,
 science: 95, ai-ml: 74, business: 69, security: 36, cloud-k8s: 10
 ```
 
@@ -84,7 +84,7 @@ science: 95, ai-ml: 74, business: 69, security: 36, cloud-k8s: 10
 ## ⚠️ Medium Priority Issues
 
 ### Issue 3: All Article Ranking Scores Show 7.000 ✅ CLOSED (2025-12-27)
-**Severity**: MEDIUM  
+**Severity**: MEDIUM
 **User Impact**: Cannot differentiate article quality
 
 **Status**: ✅ **CLOSED** - Working as Intended (GitHub #78)
@@ -95,7 +95,7 @@ science: 95, ai-ml: 74, business: 69, security: 36, cloud-k8s: 10
 - Top articles show 7.0 because they legitimately have highest scores
 - Default sort (ranking DESC) surfaces these first
 
-**Resolution**: 
+**Resolution**:
 The "all 7.000" observation came from viewing top-ranked articles which correctly have high scores. The ranking calculation is functioning correctly.
 
 **Future Work**: Ranking improvements tracked in v0.8.0 milestone (GitHub #84)
@@ -103,10 +103,10 @@ The "all 7.000" observation came from viewing top-ranked articles which correctl
 ---
 
 ### Issue 4: Story Importance Scores Broken - New Stories Hidden
-**Severity**: HIGH (upgraded from MEDIUM)  
+**Severity**: HIGH (upgraded from MEDIUM)
 **User Impact**: New stories hidden from default view, users see stale content
 
-**Description**: 
+**Description**:
 Story importance scores are severely broken:
 - **Old stories (Dec 1)**: importance_score = 1.0 (maximum)
 - **New stories (Dec 19)**: importance_score = 0.16-0.32 (very low)
@@ -120,13 +120,13 @@ SELECT id, importance_score, generated_at FROM stories ORDER BY importance_score
 -- 783 | 1.0 | 2025-12-01
 -- 784 | 1.0 | 2025-12-01
 
--- New stories have very low scores  
+-- New stories have very low scores
 SELECT id, importance_score, generated_at FROM stories ORDER BY generated_at DESC LIMIT 3;
 -- 932 | 0.16 | 2025-12-19
 -- 931 | 0.16 | 2025-12-19
 ```
 
-**Expected**: 
+**Expected**:
 Varied importance scores (0.0-1.0) based on:
 - Article count (more articles = higher importance)
 - Source quality (healthier feeds = higher importance)
@@ -147,14 +147,14 @@ importance = 0.4 * article_score + 0.3 * source_score + 0.3 * entity_score
 
 **Database Query**:
 ```sql
-SELECT 
-    importance_score, 
-    freshness_score, 
-    quality_score, 
+SELECT
+    importance_score,
+    freshness_score,
+    quality_score,
     article_count,
     COUNT(*) as count
 FROM stories
-GROUP BY 
+GROUP BY
     ROUND(importance_score, 2),
     ROUND(freshness_score, 2),
     ROUND(quality_score, 2),
@@ -165,10 +165,10 @@ ORDER BY importance_score DESC;
 ---
 
 ### Issue 5: Skim View Not Fully Working (Main Articles Page)
-**Severity**: MEDIUM  
+**Severity**: MEDIUM
 **User Impact**: Feature not working as designed
 
-**Description**: 
+**Description**:
 On the main Articles page (`/articles`), the "Skim View" toggle only reduces font size instead of creating truly compact cards with 2-line previews.
 
 **Expected Behavior**:
@@ -194,7 +194,7 @@ On the main Articles page (`/articles`), the "Skim View" toggle only reduces fon
 - JavaScript applying inline styles
 - Cache-busting parameter on CSS file
 
-**Recommendation**: 
+**Recommendation**:
 - Consider using Tailwind's `@layer` directives
 - Or switch to utility classes in JavaScript
 - Or build Tailwind locally instead of CDN
@@ -209,10 +209,10 @@ On the main Articles page (`/articles`), the "Skim View" toggle only reduces fon
 ## ⚠️ Medium Priority Issues (Continued)
 
 ### Issue 6: Filter Options Not Working
-**Severity**: MEDIUM  
+**Severity**: MEDIUM
 **User Impact**: Cannot filter articles or stories
 
-**Description**: 
+**Description**:
 None of the filter options (topic filters, sorting options, etc.) are functioning on the Articles page.
 
 **Steps to Reproduce**:
@@ -244,10 +244,10 @@ None of the filter options (topic filters, sorting options, etc.) are functionin
 ## ℹ️ Low Priority Issues
 
 ### Issue 7: Model and Status Fields Empty in Story Detail
-**Severity**: LOW  
+**Severity**: LOW
 **User Impact**: Missing metadata display
 
-**Description**: 
+**Description**:
 Story detail pages don't show the LLM model used or the story status, even though these are stored in the database.
 
 **Expected**:
@@ -269,10 +269,10 @@ LIMIT 5;
 ## 📊 Performance Issues (Non-Blocking)
 
 ### Issue 8: Feed Refresh Takes 2.5 Minutes
-**Severity**: LOW (acceptable for 22 feeds)  
+**Severity**: LOW (acceptable for 22 feeds)
 **User Impact**: Longer wait time for feed refresh
 
-**Current**: ~2.5 minutes for 22 feeds  
+**Current**: ~2.5 minutes for 22 feeds
 **Expected**: <1 minute (ideal)
 
 **Notes**:
@@ -338,7 +338,7 @@ LIMIT 5;
 ## 📌 Labels
 
 - `enhancement`: UI/UX improvements
-- `bug`: Display/rendering issues  
+- `bug`: Display/rendering issues
 - `v0.6.2`: Target for next minor release
 - `good-first-issue`: Issues 1, 2, 6 are straightforward
 
@@ -374,4 +374,3 @@ LIMIT 5;
 | #6 | #81 | 📋 Backlog |
 | #7 | #82 | 📋 Backlog |
 | #8 | #83 | 📋 Backlog |
-

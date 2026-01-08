@@ -393,7 +393,7 @@ def update_feed_health_metrics(
         current = s.execute(
             text(
                 """
-                SELECT fetch_count, success_count, consecutive_failures, 
+                SELECT fetch_count, success_count, consecutive_failures,
                        avg_response_time_ms, last_success_at
                 FROM feeds WHERE id = :feed_id
             """
@@ -536,7 +536,7 @@ def import_opml_content(opml_content: str) -> dict[str, Any]:
                             s.execute(
                                 text(
                                     """
-                                    UPDATE feeds 
+                                    UPDATE feeds
                                     SET name = COALESCE(:name, name),
                                         description = COALESCE(:description, description),
                                         category = COALESCE(:category, category),
@@ -563,8 +563,8 @@ def import_opml_content(opml_content: str) -> dict[str, Any]:
                             s.execute(
                                 text(
                                     """
-                                    UPDATE feeds 
-                                    SET name = :name, description = :description, 
+                                    UPDATE feeds
+                                    SET name = :name, description = :description,
                                         category = :category, updated_at = CURRENT_TIMESTAMP
                                     WHERE id = :feed_id
                                 """
@@ -623,7 +623,7 @@ def export_opml() -> str:
                 SELECT url, name, description, category, disabled, created_at,
                        COUNT(i.id) as article_count
                 FROM feeds f
-                LEFT JOIN items i ON f.id = i.feed_id  
+                LEFT JOIN items i ON f.id = i.feed_id
                 ORDER BY category, name, url
             """
             )
@@ -827,9 +827,9 @@ def fetch_and_store() -> RefreshStats:
                 s.execute(
                     text(
                         """
-                    UPDATE feeds SET 
-                        etag=:e, 
-                        last_modified=:lm, 
+                    UPDATE feeds SET
+                        etag=:e,
+                        last_modified=:lm,
                         updated_at=CURRENT_TIMESTAMP,
                         last_fetch_at=CURRENT_TIMESTAMP,
                         fetch_count=fetch_count + 1,
@@ -1154,9 +1154,9 @@ def recalculate_rankings_and_topics() -> dict:
             s.execute(
                 text(
                     """
-                    UPDATE items 
-                    SET ranking_score = :ranking_score, 
-                        topic = :topic, 
+                    UPDATE items
+                    SET ranking_score = :ranking_score,
+                        topic = :topic,
                         topic_confidence = :topic_confidence,
                         source_weight = :source_weight
                     WHERE id = :article_id

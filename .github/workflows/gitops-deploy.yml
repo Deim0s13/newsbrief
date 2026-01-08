@@ -58,7 +58,7 @@ jobs:
           echo "Environment: ${{ inputs.environment }}"
           echo "Image tag: ${{ inputs.image_tag }}"
           echo "Version: ${{ inputs.version || 'latest' }}"
-          
+
           # Validate environment
           case "${{ inputs.environment }}" in
             dev|staging|prod)
@@ -69,7 +69,7 @@ jobs:
               exit 1
               ;;
           esac
-          
+
           # Validate image tag format
           if [[ "${{ inputs.image_tag }}" =~ ^ghcr\.io/.+:.+$ ]]; then
             echo "✅ Valid image tag format"
@@ -77,7 +77,7 @@ jobs:
             echo "❌ Invalid image tag format: ${{ inputs.image_tag }}"
             exit 1
           fi
-          
+
           echo "valid=true" >> $GITHUB_OUTPUT
 
       - name: Generate environment config
@@ -97,7 +97,7 @@ jobs:
               config='{
                 "replicas": 2,
                 "resources": {"cpu": "200m", "memory": "512Mi"},
-                "domain": "newsbrief-staging.internal", 
+                "domain": "newsbrief-staging.internal",
                 "db_size": "5Gi",
                 "backup_enabled": true
               }'
@@ -107,12 +107,12 @@ jobs:
                 "replicas": 3,
                 "resources": {"cpu": "500m", "memory": "1Gi"},
                 "domain": "newsbrief.example.com",
-                "db_size": "20Gi", 
+                "db_size": "20Gi",
                 "backup_enabled": true
               }'
               ;;
           esac
-          
+
           echo "config=$config" >> $GITHUB_OUTPUT
           echo "Generated config for ${{ inputs.environment }}:"
           echo "$config" | jq .
@@ -133,16 +133,16 @@ jobs:
       - name: Generate deployment manifests
         run: |
           echo "📦 Generating Kubernetes manifests for ${{ inputs.environment }}..."
-          
+
           CONFIG='${{ needs.validate.outputs.environment-config }}'
           REPLICAS=$(echo $CONFIG | jq -r '.replicas')
           CPU=$(echo $CONFIG | jq -r '.resources.cpu')
           MEMORY=$(echo $CONFIG | jq -r '.resources.memory')
           DOMAIN=$(echo $CONFIG | jq -r '.domain')
           DB_SIZE=$(echo $CONFIG | jq -r '.db_size')
-          
+
           mkdir -p k8s-manifests
-          
+
           # Generate deployment manifest
           cat > k8s-manifests/deployment.yaml << EOF
           apiVersion: apps/v1
@@ -210,8 +210,8 @@ jobs:
                   persistentVolumeClaim:
                     claimName: newsbrief-data-${{ inputs.environment }}
           EOF
-          
-          # Generate service manifest  
+
+          # Generate service manifest
           cat > k8s-manifests/service.yaml << EOF
           apiVersion: v1
           kind: Service
@@ -231,7 +231,7 @@ jobs:
               targetPort: 8787
             type: ClusterIP
           EOF
-          
+
           # Generate PVC manifest
           cat > k8s-manifests/pvc.yaml << EOF
           apiVersion: v1
@@ -249,7 +249,7 @@ jobs:
               requests:
                 storage: ${DB_SIZE}
           EOF
-          
+
           echo "✅ Generated manifests:"
           ls -la k8s-manifests/
 
@@ -258,28 +258,28 @@ jobs:
           echo "🚀 Deploying to ${{ inputs.environment }} environment"
           echo "Image: ${{ inputs.image_tag }}"
           echo "Config: ${{ needs.validate.outputs.environment-config }}"
-          
+
           # In a real environment, you would use kubectl or your deployment tool:
           # kubectl apply -f k8s-manifests/ -n newsbrief-${{ inputs.environment }}
-          
+
           # For demo purposes, just show what would be deployed
           echo "📋 Deployment manifest preview:"
           cat k8s-manifests/deployment.yaml
-          
+
           echo "✅ Deployment completed successfully"
 
       - name: Run health checks
         run: |
           echo "🏥 Running post-deployment health checks..."
-          
+
           # Simulate health check
           sleep 5
-          
+
           echo "✅ Health checks passed:"
           echo "  - Application responding on port 8787"
           echo "  - Database connection established"
           echo "  - All replicas healthy"
-          
+
       - name: Update deployment record
         run: |
           echo "📝 Recording deployment..."
@@ -296,7 +296,7 @@ jobs:
             "config": ${{ needs.validate.outputs.environment-config }}
           }
           EOF
-          
+
           echo "✅ Deployment recorded"
           cat deployment-${{ inputs.environment }}-${{ github.run_number }}.json
 
@@ -315,6 +315,6 @@ jobs:
             echo "❌ Deployment to ${{ inputs.environment }} failed"
             echo "🚨 Please check the logs and take action"
           fi
-          
+
           # In a real environment, send to Slack, Teams, etc.
           echo "📢 Notification sent to team channels"

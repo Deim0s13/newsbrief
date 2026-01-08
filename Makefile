@@ -4,6 +4,7 @@ REGISTRY         ?=                         # e.g. ghcr.io/Deim0s13
 IMAGE_NAME       ?= newsbrief-api
 PORT             ?= 8787
 DATA_DIR         ?= $(PWD)/data
+BACKUP_DIR       ?= $(PWD)/backups
 
 # Version metadata
 GIT_SHA          := $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
@@ -99,7 +100,27 @@ run:
 		-e OLLAMA_BASE_URL=$${OLLAMA_BASE_URL:-http://host.containers.internal:11434} \
 		--name newsbrief $(IMAGE_BASE):$(word 1,$(TAGS))
 
-# ---------- Compose (optional; requires podman-compose or docker-compose shim) ----------
+# ---------- Production Deployment ----------
+deploy:                           ## Deploy production stack (containers + PostgreSQL)
+	@echo "🚀 Deploying NewsBrief production stack..."
+	$(RUNTIME)-compose up -d --build
+	@echo "✅ Production deployed at http://localhost:$(PORT)"
+	@echo "📊 View logs: make logs"
+
+deploy-stop:                      ## Stop production stack (preserves data)
+	@echo "🛑 Stopping production stack..."
+	$(RUNTIME)-compose down
+	@echo "✅ Stopped. Data preserved in volumes."
+
+deploy-status:                    ## Check production stack status
+	@$(RUNTIME)-compose ps
+
+deploy-init:                      ## First-time setup: run migrations on fresh database
+	@echo "🔧 Initializing production database..."
+	$(RUNTIME)-compose exec api alembic upgrade head
+	@echo "✅ Database initialized"
+
+# ---------- Compose (dev/debugging) ----------
 up:
 	$(RUNTIME)-compose up -d --build
 
@@ -130,6 +151,22 @@ db-reset:                           ## Reset PostgreSQL database (WARNING: delet
 	. .venv/bin/activate && . .env && DATABASE_URL="$$DATABASE_URL" alembic upgrade head
 	@echo "✅ Database reset and migrations applied"
 
+# ---------- Database Backup/Restore ----------
+db-backup:                          ## Backup production database to BACKUP_DIR
+	@mkdir -p "$(BACKUP_DIR)"
+	@BACKUP_FILE="$(BACKUP_DIR)/newsbrief-$$(date +%Y%m%d-%H%M%S).sql"; \
+	$(RUNTIME) exec newsbrief-db pg_dump -U newsbrief newsbrief > "$$BACKUP_FILE"; \
+	echo "✅ Backup saved to $$BACKUP_FILE"
+
+db-restore:                         ## Restore from backup: make db-restore FILE=path/to/backup.sql
+	@test -n "$(FILE)" || (echo "Usage: make db-restore FILE=path/to/backup.sql" && exit 1)
+	@test -f "$(FILE)" || (echo "File not found: $(FILE)" && exit 1)
+	$(RUNTIME) exec -i newsbrief-db psql -U newsbrief newsbrief < "$(FILE)"
+	@echo "✅ Restored from $(FILE)"
+
+db-backup-list:                     ## List available backups
+	@ls -lah "$(BACKUP_DIR)"/*.sql 2>/dev/null || echo "No backups found in $(BACKUP_DIR)/"
+
 # ---------- Database Migrations ----------
 migrate:                            ## Run database migrations to latest
 	.venv/bin/alembic upgrade head
@@ -147,6 +184,78 @@ migrate-history:                    ## Show migration history
 migrate-current:                    ## Show current migration version
 	.venv/bin/alembic current
 
+# ---------- Hostname & Autostart ----------
+HOSTNAME         ?= newsbrief.local
+PROJECT_PATH     ?= $(PWD)
+PODMAN_COMPOSE   ?= $(shell which podman-compose 2>/dev/null || echo /opt/homebrew/bin/podman-compose)
+PLIST_NAME       := com.newsbrief.plist
+PLIST_DEST       := $(HOME)/Library/LaunchAgents/$(PLIST_NAME)
+
+hostname-setup:                   ## Add newsbrief.local to /etc/hosts (requires sudo)
+	@if grep -q "$(HOSTNAME)" /etc/hosts; then \
+		echo "✅ $(HOSTNAME) already configured in /etc/hosts"; \
+	else \
+		echo "Adding $(HOSTNAME) to /etc/hosts (requires sudo)..."; \
+		echo "127.0.0.1   $(HOSTNAME)" | sudo tee -a /etc/hosts > /dev/null; \
+		echo "✅ $(HOSTNAME) added to /etc/hosts"; \
+	fi
+
+hostname-check:                   ## Verify hostname is configured
+	@if grep -q "$(HOSTNAME)" /etc/hosts; then \
+		echo "✅ $(HOSTNAME) is configured"; \
+		echo "   Access production at: http://$(HOSTNAME)"; \
+	else \
+		echo "❌ $(HOSTNAME) not found in /etc/hosts"; \
+		echo "   Run: make hostname-setup"; \
+	fi
+
+hostname-remove:                  ## Remove newsbrief.local from /etc/hosts (requires sudo)
+	@if grep -q "$(HOSTNAME)" /etc/hosts; then \
+		echo "Removing $(HOSTNAME) from /etc/hosts (requires sudo)..."; \
+		sudo sed -i '' '/$(HOSTNAME)/d' /etc/hosts; \
+		echo "✅ $(HOSTNAME) removed"; \
+	else \
+		echo "$(HOSTNAME) not found in /etc/hosts"; \
+	fi
+
+# ---------- Autostart (launchd) ----------
+autostart-install:                ## Install launchd plist for auto-start on login
+	@mkdir -p "$(PROJECT_PATH)/logs"
+	@mkdir -p "$$(dirname $(PLIST_DEST))"
+	@sed -e 's|__PROJECT_PATH__|$(PROJECT_PATH)|g' \
+	     -e 's|__PODMAN_COMPOSE_PATH__|$(PODMAN_COMPOSE)|g' \
+	     scripts/com.newsbrief.plist.template > $(PLIST_DEST)
+	@launchctl load $(PLIST_DEST)
+	@echo "✅ Autostart installed and enabled"
+	@echo "   NewsBrief will start automatically on login"
+	@echo "   Logs: $(PROJECT_PATH)/logs/"
+
+autostart-uninstall:              ## Remove launchd plist (disable auto-start)
+	@if [ -f "$(PLIST_DEST)" ]; then \
+		launchctl unload $(PLIST_DEST) 2>/dev/null || true; \
+		rm -f $(PLIST_DEST); \
+		echo "✅ Autostart disabled and removed"; \
+	else \
+		echo "Autostart not installed"; \
+	fi
+
+autostart-status:                 ## Check autostart status
+	@if [ -f "$(PLIST_DEST)" ]; then \
+		echo "✅ Autostart is installed"; \
+		launchctl list | grep com.newsbrief || echo "   (not currently loaded)"; \
+	else \
+		echo "❌ Autostart not installed"; \
+		echo "   Run: make autostart-install"; \
+	fi
+
+autostart-start:                  ## Manually trigger autostart (for testing)
+	@launchctl start com.newsbrief
+	@echo "✅ Triggered com.newsbrief"
+
+autostart-stop:                   ## Stop the launchd job
+	@launchctl stop com.newsbrief 2>/dev/null || true
+	@echo "✅ Stopped com.newsbrief"
+
 # ---------- Defaults ----------
 .DEFAULT_GOAL := run
-.PHONY: venv run-local build tag push release local-release clean-release cleanup-old-images run up down logs db-up db-down db-logs db-psql db-reset migrate migrate-new migrate-stamp migrate-history migrate-current
+.PHONY: venv run-local build tag push release local-release clean-release cleanup-old-images run deploy deploy-stop deploy-status deploy-init up down logs db-up db-down db-logs db-psql db-reset db-backup db-restore db-backup-list migrate migrate-new migrate-stamp migrate-history migrate-current hostname-setup hostname-check hostname-remove autostart-install autostart-uninstall autostart-status autostart-start autostart-stop

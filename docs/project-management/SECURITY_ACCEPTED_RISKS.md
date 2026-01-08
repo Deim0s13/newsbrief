@@ -12,19 +12,19 @@ This document tracks security vulnerabilities that are known and accepted with d
 ## Accepted Vulnerabilities
 
 ### 1. libxslt - CVE-2025-7425 (HIGH)
-**Status**: Accepted  
-**First Identified**: 2025-11-26  
-**Severity**: HIGH  
+**Status**: Accepted
+**First Identified**: 2025-11-26
+**Severity**: HIGH
 **CVSS Score**: TBD
 
-**Description**:  
+**Description**:
 Heap use-after-free vulnerability in libxslt caused by atype corruption in xmlAttrPtr.
 
 **Affected Packages**:
 - `libxslt1-dev: 1.1.35-1.2+deb13u2`
 - `libxslt1.1: 1.1.35-1.2+deb13u2`
 
-**Fix Status**: No fix available from Debian  
+**Fix Status**: No fix available from Debian
 **Workaround**: None available
 
 **Risk Assessment**:
@@ -51,11 +51,11 @@ Heap use-after-free vulnerability in libxslt caused by atype corruption in xmlAt
 ---
 
 ### 2. linux-libc-dev - Multiple Kernel CVEs (30 x HIGH)
-**Status**: Accepted  
-**First Identified**: 2025-11-26  
+**Status**: Accepted
+**First Identified**: 2025-11-26
 **Severity**: HIGH (multiple)
 
-**Description**:  
+**Description**:
 Multiple kernel vulnerabilities in linux-libc-dev package (kernel headers).
 
 **Affected Packages**:
@@ -139,8 +139,6 @@ Immediately re-evaluate if:
 
 ## Approval
 
-**Accepted by**: Development Team  
-**Date**: 2025-11-26  
+**Accepted by**: Development Team
+**Date**: 2025-11-26
 **Issue**: #73 - Re-enable security scanning
-
-
