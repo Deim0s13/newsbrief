@@ -883,7 +883,8 @@ def list_items(
                i.ai_summary, i.ai_model, i.ai_generated_at,
                i.structured_summary_json, i.structured_summary_model,
                i.structured_summary_content_hash, i.structured_summary_generated_at,
-               i.ranking_score, i.topic, i.topic_confidence, i.source_weight
+               i.ranking_score, i.topic, i.topic_confidence, i.source_weight,
+               i.created_at
         FROM items i
         """
 
