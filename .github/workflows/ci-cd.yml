@@ -72,7 +72,7 @@ jobs:
       - name: Security scan
         uses: github/super-linter@v7
         env:
-          DEFAULT_BRANCH: main
+          DEFAULT_BRANCH: dev
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VALIDATE_ALL_CODEBASE: false
           VALIDATE_PYTHON: true
