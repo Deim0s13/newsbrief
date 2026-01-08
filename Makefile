@@ -104,7 +104,8 @@ run:
 deploy:                           ## Deploy production stack (containers + PostgreSQL)
 	@echo "🚀 Deploying NewsBrief production stack..."
 	$(RUNTIME)-compose up -d --build
-	@echo "✅ Production deployed at http://localhost:$(PORT)"
+	@echo "✅ Production deployed at http://$(HOSTNAME)"
+	@echo "   (Direct access: http://localhost:$(PORT))"
 	@echo "📊 View logs: make logs"
 
 deploy-stop:                      ## Stop production stack (preserves data)
