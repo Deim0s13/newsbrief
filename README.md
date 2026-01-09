@@ -8,7 +8,7 @@ NewsBrief is a self-hosted, privacy-focused news aggregator that replaces readin
 
 ## 🌟 Features
 
-### **🎯 Story-Based Aggregation (v0.7.2)** - *Current Release*
+### **🎯 Story-Based Aggregation (v0.7.3)** - *Current Release*
 Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **Time to informed: 30 min → 2 min**
 
 - **Automated Story Generation**: Daily scheduled generation at 6 AM (configurable timezone)
@@ -58,6 +58,14 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 - **GitOps-Ready Deployments**: Environment-specific Kubernetes manifests with health checks and rollback support
 - **Automated Dependency Management**: Weekly security audits, dependency updates, and base image maintenance
 - **Comprehensive Documentation**: Complete CI/CD guides, API documentation, and architecture decision records
+
+### **✅ Completed (v0.7.3 - Operations & Observability)** - Jan 2026
+- ✅ **Structured Logging**: JSON logs in production, human-readable in development (ADR-0011)
+- ✅ **Health Endpoints**: Kubernetes-style `/healthz`, `/readyz`, `/ollamaz` probes
+- ✅ **Feed Management UI**: Fixed legibility issues with proper column widths
+- ✅ **Dev/Prod Separation**: Visual DEV banner and browser tab prefix in development mode
+- ✅ **Route Ordering Fix**: Resolved 422 errors on `/feeds/categories` endpoint
+- ✅ **Timing Instrumentation**: Duration logging for feed refresh, story generation, LLM calls
 
 ### **✅ Completed (v0.7.2 - Container & Deployment)** - Jan 2026
 - ✅ **Multi-stage Dockerfile**: Optimized build with non-root user, reduced image size
@@ -132,7 +140,7 @@ Deploy the full stack with PostgreSQL, Caddy reverse proxy, and auto-start:
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/newsbrief.git
+git clone https://github.com/Deim0s13/newsbrief.git
 cd newsbrief
 
 # First-time setup
@@ -149,7 +157,7 @@ make autostart-install
 
 ### **Development Mode**
 
-For local development with hot-reload and SQLite:
+For local development with hot-reload, SQLite, and DEV banner:
 
 ```bash
 # Create virtual environment
@@ -157,10 +165,11 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Run development server
-make run-local
+# Run development server (shows DEV banner, uses SQLite)
+make dev
 
 # Access at http://localhost:8787
+# Orange "DEVELOPMENT MODE" banner distinguishes from production
 ```
 
 ### **Quick Container Test**
@@ -180,11 +189,13 @@ NewsBrief supports two distinct modes to separate your development work from dai
 
 | Aspect | Development | Production |
 |--------|-------------|------------|
-| **Database** | SQLite (`./data/`) | PostgreSQL (Docker volume) |
+| **Database** | SQLite (`./data/newsbrief.sqlite3`) | PostgreSQL (Docker volume) |
 | **Data Location** | `./data/` directory | `newsbrief_data` Docker volume |
 | **URL** | `http://localhost:8787` | `http://newsbrief.local` |
+| **Visual Indicator** | Orange "DEV" banner + tab prefix | Clean UI (no banner) |
 | **Hot Reload** | ✅ Yes | ❌ No |
-| **Start Command** | `make run-local` | `make deploy` |
+| **Logs** | Human-readable with colors | JSON structured |
+| **Start Command** | `make dev` | `make deploy` |
 
 ### Production Commands
 
@@ -249,7 +260,10 @@ curl http://localhost:8787/stories/1 | jq .
 
 | Endpoint | Method | Purpose | Status |
 |----------|--------|---------|--------|
-| `/health` | GET | Health check with database, LLM, scheduler status | ✅ v0.7.2 |
+| `/health` | GET | Comprehensive health check (database, LLM, scheduler) | ✅ v0.7.2 |
+| `/healthz` | GET | Kubernetes liveness probe (minimal) | ✅ v0.7.3 |
+| `/readyz` | GET | Kubernetes readiness probe (database check) | ✅ v0.7.3 |
+| `/ollamaz` | GET | Ollama LLM status with model details | ✅ v0.7.3 |
 | `/feeds` | POST | Add new RSS feed | ✅ Available |
 | `/refresh` | POST | Fetch latest articles from all feeds | ✅ Available |
 | `/stories` | GET | List synthesized stories | ✅ v0.5.5 |
