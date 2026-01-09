@@ -7,6 +7,8 @@ Release documentation and version history for NewsBrief.
 ### v0.7.3 - Operations & Observability (Current)
 **Released**: January 2026
 
+**Documentation**: [Release Notes](v0.7.3/RELEASE_NOTES.md)
+
 Enhanced observability and developer experience improvements.
 
 **Key Changes**:
