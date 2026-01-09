@@ -32,8 +32,8 @@ class FeedOut(BaseModel):
     robots_allowed: bool = True
     etag: Optional[str] = None
     last_modified: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     # Statistics
     total_articles: int = Field(0, description="Total articles from this feed")
     last_fetch_at: Optional[datetime] = Field(
@@ -47,11 +47,11 @@ class FeedOut(BaseModel):
         None, description="Last successful fetch timestamp"
     )
     consecutive_failures: int = Field(0, description="Number of consecutive failures")
-    avg_response_time_ms: float = Field(
-        0.0, description="Average response time in milliseconds"
+    avg_response_time_ms: Optional[float] = Field(
+        None, description="Average response time in milliseconds"
     )
-    last_response_time_ms: float = Field(
-        0.0, description="Last response time in milliseconds"
+    last_response_time_ms: Optional[float] = Field(
+        None, description="Last response time in milliseconds"
     )
     health_score: float = Field(100.0, description="Overall health score (0-100)")
     last_modified_check: Optional[datetime] = Field(
