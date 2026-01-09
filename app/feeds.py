@@ -988,10 +988,22 @@ def fetch_and_store() -> RefreshStats:
         update_feed_health_scores()
     except Exception as e:
         # Don't fail the entire refresh if health score update fails
-        import logging
-
-        logger = logging.getLogger(__name__)
         logger.warning(f"Failed to update health scores: {e}")
+
+    # Log structured refresh summary
+    logger.info(
+        "Feed refresh completed",
+        extra={
+            "duration_ms": round(stats.refresh_time_seconds * 1000, 2),
+            "feeds_processed": stats.total_feeds_processed,
+            "articles_ingested": stats.total_items,
+            "feeds_cached": stats.feeds_cached_304,
+            "feeds_error": stats.feeds_error,
+            "feeds_disabled": stats.feeds_skipped_disabled,
+            "hit_time_limit": stats.hit_time_limit,
+            "hit_global_limit": stats.hit_global_limit,
+        },
+    )
 
     return stats
 

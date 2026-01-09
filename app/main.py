@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime
 from typing import Any, List, Optional
 
@@ -28,6 +29,7 @@ from .feeds import (
     update_feed_names,
 )
 from .llm import DEFAULT_MODEL, OLLAMA_BASE_URL, get_llm_service, is_llm_available
+from .logging_config import configure_logging
 from .models import (
     FeedIn,
     FeedOut,
@@ -54,6 +56,9 @@ from .ranking import (
 from .stories import generate_stories_simple, get_stories, get_story_by_id
 from .topics import migrate_article_topics_v062
 
+# Configure structured logging (must be after imports, before app initialization)
+configure_logging()
+
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="NewsBrief")
@@ -63,8 +68,6 @@ templates = Jinja2Templates(directory="app/templates")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 # Add environment variable to all templates (shows DEV banner in development)
-import os
-
 templates.env.globals["environment"] = os.environ.get("ENVIRONMENT", "development")
 
 

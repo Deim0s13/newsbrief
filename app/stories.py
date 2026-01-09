@@ -1905,16 +1905,21 @@ def generate_stories_simple(
 
     overall_time = time.time() - overall_start
 
-    if len(story_ids) == 0 and skipped_duplicates > 0:
-        logger.info(
-            f"✅ Story generation COMPLETE: 0 new stories (all {skipped_duplicates} were duplicates) "
-            f"in {overall_time:.2f}s"
-        )
-    else:
-        logger.info(
-            f"✅ Story generation COMPLETE: {len(story_ids)} stories created in {overall_time:.2f}s "
-            f"(fetch: {data_fetch_time:.2f}s, synthesis: {synthesis_time:.2f}s, db: {db_time:.2f}s)"
-        )
+    # Structured logging for story generation
+    logger.info(
+        "Story generation completed",
+        extra={
+            "duration_ms": round(overall_time * 1000, 2),
+            "stories_created": len(story_ids),
+            "stories_updated": updated_stories,
+            "articles_found": len(articles),
+            "clusters_created": len(clusters),
+            "duplicates_skipped": skipped_duplicates,
+            "fetch_time_ms": round(data_fetch_time * 1000, 2),
+            "synthesis_time_ms": round(synthesis_time * 1000, 2),
+            "db_time_ms": round(db_time * 1000, 2),
+        },
+    )
 
     # v0.6.1: Return detailed stats for better UX
     # v0.6.3: Added stories_updated count
