@@ -168,6 +168,101 @@ def health_check() -> dict:
     return health_status
 
 
+@app.get("/healthz")
+def healthz() -> dict:
+    """
+    Kubernetes-style liveness probe endpoint.
+
+    Returns minimal status for container orchestration.
+    Only checks if the application is running.
+    """
+    return {"status": "ok"}
+
+
+@app.get("/readyz")
+def readyz() -> dict:
+    """
+    Kubernetes-style readiness probe endpoint.
+
+    Checks if the application is ready to accept traffic.
+    Verifies database connectivity.
+    """
+    try:
+        with session_scope() as session:
+            session.execute(text("SELECT 1"))
+        return {"status": "ready", "database": "connected"}
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "not_ready", "database": "disconnected", "error": str(e)},
+        )
+
+
+@app.get("/ollamaz")
+def ollamaz() -> dict:
+    """
+    Ollama LLM service health probe endpoint.
+
+    Returns detailed status of the Ollama LLM service including:
+    - Service availability
+    - Available models
+    - Configuration
+
+    Returns 503 if Ollama is not available.
+    """
+    try:
+        llm_service = get_llm_service()
+        available = llm_service.is_available()
+
+        if not available:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "status": "unavailable",
+                    "url": OLLAMA_BASE_URL,
+                    "message": "Ollama service is not responding",
+                },
+            )
+
+        # Get available models
+        try:
+            models_response = llm_service.client.list()
+            if isinstance(models_response, dict) and "models" in models_response:
+                models = [
+                    {
+                        "name": m.get("name", "unknown"),
+                        "size": m.get("size", 0),
+                        "modified_at": m.get("modified_at", ""),
+                    }
+                    for m in models_response.get("models", [])
+                ]
+            else:
+                models = []
+        except Exception:
+            models = []
+
+        return {
+            "status": "healthy",
+            "url": OLLAMA_BASE_URL,
+            "default_model": DEFAULT_MODEL,
+            "models_available": len(models),
+            "models": models[:10],  # Limit to first 10
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ollama health check failed: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "status": "error",
+                "url": OLLAMA_BASE_URL,
+                "error": str(e),
+            },
+        )
+
+
 # Web Interface Routes
 @app.get("/", response_class=HTMLResponse)
 def home_page(request: Request):
