@@ -30,9 +30,10 @@ services:
   api:
     build: .
     container_name: newsbrief
-    ports:
-      - "8787:8787"
+    # Note: No port mapping - production only accessible via Caddy proxy at newsbrief.local
+    # For development, run: make dev (uses localhost:8787)
     environment:
+      ENVIRONMENT: production
       # Database connection - must match POSTGRES_PASSWORD above
       # If you change POSTGRES_PASSWORD, also update DATABASE_URL
       DATABASE_URL: ${DATABASE_URL:-postgresql://newsbrief:newsbrief_dev@db:5432/newsbrief}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime
 from typing import Any, List, Optional
 
@@ -28,6 +29,7 @@ from .feeds import (
     update_feed_names,
 )
 from .llm import DEFAULT_MODEL, OLLAMA_BASE_URL, get_llm_service, is_llm_available
+from .logging_config import configure_logging
 from .models import (
     FeedIn,
     FeedOut,
@@ -54,6 +56,9 @@ from .ranking import (
 from .stories import generate_stories_simple, get_stories, get_story_by_id
 from .topics import migrate_article_topics_v062
 
+# Configure structured logging (must be after imports, before app initialization)
+configure_logging()
+
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="NewsBrief")
@@ -61,6 +66,9 @@ app = FastAPI(title="NewsBrief")
 # Template and static file setup
 templates = Jinja2Templates(directory="app/templates")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+# Add environment variable to all templates (shows DEV banner in development)
+templates.env.globals["environment"] = os.environ.get("ENVIRONMENT", "development")
 
 
 @app.on_event("startup")
@@ -158,6 +166,101 @@ def health_check() -> dict:
         raise HTTPException(status_code=503, detail=health_status)
 
     return health_status
+
+
+@app.get("/healthz")
+def healthz() -> dict:
+    """
+    Kubernetes-style liveness probe endpoint.
+
+    Returns minimal status for container orchestration.
+    Only checks if the application is running.
+    """
+    return {"status": "ok"}
+
+
+@app.get("/readyz")
+def readyz() -> dict:
+    """
+    Kubernetes-style readiness probe endpoint.
+
+    Checks if the application is ready to accept traffic.
+    Verifies database connectivity.
+    """
+    try:
+        with session_scope() as session:
+            session.execute(text("SELECT 1"))
+        return {"status": "ready", "database": "connected"}
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "not_ready", "database": "disconnected", "error": str(e)},
+        )
+
+
+@app.get("/ollamaz")
+def ollamaz() -> dict:
+    """
+    Ollama LLM service health probe endpoint.
+
+    Returns detailed status of the Ollama LLM service including:
+    - Service availability
+    - Available models
+    - Configuration
+
+    Returns 503 if Ollama is not available.
+    """
+    try:
+        llm_service = get_llm_service()
+        available = llm_service.is_available()
+
+        if not available:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "status": "unavailable",
+                    "url": OLLAMA_BASE_URL,
+                    "message": "Ollama service is not responding",
+                },
+            )
+
+        # Get available models
+        try:
+            models_response = llm_service.client.list()
+            if isinstance(models_response, dict) and "models" in models_response:
+                models = [
+                    {
+                        "name": m.get("name", "unknown"),
+                        "size": m.get("size", 0),
+                        "modified_at": m.get("modified_at", ""),
+                    }
+                    for m in models_response.get("models", [])
+                ]
+            else:
+                models = []
+        except Exception:
+            models = []
+
+        return {
+            "status": "healthy",
+            "url": OLLAMA_BASE_URL,
+            "default_model": DEFAULT_MODEL,
+            "models_available": len(models),
+            "models": models[:10],  # Limit to first 10
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ollama health check failed: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "status": "error",
+                "url": OLLAMA_BASE_URL,
+                "error": str(e),
+            },
+        )
 
 
 # Web Interface Routes
@@ -376,6 +479,249 @@ def list_feeds():
     return feeds
 
 
+# --- Specific feed routes (must come before /feeds/{feed_id}) ---
+
+
+@app.get("/feeds/categories")
+def get_feed_categories():
+    """Get all available feed categories with statistics."""
+    with session_scope() as s:
+        results = s.execute(
+            text(
+                """
+                SELECT category,
+                       COUNT(*) as feed_count,
+                       SUM(CASE WHEN disabled = 0 THEN 1 ELSE 0 END) as active_count,
+                       AVG(health_score) as avg_health,
+                       SUM((SELECT COUNT(*) FROM items WHERE feed_id = feeds.id)) as total_articles
+                FROM feeds
+                WHERE category IS NOT NULL AND category != ''
+                GROUP BY category
+                ORDER BY feed_count DESC, category
+            """
+            )
+        ).fetchall()
+
+        categories = []
+        for row in results:
+            categories.append(
+                {
+                    "name": row[0],
+                    "feed_count": row[1],
+                    "active_count": row[2],
+                    "avg_health": round(row[3] or 100, 1),
+                    "total_articles": row[4] or 0,
+                }
+            )
+
+        # Add predefined categories that might not exist yet
+        existing_names = {cat["name"] for cat in categories}
+        predefined = [
+            "News",
+            "Technology",
+            "Business",
+            "Science",
+            "Sports",
+            "Entertainment",
+            "Health",
+            "Politics",
+            "Opinion",
+            "Personal",
+        ]
+
+        for pred_cat in predefined:
+            if pred_cat not in existing_names:
+                categories.append(
+                    {
+                        "name": pred_cat,
+                        "feed_count": 0,
+                        "active_count": 0,
+                        "avg_health": 100.0,
+                        "total_articles": 0,
+                        "is_predefined": True,
+                    }
+                )
+
+        return {"categories": categories}
+
+
+@app.get("/feeds/export/opml")
+def export_feeds_opml():
+    """Export all feeds as OPML file."""
+    from fastapi.responses import Response
+
+    opml_content = export_opml()
+
+    return Response(
+        content=opml_content,
+        media_type="application/xml",
+        headers={
+            "Content-Disposition": f"attachment; filename=newsbrief_feeds_{datetime.now().strftime('%Y%m%d_%H%M%S')}.opml"
+        },
+    )
+
+
+@app.post("/feeds/import/opml")
+def import_feeds_opml(file: bytes = None):
+    """Import feeds from OPML file upload or raw content."""
+
+    if not file:
+        raise HTTPException(status_code=400, detail="No file content provided")
+
+    try:
+        # Decode file content
+        opml_content = file.decode("utf-8")
+
+        # Process OPML import
+        result = import_opml_content(opml_content)
+
+        return {
+            "success": True,
+            "message": f"Import completed: {result['feeds_added']} added, {result['feeds_updated']} updated, {result['feeds_skipped']} skipped",
+            "details": result,
+        }
+
+    except UnicodeDecodeError:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid file encoding. Please upload a valid OPML file.",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
+
+
+@app.post("/feeds/import/opml/upload")
+async def import_feeds_opml_upload(file: UploadFile = File(...)):
+    """Import feeds from OPML file upload (multipart form)."""
+
+    if not file:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    # Check file type
+    if not file.filename.endswith(".opml") and file.content_type not in [
+        "application/xml",
+        "text/xml",
+    ]:
+        raise HTTPException(status_code=400, detail="File must be an OPML file (.opml)")
+
+    try:
+        # Read file content
+        file_content = await file.read()
+        opml_content = file_content.decode("utf-8")
+
+        # Process OPML import
+        result = import_opml_content(opml_content)
+
+        return {
+            "success": True,
+            "filename": file.filename,
+            "message": f"Import completed: {result['feeds_added']} added, {result['feeds_updated']} updated, {result['feeds_skipped']} skipped",
+            "details": result,
+        }
+
+    except UnicodeDecodeError:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid file encoding. Please upload a valid UTF-8 encoded OPML file.",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
+
+
+@app.post("/feeds/categories/bulk-assign")
+def bulk_assign_category(feed_ids: List[int], category: str):
+    """Assign a category to multiple feeds at once."""
+    if not feed_ids:
+        raise HTTPException(status_code=400, detail="No feed IDs provided")
+
+    # Validate category name
+    if not category or len(category.strip()) == 0:
+        category = None
+    else:
+        category = category.strip()
+
+    with session_scope() as s:
+        # Verify all feed IDs exist
+        existing_feeds = s.execute(
+            text("SELECT id FROM feeds WHERE id IN :feed_ids"),
+            {"feed_ids": tuple(feed_ids)},
+        ).fetchall()
+
+        existing_ids = {row[0] for row in existing_feeds}
+        invalid_ids = [fid for fid in feed_ids if fid not in existing_ids]
+
+        if invalid_ids:
+            raise HTTPException(
+                status_code=404, detail=f"Feed IDs not found: {invalid_ids}"
+            )
+
+        # Update categories
+        s.execute(
+            text(
+                """
+                UPDATE feeds
+                SET category = :category, updated_at = CURRENT_TIMESTAMP
+                WHERE id IN :feed_ids
+            """
+            ),
+            {"category": category, "feed_ids": tuple(feed_ids)},
+        )
+
+        return {
+            "success": True,
+            "message": f"Updated {len(feed_ids)} feeds",
+            "category": category,
+            "updated_feed_ids": feed_ids,
+        }
+
+
+@app.post("/feeds/categories/bulk-priority")
+def bulk_assign_priority(feed_ids: List[int], priority: int):
+    """Assign priority to multiple feeds at once."""
+    if not feed_ids:
+        raise HTTPException(status_code=400, detail="No feed IDs provided")
+
+    if priority < 1 or priority > 5:
+        raise HTTPException(status_code=400, detail="Priority must be between 1 and 5")
+
+    with session_scope() as s:
+        # Verify all feed IDs exist
+        existing_feeds = s.execute(
+            text("SELECT id FROM feeds WHERE id IN :feed_ids"),
+            {"feed_ids": tuple(feed_ids)},
+        ).fetchall()
+
+        existing_ids = {row[0] for row in existing_feeds}
+        invalid_ids = [fid for fid in feed_ids if fid not in existing_ids]
+
+        if invalid_ids:
+            raise HTTPException(
+                status_code=404, detail=f"Feed IDs not found: {invalid_ids}"
+            )
+
+        # Update priorities
+        s.execute(
+            text(
+                """
+                UPDATE feeds
+                SET priority = :priority, updated_at = CURRENT_TIMESTAMP
+                WHERE id IN :feed_ids
+            """
+            ),
+            {"priority": priority, "feed_ids": tuple(feed_ids)},
+        )
+
+        return {
+            "success": True,
+            "message": f"Updated priority for {len(feed_ids)} feeds",
+            "priority": priority,
+            "updated_feed_ids": feed_ids,
+        }
+
+
+# --- End specific feed routes ---
+
+
 @app.get("/feeds/{feed_id}", response_model=FeedOut)
 def get_feed(feed_id: int):
     """Get detailed information about a specific feed."""
@@ -569,243 +915,6 @@ def get_feed_stats(feed_id: int):
             success_rate=round(success_rate, 1),
             avg_response_time_ms=round(avg_response_time_ms, 1),
         )
-
-
-@app.get("/feeds/export/opml")
-def export_feeds_opml():
-    """Export all feeds as OPML file."""
-    from fastapi.responses import Response
-
-    opml_content = export_opml()
-
-    return Response(
-        content=opml_content,
-        media_type="application/xml",
-        headers={
-            "Content-Disposition": f"attachment; filename=newsbrief_feeds_{datetime.now().strftime('%Y%m%d_%H%M%S')}.opml"
-        },
-    )
-
-
-@app.post("/feeds/import/opml")
-def import_feeds_opml(file: bytes = None):
-    """Import feeds from OPML file upload or raw content."""
-
-    if not file:
-        raise HTTPException(status_code=400, detail="No file content provided")
-
-    try:
-        # Decode file content
-        opml_content = file.decode("utf-8")
-
-        # Process OPML import
-        result = import_opml_content(opml_content)
-
-        return {
-            "success": True,
-            "message": f"Import completed: {result['feeds_added']} added, {result['feeds_updated']} updated, {result['feeds_skipped']} skipped",
-            "details": result,
-        }
-
-    except UnicodeDecodeError:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid file encoding. Please upload a valid OPML file.",
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
-
-
-@app.post("/feeds/import/opml/upload")
-async def import_feeds_opml_upload(file: UploadFile = File(...)):
-    """Import feeds from OPML file upload (multipart form)."""
-
-    if not file:
-        raise HTTPException(status_code=400, detail="No file provided")
-
-    # Check file type
-    if not file.filename.endswith(".opml") and not file.content_type in [
-        "application/xml",
-        "text/xml",
-    ]:
-        raise HTTPException(status_code=400, detail="File must be an OPML file (.opml)")
-
-    try:
-        # Read file content
-        file_content = await file.read()
-        opml_content = file_content.decode("utf-8")
-
-        # Process OPML import
-        result = import_opml_content(opml_content)
-
-        return {
-            "success": True,
-            "filename": file.filename,
-            "message": f"Import completed: {result['feeds_added']} added, {result['feeds_updated']} updated, {result['feeds_skipped']} skipped",
-            "details": result,
-        }
-
-    except UnicodeDecodeError:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid file encoding. Please upload a valid UTF-8 encoded OPML file.",
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
-
-
-@app.get("/feeds/categories")
-def get_feed_categories():
-    """Get all available feed categories with statistics."""
-    with session_scope() as s:
-        results = s.execute(
-            text(
-                """
-                SELECT category,
-                       COUNT(*) as feed_count,
-                       SUM(CASE WHEN disabled = 0 THEN 1 ELSE 0 END) as active_count,
-                       AVG(health_score) as avg_health,
-                       SUM((SELECT COUNT(*) FROM items WHERE feed_id = feeds.id)) as total_articles
-                FROM feeds
-                WHERE category IS NOT NULL AND category != ''
-                GROUP BY category
-                ORDER BY feed_count DESC, category
-            """
-            )
-        ).fetchall()
-
-        categories = []
-        for row in results:
-            categories.append(
-                {
-                    "name": row[0],
-                    "feed_count": row[1],
-                    "active_count": row[2],
-                    "avg_health": round(row[3] or 100, 1),
-                    "total_articles": row[4] or 0,
-                }
-            )
-
-        # Add predefined categories that might not exist yet
-        existing_names = {cat["name"] for cat in categories}
-        predefined = [
-            "News",
-            "Technology",
-            "Business",
-            "Science",
-            "Sports",
-            "Entertainment",
-            "Health",
-            "Politics",
-            "Opinion",
-            "Personal",
-        ]
-
-        for pred_cat in predefined:
-            if pred_cat not in existing_names:
-                categories.append(
-                    {
-                        "name": pred_cat,
-                        "feed_count": 0,
-                        "active_count": 0,
-                        "avg_health": 100.0,
-                        "total_articles": 0,
-                        "is_predefined": True,
-                    }
-                )
-
-        return {"categories": categories}
-
-
-@app.post("/feeds/categories/bulk-assign")
-def bulk_assign_category(feed_ids: List[int], category: str):
-    """Assign a category to multiple feeds at once."""
-    if not feed_ids:
-        raise HTTPException(status_code=400, detail="No feed IDs provided")
-
-    # Validate category name
-    if not category or len(category.strip()) == 0:
-        category = None
-    else:
-        category = category.strip()
-
-    with session_scope() as s:
-        # Verify all feed IDs exist
-        existing_feeds = s.execute(
-            text("SELECT id FROM feeds WHERE id IN :feed_ids"),
-            {"feed_ids": tuple(feed_ids)},
-        ).fetchall()
-
-        existing_ids = {row[0] for row in existing_feeds}
-        invalid_ids = [fid for fid in feed_ids if fid not in existing_ids]
-
-        if invalid_ids:
-            raise HTTPException(
-                status_code=404, detail=f"Feed IDs not found: {invalid_ids}"
-            )
-
-        # Update categories
-        s.execute(
-            text(
-                """
-                UPDATE feeds
-                SET category = :category, updated_at = CURRENT_TIMESTAMP
-                WHERE id IN :feed_ids
-            """
-            ),
-            {"category": category, "feed_ids": tuple(feed_ids)},
-        )
-
-        return {
-            "success": True,
-            "message": f"Updated {len(feed_ids)} feeds",
-            "category": category,
-            "updated_feed_ids": feed_ids,
-        }
-
-
-@app.post("/feeds/categories/bulk-priority")
-def bulk_assign_priority(feed_ids: List[int], priority: int):
-    """Assign priority to multiple feeds at once."""
-    if not feed_ids:
-        raise HTTPException(status_code=400, detail="No feed IDs provided")
-
-    if priority < 1 or priority > 5:
-        raise HTTPException(status_code=400, detail="Priority must be between 1 and 5")
-
-    with session_scope() as s:
-        # Verify all feed IDs exist
-        existing_feeds = s.execute(
-            text("SELECT id FROM feeds WHERE id IN :feed_ids"),
-            {"feed_ids": tuple(feed_ids)},
-        ).fetchall()
-
-        existing_ids = {row[0] for row in existing_feeds}
-        invalid_ids = [fid for fid in feed_ids if fid not in existing_ids]
-
-        if invalid_ids:
-            raise HTTPException(
-                status_code=404, detail=f"Feed IDs not found: {invalid_ids}"
-            )
-
-        # Update priorities
-        s.execute(
-            text(
-                """
-                UPDATE feeds
-                SET priority = :priority, updated_at = CURRENT_TIMESTAMP
-                WHERE id IN :feed_ids
-            """
-            ),
-            {"priority": priority, "feed_ids": tuple(feed_ids)},
-        )
-
-        return {
-            "success": True,
-            "message": f"Updated priority for {len(feed_ids)} feeds",
-            "priority": priority,
-            "updated_feed_ids": feed_ids,
-        }
 
 
 @app.post("/refresh")

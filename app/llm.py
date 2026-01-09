@@ -851,6 +851,18 @@ JSON Response:"""
             generation_time = (datetime.now() - start_time).total_seconds()
             tokens_used = len(prompt.split()) + len(raw_response.split())
 
+            # Structured logging for LLM call
+            logger.info(
+                "LLM summary generated",
+                extra={
+                    "duration_ms": round(generation_time * 1000, 2),
+                    "model": model,
+                    "method": "direct",
+                    "tokens_used": tokens_used,
+                    "content_hash": content_hash[:12],
+                },
+            )
+
             return SummaryResult(
                 summary=structured_summary.to_json_string(),
                 model=model,
