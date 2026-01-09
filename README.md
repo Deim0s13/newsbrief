@@ -59,78 +59,25 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 - **Automated Dependency Management**: Weekly security audits, dependency updates, and base image maintenance
 - **Comprehensive Documentation**: Complete CI/CD guides, API documentation, and architecture decision records
 
-### **✅ Completed (v0.7.3 - Operations & Observability)** - Jan 2026
+### **🔜 Next: v0.7.4 - Security**
+HTTPS/TLS encryption for secure connections. See [Project Board](https://github.com/users/Deim0s13/projects/2) for details.
+
+### **✅ Current: v0.7.3 - Operations & Observability** (Jan 2026)
 - ✅ **Structured Logging**: JSON logs in production, human-readable in development (ADR-0011)
 - ✅ **Health Endpoints**: Kubernetes-style `/healthz`, `/readyz`, `/ollamaz` probes
 - ✅ **Feed Management UI**: Fixed legibility issues with proper column widths
 - ✅ **Dev/Prod Separation**: Visual DEV banner and browser tab prefix in development mode
-- ✅ **Route Ordering Fix**: Resolved 422 errors on `/feeds/categories` endpoint
 - ✅ **Timing Instrumentation**: Duration logging for feed refresh, story generation, LLM calls
 
-### **✅ Completed (v0.7.2 - Container & Deployment)** - Jan 2026
+### **✅ Previous: v0.7.2 - Container & Deployment** (Jan 2026)
 - ✅ **Multi-stage Dockerfile**: Optimized build with non-root user, reduced image size
 - ✅ **Health Endpoint**: `/health` with database, LLM, and scheduler status checks
 - ✅ **Production Deployment**: `make deploy`, `deploy-stop`, `deploy-status`, `deploy-init`
 - ✅ **Database Backup/Restore**: `make db-backup`, `db-restore` with configurable BACKUP_DIR
-- ✅ **Dev/Prod Separation**: Isolated Docker volumes for production data
 - ✅ **Caddy Reverse Proxy**: Access production at `http://newsbrief.local`
 - ✅ **Auto-start on Login**: launchd plist with `make autostart-install`
-- ✅ **CI/CD Stabilization**: Pre-commit hooks, locked GitHub Action versions
 
-### **✅ Completed (v0.7.1 - PostgreSQL Migration)** - Jan 2026
-- ✅ **PostgreSQL Support**: Production-ready database via DATABASE_URL
-- ✅ **Dual Database Mode**: SQLite for development, PostgreSQL for production
-- ✅ **ORM Models**: Central orm_models.py with portable schema
-- ✅ **Alembic Migrations**: Schema versioning and migration tooling
-- ✅ **Database Commands**: make db-up, db-down, db-psql, db-reset
-
-### **✅ Completed (v0.6.5 - Personalization)** - Jan 2026
-- ✅ **Interest-Based Ranking**: Topic weights for personalized story ordering (Issue #57)
-- ✅ **Source Quality Weighting**: Feed/domain reputation weights blended into scoring (Issue #58)
-- ✅ **Feed Health Improvements**: Response time tracking with slow feed indicators (Issue #71)
-- ✅ **Configurable Blending**: 50% importance + 30% interest + 20% source quality
-- ✅ **Personalization Toggle**: Enable/disable personalized ranking in UI
-
-### **✅ Completed (v0.6.4 - Code Quality)** - Jan 2026
-- ✅ **Type Safety**: mypy passes with 0 errors in 13 source files (Issue #74)
-- ✅ **Test Coverage**: Coverage improved 30% → 41% with 192 tests (Issue #75)
-- ✅ **Ranking Tests**: Comprehensive tests for recency, keywords, topic classification (Issue #22)
-- ✅ **CI/CD Improvements**: pytest-cov integration, coverage reporting
-
-### **✅ Completed (v0.6.3 - Performance)** - Jan 2026
-- ✅ **Synthesis Caching**: LLM results cached with TTL and invalidation (Issue #46)
-- ✅ **Incremental Updates**: Story versioning with 70% article overlap detection (Issue #49)
-- ✅ **API Enhancements**: 6 new filters on `/items`, `/stories/{id}/articles` endpoint (Issue #56)
-- ✅ **Scheduled Refresh**: Automatic feed refresh at 5:30 AM (configurable) (Issue #87)
-
-### **✅ Completed (v0.6.2 - UI Polish & Fixes)** - Dec 2025
-- ✅ **HTML Sanitization**: Clean article summaries with `bleach` library (Issue #77)
-- ✅ **Topic Classification**: Unified topic system with LLM-based classification (Issue #77)
-- ✅ **Skim View Fixed**: Local Tailwind CSS build for proper styling (Issue #80)
-- ✅ **Story Filters**: Topic filtering on Stories page (Issue #81)
-- ✅ **Model/Status Display**: Story detail page shows LLM model and status (Issue #82)
-- ✅ **Default LLM Upgrade**: Changed default model to `llama3.1:8b` for better accuracy
-
-### **✅ Completed (v0.6.1 - Enhanced Intelligence)** - Dec 2025
-- ✅ **Entity Extraction**: LLM-based extraction of companies, products, people, technologies, locations (Issue #40)
-- ✅ **Semantic Similarity**: Enhanced clustering with entity overlap and bigrams/trigrams (Issue #41)
-- ✅ **Story Quality Scoring**: Importance, freshness, and quality scoring algorithms (Issue #43)
-- ✅ **UX Improvements**: Detailed feedback messages for story generation (Issue #67)
-- ✅ **Skim/Detail Toggle**: Flexible viewing modes for articles (Issue #70)
-- ✅ **Story Architecture**: Complete database schema, generation pipeline, multi-document synthesis (v0.5.5)
-- ✅ **Entity Extraction**: LLM identifies companies, products, and people from article clusters
-- ✅ **Topic Auto-Classification**: Stories automatically tagged with relevant topics
-- ✅ **Story API Endpoints**: RESTful endpoints for generating and retrieving stories (Issues #47, #55)
-- ✅ **Scheduled Generation**: Daily automated story generation at 6 AM (configurable timezone, Issue #48)
-- ✅ **Story-First UI**: Landing page shows stories, not individual articles (Issues #50-54)
-- ✅ **Performance Optimization**: Parallel LLM synthesis, caching, batching (Issue #66)
-
-### **Future Enhancements**
-- **Configurable Time Windows**: 12h, 24h, 48h, 1w story generation
-- **Topic Grouping**: Group stories by Security, AI, DevTools, etc.
-- **Advanced Embeddings**: Vector-based semantic clustering
-- **Full-Text Search**: SQLite FTS5 integration
-- **Export/Import**: Data portability and backup features
+📚 **[Full Release History →](docs/releases/README.md)**
 
 ## 🚀 Quick Start
 
