@@ -71,6 +71,27 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates.env.globals["environment"] = os.environ.get("ENVIRONMENT", "development")
 
 
+# Read version from pyproject.toml (single source of truth)
+def get_version() -> str:
+    """Read version from pyproject.toml."""
+    try:
+        import tomllib
+    except ImportError:
+        import tomli as tomllib  # Python < 3.11 fallback
+
+    pyproject_path = Path(__file__).parent.parent / "pyproject.toml"
+    try:
+        with open(pyproject_path, "rb") as f:
+            data = tomllib.load(f)
+            return data.get("project", {}).get("version", "dev")
+    except Exception:
+        return "dev"
+
+
+APP_VERSION = get_version()
+templates.env.globals["app_version"] = APP_VERSION
+
+
 @app.on_event("startup")
 def _startup() -> None:
     init_db()

@@ -65,8 +65,12 @@
 
 When ready to release (e.g., v0.7.4 complete):
 
-1. **Update Documentation** (before merge):
+1. **Update Version & Documentation** (before merge):
    ```bash
+   # Update version in pyproject.toml (single source of truth)
+   # [project]
+   # version = "0.7.4"
+
    # Update main README.md
    # - Move "Current" to "Previous"
    # - Add new version as "Current"
@@ -98,6 +102,7 @@ When ready to release (e.g., v0.7.4 complete):
 
 - [ ] All milestone issues closed
 - [ ] CI/CD pipeline passing on `dev`
+- [ ] `pyproject.toml` version updated
 - [ ] `README.md` updated (Next → Current → Previous)
 - [ ] `docs/releases/README.md` updated
 - [ ] Manual testing completed

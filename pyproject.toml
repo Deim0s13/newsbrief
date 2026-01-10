@@ -1,3 +1,8 @@
+[project]
+name = "newsbrief"
+version = "0.7.3"
+description = "Story-based News Aggregator with AI Synthesis"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
