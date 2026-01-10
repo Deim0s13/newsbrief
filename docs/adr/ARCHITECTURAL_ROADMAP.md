@@ -1,12 +1,12 @@
 # NewsBrief Architectural Roadmap
 
-> **Living Document** - Last Updated: December 2025
+> **Living Document** - Last Updated: January 2026
 
 This document outlines the architectural evolution of NewsBrief, from its current state through planned enhancements. It serves as a technical compass for development decisions and helps contributors understand where the project is heading.
 
 ---
 
-## 1. Current Architecture (v0.6.x)
+## 1. Current Architecture (v0.7.x)
 
 ### Overview
 
@@ -16,11 +16,18 @@ NewsBrief is a **local-first, story-based news aggregator** that synthesizes mul
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Client Layer                              │
 │              Browser (Tailwind CSS + Vanilla JS)                │
+│              DEV banner in development mode                      │
 └─────────────────────────┬───────────────────────────────────────┘
                           │ HTTP/HTML
 ┌─────────────────────────▼───────────────────────────────────────┐
+│                     Reverse Proxy                                │
+│                  Caddy (newsbrief.local)                        │
+└─────────────────────────┬───────────────────────────────────────┘
+                          │
+┌─────────────────────────▼───────────────────────────────────────┐
 │                        API Layer                                 │
 │                     FastAPI + Jinja2                            │
+│           Health probes: /healthz, /readyz, /ollamaz            │
 ├─────────────────────────────────────────────────────────────────┤
 │                     Business Logic                               │
 │  ┌──────────┬──────────┬──────────┬──────────┬────────────────┐ │
@@ -28,12 +35,19 @@ NewsBrief is a **local-first, story-based news aggregator** that synthesizes mul
 │  │ Manager  │Generator │Classifier│Extractor │  (APScheduler) │ │
 │  └──────────┴──────────┴──────────┴──────────┴────────────────┘ │
 ├─────────────────────────────────────────────────────────────────┤
+│                    Observability Layer                           │
+│        Structured Logging (JSON prod / Human-readable dev)      │
+├─────────────────────────────────────────────────────────────────┤
 │                       LLM Layer                                  │
 │                    Ollama (Local)                               │
 │               llama3.1:8b (default)                             │
 ├─────────────────────────────────────────────────────────────────┤
 │                       Data Layer                                 │
-│              SQLite + JSON Config Files                         │
+│  ┌─────────────────────┐  ┌─────────────────────────────────┐   │
+│  │  SQLite (Dev)       │  │  PostgreSQL 16 (Production)     │   │
+│  │  Single-file DB     │  │  Container with persistent vol  │   │
+│  └─────────────────────┘  └─────────────────────────────────┘   │
+│                    Alembic Migrations                            │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -42,35 +56,99 @@ NewsBrief is a **local-first, story-based news aggregator** that synthesizes mul
 | Component | Technology | Rationale |
 |-----------|------------|-----------|
 | **Web Framework** | FastAPI | Async support, auto OpenAPI docs, Pydantic validation |
-| **Database** | SQLite | Zero-config, single-file backup, excellent for read-heavy workloads |
+| **Database (Dev)** | SQLite | Zero-config, single-file backup, fast for development |
+| **Database (Prod)** | PostgreSQL 16 | ACID, concurrent writes, production-ready |
+| **ORM** | SQLAlchemy | Database abstraction, supports both SQLite and PostgreSQL |
+| **Migrations** | Alembic | Schema versioning, reproducible deployments |
+| **Reverse Proxy** | Caddy | Automatic TLS, simple config, friendly URL |
 | **Templates** | Jinja2 | Server-rendered, simple, no build step |
 | **Styling** | Tailwind CSS (local build) | Utility-first, production-optimized |
 | **LLM** | Ollama (llama3.1:8b) | Local privacy, no API costs, configurable models |
 | **Scheduler** | APScheduler | Python-native, background task scheduling |
 | **Content Extraction** | Mozilla Readability | Clean article extraction, well-maintained |
+| **Logging** | Python logging + JSON formatter | Structured logs in production |
+| **Container** | Podman/Docker Compose | Multi-service orchestration |
 
 ### Key Characteristics
 
 - **Monolithic**: Single Python application, all components in one process
+- **Dual Database**: SQLite for dev (simple), PostgreSQL for prod (robust)
 - **Local-first**: All data stored locally, works offline (after feed fetch)
 - **Privacy-focused**: No telemetry, no external API calls (except feed fetching)
-- **Container-ready**: Dockerfile for consistent deployment
+- **Container-ready**: Multi-stage Dockerfile, Compose with Caddy + PostgreSQL
+- **Observable**: Structured logging, health endpoints, timing instrumentation
 
-### Current Limitations
+### Environment Separation
 
-| Limitation | Impact | Future Solution |
-|------------|--------|-----------------|
-| SQLite write concurrency | Limited multi-user support | PostgreSQL option |
-| No semantic search | Keyword-only filtering | Vector embeddings |
-| Single LLM provider | Ollama dependency | Pluggable providers |
-| No user accounts | Single-user only | Auth layer |
-| No full-text search | Limited article discovery | SQLite FTS5 |
+| Aspect | Development | Production |
+|--------|-------------|------------|
+| **Access** | `localhost:8787` | `newsbrief.local` |
+| **Database** | SQLite | PostgreSQL |
+| **Command** | `make dev` | `make deploy` |
+| **Visual** | DEV banner + tab prefix | Clean UI |
+| **Logging** | Human-readable | JSON structured |
+| **Container** | None (local Python) | Podman Compose |
+
+### Current Capabilities (v0.7.3)
+
+| Feature | Status | ADR |
+|---------|--------|-----|
+| Story-based aggregation | ✅ Complete | [ADR-0002](0002-story-based-aggregation.md) |
+| LLM synthesis caching | ✅ Complete | [ADR-0003](0003-synthesis-caching.md) |
+| Incremental story updates | ✅ Complete | [ADR-0004](0004-incremental-story-updates.md) |
+| Interest-based ranking | ✅ Complete | [ADR-0005](0005-interest-based-ranking.md) |
+| Source quality weighting | ✅ Complete | [ADR-0006](0006-source-quality-weighting.md) |
+| PostgreSQL support | ✅ Complete | [ADR-0007](0007-postgresql-database-migration.md) |
+| Caddy reverse proxy | ✅ Complete | [ADR-0010](0010-caddy-reverse-proxy.md) |
+| Structured logging | ✅ Complete | [ADR-0011](0011-structured-logging.md) |
+| Health endpoints | ✅ Complete | v0.7.3 |
+| Database backup/restore | ✅ Complete | v0.7.2 |
+| Auto-start (launchd) | ✅ Complete | v0.7.2 |
+
+### Remaining Limitations
+
+| Limitation | Impact | Future Solution | Milestone |
+|------------|--------|-----------------|-----------|
+| No semantic search | Keyword-only filtering | Vector embeddings | v0.9.x |
+| Single LLM provider | Ollama dependency | Pluggable providers | v0.9.x |
+| No user accounts | Single-user only | Auth layer | v1.0.x |
+| No full-text search | Limited article discovery | SQLite FTS5 | v0.9.x |
+| HTTP only (local) | Not externally accessible | TLS/HTTPS | v0.7.4 |
 
 ---
 
 ## 2. Near-Term Evolution (v0.7.x - v0.8.x)
 
-### v0.7.0 - LLM Improvements
+### v0.7.4 - Security
+
+**Focus**: HTTPS/TLS encryption for secure connections
+
+**Planned Changes**:
+- TLS certificates via Caddy
+- Secure cookie handling
+- HTTPS enforcement
+
+### v0.7.5 - GitOps & Kubernetes
+
+**Focus**: Infrastructure as Code and container orchestration
+
+**Planned Changes**:
+- Kubernetes manifests (local Kind/minikube)
+- Tekton CI/CD pipelines
+- ArgoCD GitOps deployment
+- Helm charts
+
+### v0.8.0 - Ranking & Personalization
+
+**Focus**: User preferences and smarter content curation
+
+**Planned Changes**:
+- User preference storage
+- Enhanced topic prioritization
+- Bookmarks and read-later
+- Advanced personalized ranking
+
+### v0.9.0 - LLM Quality & Intelligence
 
 **Focus**: Better AI quality and flexibility
 
@@ -92,44 +170,8 @@ NewsBrief is a **local-first, story-based news aggregator** that synthesizes mul
 - Pluggable LLM provider interface
 - Improved prompt engineering
 - Response quality evaluation
-- Better caching strategies
 - Support for larger context models
-
-### v0.8.0 - Ranking & Personalization
-
-**Focus**: User preferences and smarter content curation
-
-**Planned Changes**:
-- User preference storage
-- Topic prioritization
-- Bookmarks and read-later
-- Personalized story ranking
-- Improved importance scoring
-
-### v0.9.0 - Search & Discovery
-
-**Focus**: Finding content efficiently
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                       Search Layer (New)                         │
-│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────┐   │
-│  │  SQLite FTS5     │  │  Vector Search   │  │   Hybrid     │   │
-│  │  (Full-text)     │  │  (Semantic)      │  │   Ranking    │   │
-│  └──────────────────┘  └──────────────────┘  └──────────────┘   │
-│                              │                                   │
-│                    ┌─────────▼─────────┐                        │
-│                    │  Chroma / SQLite  │                        │
-│                    │  Vector Store     │                        │
-│                    └───────────────────┘                        │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Planned Changes**:
-- SQLite FTS5 for full-text search
-- Vector embeddings for semantic search
-- Hybrid search (keyword + semantic)
-- Similar story suggestions
+- Model performance comparison
 
 ---
 
@@ -153,11 +195,11 @@ NewsBrief is a **local-first, story-based news aggregator** that synthesizes mul
 ```
 
 **Planned Changes**:
-- Database abstraction layer (SQLite/PostgreSQL)
 - Optional authentication (API keys, OAuth)
 - Multi-user support (team deployment)
-- Kubernetes deployment manifests
-- Health checks and monitoring endpoints
+- Apple Containers support ([ADR-0008](0008-apple-containers-deferred.md))
+- Full-text search (SQLite FTS5)
+- Vector search for semantic similarity
 
 ### Platform Extensions
 
@@ -173,9 +215,6 @@ NewsBrief is a **local-first, story-based news aggregator** that synthesizes mul
 │  │  │  (Swift)    │  │  Client     │  │                 │    │  │
 │  │  └─────────────┘  └─────────────┘  └─────────────────┘    │  │
 │  └───────────────────────────────────────────────────────────┘  │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │                   Future: iOS App                          │  │
-│  └───────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -183,70 +222,13 @@ NewsBrief is a **local-first, story-based news aggregator** that synthesizes mul
 
 ## 4. Long-Term Considerations (v2.0+)
 
-### Potential Architecture Evolution
-
 These are exploratory directions, not committed plans:
 
-#### Option A: Microservices (If Scale Demands)
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    API Gateway                                   │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────┐    │
-│  │   Feed   │  │  Story   │  │  Search  │  │     LLM      │    │
-│  │ Service  │  │ Service  │  │ Service  │  │   Service    │    │
-│  └──────────┘  └──────────┘  └──────────┘  └──────────────┘    │
-│       │             │             │              │              │
-│       └─────────────┴─────────────┴──────────────┘              │
-│                           │                                      │
-│                    Message Queue                                 │
-│                   (Redis / RabbitMQ)                            │
-└─────────────────────────────────────────────────────────────────┘
-```
+### Option A: Microservices (If Scale Demands)
 
 **When to Consider**: 100+ concurrent users, need for independent scaling
 
-#### Option B: Edge Deployment
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Edge Configuration                            │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │   Cloudflare Workers / Vercel Edge                        │  │
-│  │   ┌──────────────────────────────────────────────────┐    │  │
-│  │   │  Static Assets + API Proxy                        │    │  │
-│  │   └──────────────────────────────────────────────────┘    │  │
-│  └───────────────────────────────────────────────────────────┘  │
-│                           │                                      │
-│                    ┌──────▼──────┐                              │
-│                    │  Origin     │                              │
-│                    │  Server     │                              │
-│                    └─────────────┘                              │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**When to Consider**: Global user base, CDN requirements
-
-#### Option C: Plugin Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Plugin System                                 │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │                   Plugin Manager                           │  │
-│  ├───────────────────────────────────────────────────────────┤  │
-│  │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────────┐  │  │
-│  │  │  Feed   │  │   LLM   │  │ Storage │  │  Notifier   │  │  │
-│  │  │ Plugins │  │ Plugins │  │ Plugins │  │  Plugins    │  │  │
-│  │  ├─────────┤  ├─────────┤  ├─────────┤  ├─────────────┤  │  │
-│  │  │• RSS    │  │• Ollama │  │• SQLite │  │• Slack      │  │  │
-│  │  │• Atom   │  │• OpenAI │  │• Postgres│ │• Discord    │  │  │
-│  │  │• JSON   │  │• Claude │  │• MySQL  │  │• Email      │  │  │
-│  │  └─────────┘  └─────────┘  └─────────┘  └─────────────┘  │  │
-│  └───────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-```
+### Option B: Plugin Architecture
 
 **When to Consider**: Community contributions, diverse use cases
 
@@ -277,16 +259,13 @@ Before introducing new dependencies, evaluate:
 
 ### Technology Watch List
 
-Technologies being monitored for potential adoption:
-
 | Technology | Use Case | Status |
 |------------|----------|--------|
 | **Chroma** | Vector embeddings | Evaluating for v0.9.0 |
-| **SQLite FTS5** | Full-text search | Planned for v0.9.0 |
+| **SQLite FTS5** | Full-text search | Planned for v1.0.0 |
 | **WidgetKit** | macOS widget | Planned for v1.1.0 |
 | **htmx** | Dynamic UI without JS complexity | Considering |
-| **Pydantic v2** | Already using, monitor updates | Adopted |
-| **Ruff** | Fast Python linting | Considering for DX |
+| **Ruff** | Fast Python linting | Considering |
 
 ---
 
@@ -294,13 +273,11 @@ Technologies being monitored for potential adoption:
 
 | Version | Theme | Key Architectural Changes |
 |---------|-------|---------------------------|
-| **v0.6.x** | Current | Monolith, SQLite, Local Ollama |
-| **v0.7.x** | LLM | Pluggable LLM providers, better prompts |
-| **v0.8.x** | Personalization | User preferences, ranking improvements |
-| **v0.9.x** | Search | FTS5, vector embeddings, semantic search |
-| **v1.0.x** | Production | Multi-backend, optional auth, stability |
+| **v0.7.x** | Infrastructure | Dual database, Caddy proxy, structured logging, health endpoints |
+| **v0.8.x** | Personalization | Enhanced preferences, advanced ranking |
+| **v0.9.x** | Intelligence | Pluggable LLM providers, prompt improvements |
+| **v1.0.x** | Production | Optional auth, multi-user, search |
 | **v1.1.x** | Platform | macOS widget, platform integrations |
-| **v2.0.x** | TBD | Based on user needs and scale requirements |
 
 ---
 
@@ -320,10 +297,9 @@ See `docs/adr/0001-architecture.md` for format reference.
 
 ## References
 
-- [ADR 0001: Core Architecture](0001-architecture.md)
-- [ADR 0002: Story-Based Aggregation](0002-story-based-aggregation.md)
-- [GitHub Project Board](https://github.com/Deim0s13/newsbrief/projects)
+- [GitHub Project Board](https://github.com/users/Deim0s13/projects/2)
 - [Milestones](https://github.com/Deim0s13/newsbrief/milestones)
+- [All ADRs](./README.md)
 
 ---
 

@@ -16,7 +16,7 @@ This guide covers setting up your development environment, running tests, debugg
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/newsbrief.git
+git clone https://github.com/Deim0s13/newsbrief.git
 cd newsbrief
 
 # Create and activate virtual environment
@@ -49,13 +49,42 @@ curl http://localhost:8787/docs  # Should return OpenAPI docs
 # Method 1: Direct Python
 uvicorn app.main:app --reload --port 8787
 
-# Method 2: Make shortcut
-make run-local
+# Method 2: Make shortcut (recommended)
+make dev
 
-# Method 3: Container (production-like)
-make build
-make run
+# Method 3: Production containers
+make deploy        # Start PostgreSQL + API + Caddy
+make deploy-init   # Initialize database (first time)
+# Access at http://newsbrief.local
 ```
+
+### **Development vs Production** ⭐ *v0.7.x*
+
+NewsBrief supports separate development and production environments:
+
+| Aspect | Development | Production |
+|--------|-------------|------------|
+| **URL** | `http://localhost:8787` | `http://newsbrief.local` |
+| **Database** | SQLite (`data/newsbrief.sqlite3`) | PostgreSQL (container) |
+| **Command** | `make dev` | `make deploy` |
+| **Visual** | Orange DEV banner + tab prefix | Clean UI |
+| **Logging** | Human-readable | JSON structured |
+| **Container** | None (local Python) | Podman Compose |
+
+**Development mode** shows a visible DEV banner and "DEV -" prefix in the browser tab to clearly distinguish from production.
+
+```bash
+# Development (local Python, SQLite)
+make dev
+# → Shows DEV banner at http://localhost:8787
+
+# Production (containers, PostgreSQL)
+make deploy
+make deploy-init  # First time only
+# → Clean UI at http://newsbrief.local
+```
+
+See [ADR-0007](../adr/0007-postgresql-database-migration.md) for database architecture details.
 
 ### **Environment Variables**
 
@@ -330,6 +359,35 @@ podman run --rm -d \
   -e NEWSBRIEF_CHUNK_SIZE=1800 \
   --name newsbrief newsbrief-api:v0.4.0
 ```
+
+## 🏥 Health Endpoints ⭐ *v0.7.3*
+
+NewsBrief provides Kubernetes-style health probes for container orchestration:
+
+| Endpoint | Purpose | Response |
+|----------|---------|----------|
+| `/healthz` | Liveness probe | `{"status": "ok"}` - container alive |
+| `/readyz` | Readiness probe | Database connectivity check |
+| `/ollamaz` | LLM status | Ollama availability + models |
+| `/health` | Full status | Database, LLM, scheduler status |
+
+```bash
+# Check if app is alive
+curl http://localhost:8787/healthz
+
+# Check if ready to serve (database connected)
+curl http://localhost:8787/readyz
+
+# Check LLM availability
+curl http://localhost:8787/ollamaz | jq .
+
+# Full health status
+curl http://localhost:8787/health | jq .
+```
+
+**Logging** is environment-aware (see [ADR-0011](../adr/0011-structured-logging.md)):
+- **Development**: Human-readable format with timestamps
+- **Production**: Structured JSON for log aggregation
 
 ## 🧪 Testing & Debugging
 
