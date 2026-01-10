@@ -1520,25 +1520,6 @@ time curl -X POST http://localhost:8787/refresh
 curl http://localhost:8787/items?limit=1 | jq '.[0].id'
 ```
 
-## 🚀 Future API Endpoints
-
-These endpoints are planned for future releases:
-
-### **GET /feeds** _(Planned)_
-List all configured feeds with metadata
-
-### **DELETE /feeds/{feed_id}** _(Planned)_
-Remove a feed and optionally its articles
-
-### **GET /search** _(Planned)_
-Full-text search across articles
-
-### **GET /categories** _(Planned)_
-List auto-generated content categories
-
-### **GET /summary/{item_id}** _(Planned)_
-Get AI-generated summary for specific article
-
 ---
 
 ## 🐍 Python API (v0.5.0)

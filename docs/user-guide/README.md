@@ -4,45 +4,45 @@ Documentation for NewsBrief users.
 
 ## 📖 Contents
 
-### [API.md](API.md)
-Complete API reference including:
-- Story endpoints (`/api/stories`, `/api/stories/{id}`)
-- Article endpoints (`/api/items`)
-- Feed management (`/api/feeds`)
-- Scheduler status (`/scheduler/status`)
-
 ### [QUICK-START.md](QUICK-START.md)
 Get up and running with NewsBrief:
-- Installation instructions
-- Configuration options
-- Running the application
-- Basic usage
+- Production deployment with Podman/Docker
+- Development setup with local Python
+- First steps: adding feeds, generating stories
+- Health checks and troubleshooting
 
-### [MIGRATION_v0.5.0.md](MIGRATION_v0.5.0.md)
-Migration guide for upgrading to v0.5.0:
-- Breaking changes
-- New features
-- Configuration updates
-- Database migrations
+### [API.md](API.md)
+Complete API reference including:
+- Story endpoints (`/stories`, `/stories/{id}`, `/stories/generate`)
+- Article endpoints (`/items`, `/items/{id}`)
+- Feed management (`/feeds`, OPML import/export)
+- Health probes (`/healthz`, `/readyz`, `/ollamaz`)
+- Scheduler status (`/scheduler/status`)
 
 ## 🚀 Quick Start
 
+**Production** (recommended):
 ```bash
-# Clone the repository
 git clone https://github.com/Deim0s13/newsbrief.git
 cd newsbrief
+cp .env.example .env
+echo "127.0.0.1 newsbrief.local" | sudo tee -a /etc/hosts
+make deploy && make deploy-init
+# Access at http://newsbrief.local
+```
 
-# Install dependencies
+**Development**:
+```bash
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-
-# Run the application
-uvicorn app.main:app --reload
+make dev
+# Access at http://localhost:8787 (shows DEV banner)
 ```
 
 See [QUICK-START.md](QUICK-START.md) for detailed instructions.
 
 ## 📚 Further Reading
 
-- **Development**: See [../development/](../development/)
-- **API Reference**: See [API.md](API.md)
-- **Latest Release**: See [../releases/v0.5.5/](../releases/v0.5.5/)
+- **Development Guide**: [../development/](../development/)
+- **Architecture Decisions**: [../adr/](../adr/)
+- **Release History**: [../releases/](../releases/)

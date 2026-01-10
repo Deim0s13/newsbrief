@@ -10,59 +10,72 @@ Development environment setup and guidelines:
 - Development workflow
 - Coding standards
 - Testing guidelines
-- Debugging tips
 
 ### [CI-CD.md](CI-CD.md)
-Continuous Integration and Deployment pipeline:
+Continuous Integration and Deployment:
 - GitHub Actions workflows
 - Testing automation
-- Build and deployment process
-- Environment configurations
+- Pre-commit hooks
 
 ### [BRANCHING_STRATEGY.md](BRANCHING_STRATEGY.md)
 Git workflow and branching strategy:
 - Branch naming conventions
 - Feature branch workflow
 - Release process
-- Hotfix procedures
 
-### [TECHNICAL_DEBT_v0.6.0.md](TECHNICAL_DEBT_v0.6.0.md)
-Known technical debt items for v0.6.0:
-- Code quality improvements needed
-- Refactoring opportunities
-- Performance optimizations
-- Security enhancements
+### [GITHUB_PROJECT_BOARD_SETUP.md](GITHUB_PROJECT_BOARD_SETUP.md)
+GitHub Project board configuration:
+- Board structure and views
+- Issue workflow
+- Milestone tracking
 
 ## 🚀 Getting Started
 
 ```bash
-# Clone the repository
+# Clone and setup
 git clone https://github.com/Deim0s13/newsbrief.git
 cd newsbrief
-
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
+npm install
 
-# Install development dependencies
-pip install pytest pytest-asyncio pytest-cov black isort mypy
+# Setup pre-commit hooks
+pip install pre-commit
+pre-commit install
+
+# Run development server
+make dev
 
 # Run tests
-pytest
+make test
 
 # Run linters
-black --check app/
-isort --check-only app/
+make lint
+```
+
+## 🧪 Testing
+
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=app --cov-report=html
+
+# Run specific tests
+pytest tests/test_story_crud.py -v
+
+# Type checking
 mypy app/ --ignore-missing-imports
 ```
 
-See [DEVELOPMENT.md](DEVELOPMENT.md) for detailed development setup.
+**Current Coverage**: ~41% (192 tests)
 
 ## 📚 Further Reading
 
-- **User Guide**: See [../user-guide/](../user-guide/)
-- **Project Management**: See [../project-management/](../project-management/)
-- **Architecture Decisions**: See [../adr/](../adr/)
+- **User Guide**: [../user-guide/](../user-guide/)
+- **Architecture Decisions**: [../adr/](../adr/)
+- **Project Board**: [GitHub Projects](https://github.com/users/Deim0s13/projects/2)

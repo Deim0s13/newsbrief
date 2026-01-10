@@ -1,29 +1,57 @@
 # Documentation Archive
 
-This directory contains historical documentation that is no longer active but preserved for reference.
+Historical documentation preserved for reference. These documents are **no longer actively maintained**.
 
-## Archived Documents
+## 📦 Archived Content
 
-### `v0.4.0-plan.md`
-**Archived**: 2025-11-12
-**Reason**: Superseded by v0.5.0 Story Architecture
-**Status**: Deprecated - the article-centric approach was replaced by story-based aggregation
+### issues/ (Archived Jan 2026)
+Issue tracking documents now superseded by GitHub Issues:
+- `GITHUB_ISSUES_TO_CLOSE.md` - Completed issues
+- `ISSUES_FOUND_*.md` - Historical issue discovery
+- `NEW_GITHUB_ISSUES.md` - Issues now in GitHub
+- `UI_POLISH_*.md/json` - UI issues now in GitHub
+- `llm_improvements_v0.7.md` - LLM backlog (now in milestones)
 
-See [ADR 0002](../adr/0002-story-based-aggregation.md) for the pivot explanation.
+### planning/ (Archived Jan 2026)
+Planning documents superseded by GitHub Project Board:
+- `STORY_ARCHITECTURE_BACKLOG.md` - Story feature backlog
+- `UI_IMPROVEMENTS_BACKLOG.md` - UI backlog
+- `PERFORMANCE_*.md` - Performance analysis and optimizations
 
-### `DOCUMENTATION_AUDIT.md`
-**Archived**: 2025-11-12
-**Reason**: Audit complete - all discrepancies resolved
-**Status**: Historical - working document used to identify and fix documentation inconsistencies
+### project-management/ (Archived Jan 2026)
+Project management docs superseded by GitHub:
+- `V0.6.*_*.md` - Version-specific implementation plans
+- `backlog.md` - Product backlog (now in GitHub Issues)
+- `IMPLEMENTATION_PLAN.md` - Story architecture plan (completed v0.5.5)
 
-This was a one-time audit that found 7 major discrepancies across documentation files (README.md, STORY_ARCHITECTURE_BACKLOG.md, IMPLEMENTATION_PLAN.md, ADR 0002). All issues have been resolved and documentation is now consistent.
+### sessions/ (Archived Jan 2026)
+Development session notes (Nov 2025):
+- `2025-11-13-session-summary.md` - Story architecture implementation
+- `2025-11-18-session-summary.md` - v0.5.5 release completion
 
-### `PROJECT_MANAGEMENT_SETUP.md`
-**Archived**: 2025-11-12
-**Reason**: Setup complete - plan executed
-**Status**: Historical - planning document for GitHub Project Board and Milestones setup
+### testing/ (Archived Jan 2026)
+Testing documentation with outdated results:
+- `UI_TESTING_CHECKLIST.md` - Manual testing checklist
+- `TEST_RESULTS_*.md` - Historical test results
+- `STORY_API_TESTING_SUMMARY.md` - API testing (v0.5.x)
 
-This was a one-time setup plan that created 3 milestones (v0.5.0, v0.6.0, v0.7.0), closed 6 completed issues, and assigned 28 issues to milestones. For ongoing instructions, see `GITHUB_PROJECT_BOARD_SETUP.md` in the main docs folder.
+### Individual Files
+- `v0.4.0-plan.md` - Superseded by story-based architecture (ADR 0002)
+- `DOCUMENTATION_AUDIT.md` - One-time audit (completed)
+- `PROJECT_MANAGEMENT_SETUP.md` - Initial setup (completed)
+- `TECHNICAL_DEBT_v0.6.0.md` - Historical debt tracking
+- `HOUSEKEEPING_*.md` - Historical cleanup notes
+- `MIGRATION_v0.5.0.md` - v0.5.0 migration guide
+
+---
+
+## 🔗 Current Documentation
+
+For current documentation, see:
+- **Project Board**: [GitHub Projects](https://github.com/users/Deim0s13/projects/2)
+- **Issues**: [GitHub Issues](https://github.com/Deim0s13/newsbrief/issues)
+- **Releases**: [GitHub Releases](https://github.com/Deim0s13/newsbrief/releases)
+- **Active Docs**: [../](../)
 
 ---
 
