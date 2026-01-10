@@ -112,8 +112,8 @@ deploy:                           ## Deploy production stack (containers + Postg
 	@echo "🚀 Deploying NewsBrief production stack..."
 	$(RUNTIME)-compose up -d --build
 	@echo "✅ Production deployed at http://$(HOSTNAME)"
-	@echo "   (Direct access: http://localhost:$(PORT))"
-	@echo "📊 View logs: make logs"
+	@echo "   (Development: make dev → http://localhost:$(PORT))"
+	@echo "📊 View logs: make deploy-logs"
 
 deploy-stop:                      ## Stop production stack (preserves data)
 	@echo "🛑 Stopping production stack..."
