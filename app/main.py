@@ -74,6 +74,8 @@ templates.env.globals["environment"] = os.environ.get("ENVIRONMENT", "developmen
 # Read version from pyproject.toml (single source of truth)
 def get_version() -> str:
     """Read version from pyproject.toml."""
+    from pathlib import Path
+
     try:
         import tomllib
     except ImportError:
