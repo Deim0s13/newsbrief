@@ -74,6 +74,7 @@ WORKDIR /app
 COPY --chown=newsbrief:newsbrief app /app/app
 COPY --chown=newsbrief:newsbrief alembic /app/alembic
 COPY --chown=newsbrief:newsbrief alembic.ini /app/alembic.ini
+COPY --chown=newsbrief:newsbrief pyproject.toml /app/pyproject.toml
 
 # Create data directory with correct permissions
 RUN mkdir -p /app/data && chown newsbrief:newsbrief /app/data
