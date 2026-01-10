@@ -337,7 +337,7 @@ NewsBrief follows **local-first principles** with story-first aggregation:
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/newsbrief.git
+git clone https://github.com/Deim0s13/newsbrief.git
 cd newsbrief
 
 # Create virtual environment
@@ -569,11 +569,16 @@ Development is organized with GitHub Projects and Milestones for clear visibilit
 
 We welcome contributions! See **[CONTRIBUTING.md](CONTRIBUTING.md)** for detailed setup instructions.
 
+**Key Resources**:
+- [Development Guide](docs/development/DEVELOPMENT.md) - Setup and workflow
+- [Branching Strategy](docs/development/BRANCHING_STRATEGY.md) - Git workflow and **release process**
+- [CI/CD Pipeline](docs/development/CI-CD.md) - Automated testing and deployment
+
 ### **Quick Start for Contributors**
 
 ```bash
 # Clone and setup
-git clone https://github.com/yourusername/newsbrief.git
+git clone https://github.com/Deim0s13/newsbrief.git
 cd newsbrief
 pip install -r requirements.txt -r requirements-dev.txt
 pre-commit install
