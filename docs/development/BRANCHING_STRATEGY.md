@@ -63,25 +63,47 @@
 
 ### Release Process
 
-When ready to release (e.g., v0.5.0 complete):
+When ready to release (e.g., v0.7.4 complete):
 
-1. **Create release PR**:
+1. **Update Documentation** (before merge):
+   ```bash
+   # Update main README.md
+   # - Move "Current" to "Previous"
+   # - Add new version as "Current"
+   # - Update "Next" to upcoming milestone
+
+   # Update docs/releases/README.md
+   # - Add one-line entry for new version with GitHub Release link
+   ```
+
+2. **Create release PR**:
    - From: `dev`
    - To: `main`
-   - Title: "Release v0.5.0 - Story Architecture"
+   - Title: "Release v0.7.4 - Security"
 
-2. **After merge to main**:
+3. **After merge to main**:
    ```bash
    git checkout main
    git pull origin main
-   git tag -a v0.5.0 -m "Release v0.5.0 - Story Architecture"
-   git push origin v0.5.0
+   git tag -a v0.7.4 -m "Release v0.7.4 - Security"
+   git push origin v0.7.4
    ```
 
-3. **Create GitHub Release**:
-   - Tag: v0.5.0
-   - Title: "v0.5.0 - Story Architecture"
-   - Release notes: Completed features, breaking changes
+4. **Create GitHub Release**:
+   - Tag: v0.7.4
+   - Title: "v0.7.4 - Security"
+   - Release notes: Completed features, breaking changes, upgrade instructions
+
+### Release Checklist
+
+- [ ] All milestone issues closed
+- [ ] CI/CD pipeline passing on `dev`
+- [ ] `README.md` updated (Next → Current → Previous)
+- [ ] `docs/releases/README.md` updated
+- [ ] Manual testing completed
+- [ ] Merged to `main`
+- [ ] Tag created and pushed
+- [ ] GitHub Release published with notes
 
 ---
 
