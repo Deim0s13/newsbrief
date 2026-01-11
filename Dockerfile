@@ -89,4 +89,6 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 EXPOSE 8787
 
 # Default command
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8787"]
+# --proxy-headers: Trust X-Forwarded-Proto from Caddy for correct URL generation
+# --forwarded-allow-ips: Trust headers from Caddy container (default only trusts 127.0.0.1)
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8787", "--proxy-headers", "--forwarded-allow-ips=*"]

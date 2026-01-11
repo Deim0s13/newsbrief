@@ -23,7 +23,7 @@ make deploy
 # Initialize database (first time only)
 make deploy-init
 
-# Access at http://newsbrief.local
+# Access at https://newsbrief.local
 ```
 
 ### Production Commands
@@ -83,14 +83,14 @@ make dev
 
 ```bash
 # Via API
-curl -X POST "http://newsbrief.local/feeds?url=https://hnrss.org/frontpage"
-curl -X POST "http://newsbrief.local/feeds?url=https://feeds.arstechnica.com/arstechnica/technology-lab"
+curl -X POST "https://newsbrief.local/feeds?url=https://hnrss.org/frontpage"
+curl -X POST "https://newsbrief.local/feeds?url=https://feeds.arstechnica.com/arstechnica/technology-lab"
 
 # Refresh feeds
-curl -X POST "http://newsbrief.local/refresh"
+curl -X POST "https://newsbrief.local/refresh"
 
 # Generate stories
-curl -X POST "http://newsbrief.local/stories/generate"
+curl -X POST "https://newsbrief.local/stories/generate"
 ```
 
 ### Set Up Ollama (for AI Features)
@@ -103,7 +103,7 @@ curl -fsSL https://ollama.ai/install.sh | sh
 ollama pull llama3.1:8b
 
 # Verify connection
-curl http://newsbrief.local/ollamaz
+curl https://newsbrief.local/ollamaz
 ```
 
 ---
@@ -112,16 +112,16 @@ curl http://newsbrief.local/ollamaz
 
 ```bash
 # Full health status
-curl http://newsbrief.local/health | jq .
+curl https://newsbrief.local/health | jq .
 
 # Liveness probe (container alive)
-curl http://newsbrief.local/healthz
+curl https://newsbrief.local/healthz
 
 # Readiness probe (database connected)
-curl http://newsbrief.local/readyz
+curl https://newsbrief.local/readyz
 
 # LLM status
-curl http://newsbrief.local/ollamaz | jq .
+curl https://newsbrief.local/ollamaz | jq .
 ```
 
 ---

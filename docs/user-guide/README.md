@@ -28,7 +28,7 @@ cd newsbrief
 cp .env.example .env
 echo "127.0.0.1 newsbrief.local" | sudo tee -a /etc/hosts
 make deploy && make deploy-init
-# Access at http://newsbrief.local
+# Access at https://newsbrief.local
 ```
 
 **Development**:

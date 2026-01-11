@@ -74,7 +74,7 @@ HTTPS/TLS encryption for secure connections. See [Project Board](https://github.
 - ✅ **Health Endpoint**: `/health` with database, LLM, and scheduler status checks
 - ✅ **Production Deployment**: `make deploy`, `deploy-stop`, `deploy-status`, `deploy-init`
 - ✅ **Database Backup/Restore**: `make db-backup`, `db-restore` with configurable BACKUP_DIR
-- ✅ **Caddy Reverse Proxy**: Access production at `http://newsbrief.local`
+- ✅ **Caddy Reverse Proxy + HTTPS**: Secure TLS with automatic certificates at `https://newsbrief.local`
 - ✅ **Auto-start on Login**: launchd plist with `make autostart-install`
 
 📚 **[Full Release History →](docs/releases/README.md)**
@@ -96,7 +96,7 @@ make hostname-setup               # Add newsbrief.local to /etc/hosts (sudo)
 make deploy                       # Start production stack
 make deploy-init                  # Initialize database
 
-# Access at http://newsbrief.local
+# Access at https://newsbrief.local
 
 # Optional: Auto-start on login
 make autostart-install
@@ -138,7 +138,7 @@ NewsBrief supports two distinct modes to separate your development work from dai
 |--------|-------------|------------|
 | **Database** | SQLite (`./data/newsbrief.sqlite3`) | PostgreSQL (Docker volume) |
 | **Data Location** | `./data/` directory | `newsbrief_data` Docker volume |
-| **URL** | `http://localhost:8787` | `http://newsbrief.local` |
+| **URL** | `http://localhost:8787` | `https://newsbrief.local` |
 | **Visual Indicator** | Orange "DEV" banner + tab prefix | Clean UI (no banner) |
 | **Hot Reload** | ✅ Yes | ❌ No |
 | **Logs** | Human-readable with colors | JSON structured |

@@ -21,12 +21,41 @@ We already use Caddy as our reverse proxy (ADR 0010), which has built-in automat
 
 ## Decision
 
-Implement HTTPS using **Caddy's automatic TLS** with the following approach:
+Implement HTTPS using **Caddy's automatic TLS** for the **production (containerized) environment only**.
 
-| Environment | TLS Method | Certificate |
-|-------------|------------|-------------|
-| **Local Development** | `tls internal` | Caddy's internal CA (self-signed) |
-| **Production (future)** | Let's Encrypt | Automatic via ACME |
+| Environment | Stack | URL | HTTPS |
+|-------------|-------|-----|-------|
+| **Development** | `make dev` → Python/uvicorn | `http://localhost:8787` | ❌ No |
+| **Production** | `make deploy` → Podman + Caddy | `https://newsbrief.local` | ✅ Yes |
+
+### Why No HTTPS in Development?
+
+1. **Different architecture** - Dev runs uvicorn directly; prod runs through Caddy reverse proxy
+2. **Complexity vs value** - Adding SSL to uvicorn requires separate certificate management, mkcert setup, and additional configuration for minimal security benefit
+3. **Traffic stays local** - Dev traffic never leaves `localhost`, eliminating network interception risks
+4. **Debugging simplicity** - Plain HTTP is easier to inspect with dev tools, curl, etc.
+5. **Standard practice** - Most web frameworks (Django, Rails, Express) use HTTP for local dev
+
+### Testing Implications
+
+| Scenario | How to Test |
+|----------|-------------|
+| Feature development | Use `make dev` (HTTP) for fast iteration |
+| HTTPS-specific features | Use `make deploy` (HTTPS) to test TLS behavior |
+| Security headers | Must test in prod environment (Caddy adds headers) |
+| Final integration | Always verify in prod environment before release |
+
+### Accepted Risk
+
+Features that behave differently over HTTPS (secure cookies, HSTS, service workers) must be explicitly tested in the production environment. This is an acceptable trade-off for development velocity.
+
+### Future Consideration
+
+If HTTPS becomes necessary in development (e.g., testing OAuth callbacks, PWA features), we can add optional uvicorn SSL support via:
+- `mkcert` for local certificates
+- `--ssl-keyfile` / `--ssl-certfile` flags to uvicorn
+
+This would be a separate enhancement, not blocking current implementation.
 
 ## Alternatives Considered
 
@@ -89,6 +118,20 @@ caddy:
     - caddy_data:/data      # Persist certificates
     - caddy_config:/config  # Persist config
 ```
+
+### Uvicorn Proxy Headers
+
+For FastAPI to generate correct `https://` URLs when behind Caddy, uvicorn must trust proxy headers:
+
+```dockerfile
+# Dockerfile CMD
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8787", "--proxy-headers", "--forwarded-allow-ips=*"]
+```
+
+- `--proxy-headers`: Enable trusting `X-Forwarded-Proto` header
+- `--forwarded-allow-ips=*`: Trust headers from any IP (required for container networking where Caddy's IP varies)
+
+Without this, `url_for()` generates `http://` URLs even when accessed via HTTPS, causing mixed content issues (Safari blocks HTTP resources on HTTPS pages).
 
 ### Production Configuration (Future)
 

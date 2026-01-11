@@ -30,7 +30,7 @@ run-local:
 
 dev:  ## Run development server (localhost:8787) - shows DEV banner
 	@echo "🔧 Starting development server on http://localhost:$(PORT)"
-	@echo "   Production remains at http://newsbrief.local"
+	@echo "   Production remains at https://newsbrief.local"
 	@echo ""
 	ENVIRONMENT=development DATABASE_URL=sqlite:///./data/newsbrief.sqlite3 \
 		.venv/bin/uvicorn app.main:app --reload --port $(PORT)

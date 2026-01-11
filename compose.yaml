@@ -4,8 +4,11 @@ services:
     container_name: newsbrief-proxy
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data      # Persist certificates
+      - caddy_config:/config  # Persist config
     depends_on:
       - api
     restart: unless-stopped
@@ -54,3 +57,5 @@ services:
 volumes:
   postgres_data:
   newsbrief_data:
+  caddy_data:
+  caddy_config:

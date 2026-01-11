@@ -55,7 +55,7 @@ make dev
 # Method 3: Production containers
 make deploy        # Start PostgreSQL + API + Caddy
 make deploy-init   # Initialize database (first time)
-# Access at http://newsbrief.local
+# Access at https://newsbrief.local
 ```
 
 ### **Development vs Production** ⭐ *v0.7.x*
@@ -64,7 +64,7 @@ NewsBrief supports separate development and production environments:
 
 | Aspect | Development | Production |
 |--------|-------------|------------|
-| **URL** | `http://localhost:8787` | `http://newsbrief.local` |
+| **URL** | `http://localhost:8787` | `https://newsbrief.local` |
 | **Database** | SQLite (`data/newsbrief.sqlite3`) | PostgreSQL (container) |
 | **Command** | `make dev` | `make deploy` |
 | **Visual** | Orange DEV banner + tab prefix | Clean UI |
@@ -81,7 +81,7 @@ make dev
 # Production (containers, PostgreSQL)
 make deploy
 make deploy-init  # First time only
-# → Clean UI at http://newsbrief.local
+# → Clean UI at https://newsbrief.local
 ```
 
 See [ADR-0007](../adr/0007-postgresql-database-migration.md) for database architecture details.
