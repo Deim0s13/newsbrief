@@ -8,7 +8,7 @@ NewsBrief is a self-hosted, privacy-focused news aggregator that replaces readin
 
 ## 🌟 Features
 
-### **🎯 Story-Based Aggregation (v0.7.3)** - *Current Release*
+### **🎯 Story-Based Aggregation (v0.7.4)** - *Current Release*
 Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **Time to informed: 30 min → 2 min**
 
 - **Automated Story Generation**: Daily scheduled generation at 6 AM (configurable timezone)
@@ -59,25 +59,20 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 - **Automated Dependency Management**: Weekly security audits, dependency updates, and base image maintenance
 - **Comprehensive Documentation**: Complete CI/CD guides, API documentation, and architecture decision records
 
-### **🔜 Next: v0.7.4 - Security**
-HTTPS/TLS encryption for secure connections. See [Project Board](https://github.com/users/Deim0s13/projects/2) for details.
+### **🔜 Next: v0.7.5 - GitOps & Kubernetes**
+Local Kubernetes with kind, Tekton pipelines, ArgoCD GitOps deployment. See [Project Board](https://github.com/users/Deim0s13/projects/2) for details.
 
-### **✅ Current: v0.7.3 - Operations & Observability** (Jan 2026)
-- ✅ **Structured Logging**: JSON logs in production, human-readable in development (ADR-0011)
+### **✅ Current: v0.7.4 - Security** (Jan 2026)
+- ✅ **HTTPS/TLS**: Caddy automatic certificates with `tls internal` (ADR-0012)
+- ✅ **Podman Secrets**: Encrypted credential storage for production (ADR-0013)
+- ✅ **API Rate Limiting**: 100/min default, 10/min for LLM endpoints (ADR-0014)
+- ✅ **Security Headers**: HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy
+
+### **✅ Previous: v0.7.3 - Operations & Observability** (Jan 2026)
+- ✅ **Structured Logging**: JSON logs in production, human-readable in development
 - ✅ **Health Endpoints**: Kubernetes-style `/healthz`, `/readyz`, `/ollamaz` probes
 - ✅ **Feed Management UI**: Fixed legibility issues with proper column widths
 - ✅ **Dev/Prod Separation**: Visual DEV banner and browser tab prefix in development mode
-- ✅ **Timing Instrumentation**: Duration logging for feed refresh, story generation, LLM calls
-
-### **✅ Previous: v0.7.2 - Container & Deployment** (Jan 2026)
-- ✅ **Multi-stage Dockerfile**: Optimized build with non-root user, reduced image size
-- ✅ **Health Endpoint**: `/health` with database, LLM, and scheduler status checks
-- ✅ **Production Deployment**: `make deploy`, `deploy-stop`, `deploy-status`, `deploy-init`
-- ✅ **Database Backup/Restore**: `make db-backup`, `db-restore` with configurable BACKUP_DIR
-- ✅ **Podman Secrets**: Encrypted credential storage for production (`make secrets-create`)
-- ✅ **API Rate Limiting**: Protection against abuse (100/min default, 10/min for LLM endpoints)
-- ✅ **Caddy Reverse Proxy + HTTPS**: Secure TLS with automatic certificates at `https://newsbrief.local`
-- ✅ **Auto-start on Login**: launchd plist with `make autostart-install`
 
 📚 **[Full Release History →](docs/releases/README.md)**
 
@@ -548,7 +543,7 @@ Transform from article-centric to story-based aggregation
 - [x] **v0.7.1 - PostgreSQL Migration**: Dual database support, ORM models, Alembic migrations ✅ COMPLETE (Jan 2026)
 - [x] **v0.7.2 - Container & Deployment**: Multi-stage Dockerfile, Caddy proxy, auto-start, CI/CD stabilization ✅ COMPLETE (Jan 2026)
 
-### **v0.7.3 - Observability** - 🔜 NEXT
+### **v0.7.5 - GitOps** - 🔜 NEXT
 - [ ] Prometheus metrics endpoint
 - [ ] Structured JSON logging
 - [ ] Performance dashboard
