@@ -35,6 +35,17 @@ dev:  ## Run development server (localhost:8787) - shows DEV banner
 	ENVIRONMENT=development DATABASE_URL=sqlite:///./data/newsbrief.sqlite3 \
 		.venv/bin/uvicorn app.main:app --reload --port $(PORT)
 
+env-init:  ## Create .env from template with generated secure password
+	@if [ -f .env ]; then \
+		echo "⚠️  .env already exists. Delete it first or edit manually."; \
+		exit 1; \
+	fi
+	@cp .env.example .env
+	@PASSWORD=$$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32) && \
+		sed -i '' "s/CHANGE_ME_USE_MAKE_ENV_INIT/$$PASSWORD/" .env
+	@echo "✅ Created .env with secure generated password"
+	@echo "📝 Review .env and adjust OLLAMA_BASE_URL if needed"
+
 # ---------- Build / Tag / Push ----------
 build:
 	$(RUNTIME) build \
@@ -110,8 +121,14 @@ run:
 # ---------- Production Deployment ----------
 deploy:                           ## Deploy production stack (containers + PostgreSQL)
 	@echo "🚀 Deploying NewsBrief production stack..."
-	$(RUNTIME)-compose up -d --build
-	@echo "✅ Production deployed at http://$(HOSTNAME)"
+	@if $(RUNTIME) secret inspect db_password >/dev/null 2>&1; then \
+		echo "🔐 Using Podman Secrets for database credentials"; \
+		$(RUNTIME)-compose -f compose.yaml -f compose.prod.yaml up -d --build; \
+	else \
+		echo "⚠️  No secret found - using .env file (run 'make secrets-create' for production)"; \
+		$(RUNTIME)-compose up -d --build; \
+	fi
+	@echo "✅ Production deployed at https://$(HOSTNAME)"
 	@echo "   (Development: make dev → http://localhost:$(PORT))"
 	@echo "📊 View logs: make deploy-logs"
 
@@ -130,7 +147,11 @@ deploy-init:                      ## First-time setup: run migrations on fresh d
 
 # ---------- Compose (dev/debugging) ----------
 up:
-	$(RUNTIME)-compose up -d --build
+	@if $(RUNTIME) secret inspect db_password >/dev/null 2>&1; then \
+		$(RUNTIME)-compose -f compose.yaml -f compose.prod.yaml up -d --build; \
+	else \
+		$(RUNTIME)-compose up -d --build; \
+	fi
 
 down:
 	$(RUNTIME)-compose down
@@ -174,6 +195,20 @@ db-restore:                         ## Restore from backup: make db-restore FILE
 
 db-backup-list:                     ## List available backups
 	@ls -lah "$(BACKUP_DIR)"/*.sql 2>/dev/null || echo "No backups found in $(BACKUP_DIR)/"
+
+# ---------- Secrets Management (Production) ----------
+secrets-create:  ## Create Podman secret for database password
+	@echo "Creating Podman secret for database password..."
+	@read -sp "Enter database password: " pwd && echo && \
+		echo "$$pwd" | $(RUNTIME) secret create db_password - && \
+		echo "✅ Secret created: db_password"
+
+secrets-list:  ## List Podman secrets
+	$(RUNTIME) secret ls
+
+secrets-delete:  ## Delete database password secret
+	$(RUNTIME) secret rm db_password
+	@echo "✅ Secret deleted: db_password"
 
 # ---------- Database Migrations ----------
 migrate:                            ## Run database migrations to latest

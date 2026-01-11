@@ -12,10 +12,10 @@ Deploy the full stack with PostgreSQL, Caddy reverse proxy, and auto-start:
 # Clone and configure
 git clone https://github.com/Deim0s13/newsbrief.git
 cd newsbrief
-cp .env.example .env
+make env-init                     # Generate .env with secure password
 
 # Add newsbrief.local to hosts file
-echo "127.0.0.1 newsbrief.local" | sudo tee -a /etc/hosts
+make hostname-setup               # Or manually: echo "127.0.0.1 newsbrief.local" | sudo tee -a /etc/hosts
 
 # Start production stack
 make deploy
@@ -24,6 +24,15 @@ make deploy
 make deploy-init
 
 # Access at https://newsbrief.local
+```
+
+### Enhanced Security with Podman Secrets
+
+For production deployments, use encrypted secrets instead of `.env`:
+
+```bash
+make secrets-create               # Prompts for password, stores encrypted
+make deploy                       # Automatically uses secrets
 ```
 
 ### Production Commands
@@ -36,6 +45,8 @@ make deploy-init
 | `make deploy-logs` | View container logs |
 | `make db-backup` | Backup database |
 | `make db-restore` | Restore database |
+| `make secrets-create` | Create encrypted secret |
+| `make secrets-list` | List secrets |
 
 ---
 

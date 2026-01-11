@@ -1,0 +1,22 @@
+# Production overrides - use with: podman-compose -f compose.yaml -f compose.prod.yaml
+# Adds Podman Secrets support for secure credential management
+#
+# Setup:
+#   1. Create secret: make secrets-create
+#   2. Deploy: make deploy (automatically uses this file)
+#
+# Note: Secret must be named "db_password" (podman-compose limitation)
+
+services:
+  db:
+    environment:
+      # Override: Use secret file instead of env var
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      # Clear the env var version (security)
+      POSTGRES_PASSWORD: ""
+    secrets:
+      - db_password
+
+secrets:
+  db_password:
+    external: true

@@ -74,6 +74,7 @@ HTTPS/TLS encryption for secure connections. See [Project Board](https://github.
 - ✅ **Health Endpoint**: `/health` with database, LLM, and scheduler status checks
 - ✅ **Production Deployment**: `make deploy`, `deploy-stop`, `deploy-status`, `deploy-init`
 - ✅ **Database Backup/Restore**: `make db-backup`, `db-restore` with configurable BACKUP_DIR
+- ✅ **Podman Secrets**: Encrypted credential storage for production (`make secrets-create`)
 - ✅ **Caddy Reverse Proxy + HTTPS**: Secure TLS with automatic certificates at `https://newsbrief.local`
 - ✅ **Auto-start on Login**: launchd plist with `make autostart-install`
 
@@ -91,7 +92,7 @@ git clone https://github.com/Deim0s13/newsbrief.git
 cd newsbrief
 
 # First-time setup
-cp .env.example .env              # Configure environment
+make env-init                     # Generate .env with secure password
 make hostname-setup               # Add newsbrief.local to /etc/hosts (sudo)
 make deploy                       # Start production stack
 make deploy-init                  # Initialize database
@@ -100,6 +101,21 @@ make deploy-init                  # Initialize database
 
 # Optional: Auto-start on login
 make autostart-install
+```
+
+### **Production with Podman Secrets (Enhanced Security)**
+
+For production deployments with encrypted secrets instead of `.env`:
+
+```bash
+# Create encrypted secret (prompts for password)
+make secrets-create
+
+# Deploy (automatically uses secrets when available)
+make deploy
+
+# Verify secrets in use (look for 🔐 message)
+make secrets-list
 ```
 
 ### **Development Mode**
