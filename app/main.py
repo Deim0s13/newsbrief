@@ -9,6 +9,9 @@ from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from sqlalchemy import text
 
 from . import scheduler
@@ -62,6 +65,24 @@ configure_logging()
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="NewsBrief")
+
+# Rate limiting configuration
+RATE_LIMIT_DEFAULT = os.environ.get("RATE_LIMIT_DEFAULT", "100/minute")
+RATE_LIMIT_LLM = os.environ.get("RATE_LIMIT_LLM", "10/minute")
+
+
+def get_client_ip(request: Request) -> str:
+    """Get client IP, preferring X-Forwarded-For when behind proxy."""
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        # X-Forwarded-For can contain multiple IPs; first is the client
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+limiter = Limiter(key_func=get_client_ip, default_limits=[RATE_LIMIT_DEFAULT])
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Template and static file setup
 templates = Jinja2Templates(directory="app/templates")
@@ -940,8 +961,9 @@ def get_feed_stats(feed_id: int):
         )
 
 
+@limiter.limit("10/minute")  # LLM-intensive endpoint
 @app.post("/refresh")
-def refresh_endpoint():
+def refresh_endpoint(request: Request):
     # Set in-progress flag to prevent scheduled refresh overlap
     from app.scheduler import set_feed_refresh_in_progress
 
@@ -1691,8 +1713,9 @@ def recalculate_rankings():
 # ============================================================================
 
 
+@limiter.limit("10/minute")  # LLM-intensive endpoint
 @app.post("/stories/generate", response_model=StoryGenerationResponse)
-def generate_stories_endpoint(request: StoryGenerationRequest = None):  # type: ignore[assignment]
+def generate_stories_endpoint(request: Request, body: StoryGenerationRequest = None):  # type: ignore[assignment]
     """
     Generate stories from recent articles using hybrid clustering and LLM synthesis.
 
@@ -1713,18 +1736,18 @@ def generate_stories_endpoint(request: StoryGenerationRequest = None):  # type: 
         Story generation results including story IDs and statistics
     """
     try:
-        # Use default request if none provided
-        if request is None:
+        # Use default body if none provided
+        if body is None:
             # All fields have defaults via Pydantic Field()
-            request = StoryGenerationRequest()  # type: ignore[call-arg]
+            body = StoryGenerationRequest()  # type: ignore[call-arg]
 
         with session_scope() as s:
             result = generate_stories_simple(
                 session=s,
-                time_window_hours=request.time_window_hours,
-                min_articles_per_story=request.min_articles_per_story,
-                similarity_threshold=request.similarity_threshold,
-                model=request.model,
+                time_window_hours=body.time_window_hours,
+                min_articles_per_story=body.min_articles_per_story,
+                similarity_threshold=body.similarity_threshold,
+                model=body.model,
                 max_workers=3,  # Parallel LLM calls
             )
 
@@ -1737,7 +1760,7 @@ def generate_stories_endpoint(request: StoryGenerationRequest = None):  # type: 
             message = None
             if len(story_ids) == 0:
                 if articles_found == 0:
-                    message = f"No articles found in the last {request.time_window_hours} hours. Try fetching feeds or increasing the time window."
+                    message = f"No articles found in the last {body.time_window_hours} hours. Try fetching feeds or increasing the time window."
                 elif duplicates_skipped > 0:
                     message = f"All {duplicates_skipped} story clusters were duplicates of existing stories. Your stories are up to date! Try increasing the time window or fetch new articles."
                 elif clusters_created == 0:
@@ -1750,8 +1773,8 @@ def generate_stories_endpoint(request: StoryGenerationRequest = None):  # type: 
                 success=True,
                 story_ids=story_ids,
                 stories_generated=len(story_ids),
-                time_window_hours=request.time_window_hours,
-                model=request.model,
+                time_window_hours=body.time_window_hours,
+                model=body.model,
                 articles_found=articles_found,
                 clusters_created=clusters_created,
                 duplicates_skipped=duplicates_skipped,

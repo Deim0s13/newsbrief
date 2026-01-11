@@ -75,6 +75,7 @@ HTTPS/TLS encryption for secure connections. See [Project Board](https://github.
 - ✅ **Production Deployment**: `make deploy`, `deploy-stop`, `deploy-status`, `deploy-init`
 - ✅ **Database Backup/Restore**: `make db-backup`, `db-restore` with configurable BACKUP_DIR
 - ✅ **Podman Secrets**: Encrypted credential storage for production (`make secrets-create`)
+- ✅ **API Rate Limiting**: Protection against abuse (100/min default, 10/min for LLM endpoints)
 - ✅ **Caddy Reverse Proxy + HTTPS**: Secure TLS with automatic certificates at `https://newsbrief.local`
 - ✅ **Auto-start on Login**: launchd plist with `make autostart-install`
 

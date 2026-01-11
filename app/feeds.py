@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import time
 from dataclasses import dataclass
@@ -12,6 +13,8 @@ import certifi
 import feedparser
 import httpx
 from sqlalchemy import text
+
+logger = logging.getLogger(__name__)
 
 from .db import session_scope
 from .models import create_content_hash
