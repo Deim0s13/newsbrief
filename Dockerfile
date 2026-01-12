@@ -8,7 +8,7 @@
 # -----------------------------------------------------------------------------
 # Stage 1: Builder
 # -----------------------------------------------------------------------------
-FROM python:3.11-slim AS builder
+FROM python:null-slim
 
 # Install build dependencies for lxml, psycopg, etc.
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -31,7 +31,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
 # -----------------------------------------------------------------------------
 # Stage 2: Runtime
 # -----------------------------------------------------------------------------
-FROM python:3.11-slim AS runtime
+FROM python:null-slim
 
 # Build arguments for versioning
 ARG VERSION=dev
