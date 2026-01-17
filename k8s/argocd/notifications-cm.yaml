@@ -1,0 +1,52 @@
+# ArgoCD Notifications ConfigMap
+# Defines notification templates and triggers
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-notifications-cm
+  namespace: argocd
+data:
+  # Notification templates
+  template.app-deployed: |
+    message: |
+      Application {{.app.metadata.name}} is now running new version.
+      Sync Status: {{.app.status.sync.status}}
+      Health: {{.app.status.health.status}}
+      Revision: {{.app.status.sync.revision}}
+
+  template.app-sync-failed: |
+    message: |
+      ❌ Application {{.app.metadata.name}} sync failed!
+      Error: {{.app.status.operationState.message}}
+      Revision: {{.app.status.sync.revision}}
+
+  template.app-health-degraded: |
+    message: |
+      ⚠️ Application {{.app.metadata.name}} health degraded!
+      Health: {{.app.status.health.status}}
+      Message: {{.app.status.health.message}}
+
+  # Triggers define when to send notifications
+  trigger.on-deployed: |
+    - description: Application is synced and healthy
+      when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+      send: [app-deployed]
+
+  trigger.on-sync-failed: |
+    - description: Application sync failed
+      when: app.status.operationState.phase in ['Error', 'Failed']
+      send: [app-sync-failed]
+
+  trigger.on-health-degraded: |
+    - description: Application health degraded
+      when: app.status.health.status == 'Degraded'
+      send: [app-health-degraded]
+
+  # Subscriptions (default for all apps in newsbrief project)
+  subscriptions: |
+    - recipients:
+        - console:  # Log to console (for testing)
+      triggers:
+        - on-deployed
+        - on-sync-failed
+        - on-health-degraded

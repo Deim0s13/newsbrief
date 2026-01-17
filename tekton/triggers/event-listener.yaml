@@ -1,0 +1,78 @@
+# EventListener receives webhooks and triggers pipelines
+apiVersion: triggers.tekton.dev/v1beta1
+kind: EventListener
+metadata:
+  name: newsbrief-listener
+  namespace: default
+spec:
+  serviceAccountName: tekton-triggers-sa
+  triggers:
+    # Trigger for dev branch pushes
+    - name: dev-push-trigger
+      interceptors:
+        # GitHub interceptor validates webhook signature and parses payload
+        - ref:
+            name: github
+          params:
+            - name: secretRef
+              value:
+                secretName: github-webhook-secret
+                secretKey: token
+            - name: eventTypes
+              value: ["push"]
+        # CEL interceptor filters for dev branch only
+        - ref:
+            name: cel
+          params:
+            - name: filter
+              value: "body.ref == 'refs/heads/dev'"
+            - name: overlays
+              value:
+                - key: branch_name
+                  expression: "body.ref.split('/')[2]"
+      bindings:
+        - ref: github-push-binding
+      template:
+        ref: newsbrief-dev-template
+
+    # Trigger for main branch pushes (production)
+    - name: prod-push-trigger
+      interceptors:
+        - ref:
+            name: github
+          params:
+            - name: secretRef
+              value:
+                secretName: github-webhook-secret
+                secretKey: token
+            - name: eventTypes
+              value: ["push"]
+        # CEL interceptor filters for main branch only
+        - ref:
+            name: cel
+          params:
+            - name: filter
+              value: "body.ref == 'refs/heads/main'"
+            - name: overlays
+              value:
+                - key: branch_name
+                  expression: "body.ref.split('/')[2]"
+      bindings:
+        - ref: github-push-binding
+      template:
+        ref: newsbrief-prod-template
+
+  resources:
+    kubernetesResource:
+      spec:
+        template:
+          spec:
+            serviceAccountName: tekton-triggers-sa
+            containers:
+              - resources:
+                  requests:
+                    memory: "64Mi"
+                    cpu: "50m"
+                  limits:
+                    memory: "128Mi"
+                    cpu: "100m"

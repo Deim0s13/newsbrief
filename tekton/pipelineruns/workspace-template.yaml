@@ -1,0 +1,12 @@
+# Workspace template for pipeline runs
+# Creates an ephemeral PVC that is automatically cleaned up
+#
+# Usage:
+#   --workspace name=source,volumeClaimTemplateFile=tekton/pipelineruns/workspace-template.yaml
+
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

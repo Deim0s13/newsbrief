@@ -12,6 +12,14 @@ This guide covers setting up your development environment, running tests, debugg
 - **Git**: Version control
 - **jq**: JSON processing for API testing (optional)
 
+#### **For Kubernetes Development (v0.7.5+)**
+- **kind**: Local Kubernetes clusters (`brew install kind`)
+- **kubectl**: Kubernetes CLI (`brew install kubectl`)
+- **tkn**: Tekton CLI (`brew install tektoncd-cli`)
+- **cosign**: Image signing (`brew install cosign`)
+
+See [KUBERNETES.md](KUBERNETES.md) for complete setup guide.
+
 ### **Initial Setup**
 
 ```bash

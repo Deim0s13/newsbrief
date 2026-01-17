@@ -1,0 +1,9 @@
+# Local container registry namespace
+# Isolated from application workloads
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: registry
+  labels:
+    app.kubernetes.io/name: registry
+    app.kubernetes.io/component: infrastructure

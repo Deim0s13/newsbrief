@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: newsbrief
+  labels:
+    app.kubernetes.io/name: newsbrief
+    app.kubernetes.io/part-of: newsbrief
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"  # Create namespace first

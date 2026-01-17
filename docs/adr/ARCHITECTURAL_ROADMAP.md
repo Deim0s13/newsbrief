@@ -89,7 +89,7 @@ NewsBrief is a **local-first, story-based news aggregator** that synthesizes mul
 | **Logging** | Human-readable | JSON structured |
 | **Container** | None (local Python) | Podman Compose |
 
-### Current Capabilities (v0.7.3)
+### Current Capabilities (v0.7.4)
 
 | Feature | Status | ADR |
 |---------|--------|-----|
@@ -104,6 +104,9 @@ NewsBrief is a **local-first, story-based news aggregator** that synthesizes mul
 | Health endpoints | ✅ Complete | v0.7.3 |
 | Database backup/restore | ✅ Complete | v0.7.2 |
 | Auto-start (launchd) | ✅ Complete | v0.7.2 |
+| HTTPS/TLS encryption | ✅ Complete | [ADR-0012](0012-https-tls-encryption.md) |
+| Podman Secrets | ✅ Complete | [ADR-0013](0013-podman-secrets.md) |
+| API rate limiting | ✅ Complete | [ADR-0014](0014-api-rate-limiting.md) |
 
 ### Remaining Limitations
 
@@ -113,30 +116,61 @@ NewsBrief is a **local-first, story-based news aggregator** that synthesizes mul
 | Single LLM provider | Ollama dependency | Pluggable providers | v0.9.x |
 | No user accounts | Single-user only | Auth layer | v1.0.x |
 | No full-text search | Limited article discovery | SQLite FTS5 | v0.9.x |
-| HTTP only (local) | Not externally accessible | TLS/HTTPS | v0.7.4 |
 
 ---
 
 ## 2. Near-Term Evolution (v0.7.x - v0.8.x)
 
-### v0.7.4 - Security
+### v0.7.4 - Security ✅ Complete
 
-**Focus**: HTTPS/TLS encryption for secure connections
+**Focus**: HTTPS/TLS encryption and secure credential management
 
-**Planned Changes**:
-- TLS certificates via Caddy
-- Secure cookie handling
-- HTTPS enforcement
+**Completed**:
+- ✅ TLS certificates via Caddy ([ADR-0012](0012-https-tls-encryption.md))
+- ✅ Security headers (HSTS, X-Frame-Options, etc.)
+- ✅ Podman Secrets for production ([ADR-0013](0013-podman-secrets.md))
+- ✅ API rate limiting ([ADR-0014](0014-api-rate-limiting.md))
 
-### v0.7.5 - GitOps & Kubernetes
+### v0.7.5 - GitOps & Kubernetes ✅ Complete
 
-**Focus**: Infrastructure as Code and container orchestration
+**Focus**: Infrastructure as Code and Kubernetes-native CI/CD
 
-**Planned Changes**:
-- Kubernetes manifests (local Kind/minikube)
-- Tekton CI/CD pipelines
-- ArgoCD GitOps deployment
-- Helm charts
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    kind cluster (newsbrief-dev)                 │
+│                                                                 │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │                   Tekton Pipelines                        │  │
+│  │                                                           │  │
+│  │  ┌─────────┐  ┌──────┐  ┌───────┐  ┌──────┐  ┌────────┐  │  │
+│  │  │  lint   │  │ test │  │ build │  │ scan │  │  sign  │  │  │
+│  │  └─────────┘  └──────┘  └───────┘  └──────┘  └────────┘  │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                              │                                  │
+│                              ▼                                  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │              Local Container Registry                     │  │
+│  │                  (registry:5000)                          │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                              │                                  │
+│                              ▼                                  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │                     ArgoCD GitOps                         │  │
+│  │         (auto-sync from Git to Kubernetes)               │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Completed**:
+- ✅ Local Kubernetes with kind ([ADR-0015](0015-local-kubernetes-distribution.md))
+- ✅ Tekton CI/CD pipelines ([ADR-0016](0016-cicd-platform-migration.md), [ADR-0019](0019-cicd-pipeline-design.md))
+- ✅ Secure supply chain: Trivy, Cosign, SBOM ([ADR-0018](0018-secure-supply-chain.md))
+- ✅ Local container registry with Buildah rootless builds
+- ✅ ArgoCD GitOps deployment ([ADR-0017](0017-gitops-tooling.md))
+- ✅ Tekton Triggers for webhook-based pipeline automation
+- ✅ Kustomize overlays for dev/prod environments
+- ✅ GitHub Actions retired (replaced by Tekton)
 
 ### v0.8.0 - Ranking & Personalization
 
@@ -266,6 +300,10 @@ Before introducing new dependencies, evaluate:
 | **WidgetKit** | macOS widget | Planned for v1.1.0 |
 | **htmx** | Dynamic UI without JS complexity | Considering |
 | **Ruff** | Fast Python linting | Considering |
+| **ArgoCD** | GitOps deployments | ✅ Chosen for v0.7.5 |
+| **Tekton** | Kubernetes CI/CD | ✅ Implemented v0.7.5 |
+| **Trivy** | Container scanning | ✅ Implemented v0.7.5 |
+| **Cosign** | Image signing | ✅ Implemented v0.7.5 |
 
 ---
 
@@ -273,7 +311,8 @@ Before introducing new dependencies, evaluate:
 
 | Version | Theme | Key Architectural Changes |
 |---------|-------|---------------------------|
-| **v0.7.x** | Infrastructure | Dual database, Caddy proxy, structured logging, health endpoints |
+| **v0.7.1-0.7.4** | Infrastructure & Security | Dual database, Caddy proxy, structured logging, health endpoints, HTTPS, Podman secrets, rate limiting |
+| **v0.7.5** | GitOps & Kubernetes | kind cluster, Tekton CI/CD, secure supply chain (Trivy, Cosign, SBOM), local registry, ArgoCD |
 | **v0.8.x** | Personalization | Enhanced preferences, advanced ranking |
 | **v0.9.x** | Intelligence | Pluggable LLM providers, prompt improvements |
 | **v1.0.x** | Production | Optional auth, multi-user, search |

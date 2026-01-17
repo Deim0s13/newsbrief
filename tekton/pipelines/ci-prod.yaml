@@ -1,0 +1,262 @@
+# CI Pipeline for Production
+# Triggered on merge to main branch
+#
+# Stages:
+#   1. fetch-source  - Clone repository
+#   2. lint + test   - Run in parallel (quality gates)
+#   3. build-image   - Build container with semantic version tag
+#   4. security-scan - Trivy vulnerability scan (blocks on CRITICAL)
+#   5. sign-image      - Cosign signature (required for prod)
+#   6. generate-sbom   - Software Bill of Materials
+#   7. create-release  - Create Git tag and GitHub release
+#   8. update-manifest - Update Kustomize overlay and push to Git (triggers ArgoCD)
+#   9. cleanup         - Prune old images, branches, and runs (keeps last N)
+#
+# Per ADR-0019: CI/CD Pipeline Design
+# Per ADR-0018: Secure Supply Chain
+
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: ci-prod
+  labels:
+    app.kubernetes.io/part-of: newsbrief
+    newsbrief.dev/environment: production
+spec:
+  description: Production CI pipeline - build, test, scan, sign, SBOM
+  workspaces:
+    - name: source
+      description: Source code workspace
+    - name: sbom-output
+      description: Workspace for SBOM output
+  params:
+    - name: repo-url
+      type: string
+      default: "https://github.com/Deim0s13/newsbrief.git"
+      description: Git repository URL
+    - name: revision
+      type: string
+      default: "main"
+      description: Git branch or tag to checkout
+    - name: image-registry
+      type: string
+      default: "registry.registry:5000"
+      description: Container registry URL
+    - name: image-name
+      type: string
+      default: "newsbrief"
+      description: Image name
+    - name: image-tag
+      type: string
+      description: Image tag (semantic version, e.g., v0.7.5)
+      # No default - must be provided for prod releases
+
+  tasks:
+    # ══════════════════════════════════════════════════════════════
+    # Stage 1: Fetch Source
+    # ══════════════════════════════════════════════════════════════
+    - name: fetch-source
+      taskRef:
+        name: git-clone
+      workspaces:
+        - name: output
+          workspace: source
+      params:
+        - name: url
+          value: $(params.repo-url)
+        - name: revision
+          value: $(params.revision)
+
+    # ══════════════════════════════════════════════════════════════
+    # Stage 2: Quality Gates (parallel)
+    # ══════════════════════════════════════════════════════════════
+    - name: lint
+      taskRef:
+        name: lint
+      runAfter:
+        - fetch-source
+      workspaces:
+        - name: source
+          workspace: source
+
+    - name: test
+      taskRef:
+        name: test
+      runAfter:
+        - fetch-source
+      workspaces:
+        - name: source
+          workspace: source
+
+    # ══════════════════════════════════════════════════════════════
+    # Stage 3: Build Container Image
+    # ══════════════════════════════════════════════════════════════
+    - name: build-image
+      taskRef:
+        name: build-image
+      runAfter:
+        - lint
+        - test
+      workspaces:
+        - name: source
+          workspace: source
+      params:
+        - name: IMAGE
+          value: "$(params.image-registry)/$(params.image-name):$(params.image-tag)"
+
+    # ══════════════════════════════════════════════════════════════
+    # Stage 4: Security Scan
+    # ══════════════════════════════════════════════════════════════
+    - name: security-scan
+      taskRef:
+        name: security-scan
+      runAfter:
+        - build-image
+      params:
+        - name: IMAGE
+          value: "$(params.image-registry)/$(params.image-name):$(params.image-tag)"
+        - name: SEVERITY
+          value: "CRITICAL,HIGH"
+        - name: EXIT_ON_SEVERITY
+          value: "CRITICAL"
+        - name: IGNORE_UNFIXED
+          value: "true"
+
+    # ══════════════════════════════════════════════════════════════
+    # Stage 5: Sign Image (Prod only)
+    # ══════════════════════════════════════════════════════════════
+    - name: sign-image
+      taskRef:
+        name: sign-image
+      runAfter:
+        - security-scan
+      params:
+        - name: IMAGE
+          value: "$(params.image-registry)/$(params.image-name):$(params.image-tag)"
+        - name: COSIGN_SECRET
+          value: "cosign-keys"
+        - name: COSIGN_SECRET_NAMESPACE
+          value: "default"
+
+    # ══════════════════════════════════════════════════════════════
+    # Stage 6: Generate SBOM (Prod only, parallel with signing)
+    # ══════════════════════════════════════════════════════════════
+    - name: generate-sbom
+      taskRef:
+        name: generate-sbom
+      runAfter:
+        - security-scan
+      workspaces:
+        - name: output
+          workspace: sbom-output
+      params:
+        - name: IMAGE
+          value: "$(params.image-registry)/$(params.image-name):$(params.image-tag)"
+        - name: FORMAT
+          value: "cyclonedx"
+        - name: OUTPUT_FILE
+          value: "sbom-$(params.image-tag).json"
+
+    # ══════════════════════════════════════════════════════════════
+    # Stage 7: Create GitHub Release (after all other stages complete)
+    # ══════════════════════════════════════════════════════════════
+    - name: create-release
+      taskRef:
+        name: create-release
+      runAfter:
+        - sign-image
+        - generate-sbom
+      workspaces:
+        - name: source
+          workspace: source
+      params:
+        - name: repo-url
+          value: "$(params.repo-url)"
+        - name: revision
+          value: "$(params.revision)"
+
+    # ══════════════════════════════════════════════════════════════
+    # Stage 8: Update Manifest for GitOps (triggers ArgoCD deployment)
+    # ══════════════════════════════════════════════════════════════
+    - name: update-manifest
+      taskRef:
+        name: update-manifest
+      runAfter:
+        - create-release
+      workspaces:
+        - name: source
+          workspace: source
+      params:
+        - name: IMAGE_TAG
+          value: "$(tasks.create-release.results.version)"
+        - name: ENVIRONMENT
+          value: "prod"
+
+    # ══════════════════════════════════════════════════════════════
+    # Stage 9: Cleanup (prune old images, branches, and runs)
+    # ══════════════════════════════════════════════════════════════
+    - name: cleanup-images
+      taskRef:
+        name: cleanup-images
+      runAfter:
+        - update-manifest
+      params:
+        - name: KEEP_RECENT
+          value: "3"
+        - name: KEEP_VERSIONS
+          value: "5"
+
+    - name: cleanup-branches
+      taskRef:
+        name: cleanup-branches
+      runAfter:
+        - update-manifest
+      params:
+        - name: DAYS_OLD
+          value: "7"
+        - name: DRY_RUN
+          value: "false"
+
+    - name: cleanup-runs
+      taskRef:
+        name: cleanup-runs
+      runAfter:
+        - update-manifest
+      params:
+        - name: KEEP_SUCCESSFUL_HOURS
+          value: "48"
+        - name: KEEP_FAILED_HOURS
+          value: "168"
+
+  # Pipeline results
+  results:
+    - name: image-digest
+      description: Image digest
+      value: $(tasks.build-image.results.IMAGE_DIGEST)
+    - name: image-url
+      description: Full image URL that was built
+      value: $(tasks.build-image.results.IMAGE_URL)
+    - name: scan-passed
+      description: Whether security scan passed
+      value: $(tasks.security-scan.results.SCAN_PASSED)
+    - name: signed
+      description: Whether image was signed
+      value: $(tasks.sign-image.results.SIGNED)
+    - name: sbom-path
+      description: Path to SBOM file
+      value: $(tasks.generate-sbom.results.SBOM_PATH)
+    - name: version
+      description: Version that was released
+      value: $(tasks.create-release.results.version)
+    - name: release-url
+      description: URL to the GitHub release
+      value: $(tasks.create-release.results.release-url)
+    - name: manifest-commit
+      description: Commit SHA of the manifest update
+      value: $(tasks.update-manifest.results.COMMIT_SHA)
+    - name: images-cleaned
+      description: Number of old image tags removed
+      value: $(tasks.cleanup-images.results.DELETED_COUNT)
+    - name: branches-cleaned
+      description: Number of merged branches removed
+      value: $(tasks.cleanup-branches.results.DELETED_COUNT)

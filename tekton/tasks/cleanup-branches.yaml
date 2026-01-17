@@ -1,0 +1,115 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: cleanup-branches
+  labels:
+    app.kubernetes.io/part-of: newsbrief
+spec:
+  description: |
+    Cleans up merged feature branches from GitHub.
+    Deletes branches that have been merged and are older than specified days.
+  params:
+    - name: REPO_OWNER
+      type: string
+      default: "Deim0s13"
+    - name: REPO_NAME
+      type: string
+      default: "newsbrief"
+    - name: DAYS_OLD
+      type: string
+      default: "7"
+      description: Delete merged branches older than this many days
+    - name: DRY_RUN
+      type: string
+      default: "false"
+      description: If true, only report what would be deleted
+    - name: PROTECTED_BRANCHES
+      type: string
+      default: "main,dev"
+      description: Comma-separated list of branches to never delete
+  results:
+    - name: DELETED_COUNT
+      description: Number of branches deleted
+  steps:
+    - name: cleanup
+      image: curlimages/curl:latest
+      env:
+        - name: GITHUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: github-release-token
+              key: token
+        - name: REPO_OWNER
+          value: "$(params.REPO_OWNER)"
+        - name: REPO_NAME
+          value: "$(params.REPO_NAME)"
+        - name: DAYS_OLD
+          value: "$(params.DAYS_OLD)"
+        - name: DRY_RUN
+          value: "$(params.DRY_RUN)"
+        - name: PROTECTED
+          value: "$(params.PROTECTED_BRANCHES)"
+      script: |
+        #!/bin/sh
+        set -e
+
+        echo "🧹 Cleaning up merged branches from $REPO_OWNER/$REPO_NAME"
+        echo "   Older than: $DAYS_OLD days"
+        echo "   Protected: $PROTECTED"
+        echo "   Dry run: $DRY_RUN"
+        echo ""
+
+        API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME"
+
+        # Calculate cutoff timestamp (DAYS_OLD days ago)
+        # Using seconds since epoch for comparison
+        CUTOFF_EPOCH=$(($(date +%s) - (DAYS_OLD * 86400)))
+
+        # Get list of branches
+        BRANCHES=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+          "$API_URL/branches?per_page=100" | grep -o '"name": "[^"]*"' | cut -d'"' -f4)
+
+        DELETE_COUNT=0
+
+        for branch in $BRANCHES; do
+          # Skip protected branches
+          if echo ",$PROTECTED," | grep -q ",$branch,"; then
+            echo "⏭️  Skipping protected branch: $branch"
+            continue
+          fi
+
+          # Check if branch is merged into main
+          COMPARE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            "$API_URL/compare/main...$branch")
+          STATUS=$(echo "$COMPARE" | grep -o '"status": "[^"]*"' | cut -d'"' -f4)
+
+          if [ "$STATUS" = "identical" ] || [ "$STATUS" = "behind" ]; then
+            # Get last commit date
+            BRANCH_INFO=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+              "$API_URL/branches/$branch")
+            COMMIT_DATE=$(echo "$BRANCH_INFO" | grep -o '"date": "[^"]*"' | head -1 | cut -d'"' -f4)
+
+            # Convert to epoch for comparison (extract date part)
+            DATE_PART=$(echo "$COMMIT_DATE" | cut -d'T' -f1)
+
+            if [ "$DATE_PART" \< "$(date -d "@$CUTOFF_EPOCH" +%Y-%m-%d 2>/dev/null || date -r $CUTOFF_EPOCH +%Y-%m-%d)" ]; then
+              if [ "$DRY_RUN" = "true" ]; then
+                echo "🔍 Would delete: $branch (last commit: $DATE_PART)"
+              else
+                echo "🗑️  Deleting: $branch (last commit: $DATE_PART)"
+                curl -s -X DELETE -H "Authorization: token $GITHUB_TOKEN" \
+                  "$API_URL/git/refs/heads/$branch" || echo "   Warning: Failed to delete $branch"
+              fi
+              DELETE_COUNT=$((DELETE_COUNT + 1))
+            fi
+          fi
+        done
+
+        echo ""
+        if [ "$DRY_RUN" = "true" ]; then
+          echo "✅ Would delete $DELETE_COUNT branches (dry run)"
+        else
+          echo "✅ Deleted $DELETE_COUNT branches"
+        fi
+
+        echo -n "$DELETE_COUNT" > $(results.DELETED_COUNT.path)

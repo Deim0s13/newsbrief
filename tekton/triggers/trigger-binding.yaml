@@ -1,0 +1,18 @@
+# TriggerBinding extracts data from GitHub webhook payload
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerBinding
+metadata:
+  name: github-push-binding
+  namespace: default
+spec:
+  params:
+    - name: git-repo-url
+      value: $(body.repository.clone_url)
+    - name: git-revision
+      value: $(body.after)
+    - name: git-branch
+      value: $(extensions.branch_name)
+    - name: git-commit-message
+      value: $(body.head_commit.message)
+    - name: git-author
+      value: $(body.head_commit.author.name)

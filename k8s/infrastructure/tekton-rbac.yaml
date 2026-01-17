@@ -1,0 +1,34 @@
+# RBAC for Tekton pipelines to access secrets
+# Required for:
+#   - Cosign to read signing keys
+#   - GitHub CLI to read release token
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tekton-pipeline
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: tekton-secrets-reader
+  namespace: default
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+    resourceNames: ["cosign-keys", "github-release-token"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tekton-secrets-reader-binding
+  namespace: default
+subjects:
+  - kind: ServiceAccount
+    name: tekton-pipeline
+    namespace: default
+roleRef:
+  kind: Role
+  name: tekton-secrets-reader
+  apiGroup: rbac.authorization.k8s.io

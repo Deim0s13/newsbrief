@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: tekton-triggers
+
+resources:
+  - rbac.yaml
+  - trigger-binding.yaml
+  - trigger-template-dev.yaml
+  - trigger-template-prod.yaml
+  - event-listener.yaml
+  # Note: These secrets should be applied manually with real values:
+  #   - webhook-secret.yaml - GitHub webhook secret
+  #   - github-release-secret.yaml - GitHub PAT for creating releases

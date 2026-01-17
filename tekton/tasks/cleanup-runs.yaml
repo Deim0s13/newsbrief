@@ -1,0 +1,132 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: cleanup-runs
+  labels:
+    app.kubernetes.io/part-of: newsbrief
+spec:
+  description: |
+    Cleans up old PipelineRuns and TaskRuns from the cluster.
+    Keeps successful runs for a shorter period than failed runs.
+  params:
+    - name: NAMESPACE
+      type: string
+      default: "default"
+    - name: KEEP_SUCCESSFUL_HOURS
+      type: string
+      default: "24"
+      description: Hours to keep successful runs
+    - name: KEEP_FAILED_HOURS
+      type: string
+      default: "168"
+      description: Hours to keep failed runs (7 days default)
+    - name: DRY_RUN
+      type: string
+      default: "false"
+  results:
+    - name: DELETED_PIPELINERUNS
+      description: Number of PipelineRuns deleted
+    - name: DELETED_TASKRUNS
+      description: Number of TaskRuns deleted
+  steps:
+    - name: cleanup
+      image: bitnami/kubectl:latest
+      script: |
+        #!/bin/bash
+        set -e
+
+        NAMESPACE="$(params.NAMESPACE)"
+        KEEP_SUCCESS="$(params.KEEP_SUCCESSFUL_HOURS)"
+        KEEP_FAILED="$(params.KEEP_FAILED_HOURS)"
+        DRY_RUN="$(params.DRY_RUN)"
+
+        echo "🧹 Cleaning up Tekton runs in namespace: $NAMESPACE"
+        echo "   Keep successful: ${KEEP_SUCCESS}h"
+        echo "   Keep failed: ${KEEP_FAILED}h"
+        echo "   Dry run: $DRY_RUN"
+        echo ""
+
+        # Calculate cutoff timestamps
+        SUCCESS_CUTOFF=$(date -d "-${KEEP_SUCCESS} hours" -Iseconds 2>/dev/null || date -v-${KEEP_SUCCESS}H +%Y-%m-%dT%H:%M:%S)
+        FAILED_CUTOFF=$(date -d "-${KEEP_FAILED} hours" -Iseconds 2>/dev/null || date -v-${KEEP_FAILED}H +%Y-%m-%dT%H:%M:%S)
+
+        echo "Success cutoff: $SUCCESS_CUTOFF"
+        echo "Failed cutoff: $FAILED_CUTOFF"
+        echo ""
+
+        PR_COUNT=0
+        TR_COUNT=0
+
+        # Cleanup PipelineRuns
+        echo "=== PipelineRuns ==="
+        for pr in $(kubectl get pipelineruns -n $NAMESPACE -o jsonpath='{.items[*].metadata.name}'); do
+          STATUS=$(kubectl get pipelinerun $pr -n $NAMESPACE -o jsonpath='{.status.conditions[0].reason}')
+          COMPLETED=$(kubectl get pipelinerun $pr -n $NAMESPACE -o jsonpath='{.status.completionTime}')
+
+          # Skip running pipelines
+          if [ -z "$COMPLETED" ]; then
+            continue
+          fi
+
+          DELETE=false
+          if [ "$STATUS" = "Succeeded" ] && [[ "$COMPLETED" < "$SUCCESS_CUTOFF" ]]; then
+            DELETE=true
+          elif [ "$STATUS" != "Succeeded" ] && [[ "$COMPLETED" < "$FAILED_CUTOFF" ]]; then
+            DELETE=true
+          fi
+
+          if [ "$DELETE" = "true" ]; then
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "🔍 Would delete: $pr ($STATUS, completed $COMPLETED)"
+            else
+              echo "🗑️  Deleting: $pr ($STATUS)"
+              kubectl delete pipelinerun $pr -n $NAMESPACE
+            fi
+            PR_COUNT=$((PR_COUNT + 1))
+          fi
+        done
+
+        echo ""
+        echo "=== TaskRuns ==="
+        # Cleanup orphaned TaskRuns (not part of a PipelineRun)
+        for tr in $(kubectl get taskruns -n $NAMESPACE -o jsonpath='{.items[*].metadata.name}'); do
+          # Check if owned by a PipelineRun (those get cleaned up automatically)
+          OWNER=$(kubectl get taskrun $tr -n $NAMESPACE -o jsonpath='{.metadata.ownerReferences[0].kind}' 2>/dev/null || echo "")
+          if [ "$OWNER" = "PipelineRun" ]; then
+            continue
+          fi
+
+          STATUS=$(kubectl get taskrun $tr -n $NAMESPACE -o jsonpath='{.status.conditions[0].reason}')
+          COMPLETED=$(kubectl get taskrun $tr -n $NAMESPACE -o jsonpath='{.status.completionTime}')
+
+          if [ -z "$COMPLETED" ]; then
+            continue
+          fi
+
+          DELETE=false
+          if [ "$STATUS" = "Succeeded" ] && [[ "$COMPLETED" < "$SUCCESS_CUTOFF" ]]; then
+            DELETE=true
+          elif [ "$STATUS" != "Succeeded" ] && [[ "$COMPLETED" < "$FAILED_CUTOFF" ]]; then
+            DELETE=true
+          fi
+
+          if [ "$DELETE" = "true" ]; then
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "🔍 Would delete: $tr ($STATUS, completed $COMPLETED)"
+            else
+              echo "🗑️  Deleting: $tr ($STATUS)"
+              kubectl delete taskrun $tr -n $NAMESPACE
+            fi
+            TR_COUNT=$((TR_COUNT + 1))
+          fi
+        done
+
+        echo ""
+        if [ "$DRY_RUN" = "true" ]; then
+          echo "✅ Would delete $PR_COUNT PipelineRuns and $TR_COUNT TaskRuns (dry run)"
+        else
+          echo "✅ Deleted $PR_COUNT PipelineRuns and $TR_COUNT TaskRuns"
+        fi
+
+        echo -n "$PR_COUNT" > $(results.DELETED_PIPELINERUNS.path)
+        echo -n "$TR_COUNT" > $(results.DELETED_TASKRUNS.path)
