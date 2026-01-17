@@ -628,3 +628,4 @@ git push origin feature/amazing-feature
 - [Ollama](https://ollama.ai/) for local LLM capabilities
 - [Caddy](https://caddyserver.com/) for the reverse proxy
 - [PostgreSQL](https://www.postgresql.org/) for production database
+<!-- webhook test 1768628478 -->
