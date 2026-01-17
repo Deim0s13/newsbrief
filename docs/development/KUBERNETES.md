@@ -21,6 +21,22 @@ This guide covers setting up a local Kubernetes environment for NewsBrief CI/CD 
 │  │              Local Container Registry                     │  │
 │  │                  (registry:5000)                          │  │
 │  └──────────────────────────────────────────────────────────┘  │
+│                              │                                  │
+│                              ▼                                  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │                      ArgoCD                               │  │
+│  │                                                           │  │
+│  │  ┌─────────────────┐      ┌─────────────────┐            │  │
+│  │  │ newsbrief-dev   │      │ newsbrief-prod  │            │  │
+│  │  │ (watches dev)   │      │ (watches main)  │            │  │
+│  │  └────────┬────────┘      └────────┬────────┘            │  │
+│  │           │                        │                      │  │
+│  │           ▼                        ▼                      │  │
+│  │  ┌─────────────────┐      ┌─────────────────┐            │  │
+│  │  │ newsbrief-dev   │      │ newsbrief-prod  │            │  │
+│  │  │   namespace     │      │   namespace     │            │  │
+│  │  └─────────────────┘      └─────────────────┘            │  │
+│  └──────────────────────────────────────────────────────────┘  │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -35,6 +51,7 @@ This guide covers setting up a local Kubernetes environment for NewsBrief CI/CD 
 | **kind** | Local Kubernetes clusters | `brew install kind` |
 | **kubectl** | Kubernetes CLI | `brew install kubectl` |
 | **tkn** | Tekton CLI | `brew install tektoncd-cli` |
+| **argocd** | ArgoCD CLI | `brew install argocd` |
 | **cosign** | Image signing | `brew install cosign` |
 
 ### Verify Installation
@@ -45,6 +62,7 @@ docker --version || podman --version
 kind --version
 kubectl version --client
 tkn version
+argocd version --client
 cosign version
 ```
 
@@ -295,18 +313,151 @@ kubectl auth can-i get secrets --as=system:serviceaccount:default:tekton-pipelin
 kubectl get task build-image -o yaml | grep -A5 securityContext
 ```
 
+## 🚀 ArgoCD GitOps
+
+ArgoCD provides declarative GitOps continuous delivery. It watches Git repositories and automatically syncs changes to the cluster.
+
+### Install ArgoCD
+
+```bash
+# Create namespace and install ArgoCD
+kubectl create namespace argocd
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+# Wait for ArgoCD to be ready
+kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argocd-server -n argocd --timeout=120s
+
+# Install ArgoCD CLI
+brew install argocd
+```
+
+### Get Admin Password
+
+```bash
+# Get initial admin password
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d && echo
+```
+
+### Access ArgoCD UI
+
+```bash
+# Port forward to access UI
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+
+# Open in browser: https://localhost:8080
+# Username: admin
+# Password: (from command above)
+```
+
+### Deploy ArgoCD Applications
+
+```bash
+# Apply the NewsBrief ArgoCD project and applications
+kubectl apply -k k8s/argocd/
+```
+
+### ArgoCD Resources
+
+| Resource | Purpose | File |
+|----------|---------|------|
+| `AppProject` | Defines allowed repos and namespaces | `k8s/argocd/project.yaml` |
+| `Application` (dev) | Watches `dev` branch, deploys to `newsbrief-dev` | `k8s/argocd/app-dev.yaml` |
+| `Application` (prod) | Watches `main` branch, deploys to `newsbrief-prod` | `k8s/argocd/app-prod.yaml` |
+
+### GitOps Workflow
+
+```
+┌──────────────────┐     ┌─────────────────┐     ┌────────────────────┐
+│  Developer       │     │  Tekton CI      │     │  ArgoCD            │
+│                  │     │                 │     │                    │
+│  Push to dev ────┼────►│  Build & Push   │     │                    │
+│                  │     │  Image          │     │                    │
+│                  │     │       │         │     │                    │
+│                  │     │       ▼         │     │                    │
+│                  │     │  Update k8s/    │────►│  Detect change     │
+│                  │     │  overlay tag    │     │       │            │
+│                  │     └─────────────────┘     │       ▼            │
+│                  │                             │  Sync to cluster   │
+│                  │                             │       │            │
+│                  │                             │       ▼            │
+│                  │                             │  newsbrief-dev     │
+│                  │                             │  namespace updated │
+└──────────────────┘                             └────────────────────┘
+```
+
+### Monitor Applications
+
+```bash
+# List all ArgoCD applications
+kubectl get applications -n argocd
+
+# Check application status
+kubectl describe application newsbrief-dev -n argocd
+
+# View sync history
+argocd app history newsbrief-dev
+```
+
+### Manual Sync (if needed)
+
+```bash
+# Sync via CLI
+argocd app sync newsbrief-dev
+
+# Or via kubectl
+kubectl patch application newsbrief-dev -n argocd --type='merge' -p='{"operation":{"initiatedBy":{"username":"admin"},"sync":{}}}'
+```
+
+## 📦 Kustomize Structure
+
+NewsBrief uses Kustomize for environment-specific configurations:
+
+```
+k8s/
+├── base/                    # Base manifests
+│   ├── kustomization.yaml
+│   ├── namespace.yaml
+│   ├── deployment.yaml
+│   ├── service.yaml
+│   └── configmap.yaml
+├── overlays/
+│   ├── dev/                 # Dev overrides
+│   │   └── kustomization.yaml
+│   └── prod/                # Prod overrides
+│       └── kustomization.yaml
+└── argocd/                  # ArgoCD applications
+    ├── kustomization.yaml
+    ├── project.yaml
+    ├── app-dev.yaml
+    └── app-prod.yaml
+```
+
+### Build and Preview
+
+```bash
+# Preview dev manifests
+kubectl kustomize k8s/overlays/dev
+
+# Preview prod manifests
+kubectl kustomize k8s/overlays/prod
+
+# Apply directly (without ArgoCD)
+kubectl apply -k k8s/overlays/dev
+```
+
 ## 📚 Related Documentation
 
 - [ADR-0015: Local Kubernetes Distribution](../adr/0015-local-kubernetes-distribution.md) - Why kind
 - [ADR-0016: CI/CD Platform Migration](../adr/0016-cicd-platform-migration.md) - Why Tekton
+- [ADR-0017: GitOps Tooling](../adr/0017-gitops-tooling.md) - Why ArgoCD
 - [ADR-0018: Secure Supply Chain](../adr/0018-secure-supply-chain.md) - Trivy, Cosign, SBOM
 - [ADR-0019: CI/CD Pipeline Design](../adr/0019-cicd-pipeline-design.md) - Pipeline architecture
 - [CI/CD Documentation](CI-CD.md) - Full CI/CD guide
 
 ## 🔜 Next Steps
 
-After setting up the local Kubernetes environment:
+After setting up ArgoCD:
 
-1. **Phase 3**: Install ArgoCD for GitOps deployments
-2. **Phase 4**: Configure Tekton Triggers for automatic pipeline execution
-3. **Phase 5**: Production deployment patterns
+1. **Phase 4**: Configure Tekton Triggers for automatic pipeline execution
+2. **Phase 5**: Production deployment patterns
+3. **Phase 6**: Advanced GitOps (ApplicationSets, progressive delivery)
