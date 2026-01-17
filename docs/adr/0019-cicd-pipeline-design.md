@@ -91,12 +91,76 @@ This ADR documents the pipeline design decisions that build upon the platform ch
 - Notification sent (initially via pipeline logs, future: webhook to Slack/Discord)
 - Deployment does not proceed until vulnerabilities are addressed
 
+### Container Build Strategy
+
+**Decision:** Use Buildah in rootless mode for building container images.
+
+| Option | Considered | Decision |
+|--------|------------|----------|
+| Kaniko | Daemonless, popular but no longer actively maintained | ❌ Rejected |
+| Buildah (privileged) | Simple setup, but runs as root | ❌ Rejected |
+| Buildah (rootless) | More secure, aligns with Podman ecosystem | ✅ Chosen |
+| Docker-in-Docker | Requires Docker daemon, security concerns | ❌ Rejected |
+
+**Why Buildah rootless:**
+- **Security**: Runs without root privileges, reduces attack surface
+- **Ecosystem alignment**: Part of the Podman/Buildah/Skopeo toolchain already in use
+- **Actively maintained**: Supported by Red Hat, regular updates
+- **OCI-compliant**: Produces standard container images compatible with any runtime
+- **No daemon required**: Builds as a regular process, ideal for Kubernetes
+
+**Configuration requirements:**
+- Non-root security context in Tekton Task
+- Storage driver: `vfs` (simple) or `overlay` with fuse-overlayfs (performant)
+- User namespace mapping for rootless operation
+
+### Container Registry Strategy
+
+**Decision:** Deploy a local container registry inside the kind cluster.
+
+```
+┌─────────────────────────────────────────────────┐
+│              kind cluster (newsbrief-dev)       │
+│                                                 │
+│  ┌──────────────┐      ┌────────────────────┐   │
+│  │   Tekton     │ push │  Local Registry    │   │
+│  │   Pipeline   │─────▶│  (registry:5000)   │   │
+│  │              │      │                    │   │
+│  │  ┌─────────┐ │      │  PVC: registry-    │   │
+│  │  │ Buildah │ │      │       storage      │   │
+│  │  └─────────┘ │      └────────────────────┘   │
+│  └──────────────┘               │               │
+│                           pull  │               │
+│                                 ▼               │
+│                        ┌─────────────────┐      │
+│                        │   Application   │      │
+│                        │   Deployments   │      │
+│                        └─────────────────┘      │
+└─────────────────────────────────────────────────┘
+```
+
+| Option | Considered | Decision |
+|--------|------------|----------|
+| kind load docker-image | Simple, but requires kind CLI in pipeline | ❌ Rejected |
+| ghcr.io (GitHub) | Production-ready, but requires network/auth | ❌ Rejected (for local) |
+| Local registry in cluster | Realistic, images persist, self-contained | ✅ Chosen |
+
+**Why local registry:**
+- **Realistic**: Mirrors production patterns (push/pull workflow)
+- **Self-contained**: No external dependencies or network requirements
+- **Persistent**: Images survive pipeline restarts via PVC
+- **Portable**: Same approach works with any registry (swap URL for prod)
+
+**Image naming convention:**
+- Local development: `registry:5000/newsbrief:<tag>`
+- Production (future): `ghcr.io/deim0s13/newsbrief:<tag>`
+
 ### Runtime Environment
 
 All CI/CD runs locally:
 - **Tekton**: Runs in local kind cluster (`newsbrief-dev`)
 - **ArgoCD**: Runs in local kind cluster, manages deployments
-- **Container Registry**: Local registry or ghcr.io
+- **Container Registry**: Local registry (`registry:5000`) inside cluster
 - **Deployment Target**: Same local cluster (different namespaces for dev/prod)
 
 **Rationale:** This is a learning/personal project. No cloud infrastructure needed. The same patterns would work in a cloud environment if needed later.
@@ -116,6 +180,38 @@ All CI/CD runs locally:
 4. ArgoCD detects change and syncs to cluster
 5. Deployment happens automatically
 
+### Pipeline Workspace Strategy
+
+**Decision:** Use `volumeClaimTemplate` for pipeline workspaces with a dedicated `git-clone` task.
+
+**How it works:**
+1. Pipeline starts → Tekton auto-creates a PVC (via volumeClaimTemplate)
+2. `git-clone` task fetches source code into the workspace
+3. Subsequent tasks (lint, test, build) share the same workspace
+4. Pipeline completes → Tekton auto-deletes the PVC
+
+**Why volumeClaimTemplate:**
+| Approach | Considered | Decision |
+|----------|------------|----------|
+| Static PVC | Persists between runs, requires manual cleanup | ❌ Rejected |
+| emptyDir | Simple but doesn't survive pod restarts | ❌ Rejected |
+| volumeClaimTemplate | Auto-create/delete per pipeline run | ✅ Chosen |
+| Clone in each task | No shared state needed | ❌ Rejected (wasteful) |
+
+**Rationale:**
+- Ephemeral by design - pipeline workspaces are temporary
+- Self-managing - no manual PVC creation or cleanup scripts
+- Isolated - each pipeline run gets a fresh workspace
+- Standard Tekton pattern - well-documented, portable
+
+**What ArgoCD manages vs. what Tekton manages:**
+| Resource | Managed By | Reason |
+|----------|------------|--------|
+| Pipeline workspace PVCs | Tekton | Ephemeral, needed only during CI |
+| Application PVCs (e.g., database) | ArgoCD | Persistent application state |
+| Tekton Task/Pipeline definitions | ArgoCD | Part of infrastructure-as-code |
+| TaskRuns/PipelineRuns | Tekton | Created on-demand per execution |
+
 ## Consequences
 
 ### Positive
@@ -124,17 +220,24 @@ All CI/CD runs locally:
 - Security gates prevent deploying vulnerable images
 - Signed images provide supply chain integrity for production
 - Everything runs locally - no cloud costs, fast iteration
+- Buildah rootless provides secure, daemonless image builds
+- Local registry mirrors production push/pull patterns
+- Aligns with Podman ecosystem already in use
 
 ### Negative
 - Local-only means no redundancy (laptop failure = CI/CD down)
 - Dev-latest tag means no easy rollback in dev (acceptable for dev)
 - Must remember to create proper version tag for prod releases
+- Rootless Buildah requires more complex security context configuration
+- Local registry adds another component to manage
 
 ### Risks
 - CRITICAL vulnerability blocking could slow down urgent fixes
   - Mitigation: Document process for accepting specific CVEs when necessary
-- Local registry availability depends on laptop being on
+- Local registry availability depends on cluster being up
   - Mitigation: Can fall back to ghcr.io if needed
+- Rootless builds may be slower than privileged builds
+  - Mitigation: Acceptable tradeoff for security; optimize if needed later
 
 ## References
 

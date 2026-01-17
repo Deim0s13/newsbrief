@@ -1,0 +1,48 @@
+# Tekton Task: Lint
+# Checks code formatting with black and isort
+#
+# Usage:
+#   tkn task start lint --workspace name=source,claimName=source-pvc --showlog
+#
+# Failure Notification:
+#   Currently: Check via `tkn taskrun list` or `--showlog`
+#   Future: Webhook notifications (see Issue #156)
+
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: lint
+  labels:
+    app.kubernetes.io/part-of: newsbrief
+spec:
+  description: Check Python code formatting with black and isort
+  workspaces:
+    - name: source
+      description: The source code to lint
+  params:
+    - name: paths
+      type: string
+      default: "app/ tests/"
+      description: Space-separated paths to lint
+  steps:
+    - name: black
+      image: python:3.11-slim
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env bash
+        set -e
+        pip install black --quiet
+        echo "🔍 Checking code formatting with black..."
+        black --check --diff $(params.paths)
+        echo "✅ black check passed"
+
+    - name: isort
+      image: python:3.11-slim
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env bash
+        set -e
+        pip install isort --quiet
+        echo "🔍 Checking import order with isort..."
+        isort --check-only --diff --profile=black $(params.paths)
+        echo "✅ isort check passed"

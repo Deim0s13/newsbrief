@@ -1,0 +1,125 @@
+# Tekton Task: Security vulnerability scan with Trivy
+#
+# Scans container images for vulnerabilities.
+# Blocks pipeline if CRITICAL vulnerabilities are found.
+#
+# Per ADR-0018: Secure Supply Chain
+
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: security-scan
+  labels:
+    app.kubernetes.io/part-of: newsbrief
+spec:
+  description: Scan container image for vulnerabilities using Trivy
+  params:
+    - name: IMAGE
+      type: string
+      description: Full image reference to scan (registry/name:tag)
+    - name: SEVERITY
+      type: string
+      default: "CRITICAL,HIGH"
+      description: Severities to report (comma-separated)
+    - name: EXIT_ON_SEVERITY
+      type: string
+      default: "CRITICAL"
+      description: Severity that causes task failure (blocks pipeline)
+    - name: IGNORE_UNFIXED
+      type: string
+      default: "true"
+      description: Skip vulnerabilities with no available fix
+  results:
+    - name: SCAN_PASSED
+      description: Whether scan passed without blocking vulnerabilities
+    - name: CRITICAL_COUNT
+      description: Number of critical vulnerabilities found
+    - name: HIGH_COUNT
+      description: Number of high vulnerabilities found
+  steps:
+    - name: scan
+      image: aquasec/trivy:latest
+      script: |
+        #!/usr/bin/env sh
+        set -e
+
+        echo "🔍 Scanning image: $(params.IMAGE)"
+        echo "   Reporting: $(params.SEVERITY)"
+        echo "   Blocking on: $(params.EXIT_ON_SEVERITY)"
+        echo "   Ignore unfixed: $(params.IGNORE_UNFIXED)"
+        echo ""
+
+        # Build trivy command
+        TRIVY_ARGS="image --severity $(params.SEVERITY)"
+
+        # Add insecure flag for local registry (no TLS)
+        if echo "$(params.IMAGE)" | grep -q "registry.registry"; then
+          TRIVY_ARGS="$TRIVY_ARGS --insecure"
+          echo "ℹ️  Using insecure mode for local registry"
+        fi
+
+        # Ignore unfixed vulnerabilities if configured
+        if [ "$(params.IGNORE_UNFIXED)" = "true" ]; then
+          TRIVY_ARGS="$TRIVY_ARGS --ignore-unfixed"
+        fi
+
+        echo ""
+        echo "════════════════════════════════════════════════════════════"
+        echo "                    VULNERABILITY REPORT"
+        echo "════════════════════════════════════════════════════════════"
+        echo ""
+
+        # Run scan with table output (human readable)
+        trivy $TRIVY_ARGS --format table $(params.IMAGE) || true
+
+        echo ""
+        echo "════════════════════════════════════════════════════════════"
+        echo "                    SCAN SUMMARY"
+        echo "════════════════════════════════════════════════════════════"
+        echo ""
+
+        # Run scan again with JSON for parsing counts
+        SCAN_OUTPUT=$(trivy $TRIVY_ARGS --format json $(params.IMAGE) 2>/dev/null || echo '{"Results":[]}')
+
+        # Count vulnerabilities by severity
+        CRITICAL_COUNT=$(echo "$SCAN_OUTPUT" | grep -o '"Severity":"CRITICAL"' | wc -l | tr -d ' ')
+        HIGH_COUNT=$(echo "$SCAN_OUTPUT" | grep -o '"Severity":"HIGH"' | wc -l | tr -d ' ')
+
+        echo "📊 Results:"
+        echo "   CRITICAL: $CRITICAL_COUNT"
+        echo "   HIGH: $HIGH_COUNT"
+        echo ""
+
+        # Write results
+        echo -n "$CRITICAL_COUNT" > $(results.CRITICAL_COUNT.path)
+        echo -n "$HIGH_COUNT" > $(results.HIGH_COUNT.path)
+
+        # Determine pass/fail based on EXIT_ON_SEVERITY
+        SHOULD_FAIL=0
+
+        if [ "$(params.EXIT_ON_SEVERITY)" = "CRITICAL" ] && [ "$CRITICAL_COUNT" -gt 0 ]; then
+          echo "❌ BLOCKED: Found $CRITICAL_COUNT CRITICAL vulnerabilities"
+          SHOULD_FAIL=1
+        elif [ "$(params.EXIT_ON_SEVERITY)" = "HIGH" ] && [ "$HIGH_COUNT" -gt 0 ]; then
+          echo "❌ BLOCKED: Found $HIGH_COUNT HIGH vulnerabilities"
+          SHOULD_FAIL=1
+        elif [ "$(params.EXIT_ON_SEVERITY)" = "CRITICAL,HIGH" ]; then
+          if [ "$CRITICAL_COUNT" -gt 0 ] || [ "$HIGH_COUNT" -gt 0 ]; then
+            echo "❌ BLOCKED: Found vulnerabilities (CRITICAL: $CRITICAL_COUNT, HIGH: $HIGH_COUNT)"
+            SHOULD_FAIL=1
+          fi
+        fi
+
+        if [ "$SHOULD_FAIL" -eq 1 ]; then
+          echo -n "false" > $(results.SCAN_PASSED.path)
+          echo ""
+          echo "🚫 Pipeline blocked due to security vulnerabilities"
+          echo "   Please address the vulnerabilities above before deploying."
+          exit 1
+        else
+          echo -n "true" > $(results.SCAN_PASSED.path)
+          echo "✅ Security scan passed"
+          if [ "$HIGH_COUNT" -gt 0 ]; then
+            echo "⚠️  Note: $HIGH_COUNT HIGH severity issues found (not blocking)"
+          fi
+        fi

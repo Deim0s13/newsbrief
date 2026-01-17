@@ -80,6 +80,21 @@ As a modern startup mindset, we want to build security into our CI/CD from day o
 | **Verification** | Kubernetes admission controllers |
 | **Adoption** | Kubernetes, distroless, chainguard |
 
+#### Cosign Signing Modes
+
+| Mode | Requirements | Use Case |
+|------|--------------|----------|
+| **Keyless (OIDC)** | OIDC provider (GitHub Actions, Dex, etc.) | CI/CD with OIDC identity |
+| **Key-based** | Generated key pair, secure key storage | Local dev, air-gapped, simpler setup |
+
+**Local Development Decision**: Use **key-based signing** because:
+- No OIDC provider available in local kind cluster
+- Simpler setup, faster to implement
+- Keys stored as Kubernetes secrets
+- Can upgrade to keyless later if OIDC provider deployed
+
+**Future consideration**: Deploy Dex or Sigstore scaffold for keyless signing.
+
 #### Notary v2 (CNCF)
 
 | Aspect | Details |
@@ -88,7 +103,7 @@ As a modern startup mindset, we want to build security into our CI/CD from day o
 | **Status** | Newer, less mature |
 | **Integration** | OCI registries |
 
-**Decision**: **Cosign** - Industry standard, keyless option, excellent docs
+**Decision**: **Cosign** - Industry standard, key-based for local, keyless upgrade path
 
 ### SBOM Generation
 
@@ -220,14 +235,14 @@ spec:
         echo "SBOM generated: $(workspaces.output.path)/sbom.json"
 ```
 
-### Tekton Task: Cosign Sign
+### Tekton Task: Cosign Sign (Key-based)
 
 ```yaml
-# tekton/tasks/cosign-sign.yaml
+# tekton/tasks/sign-image.yaml
 apiVersion: tekton.dev/v1
 kind: Task
 metadata:
-  name: cosign-sign
+  name: sign-image
 spec:
   params:
     - name: image
@@ -235,17 +250,31 @@ spec:
     - name: sign
       image: gcr.io/projectsigstore/cosign:latest
       env:
-        - name: COSIGN_EXPERIMENTAL
-          value: "1"  # Enable keyless signing
+        - name: COSIGN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: cosign-keys
+              key: password
       script: |
-        # Sign image with keyless signing (uses OIDC)
-        cosign sign --yes $(params.image)
+        # Sign image with key-based signing
+        cosign sign --key k8s://default/cosign-keys \
+          --tls-verify=false \
+          --yes $(params.image)
+        echo "✅ Image signed"
 
     - name: verify
       image: gcr.io/projectsigstore/cosign:latest
       script: |
         # Verify the signature
-        cosign verify $(params.image)
+        cosign verify --key k8s://default/cosign-keys \
+          --insecure-ignore-tlog \
+          $(params.image)
+        echo "✅ Signature verified"
+```
+
+**Note**: Key-based signing requires a `cosign-keys` secret containing the signing key. Generate with:
+```bash
+cosign generate-key-pair k8s://default/cosign-keys
 ```
 
 ### Tekton Task: Attach SBOM
@@ -317,7 +346,8 @@ make sbom
 ### Negative
 - Additional pipeline steps (~2-3 minutes added)
 - Need to handle scan failures (not just ignore)
-- Cosign keyless requires OIDC setup
+- Key-based signing requires secure key management (stored as K8s secret)
+- Keyless signing would require OIDC provider (future enhancement)
 
 ### Neutral
 - SBOM stored alongside images in registry

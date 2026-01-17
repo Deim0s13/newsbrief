@@ -1,0 +1,22 @@
+# Registry service - accessible within cluster
+#
+# From Tekton pipelines, use:
+#   registry.registry.svc.cluster.local:5000/newsbrief:tag
+# Or the short form:
+#   registry.registry:5000/newsbrief:tag
+apiVersion: v1
+kind: Service
+metadata:
+  name: registry
+  namespace: registry
+  labels:
+    app.kubernetes.io/name: registry
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5000
+      targetPort: 5000
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: registry

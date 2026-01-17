@@ -1,0 +1,90 @@
+# Tekton Task: Sign container image with Cosign (key-based)
+#
+# Signs OCI images using key-based signing for supply chain security.
+# Requires cosign-keys secret in the cluster.
+#
+# Per ADR-0018: Secure Supply Chain
+
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: sign-image
+  labels:
+    app.kubernetes.io/part-of: newsbrief
+spec:
+  description: Sign container image using Cosign (key-based signing)
+  params:
+    - name: IMAGE
+      type: string
+      description: Full image reference to sign (registry/name:tag)
+    - name: COSIGN_SECRET
+      type: string
+      default: "cosign-keys"
+      description: Name of the K8s secret containing cosign keys
+    - name: COSIGN_SECRET_NAMESPACE
+      type: string
+      default: "default"
+      description: Namespace of the cosign keys secret
+  results:
+    - name: SIGNED
+      description: Whether image was successfully signed
+  steps:
+    - name: sign
+      image: bitnami/cosign:latest
+      env:
+        - name: COSIGN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: cosign-keys
+              key: cosign.password
+        # Force HTTP for local registry
+        - name: COSIGN_INSECURE_SKIP_VERIFY
+          value: "true"
+      script: |
+        #!/bin/bash
+        set -e
+
+        echo "🔏 Signing image: $(params.IMAGE)"
+        echo "   Using key from secret: $(params.COSIGN_SECRET)"
+        echo ""
+
+        # Get the image digest first (cosign prefers digests)
+        # Sign the image with key from K8s secret
+        # --allow-insecure-registry for local registry without TLS
+        # --allow-http-registry for HTTP (not HTTPS) registries
+        # --yes to skip confirmation prompts
+        cosign sign \
+          --key k8s://$(params.COSIGN_SECRET_NAMESPACE)/$(params.COSIGN_SECRET) \
+          --allow-insecure-registry \
+          --allow-http-registry \
+          --yes \
+          $(params.IMAGE)
+
+        echo ""
+        echo "✅ Image signed successfully"
+        echo -n "true" > $(results.SIGNED.path)
+
+    - name: verify
+      image: bitnami/cosign:latest
+      env:
+        - name: COSIGN_INSECURE_SKIP_VERIFY
+          value: "true"
+      script: |
+        #!/bin/bash
+        set -e
+
+        echo "🔍 Verifying signature..."
+
+        # Verify the signature using the public key from secret
+        # --insecure-ignore-tlog skips transparency log check (for local/offline)
+        # --allow-insecure-registry for local registry without TLS
+        # --allow-http-registry for HTTP (not HTTPS) registries
+        cosign verify \
+          --key k8s://$(params.COSIGN_SECRET_NAMESPACE)/$(params.COSIGN_SECRET) \
+          --insecure-ignore-tlog \
+          --allow-insecure-registry \
+          --allow-http-registry \
+          $(params.IMAGE)
+
+        echo ""
+        echo "✅ Signature verified successfully"

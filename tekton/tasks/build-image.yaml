@@ -1,0 +1,103 @@
+# Tekton Task: Build container image with Buildah (rootless)
+#
+# Builds an OCI-compliant container image without requiring
+# privileged mode or a Docker daemon.
+#
+# Security: Runs as non-root user with vfs storage driver
+
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: build-image
+  labels:
+    app.kubernetes.io/part-of: newsbrief
+spec:
+  description: Build container image using Buildah in rootless mode
+  workspaces:
+    - name: source
+      description: Source code containing Dockerfile
+  params:
+    - name: IMAGE
+      type: string
+      description: Full image reference (registry/name:tag)
+      default: "registry.registry:5000/newsbrief:dev-latest"
+    - name: DOCKERFILE
+      type: string
+      description: Path to Dockerfile relative to workspace
+      default: "./Dockerfile"
+    - name: CONTEXT
+      type: string
+      description: Build context directory
+      default: "."
+    - name: BUILD_ARGS
+      type: array
+      description: Build arguments to pass to buildah
+      default: []
+  results:
+    - name: IMAGE_DIGEST
+      description: Digest of the built image
+    - name: IMAGE_URL
+      description: Full URL of the built image
+  steps:
+    - name: build-and-push
+      image: quay.io/buildah/stable:latest
+      workingDir: $(workspaces.source.path)
+      securityContext:
+        # Rootless mode - run as non-root user
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+      env:
+        # Use vfs storage driver (no kernel features needed)
+        - name: STORAGE_DRIVER
+          value: vfs
+        # Buildah needs a home directory for config
+        - name: HOME
+          value: /home/build
+      script: |
+        #!/usr/bin/env bash
+        set -e
+
+        echo "🔨 Building image: $(params.IMAGE)"
+        echo "   Dockerfile: $(params.DOCKERFILE)"
+        echo "   Context: $(params.CONTEXT)"
+
+        # Build the image
+        buildah bud \
+          --storage-driver=vfs \
+          --format=oci \
+          --tls-verify=false \
+          -f $(params.DOCKERFILE) \
+          -t $(params.IMAGE) \
+          $(params.CONTEXT)
+
+        echo "✅ Image built successfully"
+
+        # Push to registry
+        echo "📤 Pushing to registry..."
+        buildah push \
+          --storage-driver=vfs \
+          --tls-verify=false \
+          $(params.IMAGE)
+
+        echo "✅ Image pushed successfully"
+
+        # Get and output the digest
+        DIGEST=$(buildah inspect --storage-driver=vfs --format '{{.FromImageDigest}}' $(params.IMAGE) || echo "unknown")
+        echo -n "$DIGEST" | tee $(results.IMAGE_DIGEST.path)
+        echo -n "$(params.IMAGE)" | tee $(results.IMAGE_URL.path)
+
+        echo ""
+        echo "📦 Image: $(params.IMAGE)"
+        echo "📦 Digest: $DIGEST"
+      volumeMounts:
+        # Buildah needs writable directories for rootless operation
+        - name: buildah-cache
+          mountPath: /home/build/.local/share/containers
+        - name: buildah-runroot
+          mountPath: /var/tmp
+  volumes:
+    - name: buildah-cache
+      emptyDir: {}
+    - name: buildah-runroot
+      emptyDir: {}
