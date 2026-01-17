@@ -343,6 +343,8 @@ NewsBrief follows **local-first principles** with story-first aggregation:
 - **Container-first**: Podman/Docker with Caddy reverse proxy
 - **Privacy-First**: All AI processing runs locally
 
+📐 **[Full Architecture Document →](docs/ARCHITECTURE.md)** - Requirements, principles, diagrams, and component details
+
 ## 🛠️ Development
 
 ### **Prerequisites**
@@ -477,6 +479,7 @@ newsbrief/
 │   ├── project-automation.yml  # GitHub project sync
 │   └── gitops-deploy.yml  # GitOps deployment workflows
 ├── docs/                   # Documentation
+│   ├── ARCHITECTURE.md    # Comprehensive architecture document
 │   └── development/
 │       ├── CI-CD.md       # Complete CI/CD guide
 │       ├── DEVELOPMENT.md # Development setup and workflow
@@ -596,6 +599,7 @@ Development is organized with GitHub Projects and Milestones for clear visibilit
 We welcome contributions! See **[CONTRIBUTING.md](CONTRIBUTING.md)** for detailed setup instructions.
 
 **Key Resources**:
+- [Architecture Document](docs/ARCHITECTURE.md) - System design, requirements, and diagrams
 - [Development Guide](docs/development/DEVELOPMENT.md) - Setup and workflow
 - [Branching Strategy](docs/development/BRANCHING_STRATEGY.md) - Git workflow and **release process**
 - [CI/CD Pipeline](docs/development/CI-CD.md) - Automated testing and deployment
