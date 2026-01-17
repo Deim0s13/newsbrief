@@ -116,7 +116,6 @@ NewsBrief is a **local-first, story-based news aggregator** that synthesizes mul
 | Single LLM provider | Ollama dependency | Pluggable providers | v0.9.x |
 | No user accounts | Single-user only | Auth layer | v1.0.x |
 | No full-text search | Limited article discovery | SQLite FTS5 | v0.9.x |
-| Manual pipeline runs | Requires CLI intervention | Tekton Triggers | v0.7.7 |
 
 ---
 
@@ -132,7 +131,7 @@ NewsBrief is a **local-first, story-based news aggregator** that synthesizes mul
 - ✅ Podman Secrets for production ([ADR-0013](0013-podman-secrets.md))
 - ✅ API rate limiting ([ADR-0014](0014-api-rate-limiting.md))
 
-### v0.7.5 - GitOps & Kubernetes 🚧 In Progress
+### v0.7.5 - GitOps & Kubernetes ✅ Complete
 
 **Focus**: Infrastructure as Code and Kubernetes-native CI/CD
 
@@ -153,6 +152,12 @@ NewsBrief is a **local-first, story-based news aggregator** that synthesizes mul
 │  │              Local Container Registry                     │  │
 │  │                  (registry:5000)                          │  │
 │  └──────────────────────────────────────────────────────────┘  │
+│                              │                                  │
+│                              ▼                                  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │                     ArgoCD GitOps                         │  │
+│  │         (auto-sync from Git to Kubernetes)               │  │
+│  └──────────────────────────────────────────────────────────┘  │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -162,11 +167,10 @@ NewsBrief is a **local-first, story-based news aggregator** that synthesizes mul
 - ✅ Tekton CI/CD pipelines ([ADR-0016](0016-cicd-platform-migration.md), [ADR-0019](0019-cicd-pipeline-design.md))
 - ✅ Secure supply chain: Trivy, Cosign, SBOM ([ADR-0018](0018-secure-supply-chain.md))
 - ✅ Local container registry with Buildah rootless builds
-
-**Remaining**:
-- [ ] ArgoCD GitOps deployment ([ADR-0017](0017-gitops-tooling.md))
-- [ ] Tekton Triggers for automatic pipeline execution
-- [ ] Tekton Dashboard for visual monitoring
+- ✅ ArgoCD GitOps deployment ([ADR-0017](0017-gitops-tooling.md))
+- ✅ Tekton Triggers for webhook-based pipeline automation
+- ✅ Kustomize overlays for dev/prod environments
+- ✅ GitHub Actions retired (replaced by Tekton)
 
 ### v0.8.0 - Ranking & Personalization
 

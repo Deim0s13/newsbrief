@@ -4,9 +4,9 @@
 
 NewsBrief uses a comprehensive CI/CD pipeline with GitOps practices to ensure reliable, secure, and automated deployments.
 
-**Two CI/CD Systems:**
-- **GitHub Actions** - Cloud-based CI for PRs and releases (current)
-- **Tekton Pipelines** - Kubernetes-native CI running locally (v0.7.5+)
+**CI/CD Systems:**
+- **Tekton Pipelines** - Kubernetes-native CI running locally (primary, v0.7.5+)
+- **GitHub Actions** - Disabled (only `project-automation.yml` remains for GitHub Project sync)
 
 ## 🆕 Tekton Pipelines (v0.7.5+)
 

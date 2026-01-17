@@ -6,7 +6,12 @@ Quick reference for all NewsBrief releases. For detailed release notes, see [Git
 
 ## v0.7.x - Infrastructure & Operations
 
-### v0.7.4 - Security (Current)
+### v0.7.5 - GitOps & Kubernetes (Current)
+**January 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.7.5)
+
+Local Kubernetes with kind, Tekton CI/CD pipelines (lint, test, build, scan, sign), ArgoCD GitOps deployments, secure supply chain (Trivy, Cosign, SBOM), Tekton Triggers for webhook automation, GitHub Actions retired.
+
+### v0.7.4 - Security
 **January 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.7.4)
 
 HTTPS/TLS with Caddy automatic certificates, Podman Secrets for encrypted credentials, API rate limiting (slowapi), security headers (HSTS, X-Frame-Options).
