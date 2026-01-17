@@ -1,0 +1,95 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: create-release
+  labels:
+    app.kubernetes.io/part-of: newsbrief
+spec:
+  description: |
+    Creates a Git tag and GitHub release after successful CI pipeline.
+    Extracts version from pyproject.toml and creates release with auto-generated notes.
+  params:
+    - name: repo-url
+      type: string
+      description: The Git repository URL
+    - name: revision
+      type: string
+      description: The Git commit SHA to tag
+    - name: repo-owner
+      type: string
+      description: GitHub repository owner
+      default: "Deim0s13"
+    - name: repo-name
+      type: string
+      description: GitHub repository name
+      default: "newsbrief"
+  workspaces:
+    - name: source
+      description: Workspace containing the cloned repository
+  results:
+    - name: version
+      description: The version that was released
+    - name: release-url
+      description: URL to the GitHub release
+  steps:
+    - name: extract-version
+      image: python:3.11-slim
+      script: |
+        #!/usr/bin/env python3
+        import re
+
+        with open("$(workspaces.source.path)/pyproject.toml", "r") as f:
+            content = f.read()
+
+        match = re.search(r'version\s*=\s*"([^"]+)"', content)
+        if match:
+            version = f"v{match.group(1)}"
+            print(f"Extracted version: {version}")
+            with open("$(results.version.path)", "w") as f:
+                f.write(version)
+        else:
+            print("ERROR: Could not extract version from pyproject.toml")
+            exit(1)
+
+    - name: create-tag-and-release
+      image: ghcr.io/cli/cli:latest
+      env:
+        - name: GITHUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: github-release-token
+              key: token
+        - name: REPO_OWNER
+          value: "$(params.repo-owner)"
+        - name: REPO_NAME
+          value: "$(params.repo-name)"
+        - name: REVISION
+          value: "$(params.revision)"
+      script: |
+        #!/bin/sh
+        set -e
+
+        VERSION=$(cat $(results.version.path))
+        echo "Creating release for version: $VERSION"
+
+        # Check if tag already exists
+        if gh release view "$VERSION" --repo "$REPO_OWNER/$REPO_NAME" > /dev/null 2>&1; then
+          echo "Release $VERSION already exists, skipping..."
+          RELEASE_URL=$(gh release view "$VERSION" --repo "$REPO_OWNER/$REPO_NAME" --json url -q '.url')
+          echo "$RELEASE_URL" > $(results.release-url.path)
+          exit 0
+        fi
+
+        # Create the release (this also creates the tag)
+        echo "Creating GitHub release $VERSION..."
+        gh release create "$VERSION" \
+          --repo "$REPO_OWNER/$REPO_NAME" \
+          --target "$REVISION" \
+          --title "$VERSION" \
+          --generate-notes
+
+        # Get the release URL
+        RELEASE_URL=$(gh release view "$VERSION" --repo "$REPO_OWNER/$REPO_NAME" --json url -q '.url')
+        echo "$RELEASE_URL" > $(results.release-url.path)
+
+        echo "✅ Release created: $RELEASE_URL"

@@ -10,4 +10,6 @@ resources:
   - trigger-template-dev.yaml
   - trigger-template-prod.yaml
   - event-listener.yaml
-  # Note: webhook-secret.yaml should be applied manually with real secret
+  # Note: These secrets should be applied manually with real values:
+  #   - webhook-secret.yaml - GitHub webhook secret
+  #   - github-release-secret.yaml - GitHub PAT for creating releases
