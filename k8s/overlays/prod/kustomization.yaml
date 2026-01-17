@@ -1,0 +1,43 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: newsbrief-prod
+
+namespace: newsbrief-prod
+
+labels:
+  - pairs:
+      app.kubernetes.io/instance: prod
+      environment: production
+    includeSelectors: false
+
+resources:
+  - ../../base
+  - pdb.yaml  # PodDisruptionBudget for HA
+
+# Override namespace name for prod
+patches:
+  - target:
+      kind: Namespace
+      name: newsbrief
+    patch: |
+      - op: replace
+        path: /metadata/name
+        value: newsbrief-prod
+  # Strategic merge patch for deployment
+  - path: deployment-patch.yaml
+
+images:
+  - name: registry.registry:5000/newsbrief
+    # This will be updated by CI pipeline with semantic version
+    newTag: latest
+
+# Prod-specific configuration overrides
+configMapGenerator:
+  - name: newsbrief-config
+    behavior: merge
+    literals:
+      - ENVIRONMENT=production
+      - NEWSBRIEF_MAX_ITEMS_PER_REFRESH=200
+      - NEWSBRIEF_MAX_ITEMS_PER_FEED=100

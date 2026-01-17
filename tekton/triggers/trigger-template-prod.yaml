@@ -1,0 +1,64 @@
+# TriggerTemplate for Production Pipeline
+# Creates a PipelineRun for ci-prod when triggered
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: newsbrief-prod-template
+  namespace: default
+spec:
+  params:
+    - name: git-repo-url
+      description: The Git repository URL
+    - name: git-revision
+      description: The Git commit SHA
+    - name: git-branch
+      description: The Git branch name
+    - name: git-commit-message
+      description: The commit message
+      default: ""
+    - name: git-author
+      description: The commit author
+      default: ""
+    - name: image-tag
+      description: The image tag (semantic version)
+      default: "latest"
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1
+      kind: PipelineRun
+      metadata:
+        generateName: ci-prod-triggered-
+        labels:
+          tekton.dev/pipeline: ci-prod
+          triggers.tekton.dev/trigger: github-push
+        annotations:
+          git-commit: $(tt.params.git-revision)
+          git-branch: $(tt.params.git-branch)
+          git-author: $(tt.params.git-author)
+      spec:
+        pipelineRef:
+          name: ci-prod
+        serviceAccountName: tekton-pipeline
+        params:
+          - name: repo-url
+            value: $(tt.params.git-repo-url)
+          - name: revision
+            value: $(tt.params.git-revision)
+          - name: image-tag
+            value: $(tt.params.image-tag)
+        workspaces:
+          - name: source
+            volumeClaimTemplate:
+              spec:
+                accessModes:
+                  - ReadWriteOnce
+                resources:
+                  requests:
+                    storage: 1Gi
+          - name: sbom-output
+            volumeClaimTemplate:
+              spec:
+                accessModes:
+                  - ReadWriteOnce
+                resources:
+                  requests:
+                    storage: 100Mi

@@ -28,6 +28,7 @@ repos:
         files: \.py$
       - id: check-yaml
         name: Check YAML syntax
+        args: [--allow-multiple-documents]
       - id: check-json
         name: Check JSON syntax
       - id: end-of-file-fixer

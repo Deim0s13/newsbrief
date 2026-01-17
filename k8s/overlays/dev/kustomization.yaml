@@ -1,0 +1,39 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: newsbrief-dev
+
+namespace: newsbrief-dev
+
+labels:
+  - pairs:
+      app.kubernetes.io/instance: dev
+      environment: development
+    includeSelectors: false
+
+resources:
+  - ../../base
+
+# Override namespace name for dev
+patches:
+  - target:
+      kind: Namespace
+      name: newsbrief
+    patch: |
+      - op: replace
+        path: /metadata/name
+        value: newsbrief-dev
+
+images:
+  - name: registry.registry:5000/newsbrief
+    newTag: dev-latest
+
+# Dev-specific configuration overrides
+configMapGenerator:
+  - name: newsbrief-config
+    behavior: merge
+    literals:
+      - ENVIRONMENT=development
+      - NEWSBRIEF_MAX_ITEMS_PER_REFRESH=50
+      - NEWSBRIEF_MAX_ITEMS_PER_FEED=20

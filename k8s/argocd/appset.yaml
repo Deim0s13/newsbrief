@@ -1,0 +1,66 @@
+# ApplicationSet generates Applications for each environment
+# This replaces individual app-dev.yaml and app-prod.yaml with a single template
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: newsbrief-environments
+  namespace: argocd
+spec:
+  generators:
+    # List generator defines each environment
+    - list:
+        elements:
+          - env: dev
+            branch: dev
+            namespace: newsbrief-dev
+            autoSync: true
+            prune: true
+          - env: prod
+            branch: main
+            namespace: newsbrief-prod
+            autoSync: true
+            prune: true
+
+  template:
+    metadata:
+      name: 'newsbrief-{{env}}'
+      namespace: argocd
+      labels:
+        app.kubernetes.io/name: newsbrief
+        app.kubernetes.io/instance: '{{env}}'
+        environment: '{{env}}'
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: newsbrief
+
+      source:
+        repoURL: https://github.com/Deim0s13/newsbrief.git
+        targetRevision: '{{branch}}'
+        path: 'k8s/overlays/{{env}}'
+
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{namespace}}'
+
+      syncPolicy:
+        automated:
+          prune: '{{prune}}'
+          selfHeal: true
+          allowEmpty: false
+        syncOptions:
+          - CreateNamespace=true
+          - PruneLast=true
+          - ApplyOutOfSyncOnly=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m
+
+      ignoreDifferences:
+        - group: apps
+          kind: Deployment
+          jsonPointers:
+            - /spec/replicas

@@ -1,0 +1,32 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: newsbrief
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: NewsBrief AI-powered news aggregator
+
+  # Source repositories for this project
+  sourceRepos:
+    - https://github.com/Deim0s13/newsbrief.git
+
+  # Destinations for this project (where apps can be deployed)
+  destinations:
+    - namespace: newsbrief-dev
+      server: https://kubernetes.default.svc
+    - namespace: newsbrief-prod
+      server: https://kubernetes.default.svc
+
+  # Allow all cluster-scoped resources
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+
+  # Allow all namespaced resources
+  namespaceResourceWhitelist:
+    - group: ''
+      kind: '*'
+    - group: apps
+      kind: '*'

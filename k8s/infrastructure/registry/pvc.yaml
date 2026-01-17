@@ -1,0 +1,15 @@
+# Persistent storage for container images
+# Images survive registry pod restarts
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: registry-storage
+  namespace: registry
+  labels:
+    app.kubernetes.io/name: registry
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi  # Adjust based on expected image count

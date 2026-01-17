@@ -14,8 +14,16 @@ Development environment setup and guidelines:
 ### [CI-CD.md](CI-CD.md)
 Continuous Integration and Deployment:
 - GitHub Actions workflows
+- Tekton Pipelines (v0.7.5+)
 - Testing automation
 - Pre-commit hooks
+
+### [KUBERNETES.md](KUBERNETES.md) ⭐ *New in v0.7.5*
+Local Kubernetes development setup:
+- kind cluster setup
+- Tekton Pipelines installation
+- Local container registry
+- Running CI/CD pipelines locally
 
 ### [BRANCHING_STRATEGY.md](BRANCHING_STRATEGY.md)
 Git workflow and branching strategy:

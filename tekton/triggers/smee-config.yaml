@@ -1,0 +1,26 @@
+# Smee.io Configuration for GitHub Webhook Relay
+#
+# This file documents the smee.io channel used for local webhook testing.
+# The smee client relays webhooks from GitHub to your local EventListener.
+#
+# Usage:
+#   1. Start port-forward: kubectl port-forward svc/el-newsbrief-listener 8080:8080
+#   2. Start smee client:  ./scripts/smee-client.sh
+#   3. Configure GitHub webhook to use the smee URL below
+#
+# Note: Smee channels don't expire, but you can create a new one at https://smee.io/new
+
+smee:
+  # Your smee.io channel URL
+  url: https://smee.io/cddqBCYHwHG3ZcUY
+
+  # Local target (EventListener via port-forward)
+  target: http://localhost:8080
+
+github:
+  # Webhook configuration for GitHub repo settings
+  webhookUrl: https://smee.io/cddqBCYHwHG3ZcUY
+  contentType: application/json
+  events:
+    - push
+  # Secret should match: kubectl get secret github-webhook-secret -o jsonpath='{.data.token}' | base64 -d

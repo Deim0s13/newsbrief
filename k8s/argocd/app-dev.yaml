@@ -1,0 +1,40 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: newsbrief-dev
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: newsbrief
+
+  source:
+    repoURL: https://github.com/Deim0s13/newsbrief.git
+    targetRevision: dev
+    path: k8s/overlays/dev
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: newsbrief-dev
+
+  syncPolicy:
+    automated:
+      prune: true        # Delete resources that are no longer in Git
+      selfHeal: true     # Revert manual changes to match Git
+      allowEmpty: false  # Don't sync empty app
+    syncOptions:
+      - CreateNamespace=true
+      - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  # Health checks
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas  # Allow HPA to manage replicas

@@ -1,0 +1,82 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: update-manifest
+spec:
+  description: Update Kustomize overlay with new image tag and commit to Git
+  workspaces:
+    - name: source
+      description: Workspace containing the Git repository
+  params:
+    - name: IMAGE_TAG
+      type: string
+      description: The new image tag to set
+    - name: ENVIRONMENT
+      type: string
+      description: Target environment (dev or prod)
+      default: "dev"
+    - name: GIT_USER_NAME
+      type: string
+      default: "Tekton CI"
+    - name: GIT_USER_EMAIL
+      type: string
+      default: "tekton@newsbrief.local"
+  results:
+    - name: COMMIT_SHA
+      description: The commit SHA of the manifest update
+  steps:
+    - name: update-kustomization
+      image: alpine/git:latest
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/bin/sh
+        set -eux
+
+        OVERLAY_PATH="k8s/overlays/$(params.ENVIRONMENT)/kustomization.yaml"
+
+        echo "📝 Updating $OVERLAY_PATH with tag: $(params.IMAGE_TAG)"
+
+        # Check if file exists
+        if [ ! -f "$OVERLAY_PATH" ]; then
+          echo "❌ Error: $OVERLAY_PATH not found"
+          exit 1
+        fi
+
+        # Update the image tag using sed
+        # This replaces the newTag value in the images section
+        sed -i "s/newTag: .*/newTag: $(params.IMAGE_TAG)/" "$OVERLAY_PATH"
+
+        echo "✅ Updated kustomization:"
+        cat "$OVERLAY_PATH"
+
+    - name: commit-and-push
+      image: alpine/git:latest
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/bin/sh
+        set -eux
+
+        # Configure Git
+        git config user.name "$(params.GIT_USER_NAME)"
+        git config user.email "$(params.GIT_USER_EMAIL)"
+
+        # Check for changes
+        if git diff --quiet; then
+          echo "ℹ️  No changes to commit"
+          echo -n "no-change" > $(results.COMMIT_SHA.path)
+          exit 0
+        fi
+
+        # Stage and commit
+        git add k8s/overlays/$(params.ENVIRONMENT)/kustomization.yaml
+        git commit -m "ci: update $(params.ENVIRONMENT) image to $(params.IMAGE_TAG)
+
+        Automated by Tekton CI pipeline"
+
+        # Get commit SHA
+        COMMIT=$(git rev-parse HEAD)
+        echo -n "$COMMIT" > $(results.COMMIT_SHA.path)
+
+        echo "✅ Committed: $COMMIT"
+        echo ""
+        echo "⚠️  Note: Push to Git requires credentials (handled by pipeline or manual)"

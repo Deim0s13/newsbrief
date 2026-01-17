@@ -1,0 +1,127 @@
+# CI Pipeline for Development
+# Triggered on merge to dev branch
+#
+# Stages:
+#   1. fetch-source - Clone repository
+#   2. lint + test  - Run in parallel (fast feedback)
+#   3. build-image  - Build container (only if lint+test pass)
+#   4. security-scan - Trivy vulnerability scan
+#
+# Per ADR-0019: CI/CD Pipeline Design
+
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: ci-dev
+  labels:
+    app.kubernetes.io/part-of: newsbrief
+    newsbrief.dev/environment: development
+spec:
+  description: Development CI pipeline - build, test, scan, deploy to dev
+  workspaces:
+    - name: source
+      description: Source code workspace
+  params:
+    - name: repo-url
+      type: string
+      default: "https://github.com/Deim0s13/newsbrief.git"
+      description: Git repository URL
+    - name: revision
+      type: string
+      default: "dev"
+      description: Git branch or tag to checkout
+    - name: image-registry
+      type: string
+      default: "registry.registry:5000"
+      description: Container registry URL
+    - name: image-name
+      type: string
+      default: "newsbrief"
+      description: Image name
+    - name: image-tag
+      type: string
+      default: "dev-latest"
+      description: Image tag (dev uses dev-latest)
+
+  tasks:
+    # ══════════════════════════════════════════════════════════════
+    # Stage 1: Fetch Source
+    # ══════════════════════════════════════════════════════════════
+    - name: fetch-source
+      taskRef:
+        name: git-clone
+      workspaces:
+        - name: output
+          workspace: source
+      params:
+        - name: url
+          value: $(params.repo-url)
+        - name: revision
+          value: $(params.revision)
+
+    # ══════════════════════════════════════════════════════════════
+    # Stage 2: Quality Gates (parallel)
+    # ══════════════════════════════════════════════════════════════
+    - name: lint
+      taskRef:
+        name: lint
+      runAfter:
+        - fetch-source
+      workspaces:
+        - name: source
+          workspace: source
+
+    - name: test
+      taskRef:
+        name: test
+      runAfter:
+        - fetch-source
+      workspaces:
+        - name: source
+          workspace: source
+
+    # ══════════════════════════════════════════════════════════════
+    # Stage 3: Build Container Image
+    # ══════════════════════════════════════════════════════════════
+    - name: build-image
+      taskRef:
+        name: build-image
+      runAfter:
+        - lint
+        - test
+      workspaces:
+        - name: source
+          workspace: source
+      params:
+        - name: IMAGE
+          value: "$(params.image-registry)/$(params.image-name):$(params.image-tag)"
+
+    # ══════════════════════════════════════════════════════════════
+    # Stage 4: Security Scan
+    # ══════════════════════════════════════════════════════════════
+    - name: security-scan
+      taskRef:
+        name: security-scan
+      runAfter:
+        - build-image
+      params:
+        - name: IMAGE
+          value: "$(params.image-registry)/$(params.image-name):$(params.image-tag)"
+        - name: SEVERITY
+          value: "CRITICAL,HIGH"
+        - name: EXIT_ON_SEVERITY
+          value: "CRITICAL"
+        - name: IGNORE_UNFIXED
+          value: "true"
+
+  # Pipeline results (for downstream use)
+  results:
+    - name: image-digest
+      description: Image digest
+      value: $(tasks.build-image.results.IMAGE_DIGEST)
+    - name: image-url
+      description: Full image URL that was built
+      value: $(tasks.build-image.results.IMAGE_URL)
+    - name: scan-passed
+      description: Whether security scan passed
+      value: $(tasks.security-scan.results.SCAN_PASSED)

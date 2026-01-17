@@ -1,0 +1,30 @@
+# kind cluster configuration for NewsBrief development
+# Documentation: https://kind.sigs.k8s.io/docs/user/configuration/
+
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: newsbrief-dev
+
+nodes:
+  - role: control-plane
+    # Port mappings allow access to services from localhost
+    extraPortMappings:
+      # HTTP ingress
+      - containerPort: 80
+        hostPort: 8080
+        protocol: TCP
+      # HTTPS ingress
+      - containerPort: 443
+        hostPort: 8443
+        protocol: TCP
+      # NodePort range for direct service access (optional)
+      - containerPort: 30000
+        hostPort: 30000
+        protocol: TCP
+    # Labels for ingress controller node selection
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"

@@ -1,0 +1,100 @@
+# Tekton Task: Generate Software Bill of Materials (SBOM)
+#
+# Creates an SBOM in CycloneDX format using Trivy.
+# The SBOM documents all components in the container image.
+#
+# Per ADR-0018: Secure Supply Chain
+
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: generate-sbom
+  labels:
+    app.kubernetes.io/part-of: newsbrief
+spec:
+  description: Generate SBOM for container image using Trivy
+  workspaces:
+    - name: output
+      description: Workspace to store the SBOM file
+  params:
+    - name: IMAGE
+      type: string
+      description: Full image reference to generate SBOM for
+    - name: FORMAT
+      type: string
+      default: "cyclonedx"
+      description: SBOM format (cyclonedx or spdx-json)
+    - name: OUTPUT_FILE
+      type: string
+      default: "sbom.json"
+      description: Output filename for SBOM
+  results:
+    - name: SBOM_PATH
+      description: Path to the generated SBOM file
+    - name: COMPONENT_COUNT
+      description: Number of components in the SBOM
+  steps:
+    - name: generate
+      image: aquasec/trivy:latest
+      script: |
+        #!/usr/bin/env sh
+        set -e
+
+        echo "📋 Generating SBOM for: $(params.IMAGE)"
+        echo "   Format: $(params.FORMAT)"
+        echo ""
+
+        OUTPUT_PATH="$(workspaces.output.path)/$(params.OUTPUT_FILE)"
+
+        # Generate SBOM
+        # --insecure for local registry without TLS
+        trivy image \
+          --format $(params.FORMAT) \
+          --output "$OUTPUT_PATH" \
+          --insecure \
+          $(params.IMAGE)
+
+        echo ""
+        echo "✅ SBOM generated: $OUTPUT_PATH"
+
+        # Count components (rough count from JSON)
+        if [ -f "$OUTPUT_PATH" ]; then
+          COMPONENT_COUNT=$(grep -c '"name"' "$OUTPUT_PATH" 2>/dev/null || echo "0")
+          echo "📊 Components documented: $COMPONENT_COUNT"
+          echo -n "$COMPONENT_COUNT" > $(results.COMPONENT_COUNT.path)
+        else
+          echo "0" > $(results.COMPONENT_COUNT.path)
+        fi
+
+        echo -n "$OUTPUT_PATH" > $(results.SBOM_PATH.path)
+
+    - name: summary
+      image: aquasec/trivy:latest
+      script: |
+        #!/usr/bin/env sh
+        set -e
+
+        OUTPUT_PATH="$(workspaces.output.path)/$(params.OUTPUT_FILE)"
+
+        echo "════════════════════════════════════════════════════════════"
+        echo "                    SBOM SUMMARY"
+        echo "════════════════════════════════════════════════════════════"
+        echo ""
+
+        if [ -f "$OUTPUT_PATH" ]; then
+          # Show file size
+          SIZE=$(ls -lh "$OUTPUT_PATH" | awk '{print $5}')
+          echo "📦 File: $(params.OUTPUT_FILE)"
+          echo "📏 Size: $SIZE"
+          echo ""
+
+          # Show first few components (for verification)
+          echo "📋 Sample components:"
+          grep -o '"name":"[^"]*"' "$OUTPUT_PATH" | head -10 | sed 's/"name":"/ - /g' | sed 's/"//g'
+          echo "   ..."
+          echo ""
+          echo "✅ SBOM ready for attachment to image"
+        else
+          echo "❌ SBOM file not found"
+          exit 1
+        fi
