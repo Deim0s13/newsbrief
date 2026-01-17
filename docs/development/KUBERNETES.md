@@ -445,6 +445,112 @@ kubectl kustomize k8s/overlays/prod
 kubectl apply -k k8s/overlays/dev
 ```
 
+## ⚡ Tekton Triggers
+
+Tekton Triggers enables automatic pipeline execution when GitHub events occur.
+
+### Install Tekton Triggers
+
+```bash
+# Install Tekton Triggers
+kubectl apply --filename https://storage.googleapis.com/tekton-releases/triggers/latest/release.yaml
+
+# Wait for readiness
+kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=webhook -n tekton-pipelines --timeout=60s
+
+# Install interceptors (GitHub, CEL, etc.)
+kubectl apply --filename https://storage.googleapis.com/tekton-releases/triggers/latest/interceptors.yaml
+```
+
+### Deploy Triggers
+
+```bash
+# Create webhook secret (generate a strong random token)
+WEBHOOK_SECRET=$(openssl rand -hex 20)
+kubectl create secret generic github-webhook-secret --from-literal=token=$WEBHOOK_SECRET
+echo "Save this secret for GitHub webhook config: $WEBHOOK_SECRET"
+
+# Deploy trigger resources
+kubectl apply -k tekton/triggers/
+```
+
+### Trigger Architecture
+
+```
+GitHub Push ──► smee.io ──► EventListener ──► Interceptor ──► TriggerTemplate ──► PipelineRun
+     │                           │                  │                                  │
+     │                           │                  │                                  │
+     ▼                           ▼                  ▼                                  ▼
+  Webhook                  Validates          Filters by          Creates ci-dev or
+  Payload                  Signature          Branch              ci-prod pipeline
+```
+
+### Trigger Resources
+
+| Resource | Purpose | File |
+|----------|---------|------|
+| `TriggerBinding` | Extracts repo, branch, commit from webhook | `tekton/triggers/trigger-binding.yaml` |
+| `TriggerTemplate` (dev) | Creates ci-dev PipelineRun | `tekton/triggers/trigger-template-dev.yaml` |
+| `TriggerTemplate` (prod) | Creates ci-prod PipelineRun | `tekton/triggers/trigger-template-prod.yaml` |
+| `EventListener` | Receives webhooks, routes to triggers | `tekton/triggers/event-listener.yaml` |
+
+### Webhook Relay with smee.io
+
+For local development, use smee.io to relay GitHub webhooks:
+
+```bash
+# Terminal 1: Port-forward EventListener
+kubectl port-forward svc/el-newsbrief-listener 8080:8080
+
+# Terminal 2: Run smee client
+./scripts/smee-client.sh
+# Or directly:
+npx smee-client --url https://smee.io/cddqBCYHwHG3ZcUY --target http://localhost:8080
+```
+
+### Configure GitHub Webhook
+
+1. Go to: `https://github.com/Deim0s13/newsbrief/settings/hooks`
+2. Add webhook:
+   - **Payload URL**: `https://smee.io/cddqBCYHwHG3ZcUY`
+   - **Content type**: `application/json`
+   - **Secret**: Your webhook secret (from `kubectl get secret github-webhook-secret`)
+   - **Events**: Just the push event
+
+### Test Triggers Manually
+
+```bash
+# Get webhook secret
+SECRET=$(kubectl get secret github-webhook-secret -o jsonpath='{.data.token}' | base64 -d)
+
+# Create signed test webhook
+PAYLOAD='{"ref":"refs/heads/dev","after":"HEAD","repository":{"clone_url":"https://github.com/Deim0s13/newsbrief.git"},"head_commit":{"message":"Test","author":{"name":"Tester"}}}'
+SIGNATURE="sha256=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $2}')"
+
+# Send webhook
+curl -X POST http://localhost:8080 \
+  -H "Content-Type: application/json" \
+  -H "X-GitHub-Event: push" \
+  -H "X-Hub-Signature-256: $SIGNATURE" \
+  -d "$PAYLOAD"
+
+# Check PipelineRun was created
+kubectl get pipelineruns --sort-by=.metadata.creationTimestamp | tail -3
+```
+
+### Monitor Triggers
+
+```bash
+# Check EventListener status
+kubectl get eventlistener newsbrief-listener
+
+# View EventListener logs
+kubectl logs -l eventlistener=newsbrief-listener -f
+
+# List triggered PipelineRuns
+kubectl get pipelineruns -l triggers.tekton.dev/trigger=github-push
+```
+
 ## 📚 Related Documentation
 
 - [ADR-0015: Local Kubernetes Distribution](../adr/0015-local-kubernetes-distribution.md) - Why kind
@@ -456,8 +562,8 @@ kubectl apply -k k8s/overlays/dev
 
 ## 🔜 Next Steps
 
-After setting up ArgoCD:
+After setting up Tekton Triggers:
 
-1. **Phase 4**: Configure Tekton Triggers for automatic pipeline execution
+1. **Configure GitHub Webhook** - Set up smee.io relay and GitHub webhook
 2. **Phase 5**: Production deployment patterns
 3. **Phase 6**: Advanced GitOps (ApplicationSets, progressive delivery)
