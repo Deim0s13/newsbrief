@@ -10,6 +10,7 @@
 #   6. generate-sbom   - Software Bill of Materials
 #   7. create-release  - Create Git tag and GitHub release
 #   8. update-manifest - Update Kustomize overlay and push to Git (triggers ArgoCD)
+#   9. cleanup         - Prune old images, branches, and runs (keeps last N)
 #
 # Per ADR-0019: CI/CD Pipeline Design
 # Per ADR-0018: Secure Supply Chain
@@ -190,6 +191,42 @@ spec:
           value: "$(tasks.create-release.results.version)"
         - name: ENVIRONMENT
           value: "prod"
+
+    # ══════════════════════════════════════════════════════════════
+    # Stage 9: Cleanup (prune old images, branches, and runs)
+    # ══════════════════════════════════════════════════════════════
+    - name: cleanup-images
+      taskRef:
+        name: cleanup-images
+      runAfter:
+        - update-manifest
+      params:
+        - name: KEEP_RECENT
+          value: "3"
+        - name: KEEP_VERSIONS
+          value: "5"
+
+    - name: cleanup-branches
+      taskRef:
+        name: cleanup-branches
+      runAfter:
+        - update-manifest
+      params:
+        - name: DAYS_OLD
+          value: "7"
+        - name: DRY_RUN
+          value: "false"
+
+    - name: cleanup-runs
+      taskRef:
+        name: cleanup-runs
+      runAfter:
+        - update-manifest
+      params:
+        - name: KEEP_SUCCESSFUL_HOURS
+          value: "48"
+        - name: KEEP_FAILED_HOURS
+          value: "168"
 
   # Pipeline results
   results:
