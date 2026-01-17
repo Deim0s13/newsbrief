@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: newsbrief-config
+  labels:
+    app.kubernetes.io/name: newsbrief
+data:
+  # LLM Configuration
+  OLLAMA_BASE_URL: "http://host.containers.internal:11434"
+  NEWSBRIEF_LLM_MODEL: "llama3.1:8b"
+
+  # Story Generation
+  STORY_GENERATION_SCHEDULE: "0 6 * * *"
+  STORY_GENERATION_TIMEZONE: "Pacific/Auckland"
+  STORY_ARCHIVE_DAYS: "7"
+  STORY_TIME_WINDOW_HOURS: "24"
+  STORY_MIN_ARTICLES: "2"
+
+  # Feed Refresh
+  FEED_REFRESH_ENABLED: "true"
+  FEED_REFRESH_SCHEDULE: "30 5 * * *"
+
+  # Fetch Limits
+  NEWSBRIEF_MAX_ITEMS_PER_REFRESH: "150"
+  NEWSBRIEF_MAX_ITEMS_PER_FEED: "50"
+  NEWSBRIEF_MAX_REFRESH_TIME: "300"
