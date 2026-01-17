@@ -1,0 +1,10 @@
+# PodDisruptionBudget ensures at least one pod is always available
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: newsbrief-pdb
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: newsbrief

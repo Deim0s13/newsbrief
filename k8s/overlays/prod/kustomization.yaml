@@ -14,6 +14,7 @@ labels:
 
 resources:
   - ../../base
+  - pdb.yaml  # PodDisruptionBudget for HA
 
 # Override namespace name for prod
 patches:
@@ -24,14 +25,8 @@ patches:
       - op: replace
         path: /metadata/name
         value: newsbrief-prod
-  # Increase replicas for prod
-  - target:
-      kind: Deployment
-      name: newsbrief
-    patch: |
-      - op: replace
-        path: /spec/replicas
-        value: 2
+  # Strategic merge patch for deployment
+  - path: deployment-patch.yaml
 
 images:
   - name: registry.registry:5000/newsbrief

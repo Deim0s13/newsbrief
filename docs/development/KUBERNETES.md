@@ -551,6 +551,110 @@ kubectl logs -l eventlistener=newsbrief-listener -f
 kubectl get pipelineruns -l triggers.tekton.dev/trigger=github-push
 ```
 
+## 🏭 Production Patterns (Phase 5)
+
+### Resource Limits and Scaling
+
+Production deployments include:
+- **2 replicas** with pod anti-affinity for HA
+- **Rolling updates** with zero downtime (`maxUnavailable: 0`)
+- **PodDisruptionBudget** ensuring at least 1 pod available
+- **Resource limits**: 1Gi memory, 1 CPU
+
+```yaml
+# k8s/overlays/prod/deployment-patch.yaml
+spec:
+  replicas: 2
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    spec:
+      affinity:
+        podAntiAffinity:  # Spread across nodes
+          preferredDuringSchedulingIgnoredDuringExecution: ...
+```
+
+### Image Promotion Workflow
+
+```
+dev branch ──► Tekton builds ──► registry:5000/newsbrief:dev-latest
+                                        │
+                                        ▼
+                              ArgoCD syncs to newsbrief-dev
+                                        │
+                    ┌───────────────────┴────────────────────┐
+                    │                                        │
+                    ▼                                        ▼
+main branch ──► Tekton builds ──► registry:5000/newsbrief:v0.7.5
+                                        │
+                                        ▼
+                              ArgoCD syncs to newsbrief-prod
+```
+
+### Sync Waves
+
+Resources deploy in order using ArgoCD sync waves:
+1. **Wave -1**: Namespace
+2. **Wave 0**: ConfigMaps, Secrets
+3. **Wave 1**: Deployments, Services
+
+## 🚀 Advanced GitOps (Phase 6)
+
+### ApplicationSets
+
+ApplicationSets manage multiple environments from a single template:
+
+```yaml
+# k8s/argocd/appset.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+spec:
+  generators:
+    - list:
+        elements:
+          - env: dev
+            branch: dev
+          - env: prod
+            branch: main
+  template:
+    spec:
+      source:
+        path: 'k8s/overlays/{{env}}'
+        targetRevision: '{{branch}}'
+```
+
+**Enable ApplicationSet** (replaces individual apps):
+```bash
+# Edit k8s/argocd/kustomization.yaml
+# Comment out app-dev.yaml and app-prod.yaml
+# Uncomment appset.yaml
+kubectl apply -k k8s/argocd/
+```
+
+### ArgoCD Notifications
+
+Notifications are configured to alert on:
+- ✅ Successful deployments
+- ❌ Sync failures
+- ⚠️ Health degradation
+
+```bash
+# View notification logs
+kubectl logs -n argocd -l app.kubernetes.io/name=argocd-notifications-controller
+
+# Test notifications by triggering a sync
+argocd app sync newsbrief-dev
+```
+
+**Configure Slack/Webhook** (when ready):
+```bash
+# Edit k8s/argocd/notifications-secret.yaml
+# Add your Slack token or webhook URL
+kubectl apply -f k8s/argocd/notifications-secret.yaml
+```
+
 ## 📚 Related Documentation
 
 - [ADR-0015: Local Kubernetes Distribution](../adr/0015-local-kubernetes-distribution.md) - Why kind
@@ -560,10 +664,21 @@ kubectl get pipelineruns -l triggers.tekton.dev/trigger=github-push
 - [ADR-0019: CI/CD Pipeline Design](../adr/0019-cicd-pipeline-design.md) - Pipeline architecture
 - [CI/CD Documentation](CI-CD.md) - Full CI/CD guide
 
-## 🔜 Next Steps
+## ✅ Setup Complete
 
-After setting up Tekton Triggers:
+The full GitOps stack is now configured:
 
-1. **Configure GitHub Webhook** - Set up smee.io relay and GitHub webhook
-2. **Phase 5**: Production deployment patterns
-3. **Phase 6**: Advanced GitOps (ApplicationSets, progressive delivery)
+| Component | Purpose | Status |
+|-----------|---------|--------|
+| kind | Local Kubernetes cluster | ✅ |
+| Tekton Pipelines | CI/CD execution | ✅ |
+| Tekton Triggers | Automatic pipeline triggering | ✅ |
+| ArgoCD | GitOps deployment | ✅ |
+| Local Registry | Image storage | ✅ |
+| Cosign | Image signing | ✅ |
+| Trivy | Security scanning | ✅ |
+
+**To activate full automation:**
+1. Configure GitHub webhook with smee.io relay
+2. Push to `dev` → triggers ci-dev → ArgoCD deploys to newsbrief-dev
+3. Merge to `main` → triggers ci-prod → ArgoCD deploys to newsbrief-prod

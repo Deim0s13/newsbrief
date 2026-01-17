@@ -5,6 +5,8 @@ metadata:
   labels:
     app.kubernetes.io/name: newsbrief
     app.kubernetes.io/component: api
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"  # Create after namespace and config
 spec:
   replicas: 1
   selector:

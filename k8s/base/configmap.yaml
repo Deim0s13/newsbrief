@@ -4,6 +4,8 @@ metadata:
   name: newsbrief-config
   labels:
     app.kubernetes.io/name: newsbrief
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"  # Create config before deployment
 data:
   # LLM Configuration
   OLLAMA_BASE_URL: "http://host.containers.internal:11434"
