@@ -2,6 +2,15 @@
 
 Project documentation organized by category. For current project status, see the [GitHub Project Board](https://github.com/users/Deim0s13/projects/2).
 
+## 📐 Architecture
+
+**[ARCHITECTURE.md](ARCHITECTURE.md)** - Comprehensive architecture document including:
+- Requirements and non-functional requirements
+- Architectural principles
+- System context and component diagrams
+- Data and deployment architecture
+- CI/CD architecture
+
 ## 📚 Documentation Structure
 
 ### 📖 [User Guide](user-guide/)
@@ -12,6 +21,7 @@ End-user documentation:
 ### 🛠️ [Development](development/)
 Developer documentation:
 - **[DEVELOPMENT.md](development/DEVELOPMENT.md)** - Development setup and guidelines
+- **[KUBERNETES.md](development/KUBERNETES.md)** - Local Kubernetes and CI/CD setup
 - **[CI-CD.md](development/CI-CD.md)** - CI/CD pipeline documentation
 - **[BRANCHING_STRATEGY.md](development/BRANCHING_STRATEGY.md)** - Git workflow
 - **[GITHUB_PROJECT_BOARD_SETUP.md](development/GITHUB_PROJECT_BOARD_SETUP.md)** - Project board guide
@@ -42,11 +52,11 @@ Historical documentation (no longer actively maintained):
 |----------|------|
 | **Quick Start** | [user-guide/QUICK-START.md](user-guide/QUICK-START.md) |
 | **API Reference** | [user-guide/API.md](user-guide/API.md) |
-| **Latest Release** | [v0.7.3](https://github.com/Deim0s13/newsbrief/releases/tag/v0.7.3) |
+| **Latest Release** | [v0.7.5](https://github.com/Deim0s13/newsbrief/releases/tag/v0.7.5) |
 | **Project Board** | [GitHub Projects](https://github.com/users/Deim0s13/projects/2) |
 | **Issues** | [GitHub Issues](https://github.com/Deim0s13/newsbrief/issues) |
 | **Milestones** | [GitHub Milestones](https://github.com/Deim0s13/newsbrief/milestones) |
 
 ---
 
-**Last Updated**: January 2026 · **Current Version**: v0.7.3
+**Last Updated**: January 2026 · **Current Version**: v0.7.5
