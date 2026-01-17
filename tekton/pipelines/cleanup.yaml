@@ -1,0 +1,76 @@
+# Cleanup Pipeline
+# Removes old images, branches, and Tekton runs
+#
+# Run manually:
+#   tkn pipeline start cleanup --showlog
+#
+# Or schedule with a CronJob (see cleanup-cronjob.yaml)
+
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: cleanup
+  labels:
+    app.kubernetes.io/part-of: newsbrief
+spec:
+  description: Cleanup old images, branches, and pipeline runs
+  params:
+    - name: dry-run
+      type: string
+      default: "false"
+      description: If true, only report what would be deleted
+
+  tasks:
+    # ══════════════════════════════════════════════════════════════
+    # Clean up old container images
+    # ══════════════════════════════════════════════════════════════
+    - name: cleanup-images
+      taskRef:
+        name: cleanup-images
+      params:
+        - name: KEEP_RECENT
+          value: "5"
+        - name: KEEP_VERSIONS
+          value: "10"
+
+    # ══════════════════════════════════════════════════════════════
+    # Clean up merged branches
+    # ══════════════════════════════════════════════════════════════
+    - name: cleanup-branches
+      taskRef:
+        name: cleanup-branches
+      params:
+        - name: DAYS_OLD
+          value: "7"
+        - name: DRY_RUN
+          value: "$(params.dry-run)"
+        - name: PROTECTED_BRANCHES
+          value: "main,dev"
+
+    # ══════════════════════════════════════════════════════════════
+    # Clean up old Tekton runs
+    # ══════════════════════════════════════════════════════════════
+    - name: cleanup-runs
+      taskRef:
+        name: cleanup-runs
+      params:
+        - name: KEEP_SUCCESSFUL_HOURS
+          value: "48"
+        - name: KEEP_FAILED_HOURS
+          value: "168"
+        - name: DRY_RUN
+          value: "$(params.dry-run)"
+
+  results:
+    - name: images-deleted
+      description: Number of image tags deleted
+      value: $(tasks.cleanup-images.results.DELETED_COUNT)
+    - name: branches-deleted
+      description: Number of branches deleted
+      value: $(tasks.cleanup-branches.results.DELETED_COUNT)
+    - name: pipelineruns-deleted
+      description: Number of PipelineRuns deleted
+      value: $(tasks.cleanup-runs.results.DELETED_PIPELINERUNS)
+    - name: taskruns-deleted
+      description: Number of TaskRuns deleted
+      value: $(tasks.cleanup-runs.results.DELETED_TASKRUNS)

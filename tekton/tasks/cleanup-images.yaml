@@ -1,0 +1,94 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: cleanup-images
+  labels:
+    app.kubernetes.io/part-of: newsbrief
+spec:
+  description: |
+    Cleans up old container images from the local registry.
+    Keeps the N most recent tags plus any semantic version tags.
+  params:
+    - name: REGISTRY
+      type: string
+      default: "registry.registry:5000"
+      description: Registry URL
+    - name: IMAGE_NAME
+      type: string
+      default: "newsbrief"
+      description: Image name to clean
+    - name: KEEP_RECENT
+      type: string
+      default: "5"
+      description: Number of recent dev-* tags to keep
+    - name: KEEP_VERSIONS
+      type: string
+      default: "10"
+      description: Number of semantic version tags to keep
+  results:
+    - name: DELETED_COUNT
+      description: Number of tags deleted
+  steps:
+    - name: cleanup
+      image: curlimages/curl:latest
+      script: |
+        #!/bin/sh
+        set -e
+
+        REGISTRY="$(params.REGISTRY)"
+        IMAGE="$(params.IMAGE_NAME)"
+        KEEP_RECENT="$(params.KEEP_RECENT)"
+        KEEP_VERSIONS="$(params.KEEP_VERSIONS)"
+
+        echo "🧹 Cleaning up old images from $REGISTRY/$IMAGE"
+        echo "   Keeping $KEEP_RECENT recent dev tags"
+        echo "   Keeping $KEEP_VERSIONS semantic version tags"
+
+        # Get all tags
+        TAGS=$(curl -s "http://$REGISTRY/v2/$IMAGE/tags/list" | grep -o '"tags":\[[^]]*\]' | sed 's/"tags":\[//;s/\]//;s/"//g;s/,/\n/g' | sort)
+
+        if [ -z "$TAGS" ]; then
+          echo "No tags found"
+          echo -n "0" > $(results.DELETED_COUNT.path)
+          exit 0
+        fi
+
+        echo "Found tags:"
+        echo "$TAGS"
+
+        # Separate version tags (v*) and dev tags (dev-*)
+        VERSION_TAGS=$(echo "$TAGS" | grep "^v" | sort -V | tail -n $KEEP_VERSIONS || true)
+        DEV_TAGS=$(echo "$TAGS" | grep "^dev" | sort -r | tail -n $KEEP_RECENT || true)
+        LATEST_TAG=$(echo "$TAGS" | grep "^latest$" || true)
+
+        # Combine tags to keep
+        KEEP_TAGS=$(echo -e "$VERSION_TAGS\n$DEV_TAGS\n$LATEST_TAG" | sort -u | grep -v '^$')
+
+        echo ""
+        echo "Tags to keep:"
+        echo "$KEEP_TAGS"
+
+        # Find tags to delete
+        DELETE_COUNT=0
+        for tag in $TAGS; do
+          if ! echo "$KEEP_TAGS" | grep -q "^$tag$"; then
+            echo "🗑️  Deleting $tag..."
+
+            # Get the digest for this tag
+            DIGEST=$(curl -s -I -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
+              "http://$REGISTRY/v2/$IMAGE/manifests/$tag" | grep -i "docker-content-digest" | awk '{print $2}' | tr -d '\r')
+
+            if [ -n "$DIGEST" ]; then
+              # Delete the manifest
+              curl -s -X DELETE "http://$REGISTRY/v2/$IMAGE/manifests/$DIGEST" || echo "   Warning: Failed to delete $tag"
+              DELETE_COUNT=$((DELETE_COUNT + 1))
+            fi
+          fi
+        done
+
+        echo ""
+        echo "✅ Deleted $DELETE_COUNT tags"
+        echo -n "$DELETE_COUNT" > $(results.DELETED_COUNT.path)
+
+        echo ""
+        echo "⚠️  Note: Run 'registry garbage-collect' to reclaim disk space"

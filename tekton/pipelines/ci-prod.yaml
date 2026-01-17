@@ -6,9 +6,10 @@
 #   2. lint + test   - Run in parallel (quality gates)
 #   3. build-image   - Build container with semantic version tag
 #   4. security-scan - Trivy vulnerability scan (blocks on CRITICAL)
-#   5. sign-image    - Cosign signature (required for prod)
-#   6. generate-sbom - Software Bill of Materials
-#   7. create-release - Create Git tag and GitHub release
+#   5. sign-image      - Cosign signature (required for prod)
+#   6. generate-sbom   - Software Bill of Materials
+#   7. create-release  - Create Git tag and GitHub release
+#   8. update-manifest - Update Kustomize overlay and push to Git (triggers ArgoCD)
 #
 # Per ADR-0019: CI/CD Pipeline Design
 # Per ADR-0018: Secure Supply Chain
@@ -173,6 +174,23 @@ spec:
         - name: revision
           value: "$(params.revision)"
 
+    # ══════════════════════════════════════════════════════════════
+    # Stage 8: Update Manifest for GitOps (triggers ArgoCD deployment)
+    # ══════════════════════════════════════════════════════════════
+    - name: update-manifest
+      taskRef:
+        name: update-manifest
+      runAfter:
+        - create-release
+      workspaces:
+        - name: source
+          workspace: source
+      params:
+        - name: IMAGE_TAG
+          value: "$(tasks.create-release.results.version)"
+        - name: ENVIRONMENT
+          value: "prod"
+
   # Pipeline results
   results:
     - name: image-digest
@@ -190,3 +208,12 @@ spec:
     - name: sbom-path
       description: Path to SBOM file
       value: $(tasks.generate-sbom.results.SBOM_PATH)
+    - name: version
+      description: Version that was released
+      value: $(tasks.create-release.results.version)
+    - name: release-url
+      description: URL to the GitHub release
+      value: $(tasks.create-release.results.release-url)
+    - name: manifest-commit
+      description: Commit SHA of the manifest update
+      value: $(tasks.update-manifest.results.COMMIT_SHA)

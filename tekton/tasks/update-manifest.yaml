@@ -52,6 +52,12 @@ spec:
     - name: commit-and-push
       image: alpine/git:latest
       workingDir: $(workspaces.source.path)
+      env:
+        - name: GITHUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: github-release-token
+              key: token
       script: |
         #!/bin/sh
         set -eux
@@ -78,5 +84,20 @@ spec:
         echo -n "$COMMIT" > $(results.COMMIT_SHA.path)
 
         echo "✅ Committed: $COMMIT"
-        echo ""
-        echo "⚠️  Note: Push to Git requires credentials (handled by pipeline or manual)"
+
+        # Configure remote with token for push
+        REPO_URL=$(git remote get-url origin)
+        # Convert https://github.com/owner/repo to https://token@github.com/owner/repo
+        AUTH_URL=$(echo "$REPO_URL" | sed "s|https://|https://${GITHUB_TOKEN}@|")
+        git remote set-url origin "$AUTH_URL"
+
+        # Push to the target branch
+        TARGET_BRANCH=$(params.ENVIRONMENT)
+        if [ "$TARGET_BRANCH" = "prod" ]; then
+          TARGET_BRANCH="main"
+        fi
+
+        echo "📤 Pushing to $TARGET_BRANCH..."
+        git push origin HEAD:$TARGET_BRANCH
+
+        echo "✅ Pushed manifest update to $TARGET_BRANCH"
