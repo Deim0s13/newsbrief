@@ -26,6 +26,60 @@ This ADR documents the pipeline design decisions that build upon the platform ch
 
 **Key principle:** The merge to `main` serves as the approval gate for production. No separate manual approval step is needed - the PR review process is the approval.
 
+### Trigger Implementation
+
+**Decision:** Use Tekton Triggers with EventListener for webhook-based pipeline execution.
+
+```
+GitHub Push Event
+       │
+       ▼
+┌──────────────────┐     ┌───────────────┐     ┌─────────────────┐     ┌─────────────┐
+│  smee.io relay   │────▶│ EventListener │────▶│   Interceptor   │────▶│  Trigger    │
+│  (local dev)     │     │               │     │ (GitHub filter) │     │  Template   │
+└──────────────────┘     └───────────────┘     └─────────────────┘     └─────────────┘
+                                                      │                       │
+                                                      ▼                       ▼
+                                               Validate webhook        Create PipelineRun
+                                               signature + filter      (ci-dev or ci-prod)
+                                               by branch
+```
+
+| Component | Role | Resource Location |
+|-----------|------|-------------------|
+| EventListener | HTTP endpoint receiving webhooks | `tekton/triggers/event-listener.yaml` |
+| TriggerBinding | Extracts data (repo, branch, commit) from payload | `tekton/triggers/trigger-binding.yaml` |
+| TriggerTemplate | Creates PipelineRun with extracted parameters | `tekton/triggers/trigger-template-*.yaml` |
+| Interceptor | Validates signature, filters by branch | Built-in GitHub interceptor |
+
+**Why Tekton Triggers:**
+
+| Option | Considered | Decision |
+|--------|------------|----------|
+| Tekton Triggers | Native to Tekton, Kubernetes-native, event-driven | ✅ Chosen |
+| GitHub Actions dispatch | Depends on GitHub, external to cluster | ❌ Rejected |
+| External webhook handler | Additional component to maintain | ❌ Rejected |
+| Manual pipeline runs | Defeats automation purpose | ❌ Rejected |
+
+**Rationale:**
+- **Native integration**: Tekton Triggers are part of the Tekton ecosystem
+- **Self-contained**: Everything runs inside the cluster
+- **Secure**: Validates webhook signatures using shared secret
+- **Flexible**: CEL expressions for complex filtering (branch, event type)
+
+**Local Development Strategy:**
+
+For local development, GitHub cannot reach our cluster directly. We use smee.io as a webhook relay:
+
+1. GitHub webhook → smee.io (public endpoint)
+2. smee-client (local) → polls smee.io
+3. smee-client → forwards to EventListener (localhost:8080)
+
+**Trade-offs:**
+- Requires running smee-client locally during development
+- smee.io adds latency (~1-2 seconds)
+- Alternative for production: Direct webhook endpoint via ingress
+
 ### Image Tagging Strategy
 
 | Environment | Tag Format | Example |
