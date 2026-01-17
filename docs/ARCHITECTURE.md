@@ -147,50 +147,127 @@ NewsBrief is a **self-hosted, privacy-focused** application designed to:
 
 ## 4. Architectural Principles
 
-These principles guide all architectural decisions for NewsBrief:
+These principles guide all architectural decisions for NewsBrief. Each principle includes the statement, rationale (the "why"), and implications (behaviors and constraints).
+
+---
 
 ### P1: Privacy First
+
 > **All data processing happens locally. No telemetry, no cloud dependencies for core functionality.**
 
-- LLM runs locally via Ollama
-- No external API calls except RSS feed fetching
-- Reading habits never leave the user's machine
+**Rationale**
+
+News consumption patterns reveal intimate details about a person's interests, concerns, and worldview. Users should not have to sacrifice their privacy to stay informed. By processing everything locally, we eliminate the risk of data breaches, surveillance, and behavioral profiling by third parties.
+
+**Implications**
+
+| Behavior | Constraint |
+|----------|------------|
+| LLM runs locally via Ollama | Cannot use cloud-hosted LLM APIs (OpenAI, Anthropic, etc.) |
+| No analytics or telemetry | Cannot collect usage metrics for product improvement |
+| Reading habits stay on-device | Cannot offer cross-device sync without user-controlled infrastructure |
+| External calls limited to RSS fetching | Must implement all features with local-only processing |
+
+---
 
 ### P2: Local First
-> **The application must function offline after initial feed fetch.**
 
-- All data stored locally (SQLite/PostgreSQL)
-- No required internet connectivity for browsing
-- Graceful degradation when services unavailable
+> **The application must function fully offline after initial feed fetch.**
+
+**Rationale**
+
+Network availability should not gate access to already-fetched information. Users may be traveling, on metered connections, or simply prefer reduced connectivity. A local-first approach ensures the application remains useful regardless of network conditions and reduces latency for all operations.
+
+**Implications**
+
+| Behavior | Constraint |
+|----------|------------|
+| All data stored locally (SQLite/PostgreSQL) | Must manage database lifecycle, backups, and migrations locally |
+| Full functionality without internet | Cannot rely on remote services for core features |
+| Graceful degradation when services unavailable | Must handle Ollama/network failures without crashing |
+| Optimistic UI updates | Must design for eventual consistency with feed sources |
+
+---
 
 ### P3: Simplicity Over Cleverness
+
 > **Prefer simple, understandable solutions over complex optimizations.**
 
-- Monolithic architecture until complexity demands otherwise
-- Standard libraries over exotic dependencies
-- Clear code over clever code
+**Rationale**
+
+NewsBrief is a personal project that may be maintained sporadically. Complex architectures increase cognitive load on return, extend debugging time, and create barriers to contribution. Simplicity reduces the total cost of ownership and makes the codebase accessible to future maintainers (including future self).
+
+**Implications**
+
+| Behavior | Constraint |
+|----------|------------|
+| Monolithic architecture | Do not introduce microservices until complexity demands it |
+| Standard libraries preferred | Avoid exotic dependencies that increase learning curve |
+| Clear code over clever code | Reject optimizations that sacrifice readability |
+| Single deployment unit | Accept some inefficiency in exchange for operational simplicity |
+| Minimal abstraction layers | Create abstractions only when used in 3+ places |
+
+---
 
 ### P4: User Control
+
 > **Users own their data and can easily export, backup, and migrate.**
 
-- OPML import/export for feeds
-- Database backup/restore commands
-- No vendor lock-in
+**Rationale**
+
+Users invest time curating feeds and building reading history. This investment should not be held hostage by application decisions. Providing data portability respects user autonomy, builds trust, and ensures users can migrate away if the project is abandoned or better alternatives emerge.
+
+**Implications**
+
+| Behavior | Constraint |
+|----------|------------|
+| OPML import/export for feeds | Must maintain compatibility with standard feed formats |
+| Database backup/restore commands | Must provide simple CLI tools for data management |
+| No vendor lock-in | Avoid proprietary formats or cloud-only features |
+| Human-readable storage where practical | Prefer JSON/YAML configs over binary formats |
+| Documented data schema | Must keep schema documentation current |
+
+---
 
 ### P5: Secure by Default
+
 > **Security is not optional; it's built into every layer.**
 
-- HTTPS by default (even locally)
-- Secrets encrypted at rest
-- Container scanning in CI/CD
-- Signed container images
+**Rationale**
+
+Even self-hosted applications face threats: compromised networks, malicious feeds, supply chain attacks, and accidental exposure. Security by default reduces the attack surface and protects users who may not have security expertise. It also establishes good habits that carry forward if the application ever expands in scope.
+
+**Implications**
+
+| Behavior | Constraint |
+|----------|------------|
+| HTTPS by default (even locally) | Must manage TLS certificates (handled by Caddy) |
+| Secrets encrypted at rest | Cannot store sensitive values in plaintext configs |
+| Container scanning in CI/CD | Must block releases with critical vulnerabilities |
+| Signed container images | Must maintain signing keys and verification workflow |
+| Rate limiting on APIs | Must balance usability with abuse prevention |
+| Minimal container privileges | Run as non-root; use read-only filesystems where possible |
+
+---
 
 ### P6: Observable Operations
+
 > **The system should be easy to monitor, debug, and understand.**
 
-- Structured logging (JSON in production)
-- Health endpoints for all critical services
-- Clear error messages and failure modes
+**Rationale**
+
+When things go wrong—and they will—quick diagnosis is essential. Good observability reduces mean time to recovery (MTTR), builds confidence in the system's behavior, and supports evidence-based decision making. For a personal project, this means spending less time debugging and more time enjoying the product.
+
+**Implications**
+
+| Behavior | Constraint |
+|----------|------------|
+| Structured logging (JSON in production) | Must format all logs consistently; avoid print debugging |
+| Health endpoints for critical services | Must implement `/health` and `/ready` endpoints |
+| Clear error messages and failure modes | Must provide actionable error information |
+| Request tracing | Must correlate logs across request lifecycle |
+| Metrics exposure | Should expose Prometheus-compatible metrics |
+| Log levels used consistently | Must distinguish DEBUG/INFO/WARNING/ERROR appropriately |
 
 ---
 

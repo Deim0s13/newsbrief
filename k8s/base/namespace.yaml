@@ -5,3 +5,5 @@ metadata:
   labels:
     app.kubernetes.io/name: newsbrief
     app.kubernetes.io/part-of: newsbrief
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"  # Create namespace first

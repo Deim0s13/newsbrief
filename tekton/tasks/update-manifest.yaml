@@ -25,16 +25,16 @@ spec:
     - name: COMMIT_SHA
       description: The commit SHA of the manifest update
   steps:
-    - name: update-kustomization
-      image: alpine/git:latest
+    - name: verify-kustomization
+      image: alpine:latest
       workingDir: $(workspaces.source.path)
       script: |
         #!/bin/sh
-        set -eux
+        set -eu
 
         OVERLAY_PATH="k8s/overlays/$(params.ENVIRONMENT)/kustomization.yaml"
 
-        echo "📝 Updating $OVERLAY_PATH with tag: $(params.IMAGE_TAG)"
+        echo "📝 Will update $OVERLAY_PATH with tag: $(params.IMAGE_TAG)"
 
         # Check if file exists
         if [ ! -f "$OVERLAY_PATH" ]; then
@@ -42,32 +42,55 @@ spec:
           exit 1
         fi
 
-        # Update the image tag using sed
-        # This replaces the newTag value in the images section
-        sed -i "s/newTag: .*/newTag: $(params.IMAGE_TAG)/" "$OVERLAY_PATH"
-
-        echo "✅ Updated kustomization:"
+        echo "✅ Kustomization file found"
         cat "$OVERLAY_PATH"
 
     - name: commit-and-push
       image: alpine/git:latest
-      workingDir: $(workspaces.source.path)
       env:
         - name: GITHUB_TOKEN
           valueFrom:
             secretKeyRef:
               name: github-release-token
               key: token
+        - name: WORKSPACE_PATH
+          value: "$(workspaces.source.path)"
       script: |
         #!/bin/sh
-        set -eux
+        set -eu
+
+        # Ensure we're in the workspace
+        cd "$WORKSPACE_PATH"
+        echo "Working directory: $(pwd)"
+
+        # Mark directory as safe (needed for different user ownership)
+        git config --global --add safe.directory "$WORKSPACE_PATH"
 
         # Configure Git
         git config user.name "$(params.GIT_USER_NAME)"
         git config user.email "$(params.GIT_USER_EMAIL)"
 
+        # Determine target branch
+        TARGET_BRANCH=$(params.ENVIRONMENT)
+        if [ "$TARGET_BRANCH" = "prod" ]; then
+          TARGET_BRANCH="main"
+        fi
+
+        # Configure remote with token for push (token masked from logs)
+        REPO_URL=$(git remote get-url origin)
+        AUTH_URL=$(echo "$REPO_URL" | sed "s|https://|https://${GITHUB_TOKEN}@|")
+        git remote set-url origin "$AUTH_URL" 2>/dev/null
+
+        # Fetch and checkout target branch
+        echo "📥 Fetching $TARGET_BRANCH..."
+        git fetch origin $TARGET_BRANCH 2>&1 | grep -v "$GITHUB_TOKEN" || true
+        git checkout -B $TARGET_BRANCH origin/$TARGET_BRANCH 2>&1 | grep -v "$GITHUB_TOKEN" || true
+
+        # Apply the kustomization change to the target branch
+        sed -i "s/newTag: .*/newTag: $(params.IMAGE_TAG)/" k8s/overlays/$(params.ENVIRONMENT)/kustomization.yaml
+
         # Check for changes
-        if git diff --quiet; then
+        if git diff --quiet k8s/overlays/$(params.ENVIRONMENT)/kustomization.yaml; then
           echo "ℹ️  No changes to commit"
           echo -n "no-change" > $(results.COMMIT_SHA.path)
           exit 0
@@ -85,19 +108,8 @@ spec:
 
         echo "✅ Committed: $COMMIT"
 
-        # Configure remote with token for push
-        REPO_URL=$(git remote get-url origin)
-        # Convert https://github.com/owner/repo to https://token@github.com/owner/repo
-        AUTH_URL=$(echo "$REPO_URL" | sed "s|https://|https://${GITHUB_TOKEN}@|")
-        git remote set-url origin "$AUTH_URL"
-
-        # Push to the target branch
-        TARGET_BRANCH=$(params.ENVIRONMENT)
-        if [ "$TARGET_BRANCH" = "prod" ]; then
-          TARGET_BRANCH="main"
-        fi
-
+        # Push to the target branch (mask token from any error output)
         echo "📤 Pushing to $TARGET_BRANCH..."
-        git push origin HEAD:$TARGET_BRANCH
+        git push origin $TARGET_BRANCH 2>&1 | sed "s/$GITHUB_TOKEN/[MASKED]/g"
 
         echo "✅ Pushed manifest update to $TARGET_BRANCH"

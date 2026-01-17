@@ -6,5 +6,12 @@ metadata:
 
 resources:
   - project.yaml
+  # Individual apps (can be replaced by appset.yaml)
   - app-dev.yaml
   - app-prod.yaml
+  # Advanced: ApplicationSet for multi-environment management
+  # Uncomment to use ApplicationSet instead of individual apps:
+  # - appset.yaml
+  # Notifications
+  - notifications-cm.yaml
+  - notifications-secret.yaml

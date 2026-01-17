@@ -32,7 +32,7 @@ spec:
       description: Number of branches deleted
   steps:
     - name: cleanup
-      image: ghcr.io/cli/cli:latest
+      image: curlimages/curl:latest
       env:
         - name: GITHUB_TOKEN
           valueFrom:
@@ -59,12 +59,15 @@ spec:
         echo "   Dry run: $DRY_RUN"
         echo ""
 
-        # Calculate cutoff date
-        CUTOFF_DATE=$(date -d "-${DAYS_OLD} days" +%Y-%m-%d 2>/dev/null || date -v-${DAYS_OLD}d +%Y-%m-%d)
-        echo "Cutoff date: $CUTOFF_DATE"
+        API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME"
+
+        # Calculate cutoff timestamp (DAYS_OLD days ago)
+        # Using seconds since epoch for comparison
+        CUTOFF_EPOCH=$(($(date +%s) - (DAYS_OLD * 86400)))
 
         # Get list of branches
-        BRANCHES=$(gh api repos/$REPO_OWNER/$REPO_NAME/branches --paginate -q '.[].name')
+        BRANCHES=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+          "$API_URL/branches?per_page=100" | grep -o '"name": "[^"]*"' | cut -d'"' -f4)
 
         DELETE_COUNT=0
 
@@ -75,19 +78,27 @@ spec:
             continue
           fi
 
-          # Check if branch is merged into main or dev
-          MERGED=$(gh api repos/$REPO_OWNER/$REPO_NAME/compare/main...$branch -q '.status' 2>/dev/null || echo "diverged")
+          # Check if branch is merged into main
+          COMPARE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            "$API_URL/compare/main...$branch")
+          STATUS=$(echo "$COMPARE" | grep -o '"status": "[^"]*"' | cut -d'"' -f4)
 
-          if [ "$MERGED" = "identical" ] || [ "$MERGED" = "behind" ]; then
+          if [ "$STATUS" = "identical" ] || [ "$STATUS" = "behind" ]; then
             # Get last commit date
-            LAST_COMMIT=$(gh api repos/$REPO_OWNER/$REPO_NAME/branches/$branch -q '.commit.commit.committer.date' | cut -d'T' -f1)
+            BRANCH_INFO=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+              "$API_URL/branches/$branch")
+            COMMIT_DATE=$(echo "$BRANCH_INFO" | grep -o '"date": "[^"]*"' | head -1 | cut -d'"' -f4)
 
-            if [ "$LAST_COMMIT" \< "$CUTOFF_DATE" ]; then
+            # Convert to epoch for comparison (extract date part)
+            DATE_PART=$(echo "$COMMIT_DATE" | cut -d'T' -f1)
+
+            if [ "$DATE_PART" \< "$(date -d "@$CUTOFF_EPOCH" +%Y-%m-%d 2>/dev/null || date -r $CUTOFF_EPOCH +%Y-%m-%d)" ]; then
               if [ "$DRY_RUN" = "true" ]; then
-                echo "🔍 Would delete: $branch (last commit: $LAST_COMMIT)"
+                echo "🔍 Would delete: $branch (last commit: $DATE_PART)"
               else
-                echo "🗑️  Deleting: $branch (last commit: $LAST_COMMIT)"
-                gh api -X DELETE repos/$REPO_OWNER/$REPO_NAME/git/refs/heads/$branch || echo "   Warning: Failed to delete $branch"
+                echo "🗑️  Deleting: $branch (last commit: $DATE_PART)"
+                curl -s -X DELETE -H "Authorization: token $GITHUB_TOKEN" \
+                  "$API_URL/git/refs/heads/$branch" || echo "   Warning: Failed to delete $branch"
               fi
               DELETE_COUNT=$((DELETE_COUNT + 1))
             fi

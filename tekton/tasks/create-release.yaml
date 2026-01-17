@@ -52,7 +52,7 @@ spec:
             exit(1)
 
     - name: create-tag-and-release
-      image: ghcr.io/cli/cli:latest
+      image: curlimages/curl:latest
       env:
         - name: GITHUB_TOKEN
           valueFrom:
@@ -70,26 +70,46 @@ spec:
         set -e
 
         VERSION=$(cat $(results.version.path))
-        echo "Creating release for version: $VERSION"
+        echo "🚀 Creating release for version: $VERSION"
 
-        # Check if tag already exists
-        if gh release view "$VERSION" --repo "$REPO_OWNER/$REPO_NAME" > /dev/null 2>&1; then
+        API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME"
+
+        # Check if release already exists
+        EXISTING=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+          "$API_URL/releases/tags/$VERSION" | grep -o '"html_url"' || true)
+
+        if [ -n "$EXISTING" ]; then
           echo "Release $VERSION already exists, skipping..."
-          RELEASE_URL=$(gh release view "$VERSION" --repo "$REPO_OWNER/$REPO_NAME" --json url -q '.url')
+          RELEASE_URL=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            "$API_URL/releases/tags/$VERSION" | grep -o '"html_url": "[^"]*"' | head -1 | cut -d'"' -f4)
           echo "$RELEASE_URL" > $(results.release-url.path)
           exit 0
         fi
 
-        # Create the release (this also creates the tag)
+        # Create the release via GitHub API
         echo "Creating GitHub release $VERSION..."
-        gh release create "$VERSION" \
-          --repo "$REPO_OWNER/$REPO_NAME" \
-          --target "$REVISION" \
-          --title "$VERSION" \
-          --generate-notes
+        RESPONSE=$(curl -s -X POST \
+          -H "Authorization: token $GITHUB_TOKEN" \
+          -H "Accept: application/vnd.github.v3+json" \
+          "$API_URL/releases" \
+          -d "{
+            \"tag_name\": \"$VERSION\",
+            \"target_commitish\": \"$REVISION\",
+            \"name\": \"$VERSION\",
+            \"body\": \"## NewsBrief $VERSION\\n\\nAutomated release from CI pipeline.\",
+            \"draft\": false,
+            \"prerelease\": false,
+            \"generate_release_notes\": true
+          }")
 
-        # Get the release URL
-        RELEASE_URL=$(gh release view "$VERSION" --repo "$REPO_OWNER/$REPO_NAME" --json url -q '.url')
+        # Extract the release URL
+        RELEASE_URL=$(echo "$RESPONSE" | grep -o '"html_url": "[^"]*"' | head -1 | cut -d'"' -f4)
+
+        if [ -z "$RELEASE_URL" ]; then
+          echo "❌ Failed to create release:"
+          echo "$RESPONSE"
+          exit 1
+        fi
+
         echo "$RELEASE_URL" > $(results.release-url.path)
-
         echo "✅ Release created: $RELEASE_URL"
