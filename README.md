@@ -59,13 +59,13 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 - **Automated Dependency Management**: Weekly security audits, dependency updates, and base image maintenance
 - **Comprehensive Documentation**: Complete CI/CD guides, API documentation, and architecture decision records
 
-### **🔜 Current: v0.7.5 - GitOps & Kubernetes** (In Progress)
+### **✅ Current: v0.7.5 - GitOps & Kubernetes** (Jan 2026)
 - ✅ **Local Kubernetes**: kind cluster for development (ADR-0015)
-- ✅ **Tekton CI Pipelines**: Kubernetes-native CI/CD (ADR-0016)
+- ✅ **Tekton CI Pipelines**: Kubernetes-native CI/CD (ADR-0016, ADR-0019)
 - ✅ **Secure Supply Chain**: Trivy scanning, Cosign signing, SBOM (ADR-0018)
 - ✅ **Local Registry**: In-cluster container registry
-- 🔜 **ArgoCD GitOps**: Declarative deployments (Phase 3)
-- 🔜 **Tekton Triggers**: Automatic pipeline execution (Phase 4)
+- ✅ **ArgoCD GitOps**: Declarative deployments (ADR-0017)
+- ✅ **Tekton Triggers**: Webhook-triggered pipeline automation
 
 ### **✅ Current: v0.7.4 - Security** (Jan 2026)
 - ✅ **HTTPS/TLS**: Caddy automatic certificates with `tls internal` (ADR-0012)
@@ -554,13 +554,13 @@ Transform from article-centric to story-based aggregation
 - [x] **v0.7.1 - PostgreSQL Migration**: Dual database support, ORM models, Alembic migrations ✅ COMPLETE (Jan 2026)
 - [x] **v0.7.2 - Container & Deployment**: Multi-stage Dockerfile, Caddy proxy, auto-start, CI/CD stabilization ✅ COMPLETE (Jan 2026)
 
-### **v0.7.5 - GitOps & Kubernetes** - 🚧 IN PROGRESS
+### **v0.7.5 - GitOps & Kubernetes** - ✅ COMPLETE (Jan 2026)
 - [x] Local Kubernetes with kind (ADR-0015)
 - [x] Tekton CI pipelines (ADR-0016, ADR-0019)
 - [x] Secure supply chain: Trivy, Cosign, SBOM (ADR-0018)
 - [x] Local container registry
-- [ ] ArgoCD GitOps deployments (ADR-0017)
-- [ ] Tekton Triggers for automation
+- [x] ArgoCD GitOps deployments (ADR-0017)
+- [x] Tekton Triggers with webhook automation
 
 ### **Project Tracking**
 
@@ -579,6 +579,7 @@ Development is organized with GitHub Projects and Milestones for clear visibilit
 - [v0.6.5 - Personalization](https://github.com/Deim0s13/newsbrief/releases/tag/v0.6.5) - ✅ **COMPLETE** (Jan 2026)
 - [v0.7.1 - PostgreSQL Migration](https://github.com/Deim0s13/newsbrief/releases/tag/v0.7.1) - ✅ **COMPLETE** (Jan 2026)
 - [v0.7.2 - Container & Deployment](https://github.com/Deim0s13/newsbrief/releases/tag/v0.7.2) - ✅ **COMPLETE** (Jan 2026)
+- [v0.7.5 - GitOps & Kubernetes](https://github.com/Deim0s13/newsbrief/milestone/12) - ✅ **COMPLETE** (Jan 2026)
 
 **Epics** (via labels):
 - **epic:stories** - Story-based aggregation and synthesis
@@ -628,4 +629,3 @@ git push origin feature/amazing-feature
 - [Ollama](https://ollama.ai/) for local LLM capabilities
 - [Caddy](https://caddyserver.com/) for the reverse proxy
 - [PostgreSQL](https://www.postgresql.org/) for production database
-<!-- webhook test 1768628478 -->
