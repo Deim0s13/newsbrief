@@ -254,3 +254,9 @@ spec:
     - name: manifest-commit
       description: Commit SHA of the manifest update
       value: $(tasks.update-manifest.results.COMMIT_SHA)
+    - name: images-cleaned
+      description: Number of old image tags removed
+      value: $(tasks.cleanup-images.results.DELETED_COUNT)
+    - name: branches-cleaned
+      description: Number of merged branches removed
+      value: $(tasks.cleanup-branches.results.DELETED_COUNT)
