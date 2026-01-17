@@ -59,8 +59,13 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 - **Automated Dependency Management**: Weekly security audits, dependency updates, and base image maintenance
 - **Comprehensive Documentation**: Complete CI/CD guides, API documentation, and architecture decision records
 
-### **🔜 Next: v0.7.5 - GitOps & Kubernetes**
-Local Kubernetes with kind, Tekton pipelines, ArgoCD GitOps deployment. See [Project Board](https://github.com/users/Deim0s13/projects/2) for details.
+### **🔜 Current: v0.7.5 - GitOps & Kubernetes** (In Progress)
+- ✅ **Local Kubernetes**: kind cluster for development (ADR-0015)
+- ✅ **Tekton CI Pipelines**: Kubernetes-native CI/CD (ADR-0016)
+- ✅ **Secure Supply Chain**: Trivy scanning, Cosign signing, SBOM (ADR-0018)
+- ✅ **Local Registry**: In-cluster container registry
+- 🔜 **ArgoCD GitOps**: Declarative deployments (Phase 3)
+- 🔜 **Tekton Triggers**: Automatic pipeline execution (Phase 4)
 
 ### **✅ Current: v0.7.4 - Security** (Jan 2026)
 - ✅ **HTTPS/TLS**: Caddy automatic certificates with `tls internal` (ADR-0012)
@@ -472,10 +477,16 @@ newsbrief/
 │   ├── project-automation.yml  # GitHub project sync
 │   └── gitops-deploy.yml  # GitOps deployment workflows
 ├── docs/                   # Documentation
-│   ├── CI-CD.md           # Complete CI/CD guide
-│   ├── DEVELOPMENT.md     # Development setup and workflow
-│   ├── API.md             # API reference
+│   └── development/
+│       ├── CI-CD.md       # Complete CI/CD guide
+│       ├── DEVELOPMENT.md # Development setup and workflow
+│       ├── KUBERNETES.md  # Local K8s setup guide (v0.7.5+)
 │   └── adr/               # Architecture decision records
+├── k8s/                    # Kubernetes manifests (v0.7.5+)
+│   └── infrastructure/     # Registry, RBAC
+├── tekton/                 # Tekton CI/CD resources (v0.7.5+)
+│   ├── tasks/             # Reusable CI tasks
+│   └── pipelines/         # CI/CD pipeline definitions
 ├── data/                   # Persistent data
 │   └── newsbrief.sqlite3  # Database (generated)
 ├── scripts/               # Automation scripts
@@ -543,11 +554,13 @@ Transform from article-centric to story-based aggregation
 - [x] **v0.7.1 - PostgreSQL Migration**: Dual database support, ORM models, Alembic migrations ✅ COMPLETE (Jan 2026)
 - [x] **v0.7.2 - Container & Deployment**: Multi-stage Dockerfile, Caddy proxy, auto-start, CI/CD stabilization ✅ COMPLETE (Jan 2026)
 
-### **v0.7.5 - GitOps** - 🔜 NEXT
-- [ ] Prometheus metrics endpoint
-- [ ] Structured JSON logging
-- [ ] Performance dashboard
-- [ ] Error tracking integration
+### **v0.7.5 - GitOps & Kubernetes** - 🚧 IN PROGRESS
+- [x] Local Kubernetes with kind (ADR-0015)
+- [x] Tekton CI pipelines (ADR-0016, ADR-0019)
+- [x] Secure supply chain: Trivy, Cosign, SBOM (ADR-0018)
+- [x] Local container registry
+- [ ] ArgoCD GitOps deployments (ADR-0017)
+- [ ] Tekton Triggers for automation
 
 ### **Project Tracking**
 

@@ -4,6 +4,81 @@
 
 NewsBrief uses a comprehensive CI/CD pipeline with GitOps practices to ensure reliable, secure, and automated deployments.
 
+**Two CI/CD Systems:**
+- **GitHub Actions** - Cloud-based CI for PRs and releases (current)
+- **Tekton Pipelines** - Kubernetes-native CI running locally (v0.7.5+)
+
+## 🆕 Tekton Pipelines (v0.7.5+)
+
+NewsBrief v0.7.5 introduces Kubernetes-native CI/CD using Tekton Pipelines running in a local kind cluster.
+
+### Why Tekton?
+
+| Aspect | GitHub Actions | Tekton |
+|--------|---------------|--------|
+| **Runtime** | GitHub cloud | Local Kubernetes |
+| **Portability** | GitHub-only | Any K8s cluster |
+| **Customization** | YAML workflows | K8s-native resources |
+| **Learning** | CI/CD basics | Enterprise patterns |
+| **Cost** | Free tier limits | Free (local) |
+
+### Pipeline Architecture
+
+```
+┌─────────────┐   ┌─────────┐   ┌─────────────┐   ┌───────────────┐
+│ fetch-source│──►│  lint   │──►│ build-image │──►│ security-scan │
+└─────────────┘   │  test   │   └─────────────┘   └───────────────┘
+                  └─────────┘
+                   (parallel)
+```
+
+**Production adds:**
+```
+security-scan ──► sign-image ──► generate-sbom
+```
+
+### Pipelines
+
+| Pipeline | Branch | Features |
+|----------|--------|----------|
+| `ci-dev` | `dev` | lint, test, build, scan |
+| `ci-prod` | `main` | + Cosign signing + SBOM |
+
+### Running Pipelines
+
+```bash
+# Development pipeline
+tkn pipeline start ci-dev \
+  --workspace name=source,volumeClaimTemplateFile=tekton/pipelineruns/workspace-template.yaml \
+  --param revision=dev \
+  --param image-tag=dev-latest \
+  --showlog
+
+# Production pipeline
+tkn pipeline start ci-prod \
+  --workspace name=source,volumeClaimTemplateFile=tekton/pipelineruns/workspace-template.yaml \
+  --workspace name=sbom-output,volumeClaimTemplateFile=tekton/pipelineruns/workspace-template.yaml \
+  --serviceaccount=tekton-pipeline \
+  --param revision=main \
+  --param image-tag=v0.7.5 \
+  --showlog
+```
+
+### Security Features
+
+| Feature | Tool | Pipeline |
+|---------|------|----------|
+| Vulnerability scanning | Trivy | Both |
+| Block on CRITICAL | Trivy exit code | Both |
+| Image signing | Cosign (key-based) | Prod only |
+| SBOM generation | Trivy CycloneDX | Prod only |
+
+### Setup Guide
+
+See **[KUBERNETES.md](KUBERNETES.md)** for complete local cluster setup instructions.
+
+---
+
 ## Workflow Architecture
 
 ### 📋 Main CI/CD Pipeline (`ci-cd.yml`)
@@ -267,12 +342,24 @@ kubectl logs -f deployment/newsbrief-prod -n newsbrief-prod
 
 ## Future Improvements
 
+### ✅ Completed (v0.7.5)
+- **Tekton Pipelines** - Kubernetes-native CI/CD
+- **Local Registry** - In-cluster container registry
+- **Trivy Scanning** - Vulnerability detection with blocking
+- **Cosign Signing** - Key-based image signatures
+- **SBOM Generation** - CycloneDX software bill of materials
+
 ### Planned Features
-- **ArgoCD Integration** - GitOps deployment controller
+- **ArgoCD Integration** - GitOps deployment controller (v0.7.6)
+- **Tekton Triggers** - Automatic pipeline execution (v0.7.7)
+- **Tekton Dashboard** - Visual pipeline monitoring
+- **Registry TLS** - HTTPS for local registry (Issue #157)
+- **Pipeline Notifications** - Slack/webhook alerts (Issue #156)
+
+### Future Enhancements
 - **Helm Charts** - Kubernetes package management
 - **Istio Service Mesh** - Advanced traffic management
 - **Grafana Dashboards** - Enhanced observability
-- **Automated Testing** - Integration and E2E tests
 - **Blue/Green Deployments** - Zero-downtime updates
 - **Canary Releases** - Gradual rollout strategy
 
