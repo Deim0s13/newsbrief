@@ -671,6 +671,7 @@ flowchart TB
                 Pipeline["CI Pipelines<br/>ci-dev, ci-prod"]
                 Tasks["Tasks<br/>lint, test, build, scan, sign"]
                 Triggers["Event Listener<br/>GitHub webhooks"]
+                Notify["Notify Tasks<br/>ntfy, slack"]
             end
         end
 
@@ -696,11 +697,16 @@ flowchart TB
 
     GitHub["GitHub Repo"]
     Smee["smee.io"]
+    ntfy["ntfy.sh"]
+    macOS["🔔 macOS/iOS"]
 
     GitHub -->|"webhook"| Smee
     Smee -->|"relay"| Triggers
     Triggers -->|"trigger"| Pipeline
     Pipeline -->|"push"| Registry
+    Pipeline -->|"finally"| Notify
+    Notify -->|"POST"| ntfy
+    ntfy -->|"push"| macOS
     ArgoCD -->|"watch"| GitHub
     ArgoCD -->|"deploy"| DevApp
     ArgoCD -->|"deploy"| ProdApp
@@ -743,6 +749,15 @@ flowchart LR
         Deploy["Deploy to K8s"]
     end
 
+    subgraph Finally["Finally (Always Runs)"]
+        Notify["notify-ntfy<br/>notify-slack"]
+    end
+
+    subgraph Delivery["Notifications"]
+        macOS["🔔 macOS"]
+        Slack["💬 Slack"]
+    end
+
     Push --> Webhook
     Webhook --> Clone
     Clone --> Parallel
@@ -753,6 +768,11 @@ flowchart LR
     Sign --> SBOM
     SBOM --> Sync
     Sync --> Deploy
+
+    CI -.->|"success/failure"| Finally
+    Security -.->|"success/failure"| Finally
+    Notify --> macOS
+    Notify -.->|"if configured"| Slack
 ```
 
 ### 10.2 Security Gates
@@ -789,6 +809,53 @@ gitGraph
 | `dev` | ci-dev | `dev-latest` | newsbrief-dev |
 | `main` | ci-prod | `v0.7.5` | newsbrief-prod |
 
+### 10.4 Pipeline Notifications
+
+Pipelines send real-time notifications for both successes and failures:
+
+```mermaid
+flowchart LR
+    subgraph Pipeline["Tekton Pipeline"]
+        Tasks["Pipeline Tasks"]
+        Finally["finally block"]
+    end
+
+    subgraph Notifications["Notification Channels"]
+        ntfy["ntfy.sh<br/>(primary)"]
+        Slack["Slack Webhook<br/>(optional)"]
+    end
+
+    subgraph Delivery["Delivery"]
+        macOS["macOS Notifications"]
+        iOS["iOS/Android"]
+        SlackApp["Slack Channel"]
+    end
+
+    Tasks -->|"success/failure"| Finally
+    Finally --> ntfy
+    Finally -.->|"if configured"| Slack
+    ntfy --> macOS
+    ntfy --> iOS
+    Slack --> SlackApp
+```
+
+| Channel | Status | Use Case | Configuration |
+|---------|--------|----------|---------------|
+| **ntfy.sh** | ✅ Primary | macOS/iOS push notifications | Topic: `newsbrief-ci` |
+| **Slack** | ⏸️ Optional | Team notifications | Create `slack-webhook` secret |
+
+**Notification Triggers**:
+- ✅ Pipeline success (default priority)
+- ❌ Pipeline failure (high/urgent priority)
+- 🚀 Production release complete
+
+**Setup**:
+1. Install ntfy macOS app: `brew install --cask ntfy`
+2. Subscribe to topic: `newsbrief-ci`
+3. (Optional) Create Slack webhook secret for team notifications
+
+See [ADR-0021: Pipeline Notifications](adr/0021-pipeline-notifications.md) for full details.
+
 ---
 
 ## 11. Decision Log
@@ -816,6 +883,8 @@ All significant architectural decisions are documented as ADRs (Architecture Dec
 | [ADR-0017](adr/0017-gitops-tooling.md) | GitOps Tooling (ArgoCD) | Accepted |
 | [ADR-0018](adr/0018-secure-supply-chain.md) | Secure Supply Chain | Accepted |
 | [ADR-0019](adr/0019-cicd-pipeline-design.md) | CI/CD Pipeline Design | Accepted |
+| [ADR-0020](adr/0020-kind-local-registry.md) | Kind Local Registry | Accepted |
+| [ADR-0021](adr/0021-pipeline-notifications.md) | Pipeline Notifications | Accepted |
 
 ---
 

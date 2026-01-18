@@ -1,0 +1,67 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: notify-ntfy
+  namespace: tekton-pipelines
+  labels:
+    app.kubernetes.io/part-of: newsbrief
+spec:
+  description: |
+    Send notifications via ntfy.sh for pipeline status updates.
+    Delivers native push notifications to macOS, iOS, Android, and web.
+  params:
+    - name: topic
+      description: ntfy.sh topic name (use unique name for privacy)
+      type: string
+      default: "newsbrief-ci"
+    - name: title
+      description: Notification title
+      type: string
+    - name: message
+      description: Notification message body
+      type: string
+    - name: priority
+      description: "Priority level: min, low, default, high, urgent"
+      type: string
+      default: "high"
+    - name: tags
+      description: "Emoji tags (comma-separated, e.g., 'x,pipeline')"
+      type: string
+      default: "bell"
+    - name: click-url
+      description: URL to open when notification is clicked (optional)
+      type: string
+      default: ""
+  steps:
+    - name: send-notification
+      image: curlimages/curl:8.5.0
+      script: |
+        #!/bin/sh
+        set -e
+
+        echo "📤 Sending notification to ntfy.sh/$(params.topic)"
+        echo "   Title: $(params.title)"
+        echo "   Priority: $(params.priority)"
+
+        # Build curl command
+        CURL_ARGS="-s"
+        CURL_ARGS="$CURL_ARGS -H 'Title: $(params.title)'"
+        CURL_ARGS="$CURL_ARGS -H 'Priority: $(params.priority)'"
+        CURL_ARGS="$CURL_ARGS -H 'Tags: $(params.tags)'"
+
+        # Add click URL if provided
+        if [ -n "$(params.click-url)" ]; then
+          CURL_ARGS="$CURL_ARGS -H 'Click: $(params.click-url)'"
+        fi
+
+        # Send notification
+        curl -s \
+          -H "Title: $(params.title)" \
+          -H "Priority: $(params.priority)" \
+          -H "Tags: $(params.tags)" \
+          ${CLICK_HEADER:-} \
+          -d "$(params.message)" \
+          "https://ntfy.sh/$(params.topic)"
+
+        echo ""
+        echo "✅ Notification sent successfully"

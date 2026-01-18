@@ -6,6 +6,11 @@ Quick reference for all NewsBrief releases. For detailed release notes, see [Git
 
 ## v0.7.x - Infrastructure & Operations
 
+### v0.7.5.1 - Pipeline Notifications (Next)
+**January 2026** · In Development
+
+Pipeline failure notifications via ntfy.sh (macOS/iOS push), Slack webhook groundwork (disabled by default), finally blocks for all pipelines with success/failure alerts.
+
 ### v0.7.5 - GitOps & Automation (Current)
 **January 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.7.5)
 

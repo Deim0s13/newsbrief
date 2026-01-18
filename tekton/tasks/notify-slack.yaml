@@ -1,0 +1,130 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: notify-slack
+  namespace: tekton-pipelines
+  labels:
+    app.kubernetes.io/part-of: newsbrief
+spec:
+  description: |
+    Send notifications to Slack via incoming webhook.
+    Disabled by default - enable by creating the slack-webhook secret.
+
+    To enable:
+    1. Create a Slack incoming webhook at https://api.slack.com/apps
+    2. Create the secret:
+       kubectl create secret generic slack-webhook \
+         --namespace=tekton-pipelines \
+         --from-literal=url=https://hooks.slack.com/services/XXX/YYY/ZZZ
+  params:
+    - name: webhook-secret-name
+      description: Name of secret containing Slack webhook URL
+      type: string
+      default: "slack-webhook"
+    - name: webhook-secret-key
+      description: Key in secret for webhook URL
+      type: string
+      default: "url"
+    - name: pipeline-name
+      description: Name of the pipeline
+      type: string
+    - name: pipeline-run
+      description: Name of the pipeline run
+      type: string
+    - name: status
+      description: "Pipeline status: Succeeded, Failed, or other"
+      type: string
+    - name: git-revision
+      description: Git revision that was built
+      type: string
+      default: ""
+    - name: environment
+      description: "Environment: dev or prod"
+      type: string
+      default: "dev"
+  steps:
+    - name: send-slack
+      image: curlimages/curl:8.5.0
+      env:
+        - name: SLACK_WEBHOOK_URL
+          valueFrom:
+            secretKeyRef:
+              name: $(params.webhook-secret-name)
+              key: $(params.webhook-secret-key)
+              optional: true
+      script: |
+        #!/bin/sh
+        set -e
+
+        # Check if Slack is configured
+        if [ -z "$SLACK_WEBHOOK_URL" ]; then
+          echo "⏭️  Slack notifications disabled (no webhook secret configured)"
+          echo "   To enable, create secret '$(params.webhook-secret-name)' with key '$(params.webhook-secret-key)'"
+          exit 0
+        fi
+
+        echo "📤 Sending Slack notification..."
+
+        # Determine color and emoji based on status
+        case "$(params.status)" in
+          Succeeded)
+            COLOR="good"
+            EMOJI="✅"
+            STATUS_TEXT="succeeded"
+            ;;
+          Failed)
+            COLOR="danger"
+            EMOJI="❌"
+            STATUS_TEXT="failed"
+            ;;
+          *)
+            COLOR="warning"
+            EMOJI="⚠️"
+            STATUS_TEXT="$(params.status)"
+            ;;
+        esac
+
+        # Build message
+        MESSAGE="$EMOJI *$(params.pipeline-name)* $STATUS_TEXT"
+        if [ -n "$(params.git-revision)" ]; then
+          # Truncate git revision for display
+          SHORT_REV=$(echo "$(params.git-revision)" | cut -c1-7)
+          MESSAGE="$MESSAGE (\`$SHORT_REV\`)"
+        fi
+        MESSAGE="$MESSAGE in *$(params.environment)*"
+
+        # Build payload
+        PAYLOAD=$(cat <<EOF
+        {
+          "attachments": [{
+            "color": "$COLOR",
+            "blocks": [
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "$MESSAGE"
+                }
+              },
+              {
+                "type": "context",
+                "elements": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "Pipeline Run: \`$(params.pipeline-run)\`"
+                  }
+                ]
+              }
+            ]
+          }]
+        }
+        EOF
+        )
+
+        # Send to Slack
+        curl -s -X POST "$SLACK_WEBHOOK_URL" \
+          -H "Content-Type: application/json" \
+          -d "$PAYLOAD"
+
+        echo ""
+        echo "✅ Slack notification sent"
