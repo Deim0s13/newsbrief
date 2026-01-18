@@ -20,7 +20,7 @@ spec:
     - name: IMAGE
       type: string
       description: Full image reference (registry/name:tag)
-      default: "registry.registry.svc.cluster.local:5000/newsbrief:dev-latest"
+      default: "localhost:5000/newsbrief:dev-latest"
     - name: DOCKERFILE
       type: string
       description: Path to Dockerfile relative to workspace

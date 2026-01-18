@@ -187,7 +187,7 @@ tkn task start lint \
 
 # Run security scan on existing image
 tkn task start security-scan \
-  --param IMAGE=registry.registry:5000/newsbrief:dev-latest \
+  --param IMAGE=localhost:5001/newsbrief:dev-latest \
   --param SEVERITY=CRITICAL,HIGH \
   --param EXIT_ON_SEVERITY=CRITICAL \
   --param IGNORE_UNFIXED=true \
@@ -224,11 +224,11 @@ tkn taskrun logs <run-name>
 ```bash
 # List repositories in registry
 kubectl run check-registry --rm -it --restart=Never --image=curlimages/curl -- \
-  curl -s http://registry.registry:5000/v2/_catalog
+  curl -s http://localhost:5001/v2/_catalog
 
 # List tags for newsbrief image
 kubectl run check-tags --rm -it --restart=Never --image=curlimages/curl -- \
-  curl -s http://registry.registry:5000/v2/newsbrief/tags/list
+  curl -s http://localhost:5001/v2/newsbrief/tags/list
 ```
 
 ### Debug Failed Runs
@@ -294,7 +294,7 @@ kubectl logs -n registry <registry-pod>
 
 # Test connectivity
 kubectl run test-curl --rm -it --restart=Never --image=curlimages/curl -- \
-  curl -v http://registry.registry:5000/v2/
+  curl -v http://localhost:5001/v2/
 ```
 
 **3. Cosign signing fails**
