@@ -1,6 +1,6 @@
 [project]
 name = "newsbrief"
-version = "0.7.4"
+version = "0.7.5"
 description = "Story-based News Aggregator with AI Synthesis"
 
 [tool.pytest.ini_options]
@@ -35,3 +35,27 @@ fail_under = 35
 
 [tool.coverage.html]
 directory = "htmlcov"
+
+# Semantic Release Configuration
+# Automatically determines version based on conventional commits:
+#   feat: → minor bump (0.x.0)
+#   fix:  → patch bump (0.0.x)
+#   feat!: or BREAKING CHANGE: → major bump (x.0.0)
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+branch = "main"
+commit_message = "chore(release): v{version} [skip ci]"
+tag_format = "v{version}"
+
+[tool.semantic_release.commit_parser_options]
+allowed_tags = ["feat", "fix", "docs", "style", "refactor", "perf", "test", "build", "ci", "chore"]
+minor_tags = ["feat"]
+patch_tags = ["fix", "perf"]
+
+[tool.semantic_release.changelog]
+template_dir = "templates"
+changelog_file = "CHANGELOG.md"
+
+[tool.semantic_release.remote]
+name = "origin"
+type = "github"

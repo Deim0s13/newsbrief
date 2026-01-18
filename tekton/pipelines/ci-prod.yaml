@@ -40,7 +40,7 @@ spec:
       description: Git branch or tag to checkout
     - name: image-registry
       type: string
-      default: "registry.registry:5000"
+      default: "registry.registry.svc.cluster.local:5000"
       description: Container registry URL
     - name: image-name
       type: string

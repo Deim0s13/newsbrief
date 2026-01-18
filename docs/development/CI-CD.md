@@ -73,6 +73,32 @@ tkn pipeline start ci-prod \
 | Image signing | Cosign (key-based) | Prod only |
 | SBOM generation | Trivy CycloneDX | Prod only |
 
+### Automated Versioning (Semantic Release)
+
+NewsBrief uses **conventional commits** to automatically determine version bumps:
+
+| Commit Prefix | Example | Version Bump |
+|--------------|---------|--------------|
+| `feat:` | `feat: add dark mode` | Minor (0.X.0) |
+| `fix:` | `fix: resolve crash on startup` | Patch (0.0.X) |
+| `feat!:` | `feat!: redesign API` | Major (X.0.0) |
+| `BREAKING CHANGE:` | In commit body | Major (X.0.0) |
+| `docs:`, `chore:`, `ci:` | Documentation/maintenance | No bump |
+
+**How it works:**
+1. Push to `main` triggers `ci-prod` pipeline
+2. `version-bump` task analyzes commits since last tag
+3. Version in `pyproject.toml` is automatically updated
+4. GitHub release is created with the new version
+5. Manifest is updated to deploy the new version
+
+**Manual override:**
+```bash
+tkn pipeline start ci-prod \
+  --param bump-type=minor \  # force minor bump
+  ...
+```
+
 ### Setup Guide
 
 See **[KUBERNETES.md](KUBERNETES.md)** for complete local cluster setup instructions.

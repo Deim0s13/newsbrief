@@ -1,0 +1,169 @@
+# Version Bump Task
+# Automatically determines version based on conventional commits
+#
+# Commit conventions:
+#   feat: new feature → minor bump (0.X.0)
+#   fix: bug fix → patch bump (0.0.X)
+#   feat!: or BREAKING CHANGE: → major bump (X.0.0)
+#   docs:, chore:, style:, test:, ci: → no bump
+#
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: version-bump
+  labels:
+    app.kubernetes.io/part-of: newsbrief
+spec:
+  description: |
+    Analyzes conventional commits and bumps version in pyproject.toml.
+    Returns the new version for use in subsequent pipeline tasks.
+  params:
+    - name: BUMP_TYPE
+      type: string
+      description: "Override bump type: major, minor, patch, or auto (analyze commits)"
+      default: "auto"
+  workspaces:
+    - name: source
+      description: Workspace containing the Git repository
+  results:
+    - name: VERSION
+      description: The new semantic version (without v prefix)
+    - name: VERSION_TAG
+      description: The version tag (with v prefix)
+    - name: BUMP_TYPE
+      description: The type of bump that was applied
+    - name: CHANGED
+      description: Whether version was changed (true/false)
+  steps:
+    - name: determine-version
+      image: python:3.11-slim
+      workingDir: $(workspaces.source.path)
+      env:
+        - name: BUMP_TYPE_OVERRIDE
+          value: "$(params.BUMP_TYPE)"
+      script: |
+        #!/usr/bin/env python3
+        import re
+        import subprocess
+        import os
+
+        def get_current_version():
+            """Extract current version from pyproject.toml"""
+            with open("pyproject.toml", "r") as f:
+                content = f.read()
+            match = re.search(r'version\s*=\s*"([^"]+)"', content)
+            if match:
+                return match.group(1)
+            raise ValueError("Could not find version in pyproject.toml")
+
+        def parse_version(version):
+            """Parse semantic version string"""
+            parts = version.split(".")
+            return {
+                "major": int(parts[0]),
+                "minor": int(parts[1]),
+                "patch": int(parts[2].split("-")[0])  # Handle pre-release
+            }
+
+        def bump_version(current, bump_type):
+            """Apply version bump"""
+            v = parse_version(current)
+            if bump_type == "major":
+                return f"{v['major'] + 1}.0.0"
+            elif bump_type == "minor":
+                return f"{v['major']}.{v['minor'] + 1}.0"
+            elif bump_type == "patch":
+                return f"{v['major']}.{v['minor']}.{v['patch'] + 1}"
+            return current
+
+        def analyze_commits():
+            """Analyze commits since last tag to determine bump type"""
+            try:
+                # Get last tag
+                result = subprocess.run(
+                    ["git", "describe", "--tags", "--abbrev=0"],
+                    capture_output=True, text=True
+                )
+                last_tag = result.stdout.strip() if result.returncode == 0 else ""
+
+                # Get commits since last tag (or all commits if no tag)
+                if last_tag:
+                    cmd = ["git", "log", f"{last_tag}..HEAD", "--pretty=format:%s"]
+                else:
+                    cmd = ["git", "log", "--pretty=format:%s"]
+
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                commits = result.stdout.strip().split("\n") if result.stdout else []
+
+                # Analyze commits for bump type
+                has_breaking = False
+                has_feat = False
+                has_fix = False
+
+                for commit in commits:
+                    commit_lower = commit.lower()
+                    if "breaking change" in commit_lower or commit.startswith("feat!:"):
+                        has_breaking = True
+                    elif commit.startswith("feat:") or commit.startswith("feat("):
+                        has_feat = True
+                    elif commit.startswith("fix:") or commit.startswith("fix("):
+                        has_fix = True
+
+                if has_breaking:
+                    return "major"
+                elif has_feat:
+                    return "minor"
+                elif has_fix:
+                    return "patch"
+                else:
+                    return "none"
+
+            except Exception as e:
+                print(f"Warning: Could not analyze commits: {e}")
+                return "none"
+
+        def update_pyproject(old_version, new_version):
+            """Update version in pyproject.toml"""
+            with open("pyproject.toml", "r") as f:
+                content = f.read()
+            content = content.replace(f'version = "{old_version}"', f'version = "{new_version}"')
+            with open("pyproject.toml", "w") as f:
+                f.write(content)
+
+        # Main logic
+        current_version = get_current_version()
+        print(f"Current version: {current_version}")
+
+        bump_override = os.environ.get("BUMP_TYPE_OVERRIDE", "auto")
+
+        if bump_override == "auto":
+            bump_type = analyze_commits()
+            print(f"Analyzed commits → bump type: {bump_type}")
+        else:
+            bump_type = bump_override
+            print(f"Override bump type: {bump_type}")
+
+        if bump_type == "none":
+            print("No version bump needed")
+            new_version = current_version
+            changed = "false"
+        else:
+            new_version = bump_version(current_version, bump_type)
+            if new_version != current_version:
+                update_pyproject(current_version, new_version)
+                print(f"Bumped version: {current_version} → {new_version}")
+                changed = "true"
+            else:
+                changed = "false"
+
+        # Write results
+        with open("$(results.VERSION.path)", "w") as f:
+            f.write(new_version)
+        with open("$(results.VERSION_TAG.path)", "w") as f:
+            f.write(f"v{new_version}")
+        with open("$(results.BUMP_TYPE.path)", "w") as f:
+            f.write(bump_type)
+        with open("$(results.CHANGED.path)", "w") as f:
+            f.write(changed)
+
+        print(f"\n✅ Version: {new_version} (v{new_version})")
