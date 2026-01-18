@@ -37,7 +37,8 @@ spec:
       spec:
         pipelineRef:
           name: ci-prod
-        serviceAccountName: tekton-pipeline
+        taskRunTemplate:
+          serviceAccountName: tekton-pipeline
         params:
           - name: repo-url
             value: $(tt.params.git-repo-url)
