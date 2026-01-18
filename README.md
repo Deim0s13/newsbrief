@@ -8,7 +8,7 @@ NewsBrief is a self-hosted, privacy-focused news aggregator that replaces readin
 
 ## 🌟 Features
 
-### **🎯 Story-Based Aggregation (v0.7.4)** - *Current Release*
+### **🎯 Story-Based Aggregation (v0.7.5)** - *Current Release*
 Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **Time to informed: 30 min → 2 min**
 
 - **Automated Story Generation**: Daily scheduled generation at 6 AM (configurable timezone)
@@ -67,7 +67,13 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 - ✅ **ArgoCD GitOps**: Declarative deployments (ADR-0017)
 - ✅ **Tekton Triggers**: Webhook-triggered pipeline automation
 
-### **✅ Current: v0.7.4 - Security** (Jan 2026)
+### **✅ Current: v0.7.5 - GitOps & Automation** (Jan 2026)
+- ✅ **Semantic Versioning**: Automated version bumps via conventional commits
+- ✅ **Registry DNS Fix**: Cross-namespace image pulls working correctly
+- ✅ **Cleanup Automation**: Old branches, images, and pipeline runs auto-cleaned
+- ✅ **Full CI/CD Pipeline**: Build → Test → Scan → Sign → SBOM → Release → Deploy
+
+### **✅ Previous: v0.7.4 - Security** (Jan 2026)
 - ✅ **HTTPS/TLS**: Caddy automatic certificates with `tls internal` (ADR-0012)
 - ✅ **Podman Secrets**: Encrypted credential storage for production (ADR-0013)
 - ✅ **API Rate Limiting**: 100/min default, 10/min for LLM endpoints (ADR-0014)
