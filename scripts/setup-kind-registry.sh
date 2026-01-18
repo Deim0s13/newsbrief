@@ -59,10 +59,17 @@ nodes:
     protocol: TCP
 EOF
 
-# 4. Add registry config to nodes
+# 4. Add registry config to nodes (for both localhost:5000 and kind-registry:5000)
 echo "📝 Configuring containerd registry..."
-REGISTRY_DIR="/etc/containerd/certs.d/localhost:${REG_PORT}"
 for node in $(kind get nodes --name "${CLUSTER_NAME}"); do
+  # Config for localhost:5000 (host access)
+  REGISTRY_DIR="/etc/containerd/certs.d/localhost:${REG_PORT}"
+  $CONTAINER_CMD exec "${node}" mkdir -p "${REGISTRY_DIR}"
+  cat <<EOF | $CONTAINER_CMD exec -i "${node}" cp /dev/stdin "${REGISTRY_DIR}/hosts.toml"
+[host."http://${REG_NAME}:5000"]
+EOF
+  # Config for kind-registry:5000 (in-cluster access via DNS)
+  REGISTRY_DIR="/etc/containerd/certs.d/${REG_NAME}:${REG_PORT}"
   $CONTAINER_CMD exec "${node}" mkdir -p "${REGISTRY_DIR}"
   cat <<EOF | $CONTAINER_CMD exec -i "${node}" cp /dev/stdin "${REGISTRY_DIR}/hosts.toml"
 [host."http://${REG_NAME}:5000"]
