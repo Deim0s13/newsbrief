@@ -114,6 +114,64 @@ spec:
         - name: IGNORE_UNFIXED
           value: "true"
 
+  # ══════════════════════════════════════════════════════════════
+  # Finally: Notifications (runs regardless of success/failure)
+  # ══════════════════════════════════════════════════════════════
+  finally:
+    - name: notify-failure
+      when:
+        - input: $(tasks.status)
+          operator: in
+          values: ["Failed"]
+      taskRef:
+        name: notify-ntfy
+      params:
+        - name: topic
+          value: "newsbrief-ci"
+        - name: title
+          value: "❌ Dev Pipeline Failed"
+        - name: message
+          value: "ci-dev failed on $(params.revision)"
+        - name: priority
+          value: "high"
+        - name: tags
+          value: "x,pipeline,dev"
+
+    - name: notify-success
+      when:
+        - input: $(tasks.status)
+          operator: in
+          values: ["Succeeded"]
+      taskRef:
+        name: notify-ntfy
+      params:
+        - name: topic
+          value: "newsbrief-ci"
+        - name: title
+          value: "✅ Dev Pipeline Succeeded"
+        - name: message
+          value: "ci-dev completed on $(params.revision)"
+        - name: priority
+          value: "default"
+        - name: tags
+          value: "white_check_mark,pipeline,dev"
+
+    # Slack (disabled by default - enable by creating slack-webhook secret)
+    - name: notify-slack
+      taskRef:
+        name: notify-slack
+      params:
+        - name: pipeline-name
+          value: "ci-dev"
+        - name: pipeline-run
+          value: "$(context.pipelineRun.name)"
+        - name: status
+          value: "$(tasks.status)"
+        - name: git-revision
+          value: "$(params.revision)"
+        - name: environment
+          value: "dev"
+
   # Pipeline results (for downstream use)
   results:
     - name: image-digest

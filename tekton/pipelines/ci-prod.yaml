@@ -228,6 +228,64 @@ spec:
         - name: KEEP_FAILED_HOURS
           value: "168"
 
+  # ══════════════════════════════════════════════════════════════
+  # Finally: Notifications (runs regardless of success/failure)
+  # ══════════════════════════════════════════════════════════════
+  finally:
+    - name: notify-failure
+      when:
+        - input: $(tasks.status)
+          operator: in
+          values: ["Failed"]
+      taskRef:
+        name: notify-ntfy
+      params:
+        - name: topic
+          value: "newsbrief-ci"
+        - name: title
+          value: "❌ Prod Pipeline Failed"
+        - name: message
+          value: "ci-prod failed on $(params.revision) - $(params.image-tag)"
+        - name: priority
+          value: "urgent"
+        - name: tags
+          value: "x,pipeline,prod,rotating_light"
+
+    - name: notify-success
+      when:
+        - input: $(tasks.status)
+          operator: in
+          values: ["Succeeded"]
+      taskRef:
+        name: notify-ntfy
+      params:
+        - name: topic
+          value: "newsbrief-ci"
+        - name: title
+          value: "🚀 Production Release Complete"
+        - name: message
+          value: "$(params.image-tag) deployed to production"
+        - name: priority
+          value: "high"
+        - name: tags
+          value: "rocket,pipeline,prod"
+
+    # Slack (disabled by default - enable by creating slack-webhook secret)
+    - name: notify-slack
+      taskRef:
+        name: notify-slack
+      params:
+        - name: pipeline-name
+          value: "ci-prod"
+        - name: pipeline-run
+          value: "$(context.pipelineRun.name)"
+        - name: status
+          value: "$(tasks.status)"
+        - name: git-revision
+          value: "$(params.revision)"
+        - name: environment
+          value: "prod"
+
   # Pipeline results
   results:
     - name: image-digest
