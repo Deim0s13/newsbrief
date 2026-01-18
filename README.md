@@ -59,12 +59,13 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 - **Automated Dependency Management**: Weekly security audits, dependency updates, and base image maintenance
 - **Comprehensive Documentation**: Complete CI/CD guides, API documentation, and architecture decision records
 
-### **🔄 Next: v0.7.5.1 - Pipeline Notifications** (Jan 2026)
-- 🔄 **ntfy.sh Integration**: Native macOS/iOS push notifications for pipeline status (ADR-0021)
-- 🔄 **Slack Webhook**: Optional team notifications (disabled by default)
-- 🔄 **Finally Blocks**: Success/failure notifications on all pipelines
+### **✅ Current: v0.7.5.1 - Pipeline Notifications** (Jan 2026)
+- ✅ **ntfy.sh Integration**: Native macOS/iOS push notifications for pipeline status (ADR-0021)
+- ✅ **Slack Webhook**: Optional team notifications (disabled by default)
+- ✅ **Finally Blocks**: Success/failure notifications on all pipelines
+- ✅ **Tekton Dashboard**: Web UI for pipeline monitoring
 
-### **✅ Current: v0.7.5 - GitOps & Kubernetes** (Jan 2026)
+### **✅ Previous: v0.7.5 - GitOps & Kubernetes** (Jan 2026)
 - ✅ **Local Kubernetes**: kind cluster for development (ADR-0015, ADR-0020)
 - ✅ **Tekton CI/CD**: Kubernetes-native pipelines with Triggers (ADR-0016, ADR-0019)
 - ✅ **Secure Supply Chain**: Trivy scanning, Cosign signing, SBOM (ADR-0018)
@@ -588,7 +589,7 @@ Development is organized with GitHub Projects and Milestones for clear visibilit
 - [v0.7.1 - PostgreSQL Migration](https://github.com/Deim0s13/newsbrief/releases/tag/v0.7.1) - ✅ **COMPLETE** (Jan 2026)
 - [v0.7.2 - Container & Deployment](https://github.com/Deim0s13/newsbrief/releases/tag/v0.7.2) - ✅ **COMPLETE** (Jan 2026)
 - [v0.7.5 - GitOps & Kubernetes](https://github.com/Deim0s13/newsbrief/milestone/14) - ✅ **COMPLETE** (Jan 2026)
-- [v0.7.5.1 - Pipeline Notifications](https://github.com/Deim0s13/newsbrief/milestone/22) - 🔄 **IN PROGRESS** (Jan 2026)
+- [v0.7.5.1 - Pipeline Notifications](https://github.com/Deim0s13/newsbrief/milestone/22) - ✅ **COMPLETE** (Jan 2026)
 
 **Epics** (via labels):
 - **epic:stories** - Story-based aggregation and synthesis
