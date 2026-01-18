@@ -1,33 +1,47 @@
-#!/bin/bash
-# Setup local registry for kind cluster
+#!/bin/sh
+# Setup kind cluster with local registry (Podman-based)
 # Based on: https://kind.sigs.k8s.io/docs/user/local-registry/
 
-set -e
+set -o errexit
 
-REGISTRY_NAME="${REGISTRY_NAME:-kind-registry}"
-REGISTRY_PORT="${REGISTRY_PORT:-5000}"
-KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME:-newsbrief-dev}"
+# Configuration
+REG_NAME='kind-registry'
+REG_PORT='5000'
+CLUSTER_NAME='newsbrief-dev'
 
-echo "🐳 Setting up local registry for kind..."
-
-# 1. Create registry container if not running
-if [ "$(docker inspect -f '{{.State.Running}}' "${REGISTRY_NAME}" 2>/dev/null || true)" != 'true' ]; then
-  echo "📦 Creating registry container..."
-  docker run -d --restart=always -p "127.0.0.1:${REGISTRY_PORT}:5000" \
-    --network bridge \
-    --name "${REGISTRY_NAME}" \
-    registry:2
-  echo "✅ Registry container created"
+# Detect container runtime
+if command -v podman >/dev/null 2>&1; then
+  CONTAINER_CMD="podman"
+  export KIND_EXPERIMENTAL_PROVIDER=podman
+elif command -v docker >/dev/null 2>&1; then
+  CONTAINER_CMD="docker"
 else
-  echo "✅ Registry container already running"
+  echo "❌ Error: Neither podman nor docker found"
+  exit 1
 fi
 
-# 2. Create kind cluster with containerd registry config
-if ! kind get clusters | grep -q "^${KIND_CLUSTER_NAME}$"; then
-  echo "🔧 Creating kind cluster: ${KIND_CLUSTER_NAME}..."
+echo "🚀 Setting up kind cluster with local registry..."
+echo "   Container runtime: $CONTAINER_CMD"
 
-  # Create cluster config
-  cat <<EOF | kind create cluster --name "${KIND_CLUSTER_NAME}" --config=-
+# 1. Create registry container if not running
+if [ "$($CONTAINER_CMD inspect -f '{{.State.Running}}' "${REG_NAME}" 2>/dev/null || true)" != 'true' ]; then
+  echo "📦 Creating registry container..."
+  $CONTAINER_CMD run \
+    -d --restart=always -p "127.0.0.1:${REG_PORT}:5000" --name "${REG_NAME}" \
+    registry:2
+else
+  echo "✅ Registry already running"
+fi
+
+# 2. Delete existing cluster if present
+if kind get clusters 2>/dev/null | grep -q "^${CLUSTER_NAME}$"; then
+  echo "🗑️  Deleting existing cluster..."
+  kind delete cluster --name "${CLUSTER_NAME}"
+fi
+
+# 3. Create kind cluster with containerd registry config
+echo "🔧 Creating kind cluster..."
+cat <<EOF | kind create cluster --name "${CLUSTER_NAME}" --config=-
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 containerdConfigPatches:
@@ -44,32 +58,36 @@ nodes:
     hostPort: 8443
     protocol: TCP
 EOF
-  echo "✅ Kind cluster created"
-else
-  echo "✅ Kind cluster already exists"
-fi
 
-# 3. Connect registry to kind network
-if [ "$(docker inspect -f='{{json .NetworkSettings.Networks.kind}}' "${REGISTRY_NAME}" 2>/dev/null)" = 'null' ]; then
-  echo "🔗 Connecting registry to kind network..."
-  docker network connect "kind" "${REGISTRY_NAME}" || true
-  echo "✅ Registry connected to kind network"
-else
-  echo "✅ Registry already connected to kind network"
-fi
-
-# 4. Configure containerd to use registry
-echo "⚙️  Configuring containerd registry..."
-REGISTRY_DIR="/etc/containerd/certs.d/localhost:${REGISTRY_PORT}"
-for node in $(kind get nodes --name "${KIND_CLUSTER_NAME}"); do
-  docker exec "${node}" mkdir -p "${REGISTRY_DIR}"
-  cat <<EOF | docker exec -i "${node}" cp /dev/stdin "${REGISTRY_DIR}/hosts.toml"
-[host."http://${REGISTRY_NAME}:5000"]
+# 4. Add registry config to nodes
+echo "📝 Configuring containerd registry..."
+REGISTRY_DIR="/etc/containerd/certs.d/localhost:${REG_PORT}"
+for node in $(kind get nodes --name "${CLUSTER_NAME}"); do
+  $CONTAINER_CMD exec "${node}" mkdir -p "${REGISTRY_DIR}"
+  cat <<EOF | $CONTAINER_CMD exec -i "${node}" cp /dev/stdin "${REGISTRY_DIR}/hosts.toml"
+[host."http://${REG_NAME}:5000"]
 EOF
 done
-echo "✅ Containerd configured"
 
-# 5. Create ConfigMap for registry discovery
+# 5. Connect registry to kind network (for podman, need different approach)
+if [ "$CONTAINER_CMD" = "docker" ]; then
+  if [ "$($CONTAINER_CMD inspect -f='{{json .NetworkSettings.Networks.kind}}' "${REG_NAME}")" = 'null' ]; then
+    echo "🔗 Connecting registry to kind network..."
+    $CONTAINER_CMD network connect "kind" "${REG_NAME}"
+  fi
+else
+  # For podman, check if already connected
+  KIND_NETWORK=$($CONTAINER_CMD network ls --format '{{.Name}}' | grep -E '^kind$' || true)
+  if [ -n "$KIND_NETWORK" ]; then
+    REG_NETWORKS=$($CONTAINER_CMD inspect "${REG_NAME}" --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null || echo "")
+    if ! echo "$REG_NETWORKS" | grep -q "kind"; then
+      echo "🔗 Connecting registry to kind network..."
+      $CONTAINER_CMD network connect "kind" "${REG_NAME}" 2>/dev/null || true
+    fi
+  fi
+fi
+
+# 6. Document the registry for tools (like Tilt, Skaffold)
 echo "📋 Creating registry ConfigMap..."
 cat <<EOF | kubectl apply -f -
 apiVersion: v1
@@ -79,23 +97,25 @@ metadata:
   namespace: kube-public
 data:
   localRegistryHosting.v1: |
-    host: "localhost:${REGISTRY_PORT}"
+    host: "localhost:${REG_PORT}"
     help: "https://kind.sigs.k8s.io/docs/user/local-registry/"
 EOF
-echo "✅ Registry ConfigMap created"
 
 echo ""
-echo "════════════════════════════════════════════════════════════"
-echo "  🎉 Local registry setup complete!"
-echo "════════════════════════════════════════════════════════════"
+echo "═══════════════════════════════════════════════════════════════"
+echo "✅ Kind cluster '${CLUSTER_NAME}' with local registry created!"
+echo "═══════════════════════════════════════════════════════════════"
 echo ""
-echo "  Registry URL: localhost:${REGISTRY_PORT}"
-echo "  Kind Cluster: ${KIND_CLUSTER_NAME}"
+echo "Registry: localhost:${REG_PORT}"
 echo ""
-echo "  Usage:"
-echo "    docker tag myimage localhost:${REGISTRY_PORT}/myimage:tag"
-echo "    docker push localhost:${REGISTRY_PORT}/myimage:tag"
-echo ""
-echo "  In Kubernetes manifests:"
-echo "    image: localhost:${REGISTRY_PORT}/newsbrief:v0.7.5"
+echo "Next steps:"
+echo "  1. Install Tekton:     kubectl apply -f https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml"
+echo "  2. Install Triggers:   kubectl apply -f https://storage.googleapis.com/tekton-releases/triggers/latest/release.yaml"
+echo "  3. Install Interceptors: kubectl apply -f https://storage.googleapis.com/tekton-releases/triggers/latest/interceptors.yaml"
+echo "  4. Install ArgoCD:     kubectl create namespace argocd && kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml"
+echo "  5. Apply RBAC:         kubectl apply -f k8s/infrastructure/tekton-rbac.yaml"
+echo "  6. Apply Tekton tasks: kubectl apply -f tekton/tasks/"
+echo "  7. Apply pipelines:    kubectl apply -f tekton/pipelines/"
+echo "  8. Apply triggers:     kubectl apply -f tekton/triggers/"
+echo "  9. Apply ArgoCD apps:  kubectl apply -f k8s/argocd/"
 echo ""

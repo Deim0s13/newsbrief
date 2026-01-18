@@ -1,89 +1,81 @@
 # ADR-0020: Kind Local Registry Configuration
 
-**Status**: Accepted
-**Date**: 2026-01-18
-**Deciders**: Development Team
+## Status
+**Accepted** - January 2026
 
 ## Context
 
-NewsBrief uses a local Kubernetes cluster (kind) for development and CI/CD. Container images are built by Tekton pipelines and stored in an in-cluster registry. However, kind nodes cannot pull images from an in-cluster registry by default because:
+NewsBrief uses a local Kubernetes cluster (kind) with an in-cluster container registry for development. The initial setup placed the registry inside the cluster as a Kubernetes deployment, but this caused image pull failures because:
 
-1. **DNS Resolution**: Kind nodes use the host's DNS, not cluster DNS (CoreDNS)
-2. **TLS Requirements**: Containerd defaults to HTTPS for registries
-3. **Network Isolation**: Kind nodes run in Docker, isolated from cluster networking
-
-This causes `ImagePullBackOff` errors when ArgoCD tries to deploy applications.
+1. **DNS Resolution**: Kind nodes couldn't resolve `registry.registry.svc.cluster.local` from containerd
+2. **HTTP vs HTTPS**: Containerd defaults to HTTPS, but the local registry uses HTTP
+3. **Network Isolation**: The registry pod runs in a different network namespace than the node's containerd
 
 ## Decision
 
-Implement the **kind local registry** pattern as documented in the [kind documentation](https://kind.sigs.k8s.io/docs/user/local-registry/):
+Configure kind with a **host-network local registry** following the [kind documentation](https://kind.sigs.k8s.io/docs/user/local-registry/):
 
-1. Run registry as a Docker container on host network (not in-cluster)
-2. Connect registry to kind's Docker network
-3. Configure kind nodes to recognize `localhost:5000` as insecure registry
+1. Run registry as a Docker container on the host network
+2. Connect it to the kind network
+3. Configure kind nodes to recognize `localhost:5000` as an insecure registry
 4. Use `localhost:5000` as the image reference in all manifests
-
-## Alternatives Considered
-
-### Option 1: In-Cluster Registry with FQDN
-- **Approach**: Deploy registry in cluster, use `registry.registry.svc.cluster.local:5000`
-- **Rejected**: Kind nodes can't resolve cluster DNS; requires complex containerd configuration
-
-### Option 2: External Registry (Docker Hub, GHCR)
-- **Approach**: Push images to external registry
-- **Rejected**: Violates privacy-first principle; requires internet for local development
-
-### Option 3: kind Local Registry (Selected)
-- **Approach**: Registry runs alongside kind in Docker, connected via shared network
-- **Selected**: Native kind support, no DNS issues, works offline
 
 ## Implementation
 
-### Registry Setup Script
+### 1. Registry Setup Script
 
 ```bash
-#!/bin/bash
+#!/bin/sh
 # scripts/setup-kind-registry.sh
 
-REGISTRY_NAME="kind-registry"
-REGISTRY_PORT="5000"
-KIND_CLUSTER_NAME="newsbrief-dev"
+set -o errexit
 
-# Create registry container if not exists
-if [ "$(docker inspect -f '{{.State.Running}}' "${REGISTRY_NAME}" 2>/dev/null)" != 'true' ]; then
-  docker run -d --restart=always -p "127.0.0.1:${REGISTRY_PORT}:5000" \
-    --network bridge --name "${REGISTRY_NAME}" registry:2
+# Registry configuration
+REG_NAME='kind-registry'
+REG_PORT='5000'
+
+# Create registry container if not running
+if [ "$(docker inspect -f '{{.State.Running}}' "${REG_NAME}" 2>/dev/null || true)" != 'true' ]; then
+  docker run \
+    -d --restart=always -p "127.0.0.1:${REG_PORT}:5000" --network bridge --name "${REG_NAME}" \
+    registry:2
 fi
 
-# Connect registry to kind network
-if [ "$(docker inspect -f='{{json .NetworkSettings.Networks.kind}}' "${REGISTRY_NAME}")" = 'null' ]; then
-  docker network connect "kind" "${REGISTRY_NAME}"
-fi
-```
-
-### Kind Cluster Configuration
-
-```yaml
-# kind/cluster-config.yaml
+# Create kind cluster with containerd registry config
+cat <<EOF | kind create cluster --name newsbrief-dev --config=-
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
-name: newsbrief-dev
 containerdConfigPatches:
-  - |-
-    [plugins."io.containerd.grpc.v1.cri".registry]
-      config_path = "/etc/containerd/certs.d"
+- |-
+  [plugins."io.containerd.grpc.v1.cri".registry]
+    config_path = "/etc/containerd/certs.d"
 nodes:
-  - role: control-plane
-    extraPortMappings:
-      - containerPort: 30080
-        hostPort: 8080
-        protocol: TCP
-```
+- role: control-plane
+  extraPortMappings:
+  - containerPort: 30080
+    hostPort: 8080
+    protocol: TCP
+  - containerPort: 30443
+    hostPort: 8443
+    protocol: TCP
+EOF
 
-### Registry ConfigMap for Cluster
+# Add registry config to nodes
+REGISTRY_DIR="/etc/containerd/certs.d/localhost:${REG_PORT}"
+for node in $(kind get nodes --name newsbrief-dev); do
+  docker exec "${node}" mkdir -p "${REGISTRY_DIR}"
+  cat <<EOF | docker exec -i "${node}" cp /dev/stdin "${REGISTRY_DIR}/hosts.toml"
+[host."http://${REG_NAME}:5000"]
+EOF
+done
 
-```yaml
-# Applied after cluster creation
+# Connect registry to kind network
+if [ "$(docker inspect -f='{{json .NetworkSettings.Networks.kind}}' "${REG_NAME}")" = 'null' ]; then
+  docker network connect "kind" "${REG_NAME}"
+fi
+
+# Document the registry for tools
+cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -91,38 +83,66 @@ metadata:
   namespace: kube-public
 data:
   localRegistryHosting.v1: |
-    host: "localhost:5000"
+    host: "localhost:${REG_PORT}"
     help: "https://kind.sigs.k8s.io/docs/user/local-registry/"
+EOF
+
+echo "✅ Kind cluster with local registry created"
+echo "   Registry: localhost:${REG_PORT}"
+echo "   Push: docker push localhost:${REG_PORT}/newsbrief:tag"
 ```
 
-### Image References
+### 2. Updated Image References
 
-All manifests use `localhost:5000/newsbrief:tag`:
+All manifests use `localhost:5000` instead of `registry.registry.svc.cluster.local:5000`:
 
 ```yaml
 # k8s/base/deployment.yaml
 image: localhost:5000/newsbrief:dev-latest
+
+# tekton/pipelines/ci-*.yaml
+default: "localhost:5000"
+```
+
+### 3. Build and Push
+
+```bash
+# Build with Buildah (in Tekton)
+buildah push localhost:5000/newsbrief:v0.7.5
+
+# Or with Docker
+docker build -t localhost:5000/newsbrief:v0.7.5 .
+docker push localhost:5000/newsbrief:v0.7.5
 ```
 
 ## Consequences
 
 ### Positive
-- ✅ Native kind support with documented pattern
+- ✅ Reliable image pulls from all namespaces
 - ✅ No DNS resolution issues
-- ✅ Works completely offline
-- ✅ Fast image pulls (local network)
-- ✅ Simple `docker push localhost:5000/image` workflow
+- ✅ Standard pattern used by kind community
+- ✅ Works with containerd's registry configuration
+- ✅ Registry persists across cluster recreations
 
 ### Negative
-- ⚠️ Registry persists outside cluster (Docker container)
-- ⚠️ Requires setup script before cluster creation
-- ⚠️ `localhost:5000` only works on development machine
+- ⚠️ Requires Docker to run the registry container
+- ⚠️ Registry runs outside Kubernetes (not managed by ArgoCD)
+- ⚠️ Different setup than production (which would use a real registry)
 
 ### Neutral
-- Registry data persists in Docker volume (survives cluster recreation)
-- Same pattern used by many kind users
+- Registry data persists in Docker volume
+- Need to ensure registry is running before cluster operations
+
+## Migration
+
+1. Delete existing in-cluster registry: `kubectl delete namespace registry`
+2. Run setup script: `./scripts/setup-kind-registry.sh`
+3. Update all image references to `localhost:5000`
+4. Rebuild and push images
+5. Restart deployments
 
 ## References
 
-- [kind Local Registry Documentation](https://kind.sigs.k8s.io/docs/user/local-registry/)
-- [Kubernetes Local Registry Hosting KEP](https://github.com/kubernetes/enhancements/tree/master/keps/sig-cluster-lifecycle/generic/1755-communicating-a-local-registry)
+- [Kind Local Registry Documentation](https://kind.sigs.k8s.io/docs/user/local-registry/)
+- [Containerd Registry Configuration](https://github.com/containerd/containerd/blob/main/docs/cri/registry.md)
+- [ADR-0015: Local Kubernetes Distribution](0015-local-kubernetes-distribution.md)
