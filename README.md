@@ -60,18 +60,12 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 - **Comprehensive Documentation**: Complete CI/CD guides, API documentation, and architecture decision records
 
 ### **✅ Current: v0.7.5 - GitOps & Kubernetes** (Jan 2026)
-- ✅ **Local Kubernetes**: kind cluster for development (ADR-0015)
-- ✅ **Tekton CI Pipelines**: Kubernetes-native CI/CD (ADR-0016, ADR-0019)
+- ✅ **Local Kubernetes**: kind cluster for development (ADR-0015, ADR-0020)
+- ✅ **Tekton CI/CD**: Kubernetes-native pipelines with Triggers (ADR-0016, ADR-0019)
 - ✅ **Secure Supply Chain**: Trivy scanning, Cosign signing, SBOM (ADR-0018)
-- ✅ **Local Registry**: In-cluster container registry
 - ✅ **ArgoCD GitOps**: Declarative deployments (ADR-0017)
-- ✅ **Tekton Triggers**: Webhook-triggered pipeline automation
-
-### **✅ Current: v0.7.5 - GitOps & Automation** (Jan 2026)
-- ✅ **Semantic Versioning**: Automated version bumps via conventional commits
-- ✅ **Registry DNS Fix**: Cross-namespace image pulls working correctly
-- ✅ **Cleanup Automation**: Old branches, images, and pipeline runs auto-cleaned
-- ✅ **Full CI/CD Pipeline**: Build → Test → Scan → Sign → SBOM → Release → Deploy
+- ✅ **Full Automation**: Build → Test → Scan → Sign → SBOM → Release → Deploy
+- ✅ **Cleanup Tasks**: Automated pruning of branches, images, and pipeline runs
 
 ### **✅ Previous: v0.7.4 - Security** (Jan 2026)
 - ✅ **HTTPS/TLS**: Caddy automatic certificates with `tls internal` (ADR-0012)
