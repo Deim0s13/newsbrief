@@ -51,9 +51,11 @@
           ✅ NewsBrief Environment Recovered!
           ════════════════════════════════════════════════════════════════
 
-          Services:
-            • Dev:             http://localhost:8787
-            • Prod:            https://newsbrief.local
+          Prod (Kubernetes):
+            • App:             https://newsbrief.local
             • Tekton Dashboard: http://localhost:9097
+
+          Dev (Local):
+            • Run: make dev → http://localhost:8787
 
           ════════════════════════════════════════════════════════════════

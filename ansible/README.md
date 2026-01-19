@@ -88,12 +88,14 @@ ansible-playbook -i inventory/localhost.yml playbooks/recover.yml -e force_recre
 
 After recovery, services are available at:
 
-| Service | URL |
-|---------|-----|
-| Dev | http://localhost:8787 |
-| Prod | https://newsbrief.local |
-| Tekton Dashboard | http://localhost:9097 |
-| Event Listener | http://localhost:8080 |
+| Service | URL | Notes |
+|---------|-----|-------|
+| **Dev** | http://localhost:8787 | Run `make dev` locally |
+| **Prod** | https://newsbrief.local | Kubernetes via Caddy |
+| Tekton Dashboard | http://localhost:9097 | Port-forwarded |
+| Event Listener | http://localhost:8080 | Port-forwarded |
+
+**Note**: Dev runs locally (not in Kubernetes). Run `make dev` to start the development server.
 
 ## Troubleshooting
 
