@@ -30,3 +30,5 @@ spec:
       kind: '*'
     - group: apps
       kind: '*'
+    - group: policy
+      kind: '*'
