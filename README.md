@@ -509,6 +509,33 @@ newsbrief/
 └── CONTRIBUTING.md      # Development setup guide
 ```
 
+## 🔧 Operations
+
+### Service Recovery (After Reboot/Sleep)
+
+The Kubernetes-based development environment requires several services to be running. After a laptop reboot or wake from sleep:
+
+```bash
+# Full recovery - checks and restarts all services
+make recover
+
+# Check status of all services
+make status
+
+# Quick restart of just port forwards
+make port-forwards
+```
+
+See [`ansible/README.md`](ansible/README.md) for detailed operational procedures.
+
+### Service URLs
+
+| Service | URL |
+|---------|-----|
+| Dev | http://localhost:8787 |
+| Prod | https://newsbrief.local |
+| Tekton Dashboard | http://localhost:9097 |
+
 ## 🎯 Roadmap
 
 > **📋 Live Project Board**: Track detailed progress and epic breakdowns at

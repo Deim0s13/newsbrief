@@ -856,6 +856,35 @@ flowchart LR
 
 See [ADR-0021: Pipeline Notifications](adr/0021-pipeline-notifications.md) for full details.
 
+### 10.5 Operational Procedures
+
+The development environment runs on a laptop and requires service recovery after reboots or wake from sleep.
+
+**Ansible Playbooks** (`ansible/`):
+
+| Playbook | Purpose |
+|----------|---------|
+| `recover.yml` | Full environment recovery - starts all services |
+| `status.yml` | Check status without making changes |
+
+**Quick Commands**:
+
+```bash
+make recover       # Full recovery after reboot
+make status        # Check service status
+make port-forwards # Restart port forwards only
+```
+
+**Recovery Order**:
+1. Podman machine
+2. Kind cluster + local registry
+3. Tekton (pipelines, triggers, dashboard)
+4. ArgoCD (apps, sync)
+5. Port forwards (dev:8787, prod:8788, tekton:9097)
+6. Caddy reverse proxy (newsbrief.local)
+
+See [`ansible/README.md`](../ansible/README.md) for detailed procedures.
+
 ---
 
 ## 11. Decision Log
