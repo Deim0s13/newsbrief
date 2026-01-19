@@ -1,0 +1,35 @@
+---
+# ArgoCD role - ensures ArgoCD is installed and apps are configured
+
+- name: Check if ArgoCD namespace exists
+  command: kubectl get namespace argocd
+  register: argocd_ns
+  changed_when: false
+  failed_when: false
+
+- name: Create ArgoCD namespace
+  command: kubectl create namespace argocd
+  when: argocd_ns.rc != 0
+
+- name: Install ArgoCD
+  command: kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+  when: argocd_ns.rc != 0
+
+- name: Wait for ArgoCD server to be ready
+  command: kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argocd-server -n argocd --timeout=180s
+  changed_when: false
+  retries: 3
+  delay: 10
+
+- name: Apply ArgoCD configuration
+  command: kubectl apply -f {{ project_root }}/k8s/argocd/
+  changed_when: false
+
+- name: Verify ArgoCD apps exist
+  command: kubectl get applications -n argocd
+  register: argocd_apps
+  changed_when: false
+
+- name: Display ArgoCD status
+  debug:
+    msg: "✅ ArgoCD is running with apps: {{ argocd_apps.stdout_lines | select('match', '^newsbrief') | list | join(', ') }}"

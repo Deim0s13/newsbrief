@@ -1,0 +1,39 @@
+---
+# Kind role - ensures Kind cluster and registry are running
+
+- name: Check for existing Kind cluster
+  command: kind get clusters
+  register: kind_clusters
+  changed_when: false
+  failed_when: false
+  environment:
+    KIND_EXPERIMENTAL_PROVIDER: podman
+
+- name: Check if registry container exists
+  command: podman ps -a --filter name={{ registry_name }} --format "{{ '{{' }}.Names{{ '}}' }}"
+  register: registry_exists
+  changed_when: false
+
+- name: Remove stale registry container
+  command: podman rm -f {{ registry_name }}
+  when: registry_exists.stdout and kind_cluster_name not in kind_clusters.stdout
+  failed_when: false
+
+- name: Create Kind cluster with registry
+  command: "{{ project_root }}/scripts/setup-kind-registry.sh"
+  when: kind_cluster_name not in kind_clusters.stdout
+  environment:
+    KIND_EXPERIMENTAL_PROVIDER: podman
+
+- name: Set kubectl context
+  command: kubectl config use-context kind-{{ kind_cluster_name }}
+  changed_when: false
+
+- name: Verify cluster is accessible
+  command: kubectl cluster-info
+  register: cluster_info
+  changed_when: false
+
+- name: Display Kind status
+  debug:
+    msg: "✅ Kind cluster '{{ kind_cluster_name }}' is running"

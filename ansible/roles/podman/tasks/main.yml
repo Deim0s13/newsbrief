@@ -1,0 +1,27 @@
+---
+# Podman role - ensures Podman machine is running
+
+- name: Check if Podman machine is running
+  command: podman machine info --format json
+  register: podman_info
+  changed_when: false
+  failed_when: false
+
+- name: Start Podman machine if not running
+  command: podman machine start
+  when: podman_info.rc != 0
+  register: podman_start
+  failed_when: false
+
+- name: Wait for Podman to be ready
+  command: podman info
+  register: podman_ready
+  until: podman_ready.rc == 0
+  retries: 10
+  delay: 3
+  when: podman_start is changed
+
+- name: Display Podman status
+  debug:
+    msg: "✅ Podman machine is running"
+  when: podman_info.rc == 0 or podman_start is changed
