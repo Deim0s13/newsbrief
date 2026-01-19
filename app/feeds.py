@@ -623,11 +623,12 @@ def export_opml() -> str:
         feeds_result = s.execute(
             text(
                 """
-                SELECT url, name, description, category, disabled, created_at,
+                SELECT f.url, f.name, f.description, f.category, f.disabled, f.created_at,
                        COUNT(i.id) as article_count
                 FROM feeds f
                 LEFT JOIN items i ON f.id = i.feed_id
-                ORDER BY category, name, url
+                GROUP BY f.id, f.url, f.name, f.description, f.category, f.disabled, f.created_at
+                ORDER BY f.category, f.name, f.url
             """
             )
         ).fetchall()
