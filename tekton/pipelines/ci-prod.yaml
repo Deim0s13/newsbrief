@@ -40,8 +40,8 @@ spec:
       description: Git branch or tag to checkout
     - name: image-registry
       type: string
-      default: "kind-registry:5000"
-      description: Container registry URL (kind-registry for in-cluster access)
+      default: "localhost:5000"
+      description: Container registry URL
     - name: image-name
       type: string
       default: "newsbrief"
