@@ -1,13 +1,14 @@
 # CI Pipeline for Development
 # Triggered on merge to dev branch
 #
+# Purpose: Quality gates only (dev runs locally via `make dev`)
+#
 # Stages:
 #   1. fetch-source - Clone repository
 #   2. lint + test  - Run in parallel (fast feedback)
-#   3. build-image  - Build container (only if lint+test pass)
-#   4. security-scan - Trivy vulnerability scan
 #
 # Per ADR-0019: CI/CD Pipeline Design
+# Note: No image build - dev environment runs locally, not containerized
 
 apiVersion: tekton.dev/v1
 kind: Pipeline
@@ -17,7 +18,7 @@ metadata:
     app.kubernetes.io/part-of: newsbrief
     newsbrief.dev/environment: development
 spec:
-  description: Development CI pipeline - build, test, scan, deploy to dev
+  description: Development CI pipeline - lint and test only (dev runs locally)
   workspaces:
     - name: source
       description: Source code workspace
@@ -30,18 +31,6 @@ spec:
       type: string
       default: "dev"
       description: Git branch or tag to checkout
-    - name: image-registry
-      type: string
-      default: "localhost:5000"
-      description: Container registry URL
-    - name: image-name
-      type: string
-      default: "newsbrief"
-      description: Image name
-    - name: image-tag
-      type: string
-      default: "dev-latest"
-      description: Image tag (dev uses dev-latest)
 
   tasks:
     # ══════════════════════════════════════════════════════════════
@@ -79,40 +68,6 @@ spec:
       workspaces:
         - name: source
           workspace: source
-
-    # ══════════════════════════════════════════════════════════════
-    # Stage 3: Build Container Image
-    # ══════════════════════════════════════════════════════════════
-    - name: build-image
-      taskRef:
-        name: build-image
-      runAfter:
-        - lint
-        - test
-      workspaces:
-        - name: source
-          workspace: source
-      params:
-        - name: IMAGE
-          value: "$(params.image-registry)/$(params.image-name):$(params.image-tag)"
-
-    # ══════════════════════════════════════════════════════════════
-    # Stage 4: Security Scan
-    # ══════════════════════════════════════════════════════════════
-    - name: security-scan
-      taskRef:
-        name: security-scan
-      runAfter:
-        - build-image
-      params:
-        - name: IMAGE
-          value: "$(params.image-registry)/$(params.image-name):$(params.image-tag)"
-        - name: SEVERITY
-          value: "CRITICAL,HIGH"
-        - name: EXIT_ON_SEVERITY
-          value: "CRITICAL"
-        - name: IGNORE_UNFIXED
-          value: "true"
 
   # ══════════════════════════════════════════════════════════════
   # Finally: Notifications (runs regardless of success/failure)
@@ -171,15 +126,3 @@ spec:
           value: "$(params.revision)"
         - name: environment
           value: "dev"
-
-  # Pipeline results (for downstream use)
-  results:
-    - name: image-digest
-      description: Image digest
-      value: $(tasks.build-image.results.IMAGE_DIGEST)
-    - name: image-url
-      description: Full image URL that was built
-      value: $(tasks.build-image.results.IMAGE_URL)
-    - name: scan-passed
-      description: Whether security scan passed
-      value: $(tasks.security-scan.results.SCAN_PASSED)
