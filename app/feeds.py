@@ -489,8 +489,11 @@ def import_opml(path: str) -> int:
 
 def import_opml_content(opml_content: str) -> dict[str, Any]:
     """Enhanced OPML import with detailed parsing and metadata extraction."""
+    import logging
     import xml.etree.ElementTree as ET
     from urllib.parse import urlparse
+
+    logger = logging.getLogger(__name__)
 
     result: dict[str, Any] = {
         "feeds_added": 0,
@@ -502,10 +505,35 @@ def import_opml_content(opml_content: str) -> dict[str, Any]:
 
     try:
         # Parse XML content
+        logger.info(f"Parsing OPML content ({len(opml_content)} bytes)")
+
+        # Pre-process: fix common XML issues like unescaped ampersands
+        # Replace & that's not already part of an entity (e.g., &amp; &lt; etc.)
+        import re
+
+        # Match & not followed by a valid entity name and semicolon
+        opml_content = re.sub(
+            r"&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)", "&amp;", opml_content
+        )
+
         root = ET.fromstring(opml_content)
+        logger.info(f"Parsed XML root: {root.tag}")
 
         # Find all outline elements with xmlUrl (feed entries)
+        # Some OPML files use xmlURL (capital L) instead of xmlUrl
         feed_outlines = root.findall(".//outline[@xmlUrl]")
+        if not feed_outlines:
+            # Try alternate attribute names
+            feed_outlines = root.findall(".//outline[@xmlURL]")
+            logger.info(f"Tried xmlURL (capital L), found {len(feed_outlines)}")
+        if not feed_outlines:
+            # Try finding any outline with url-like attribute
+            all_outlines = root.findall(".//outline")
+            logger.info(f"Total outlines found: {len(all_outlines)}")
+            for outline in all_outlines[:3]:  # Log first 3 for debug
+                logger.info(f"  Outline attribs: {dict(outline.attrib)}")
+
+        logger.info(f"Found {len(feed_outlines)} feed entries with xmlUrl")
         categories = set()
 
         with session_scope() as s:
@@ -558,29 +586,25 @@ def import_opml_content(opml_content: str) -> dict[str, Any]:
                         else:
                             result["feeds_skipped"] += 1
                     else:
-                        # Add new feed
-                        feed_id = ensure_feed(xml_url)
-
-                        # Update with metadata
-                        if title or description or category:
-                            s.execute(
-                                text(
-                                    """
-                                    UPDATE feeds
-                                    SET name = :name, description = :description,
-                                        category = :category, updated_at = CURRENT_TIMESTAMP
-                                    WHERE id = :feed_id
+                        # Add new feed - just insert without validation for faster import
+                        # (validation will happen on first refresh)
+                        s.execute(
+                            text(
                                 """
-                                ),
-                                {
-                                    "name": title if title else None,
-                                    "description": description if description else None,
-                                    "category": category if category else None,
-                                    "feed_id": feed_id,
-                                },
-                            )
-
+                                INSERT INTO feeds (url, name, description, category, created_at, updated_at)
+                                VALUES (:url, :name, :description, :category, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                            """
+                            ),
+                            {
+                                "url": xml_url,
+                                "name": title if title else xml_url,
+                                "description": description if description else None,
+                                "category": category if category else None,
+                            },
+                        )
                         result["feeds_added"] += 1
+                        if category:
+                            categories.add(category)
 
                 except Exception as e:
                     result["errors"].append(
@@ -591,9 +615,17 @@ def import_opml_content(opml_content: str) -> dict[str, Any]:
         result["categories_found"] = sorted(list(categories))
 
     except ET.ParseError as e:
+        logger.error(f"OPML ParseError: {e}")
         result["errors"].append(f"Invalid OPML format: {str(e)}")
     except Exception as e:
+        logger.error(f"OPML Import Exception: {e}", exc_info=True)
         result["errors"].append(f"Import error: {str(e)}")
+
+    logger.info(
+        f"Import result: added={result['feeds_added']}, updated={result['feeds_updated']}, skipped={result['feeds_skipped']}, errors={len(result['errors'])}"
+    )
+    if result["errors"]:
+        logger.warning(f"Import errors: {result['errors']}")
 
     return result
 
@@ -667,9 +699,16 @@ def export_opml() -> str:
                 # Add metadata as custom attributes
                 feed_attrs["nb:articleCount"] = str(feed["article_count"])
                 feed_attrs["nb:disabled"] = str(bool(feed["disabled"])).lower()
-                feed_attrs["nb:added"] = (
-                    feed["created_at"].isoformat() if feed["created_at"] else ""
-                )
+                # created_at may be datetime or string depending on SQLite driver
+                created_at = feed["created_at"]
+                if created_at:
+                    feed_attrs["nb:added"] = (
+                        created_at.isoformat()
+                        if hasattr(created_at, "isoformat")
+                        else str(created_at)
+                    )
+                else:
+                    feed_attrs["nb:added"] = ""
 
                 ET.SubElement(category_outline, "outline", **feed_attrs)
 
@@ -689,9 +728,16 @@ def export_opml() -> str:
                 # Add metadata
                 feed_attrs["nb:articleCount"] = str(feed["article_count"])
                 feed_attrs["nb:disabled"] = str(bool(feed["disabled"])).lower()
-                feed_attrs["nb:added"] = (
-                    feed["created_at"].isoformat() if feed["created_at"] else ""
-                )
+                # created_at may be datetime or string depending on SQLite driver
+                created_at = feed["created_at"]
+                if created_at:
+                    feed_attrs["nb:added"] = (
+                        created_at.isoformat()
+                        if hasattr(created_at, "isoformat")
+                        else str(created_at)
+                    )
+                else:
+                    feed_attrs["nb:added"] = ""
 
                 ET.SubElement(body, "outline", **feed_attrs)
 
