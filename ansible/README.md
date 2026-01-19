@@ -88,12 +88,14 @@ ansible-playbook -i inventory/localhost.yml playbooks/recover.yml -e force_recre
 
 After recovery, services are available at:
 
-| Service | URL |
-|---------|-----|
-| Dev | http://localhost:8787 |
-| Prod | https://newsbrief.local |
-| Tekton Dashboard | http://localhost:9097 |
-| Event Listener | http://localhost:8080 |
+| Service | URL | Notes |
+|---------|-----|-------|
+| **Dev** | http://localhost:8787 | Run `make dev` locally |
+| **Prod** | https://newsbrief.local | Kubernetes via Caddy |
+| Tekton Dashboard | http://localhost:9097 | Port-forwarded |
+| Event Listener | http://localhost:8080 | Port-forwarded |
+
+**Note**: Dev runs locally (not in Kubernetes). Run `make dev` to start the development server.
 
 ## Troubleshooting
 
@@ -120,8 +122,23 @@ make port-forwards
 
 ### Caddy certificate issues
 
+**Browser shows "certificate not trusted":**
+
+The Caddy root CA needs to be trusted in your macOS keychain:
+
+```bash
+# Export the certificate (if not already done)
+podman cp newsbrief-proxy:/data/caddy/pki/authorities/local/root.crt caddy-data/caddy-root-ca.crt
+
+# Trust it in keychain (requires sudo)
+sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain caddy-data/caddy-root-ca.crt
+```
+
+**Caddy container won't start:**
+
 ```bash
 podman rm -f newsbrief-proxy
-# Then run recover
 make recover
 ```
+
+**Note**: Caddy certificates are persisted in `caddy-data/` so they survive container restarts. You only need to trust the certificate once.

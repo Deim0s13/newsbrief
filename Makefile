@@ -307,18 +307,18 @@ recover:                          ## Recover all services after reboot/sleep
 status:                           ## Check status of all services
 	cd ansible && ansible-playbook -i inventory/localhost.yml playbooks/status.yml
 
-port-forwards:                    ## Restart port forwards only
+port-forwards:                    ## Restart port forwards for prod/Tekton (dev is local)
 	@echo "🔌 Restarting port forwards..."
 	@pkill -f "kubectl port-forward" 2>/dev/null || true
-	@kubectl port-forward svc/newsbrief -n newsbrief-dev 8787:8787 &
 	@kubectl port-forward svc/newsbrief -n newsbrief-prod 8788:8787 &
 	@kubectl port-forward svc/el-newsbrief-listener 8080:8080 &
 	@kubectl port-forward svc/tekton-dashboard -n tekton-pipelines 9097:9097 &
 	@sleep 2
 	@echo "✅ Port forwards restarted"
-	@echo "   Dev:     http://localhost:8787"
 	@echo "   Prod:    http://localhost:8788 (https://newsbrief.local)"
 	@echo "   Tekton:  http://localhost:9097"
+	@echo ""
+	@echo "   Dev: Run 'make dev' locally → http://localhost:8787"
 
 smee:                             ## Start smee webhook bridge
 	npx smee-client --url https://smee.io/cddqBCYHwHG3ZcUY --target http://localhost:8080 --path /

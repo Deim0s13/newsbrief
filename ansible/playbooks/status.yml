@@ -1,6 +1,8 @@
 ---
 # Check status of all services without making changes
 # Usage: ansible-playbook -i inventory/localhost.yml playbooks/status.yml
+#
+# Note: Dev runs locally via 'make dev', not in Kubernetes
 
 - name: Check NewsBrief Service Status
   hosts: localhost
@@ -34,12 +36,6 @@
     - name: Check ArgoCD pods
       command: kubectl get pods -n argocd --no-headers
       register: argocd_pods
-      changed_when: false
-      failed_when: false
-
-    - name: Check NewsBrief dev pods
-      command: kubectl get pods -n newsbrief-dev --no-headers
-      register: dev_pods
       changed_when: false
       failed_when: false
 
@@ -83,10 +79,7 @@
           ArgoCD:
             {{ '✅ Running' if argocd_pods.rc == 0 and argocd_pods.stdout else '❌ Not running' }}
 
-          NewsBrief Dev:
-            {{ '✅ Running' if dev_pods.rc == 0 and dev_pods.stdout else '❌ Not running' }}
-
-          NewsBrief Prod:
+          NewsBrief Prod (Kubernetes):
             {{ '✅ Running' if prod_pods.rc == 0 and prod_pods.stdout else '❌ Not running' }}
 
           Caddy Proxy:
@@ -94,5 +87,10 @@
 
           Port Forwards:
             {{ '✅ Active' if port_forwards.stdout else '❌ None active' }}
+
+          ════════════════════════════════════════════════════════════════
+
+          Dev: Run 'make dev' locally → http://localhost:8787
+          Prod: https://newsbrief.local
 
           ════════════════════════════════════════════════════════════════

@@ -111,3 +111,6 @@ temp/
 # Node.js (for Tailwind CSS build)
 node_modules/
 package-lock.json
+
+# Caddy persistent data (certificates)
+caddy-data/

@@ -28,9 +28,6 @@ spec:
           envFrom:
             - configMapRef:
                 name: newsbrief-config
-          env:
-            - name: ENVIRONMENT
-              value: "development"
           resources:
             requests:
               memory: "256Mi"
