@@ -51,6 +51,14 @@
   when: caddy_running.stdout != "" and caddyfile_updated is changed
   failed_when: false
 
+- name: Ensure Caddy data directories exist
+  file:
+    path: "{{ project_root }}/caddy-data/{{ item }}"
+    state: directory
+  loop:
+    - data
+    - config
+
 - name: Start Caddy container
   command: >
     podman run -d
@@ -58,6 +66,8 @@
     -p 80:80
     -p 443:443
     -v {{ project_root }}/Caddyfile:/etc/caddy/Caddyfile:ro
+    -v {{ project_root }}/caddy-data/data:/data
+    -v {{ project_root }}/caddy-data/config:/config
     caddy:2-alpine
   when: caddy_running.stdout == "" or caddyfile_updated is changed
 
