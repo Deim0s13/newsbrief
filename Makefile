@@ -299,6 +299,30 @@ autostart-stop:                   ## Stop the launchd job
 	@launchctl stop com.newsbrief 2>/dev/null || true
 	@echo "✅ Stopped com.newsbrief"
 
+# ---------- Kubernetes Operations (Ansible) ----------
+recover:                          ## Recover all services after reboot/sleep
+	@echo "🔄 Recovering NewsBrief environment..."
+	cd ansible && ansible-playbook -i inventory/localhost.yml playbooks/recover.yml
+
+status:                           ## Check status of all services
+	cd ansible && ansible-playbook -i inventory/localhost.yml playbooks/status.yml
+
+port-forwards:                    ## Restart port forwards only
+	@echo "🔌 Restarting port forwards..."
+	@pkill -f "kubectl port-forward" 2>/dev/null || true
+	@kubectl port-forward svc/newsbrief -n newsbrief-dev 8787:8787 &
+	@kubectl port-forward svc/newsbrief -n newsbrief-prod 8788:8787 &
+	@kubectl port-forward svc/el-newsbrief-listener 8080:8080 &
+	@kubectl port-forward svc/tekton-dashboard -n tekton-pipelines 9097:9097 &
+	@sleep 2
+	@echo "✅ Port forwards restarted"
+	@echo "   Dev:     http://localhost:8787"
+	@echo "   Prod:    http://localhost:8788 (https://newsbrief.local)"
+	@echo "   Tekton:  http://localhost:9097"
+
+smee:                             ## Start smee webhook bridge
+	npx smee-client --url https://smee.io/cddqBCYHwHG3ZcUY --target http://localhost:8080 --path /
+
 # ---------- Defaults ----------
 .DEFAULT_GOAL := run
-.PHONY: venv run-local build tag push release local-release clean-release cleanup-old-images run deploy deploy-stop deploy-status deploy-init up down logs db-up db-down db-logs db-psql db-reset db-backup db-restore db-backup-list migrate migrate-new migrate-stamp migrate-history migrate-current hostname-setup hostname-check hostname-remove autostart-install autostart-uninstall autostart-status autostart-start autostart-stop
+.PHONY: venv run-local build tag push release local-release clean-release cleanup-old-images run deploy deploy-stop deploy-status deploy-init up down logs db-up db-down db-logs db-psql db-reset db-backup db-restore db-backup-list migrate migrate-new migrate-stamp migrate-history migrate-current hostname-setup hostname-check hostname-remove autostart-install autostart-uninstall autostart-status autostart-start autostart-stop recover status port-forwards smee

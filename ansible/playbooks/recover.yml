@@ -1,0 +1,59 @@
+---
+# Main recovery playbook - run after laptop reboot/wake
+# Usage: ansible-playbook -i inventory/localhost.yml playbooks/recover.yml
+#
+# This playbook checks and restarts all NewsBrief services:
+# 1. Podman machine
+# 2. Kind cluster with local registry
+# 3. Tekton pipelines and triggers
+# 4. ArgoCD
+# 5. Port forwards
+# 6. Caddy reverse proxy
+# 7. Seed dev data if needed
+
+- name: Recover NewsBrief Development Environment
+  hosts: localhost
+  gather_facts: true
+
+  vars:
+    force_recreate: false  # Set to true to force full recreation
+
+  tasks:
+    - name: Check and start Podman
+      include_role:
+        name: podman
+
+    - name: Check and create Kind cluster
+      include_role:
+        name: kind
+
+    - name: Install/verify Tekton
+      include_role:
+        name: tekton
+
+    - name: Install/verify ArgoCD
+      include_role:
+        name: argocd
+
+    - name: Setup NewsBrief application
+      include_role:
+        name: newsbrief
+
+    - name: Start Caddy reverse proxy
+      include_role:
+        name: caddy
+
+    - name: Display service status
+      debug:
+        msg: |
+
+          ════════════════════════════════════════════════════════════════
+          ✅ NewsBrief Environment Recovered!
+          ════════════════════════════════════════════════════════════════
+
+          Services:
+            • Dev:             http://localhost:8787
+            • Prod:            https://newsbrief.local
+            • Tekton Dashboard: http://localhost:9097
+
+          ════════════════════════════════════════════════════════════════

@@ -1,0 +1,60 @@
+---
+# Tekton role - ensures Tekton Pipelines, Triggers, and Dashboard are installed
+
+- name: Check if Tekton Pipelines is installed
+  command: kubectl get namespace tekton-pipelines
+  register: tekton_ns
+  changed_when: false
+  failed_when: false
+
+- name: Install Tekton Pipelines
+  command: kubectl apply -f https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml
+  when: tekton_ns.rc != 0
+
+- name: Install Tekton Triggers
+  command: kubectl apply -f https://storage.googleapis.com/tekton-releases/triggers/latest/release.yaml
+  when: tekton_ns.rc != 0
+
+- name: Install Tekton Interceptors
+  command: kubectl apply -f https://storage.googleapis.com/tekton-releases/triggers/latest/interceptors.yaml
+  when: tekton_ns.rc != 0
+
+- name: Install Tekton Dashboard
+  command: kubectl apply -f https://storage.googleapis.com/tekton-releases/dashboard/latest/release.yaml
+  when: tekton_ns.rc != 0
+
+- name: Wait for Tekton controller to be ready
+  command: kubectl wait --for=condition=ready pod -l app=tekton-pipelines-controller -n tekton-pipelines --timeout=120s
+  changed_when: false
+
+- name: Apply RBAC
+  command: kubectl apply -f {{ project_root }}/k8s/infrastructure/tekton-rbac.yaml
+  changed_when: false
+
+- name: Apply Tekton Tasks
+  command: kubectl apply -f {{ project_root }}/tekton/tasks/
+  changed_when: false
+
+- name: Apply Tekton Pipelines
+  command: kubectl apply -f {{ project_root }}/tekton/pipelines/
+  changed_when: false
+
+- name: Apply Tekton Triggers
+  shell: |
+    kubectl apply -f {{ project_root }}/tekton/triggers/ 2>&1 | grep -v "kustomization\|smee-config" || true
+  changed_when: false
+
+- name: Check for GitHub token secret
+  command: kubectl get secret github-release-token
+  register: github_secret
+  changed_when: false
+  failed_when: false
+
+- name: Warn if GitHub token missing
+  debug:
+    msg: "⚠️  GitHub token secret missing! Run: kubectl create secret generic github-release-token --from-literal=token=YOUR_TOKEN"
+  when: github_secret.rc != 0
+
+- name: Display Tekton status
+  debug:
+    msg: "✅ Tekton Pipelines, Triggers, and Dashboard are installed"

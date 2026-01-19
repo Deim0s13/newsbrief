@@ -1,0 +1,73 @@
+---
+# NewsBrief role - ensures app is running, data is seeded, port forwards are active
+
+- name: Wait for dev deployment to be ready
+  command: kubectl wait --for=condition=available deployment/newsbrief -n {{ dev_namespace }} --timeout=120s
+  changed_when: false
+  retries: 3
+  delay: 10
+
+- name: Wait for prod deployment to be ready
+  command: kubectl wait --for=condition=available deployment/newsbrief -n {{ prod_namespace }} --timeout=120s
+  changed_when: false
+  retries: 3
+  delay: 10
+
+- name: Check if dev has data
+  shell: kubectl exec -n {{ dev_namespace }} deployment/newsbrief -- ls /app/data/newsbrief.sqlite3 2>/dev/null || echo "missing"
+  register: dev_data
+  changed_when: false
+
+- name: Get dev pod name
+  command: kubectl get pod -n {{ dev_namespace }} -l app.kubernetes.io/name=newsbrief -o jsonpath='{.items[0].metadata.name}'
+  register: dev_pod
+  when: "'missing' in dev_data.stdout"
+
+- name: Seed dev database
+  command: kubectl cp {{ project_root }}/data/newsbrief.db {{ dev_namespace }}/{{ dev_pod.stdout }}:/app/data/newsbrief.sqlite3
+  when: "'missing' in dev_data.stdout"
+
+- name: Copy interests to dev
+  command: kubectl cp {{ project_root }}/data/interests.json {{ dev_namespace }}/{{ dev_pod.stdout }}:/app/data/interests.json
+  when: "'missing' in dev_data.stdout"
+
+# Port Forwards
+- name: Kill existing port forwards
+  shell: pkill -f "kubectl port-forward" || true
+  changed_when: false
+
+- name: Start dev port forward (8787)
+  shell: nohup kubectl port-forward svc/newsbrief -n {{ dev_namespace }} 8787:8787 > /dev/null 2>&1 &
+  async: 10
+  poll: 0
+
+- name: Start prod port forward (8788)
+  shell: nohup kubectl port-forward svc/newsbrief -n {{ prod_namespace }} 8788:8787 > /dev/null 2>&1 &
+  async: 10
+  poll: 0
+
+- name: Start event listener port forward (8080)
+  shell: nohup kubectl port-forward svc/el-newsbrief-listener 8080:8080 > /dev/null 2>&1 &
+  async: 10
+  poll: 0
+
+- name: Start Tekton dashboard port forward (9097)
+  shell: nohup kubectl port-forward svc/tekton-dashboard -n tekton-pipelines 9097:9097 > /dev/null 2>&1 &
+  async: 10
+  poll: 0
+
+- name: Wait for port forwards to establish
+  pause:
+    seconds: 3
+
+- name: Verify dev is accessible
+  uri:
+    url: http://localhost:8787/healthz
+    return_content: true
+  register: dev_health
+  retries: 3
+  delay: 2
+
+- name: Display NewsBrief status
+  debug:
+    msg: "✅ NewsBrief dev and prod are running with port forwards active"

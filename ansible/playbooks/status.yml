@@ -1,0 +1,98 @@
+---
+# Check status of all services without making changes
+# Usage: ansible-playbook -i inventory/localhost.yml playbooks/status.yml
+
+- name: Check NewsBrief Service Status
+  hosts: localhost
+  gather_facts: false
+
+  tasks:
+    - name: Check Podman machine status
+      command: podman machine info --format json
+      register: podman_status
+      changed_when: false
+      failed_when: false
+
+    - name: Check Kind cluster
+      command: kind get clusters
+      register: kind_clusters
+      changed_when: false
+      failed_when: false
+
+    - name: Check kubectl context
+      command: kubectl config current-context
+      register: kube_context
+      changed_when: false
+      failed_when: false
+
+    - name: Check Tekton pods
+      command: kubectl get pods -n tekton-pipelines --no-headers
+      register: tekton_pods
+      changed_when: false
+      failed_when: false
+
+    - name: Check ArgoCD pods
+      command: kubectl get pods -n argocd --no-headers
+      register: argocd_pods
+      changed_when: false
+      failed_when: false
+
+    - name: Check NewsBrief dev pods
+      command: kubectl get pods -n newsbrief-dev --no-headers
+      register: dev_pods
+      changed_when: false
+      failed_when: false
+
+    - name: Check NewsBrief prod pods
+      command: kubectl get pods -n newsbrief-prod --no-headers
+      register: prod_pods
+      changed_when: false
+      failed_when: false
+
+    - name: Check Caddy container
+      command: podman ps --filter name=newsbrief-proxy --format "{{ '{{' }}.Status{{ '}}' }}"
+      register: caddy_status
+      changed_when: false
+      failed_when: false
+
+    - name: Check port forwards
+      shell: pgrep -f "kubectl port-forward" || true
+      register: port_forwards
+      changed_when: false
+
+    - name: Display status report
+      debug:
+        msg: |
+
+          ════════════════════════════════════════════════════════════════
+          NewsBrief Service Status Report
+          ════════════════════════════════════════════════════════════════
+
+          Podman Machine:
+            {{ '✅ Running' if podman_status.rc == 0 else '❌ Not running' }}
+
+          Kind Cluster:
+            {{ '✅ ' + kind_clusters.stdout if kind_clusters.rc == 0 and kind_clusters.stdout else '❌ No clusters' }}
+
+          Kubernetes Context:
+            {{ kube_context.stdout if kube_context.rc == 0 else '❌ Not configured' }}
+
+          Tekton:
+            {{ '✅ Running' if tekton_pods.rc == 0 and tekton_pods.stdout else '❌ Not running' }}
+
+          ArgoCD:
+            {{ '✅ Running' if argocd_pods.rc == 0 and argocd_pods.stdout else '❌ Not running' }}
+
+          NewsBrief Dev:
+            {{ '✅ Running' if dev_pods.rc == 0 and dev_pods.stdout else '❌ Not running' }}
+
+          NewsBrief Prod:
+            {{ '✅ Running' if prod_pods.rc == 0 and prod_pods.stdout else '❌ Not running' }}
+
+          Caddy Proxy:
+            {{ '✅ ' + caddy_status.stdout if caddy_status.stdout else '❌ Not running' }}
+
+          Port Forwards:
+            {{ '✅ Active' if port_forwards.stdout else '❌ None active' }}
+
+          ════════════════════════════════════════════════════════════════

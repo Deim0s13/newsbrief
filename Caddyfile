@@ -1,20 +1,15 @@
-# Caddy reverse proxy configuration for NewsBrief
-# Provides secure HTTPS access at https://newsbrief.local
+# Caddy reverse proxy for NewsBrief (Kubernetes)
 
 newsbrief.local {
-    # Use Caddy's internal CA for local development
-    # For production with a real domain, remove this line (Let's Encrypt auto-provisions)
     tls internal
 
-    # Security headers
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains"
         X-Content-Type-Options "nosniff"
         X-Frame-Options "DENY"
         Referrer-Policy "strict-origin-when-cross-origin"
-        # Remove server identification
         -Server
     }
 
-    reverse_proxy api:8787
+    reverse_proxy 192.168.127.254:8788
 }
