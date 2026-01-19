@@ -122,8 +122,23 @@ make port-forwards
 
 ### Caddy certificate issues
 
+**Browser shows "certificate not trusted":**
+
+The Caddy root CA needs to be trusted in your macOS keychain:
+
+```bash
+# Export the certificate (if not already done)
+podman cp newsbrief-proxy:/data/caddy/pki/authorities/local/root.crt caddy-data/caddy-root-ca.crt
+
+# Trust it in keychain (requires sudo)
+sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain caddy-data/caddy-root-ca.crt
+```
+
+**Caddy container won't start:**
+
 ```bash
 podman rm -f newsbrief-proxy
-# Then run recover
 make recover
 ```
+
+**Note**: Caddy certificates are persisted in `caddy-data/` so they survive container restarts. You only need to trust the certificate once.
