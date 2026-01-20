@@ -1274,6 +1274,20 @@ Last error: ${stats.last_error || 'None'}`);
 }
 
 async function refreshAllFeeds() {
+    const btn = document.getElementById('refresh-feeds-btn');
+    const originalHTML = btn.innerHTML;
+
+    // Show loading state
+    btn.disabled = true;
+    btn.innerHTML = `
+        <svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <span>Refreshing...</span>
+    `;
+    btn.classList.add('opacity-75', 'cursor-wait');
+
     try {
         const response = await fetch('/refresh', {
             method: 'POST'
@@ -1285,10 +1299,31 @@ async function refreshAllFeeds() {
 
         const result = await response.json();
         await loadFeeds(); // Reload to get fresh data
-        showNotification(`Refresh completed! Ingested ${result.ingested} new articles`, 'success');
+
+        // Build detailed message
+        const feedsProcessed = result.stats?.feeds?.processed || 0;
+        const feedsWithErrors = result.stats?.feeds?.errors || 0;
+        const feedsCached = result.stats?.feeds?.cached_304 || 0;
+        const newArticles = result.ingested || 0;
+
+        let message = `Refresh completed! ${newArticles} new articles from ${feedsProcessed} feeds`;
+        if (feedsCached > 0) {
+            message += `, ${feedsCached} unchanged`;
+        }
+
+        if (feedsWithErrors > 0) {
+            showNotification(`${message}. ⚠️ ${feedsWithErrors} feed(s) had errors - check the table below.`, 'warning');
+        } else {
+            showNotification(message, 'success');
+        }
     } catch (error) {
         console.error('Error refreshing feeds:', error);
-        showNotification('Error refreshing feeds', 'error');
+        showNotification('Error refreshing feeds: ' + error.message, 'error');
+    } finally {
+        // Restore button state
+        btn.disabled = false;
+        btn.innerHTML = originalHTML;
+        btn.classList.remove('opacity-75', 'cursor-wait');
     }
 }
 
@@ -1795,15 +1830,18 @@ function showNotification(message, type = 'info') {
     notification.className = `px-4 py-2 rounded-md text-white text-sm font-medium ${
         type === 'success' ? 'bg-green-500' :
         type === 'error' ? 'bg-red-500' :
+        type === 'warning' ? 'bg-orange-500' :
         'bg-blue-500'
     }`;
     notification.textContent = message;
 
     document.getElementById('notification-area').appendChild(notification);
 
+    // Warnings stay longer so user can read them
+    const timeout = type === 'warning' ? 8000 : 5000;
     setTimeout(() => {
         notification.remove();
-    }, 5000);
+    }, timeout);
 }
 </script>
 {% endblock %}
