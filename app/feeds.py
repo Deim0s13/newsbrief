@@ -260,6 +260,86 @@ def is_article_url_allowed(article_url: str) -> bool:
         return True  # Error = allow (fail-safe)
 
 
+@dataclass
+class FeedValidationResult:
+    """Result of feed URL validation."""
+
+    is_valid: bool
+    url: str
+    error: Optional[str] = None
+    feed_title: Optional[str] = None
+    entry_count: int = 0
+
+
+def validate_feed_url(url: str, timeout: float = 10.0) -> FeedValidationResult:
+    """
+    Validate a feed URL by checking if it's reachable and returns valid RSS/Atom.
+
+    Args:
+        url: The feed URL to validate
+        timeout: Request timeout in seconds
+
+    Returns:
+        FeedValidationResult with validation status and details
+    """
+    try:
+        # Quick HTTP check first
+        with httpx.Client(timeout=timeout, follow_redirects=True) as client:
+            response = client.get(url, headers={"User-Agent": "newsbrief/0.1"})
+
+            if response.status_code >= 400:
+                return FeedValidationResult(
+                    is_valid=False,
+                    url=url,
+                    error=f"HTTP {response.status_code}: {response.reason_phrase}",
+                )
+
+            # Try to parse as feed
+            parsed = feedparser.parse(response.content)
+
+            # Check for parsing errors
+            if parsed.bozo and not parsed.entries:
+                bozo_msg = (
+                    str(parsed.bozo_exception)
+                    if parsed.bozo_exception
+                    else "Unknown parse error"
+                )
+                return FeedValidationResult(
+                    is_valid=False, url=url, error=f"Invalid feed format: {bozo_msg}"
+                )
+
+            # Check if feed has any entries or valid structure
+            if not parsed.feed and not parsed.entries:
+                return FeedValidationResult(
+                    is_valid=False, url=url, error="No feed content found"
+                )
+
+            # Valid feed
+            feed_title = None
+            if hasattr(parsed.feed, "title") and parsed.feed.title:
+                feed_title = parsed.feed.title
+
+            return FeedValidationResult(
+                is_valid=True,
+                url=url,
+                feed_title=feed_title,
+                entry_count=len(parsed.entries),
+            )
+
+    except httpx.TimeoutException:
+        return FeedValidationResult(
+            is_valid=False, url=url, error=f"Connection timeout after {timeout}s"
+        )
+    except httpx.ConnectError as e:
+        return FeedValidationResult(
+            is_valid=False, url=url, error=f"Connection failed: {str(e)}"
+        )
+    except Exception as e:
+        return FeedValidationResult(
+            is_valid=False, url=url, error=f"Validation error: {str(e)}"
+        )
+
+
 def ensure_feed(feed_url: str) -> int:
     with session_scope() as s:
         row = s.execute(
@@ -495,8 +575,20 @@ def import_opml(path: str) -> int:
         return 0
 
 
-def import_opml_content(opml_content: str) -> dict[str, Any]:
-    """Enhanced OPML import with detailed parsing and metadata extraction."""
+def import_opml_content(
+    opml_content: str, validate: bool = True, validation_timeout: float = 10.0
+) -> dict[str, Any]:
+    """
+    Enhanced OPML import with validation and detailed reporting.
+
+    Args:
+        opml_content: OPML XML content as string
+        validate: If True, validate each feed URL before importing
+        validation_timeout: Timeout in seconds for each validation request
+
+    Returns:
+        Dict with import statistics and any errors
+    """
     import xml.etree.ElementTree as ET
     from urllib.parse import urlparse
 
@@ -504,8 +596,11 @@ def import_opml_content(opml_content: str) -> dict[str, Any]:
         "feeds_added": 0,
         "feeds_updated": 0,
         "feeds_skipped": 0,
+        "feeds_failed": 0,
+        "failed_feeds": [],  # List of {url, error} for failed validations
         "errors": [],
         "categories_found": [],
+        "validation_enabled": validate,
     }
 
     try:
@@ -566,6 +661,29 @@ def import_opml_content(opml_content: str) -> dict[str, Any]:
                         else:
                             result["feeds_skipped"] += 1
                     else:
+                        # Validate new feed before adding
+                        if validate:
+                            validation = validate_feed_url(
+                                xml_url, timeout=validation_timeout
+                            )
+                            if not validation.is_valid:
+                                result["feeds_failed"] += 1
+                                result["failed_feeds"].append(
+                                    {
+                                        "url": xml_url,
+                                        "name": title or xml_url,
+                                        "error": validation.error,
+                                    }
+                                )
+                                logger.warning(
+                                    f"Feed validation failed for {xml_url}: {validation.error}"
+                                )
+                                continue
+
+                            # Use validated feed title if OPML didn't provide one
+                            if not title and validation.feed_title:
+                                title = validation.feed_title
+
                         # Add new feed
                         feed_id = ensure_feed(xml_url)
 
@@ -589,6 +707,7 @@ def import_opml_content(opml_content: str) -> dict[str, Any]:
                             )
 
                         result["feeds_added"] += 1
+                        logger.info(f"Added feed: {title or xml_url}")
 
                 except Exception as e:
                     result["errors"].append(

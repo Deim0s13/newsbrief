@@ -606,7 +606,10 @@ def export_feeds_opml():
 
 
 @app.post("/feeds/import/opml")
-def import_feeds_opml(file: bytes = None):
+def import_feeds_opml(
+    file: bytes = None,
+    validate: bool = Query(True, description="Validate feed URLs before importing"),
+):
     """Import feeds from OPML file upload or raw content."""
 
     if not file:
@@ -616,12 +619,15 @@ def import_feeds_opml(file: bytes = None):
         # Decode file content
         opml_content = file.decode("utf-8")
 
-        # Process OPML import
-        result = import_opml_content(opml_content)
+        # Process OPML import with validation
+        result = import_opml_content(opml_content, validate=validate)
 
+        failed_msg = (
+            f", {result['feeds_failed']} failed" if result["feeds_failed"] > 0 else ""
+        )
         return {
             "success": True,
-            "message": f"Import completed: {result['feeds_added']} added, {result['feeds_updated']} updated, {result['feeds_skipped']} skipped",
+            "message": f"Import completed: {result['feeds_added']} added, {result['feeds_updated']} updated, {result['feeds_skipped']} skipped{failed_msg}",
             "details": result,
         }
 
@@ -635,7 +641,10 @@ def import_feeds_opml(file: bytes = None):
 
 
 @app.post("/feeds/import/opml/upload")
-async def import_feeds_opml_upload(file: UploadFile = File(...)):
+async def import_feeds_opml_upload(
+    file: UploadFile = File(...),
+    validate: bool = Query(True, description="Validate feed URLs before importing"),
+):
     """Import feeds from OPML file upload (multipart form)."""
 
     if not file:
@@ -653,13 +662,16 @@ async def import_feeds_opml_upload(file: UploadFile = File(...)):
         file_content = await file.read()
         opml_content = file_content.decode("utf-8")
 
-        # Process OPML import
-        result = import_opml_content(opml_content)
+        # Process OPML import with validation
+        result = import_opml_content(opml_content, validate=validate)
 
+        failed_msg = (
+            f", {result['feeds_failed']} failed" if result["feeds_failed"] > 0 else ""
+        )
         return {
             "success": True,
             "filename": file.filename,
-            "message": f"Import completed: {result['feeds_added']} added, {result['feeds_updated']} updated, {result['feeds_skipped']} skipped",
+            "message": f"Import completed: {result['feeds_added']} added, {result['feeds_updated']} updated, {result['feeds_skipped']} skipped{failed_msg}",
             "details": result,
         }
 
