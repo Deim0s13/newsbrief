@@ -50,6 +50,39 @@
         </div>
     </div>
 
+    <!-- Failed Imports Banner (if any pending) -->
+    <div id="failed-imports-banner" class="hidden mb-6">
+        <div class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-4">
+            <div class="flex items-start">
+                <div class="flex-shrink-0">
+                    <svg class="h-5 w-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                    </svg>
+                </div>
+                <div class="ml-3 flex-1">
+                    <h3 class="text-sm font-medium text-amber-800 dark:text-amber-200">
+                        <span id="failed-imports-count">0</span> feed(s) failed to import
+                    </h3>
+                    <div class="mt-2 text-sm text-amber-700 dark:text-amber-300">
+                        <p>Some feeds could not be validated during your last import. Review and retry or dismiss them.</p>
+                    </div>
+                    <div class="mt-3">
+                        <button onclick="showFailedImportsModal()" class="text-sm font-medium text-amber-800 dark:text-amber-200 hover:text-amber-600 dark:hover:text-amber-400 underline">
+                            Review Failed Feeds →
+                        </button>
+                    </div>
+                </div>
+                <div class="ml-auto pl-3">
+                    <button onclick="dismissAllFailedImports()" class="text-amber-400 hover:text-amber-600 dark:hover:text-amber-300">
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Statistics Summary -->
     <div id="stats-summary" class="mb-8">
         <!-- Will be populated by JavaScript -->
@@ -359,6 +392,53 @@
     </div>
 </div>
 
+<!-- Failed Imports Modal -->
+<div id="failed-imports-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col">
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Failed Feed Imports</h3>
+            <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                These feeds could not be validated. You can retry, edit the URL, or dismiss them.
+            </p>
+        </div>
+        <div class="px-6 py-4 overflow-y-auto flex-1">
+            <div id="failed-imports-list" class="space-y-3">
+                <!-- Populated by JavaScript -->
+            </div>
+        </div>
+        <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-between">
+            <button onclick="dismissAllFailedImports()" class="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 text-sm">
+                Dismiss All
+            </button>
+            <button onclick="hideFailedImportsModal()" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-md">
+                Close
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Import Results Modal -->
+<div id="import-results-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-lg w-full mx-4">
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Import Results</h3>
+        </div>
+        <div class="px-6 py-4">
+            <div id="import-results-content">
+                <!-- Populated by JavaScript -->
+            </div>
+        </div>
+        <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end space-x-3">
+            <button id="view-failed-btn" onclick="showFailedImportsFromResults()" class="hidden px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-md">
+                Review Failed Feeds
+            </button>
+            <button onclick="hideImportResultsModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md">
+                Done
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- Notification Area -->
 <div id="notification-area" class="fixed top-4 right-4 z-50 space-y-2"></div>
 {% endblock %}
@@ -378,6 +458,7 @@ const statsContainer = document.getElementById('stats-summary');
 // Initialize page
 document.addEventListener('DOMContentLoaded', function() {
     loadFeeds();
+    loadFailedImports();
     setupEventListeners();
 });
 
@@ -1028,6 +1109,12 @@ function clearFeedForm() {
     document.getElementById('feed-category').value = '';
     document.getElementById('feed-priority').value = '3';
     document.getElementById('feed-disabled').checked = false;
+
+    // Clear any validation errors
+    const urlInput = document.getElementById('feed-url');
+    urlInput.classList.remove('border-red-500');
+    const existingError = document.getElementById('feed-url-error');
+    if (existingError) existingError.remove();
 }
 
 function populateFeedForm(feed) {
@@ -1049,6 +1136,18 @@ async function saveFeed() {
         disabled: document.getElementById('feed-disabled').checked
     };
 
+    // Show loading state on save button
+    const saveBtn = document.getElementById('save-feed-btn');
+    const originalText = saveBtn.textContent;
+    saveBtn.textContent = 'Validating...';
+    saveBtn.disabled = true;
+
+    // Clear any previous validation errors
+    const urlInput = document.getElementById('feed-url');
+    const existingError = document.getElementById('feed-url-error');
+    if (existingError) existingError.remove();
+    urlInput.classList.remove('border-red-500');
+
     try {
         const url = currentEditingFeed ? `/feeds/${currentEditingFeed.id}` : '/feeds';
         const method = currentEditingFeed ? 'PUT' : 'POST';
@@ -1061,8 +1160,26 @@ async function saveFeed() {
             body: JSON.stringify(feedData)
         });
 
+        const result = await response.json();
+
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            // Handle validation error - keep modal open and show error
+            if (response.status === 400 && result.detail) {
+                // Show validation error under URL field
+                urlInput.classList.add('border-red-500');
+                const errorDiv = document.createElement('div');
+                errorDiv.id = 'feed-url-error';
+                errorDiv.className = 'mt-1 text-sm text-red-600 dark:text-red-400';
+                errorDiv.innerHTML = `
+                    <svg class="inline h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    ${result.detail}
+                `;
+                urlInput.parentNode.appendChild(errorDiv);
+                return; // Don't close modal
+            }
+            throw new Error(result.detail || `HTTP error! status: ${response.status}`);
         }
 
         hideFeedModal();
@@ -1070,7 +1187,10 @@ async function saveFeed() {
         showNotification(currentEditingFeed ? 'Feed updated successfully' : 'Feed added successfully', 'success');
     } catch (error) {
         console.error('Error saving feed:', error);
-        showNotification('Error saving feed', 'error');
+        showNotification(`Error saving feed: ${error.message}`, 'error');
+    } finally {
+        saveBtn.textContent = originalText;
+        saveBtn.disabled = false;
     }
 }
 
@@ -1200,23 +1320,12 @@ async function startOPMLImport() {
         if (response.ok && result.success) {
             hideOPMLImportModal();
             await loadFeeds(); // Reload feeds to show imported ones
+            await loadFailedImports(); // Refresh failed imports list
 
-            // Show detailed success message
-            const details = result.details;
-            let message = result.message;
-
-            if (details.categories_found && details.categories_found.length > 0) {
-                message += `\nCategories found: ${details.categories_found.join(', ')}`;
-            }
-
-            if (details.errors && details.errors.length > 0) {
-                message += `\n⚠️ ${details.errors.length} error(s) occurred during import`;
-                console.warn('OPML Import errors:', details.errors);
-            }
-
-            showNotification(message, 'success');
+            // Show detailed results modal
+            showImportResultsModal(result.details);
         } else {
-            throw new Error(result.message || 'Import failed');
+            throw new Error(result.message || result.detail || 'Import failed');
         }
     } catch (error) {
         console.error('Error importing OPML:', error);
@@ -1269,6 +1378,220 @@ async function exportOPML() {
         console.error('Error exporting OPML:', error);
         showNotification(`Export failed: ${error.message}`, 'error');
     }
+}
+
+// Failed Imports Management
+let failedImports = [];
+let lastImportResults = null;
+
+async function loadFailedImports() {
+    try {
+        const response = await fetch('/feeds/import/failed?status=pending');
+        failedImports = await response.json();
+
+        const banner = document.getElementById('failed-imports-banner');
+        const countEl = document.getElementById('failed-imports-count');
+
+        if (failedImports.length > 0) {
+            banner.classList.remove('hidden');
+            countEl.textContent = failedImports.length;
+        } else {
+            banner.classList.add('hidden');
+        }
+    } catch (error) {
+        console.error('Error loading failed imports:', error);
+    }
+}
+
+function showFailedImportsModal() {
+    const list = document.getElementById('failed-imports-list');
+
+    if (failedImports.length === 0) {
+        list.innerHTML = `
+            <div class="text-center text-gray-500 dark:text-gray-400 py-8">
+                No pending failed imports
+            </div>
+        `;
+    } else {
+        list.innerHTML = failedImports.map(fi => `
+            <div class="p-4 border border-gray-200 dark:border-gray-700 rounded-lg" data-failed-id="${fi.id}">
+                <div class="flex items-start justify-between">
+                    <div class="flex-1 min-w-0">
+                        <div class="font-medium text-gray-900 dark:text-white truncate" title="${fi.feed_name || fi.feed_url}">
+                            ${fi.feed_name || 'Unknown Feed'}
+                        </div>
+                        <div class="text-sm text-gray-500 dark:text-gray-400 truncate" title="${fi.feed_url}">
+                            ${fi.feed_url}
+                        </div>
+                        <div class="mt-1 text-sm text-red-600 dark:text-red-400">
+                            <svg class="inline h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            ${fi.error_message || 'Validation failed'}
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-2 ml-4">
+                        <button onclick="retryFailedImport(${fi.id})" class="px-3 py-1 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded">
+                            Retry
+                        </button>
+                        <button onclick="dismissFailedImport(${fi.id})" class="px-3 py-1 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600 rounded">
+                            Dismiss
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    document.getElementById('failed-imports-modal').classList.remove('hidden');
+    document.getElementById('failed-imports-modal').classList.add('flex');
+}
+
+function hideFailedImportsModal() {
+    document.getElementById('failed-imports-modal').classList.add('hidden');
+    document.getElementById('failed-imports-modal').classList.remove('flex');
+}
+
+async function retryFailedImport(failedId) {
+    try {
+        const response = await fetch(`/feeds/import/failed/${failedId}/retry`, {
+            method: 'POST'
+        });
+        const result = await response.json();
+
+        if (result.success) {
+            showNotification('Feed added successfully!', 'success');
+            await loadFailedImports();
+            await loadFeeds();
+
+            // Update modal if still open
+            if (!document.getElementById('failed-imports-modal').classList.contains('hidden')) {
+                showFailedImportsModal();
+            }
+        } else {
+            showNotification(`Retry failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        console.error('Error retrying import:', error);
+        showNotification('Error retrying import', 'error');
+    }
+}
+
+async function dismissFailedImport(failedId) {
+    try {
+        await fetch(`/feeds/import/failed/${failedId}/dismiss`, {
+            method: 'POST'
+        });
+
+        await loadFailedImports();
+
+        // Update modal if still open
+        if (!document.getElementById('failed-imports-modal').classList.contains('hidden')) {
+            showFailedImportsModal();
+        }
+    } catch (error) {
+        console.error('Error dismissing import:', error);
+        showNotification('Error dismissing import', 'error');
+    }
+}
+
+async function dismissAllFailedImports() {
+    if (!confirm('Dismiss all failed imports? You can always re-import them later from your OPML file.')) {
+        return;
+    }
+
+    try {
+        for (const fi of failedImports) {
+            await fetch(`/feeds/import/failed/${fi.id}/dismiss`, { method: 'POST' });
+        }
+
+        await loadFailedImports();
+        hideFailedImportsModal();
+        showNotification('All failed imports dismissed', 'info');
+    } catch (error) {
+        console.error('Error dismissing imports:', error);
+        showNotification('Error dismissing imports', 'error');
+    }
+}
+
+function showImportResultsModal(results) {
+    lastImportResults = results;
+    const content = document.getElementById('import-results-content');
+    const viewFailedBtn = document.getElementById('view-failed-btn');
+
+    const hasFailures = results.feeds_failed > 0;
+
+    content.innerHTML = `
+        <div class="space-y-4">
+            <!-- Success Stats -->
+            <div class="grid grid-cols-2 gap-4">
+                <div class="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg text-center">
+                    <div class="text-2xl font-bold text-green-600 dark:text-green-400">${results.feeds_added}</div>
+                    <div class="text-sm text-green-800 dark:text-green-200">Added</div>
+                </div>
+                <div class="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-center">
+                    <div class="text-2xl font-bold text-blue-600 dark:text-blue-400">${results.feeds_updated}</div>
+                    <div class="text-sm text-blue-800 dark:text-blue-200">Updated</div>
+                </div>
+                <div class="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg text-center">
+                    <div class="text-2xl font-bold text-gray-600 dark:text-gray-400">${results.feeds_skipped}</div>
+                    <div class="text-sm text-gray-800 dark:text-gray-200">Skipped</div>
+                </div>
+                ${hasFailures ? `
+                <div class="p-3 bg-red-50 dark:bg-red-900/20 rounded-lg text-center">
+                    <div class="text-2xl font-bold text-red-600 dark:text-red-400">${results.feeds_failed}</div>
+                    <div class="text-sm text-red-800 dark:text-red-200">Failed</div>
+                </div>
+                ` : `
+                <div class="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg text-center">
+                    <div class="text-2xl font-bold text-gray-600 dark:text-gray-400">0</div>
+                    <div class="text-sm text-gray-800 dark:text-gray-200">Failed</div>
+                </div>
+                `}
+            </div>
+
+            ${hasFailures ? `
+            <div class="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
+                <div class="flex items-start">
+                    <svg class="h-5 w-5 text-amber-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                    </svg>
+                    <div class="ml-3">
+                        <h4 class="text-sm font-medium text-amber-800 dark:text-amber-200">Some feeds failed validation</h4>
+                        <p class="mt-1 text-sm text-amber-700 dark:text-amber-300">
+                            ${results.feeds_failed} feed(s) could not be validated. These may be temporarily unavailable or have invalid URLs.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            ` : ''}
+
+            ${results.categories_found && results.categories_found.length > 0 ? `
+            <div class="text-sm text-gray-600 dark:text-gray-400">
+                <span class="font-medium">Categories imported:</span> ${results.categories_found.join(', ')}
+            </div>
+            ` : ''}
+        </div>
+    `;
+
+    if (hasFailures) {
+        viewFailedBtn.classList.remove('hidden');
+    } else {
+        viewFailedBtn.classList.add('hidden');
+    }
+
+    document.getElementById('import-results-modal').classList.remove('hidden');
+    document.getElementById('import-results-modal').classList.add('flex');
+}
+
+function hideImportResultsModal() {
+    document.getElementById('import-results-modal').classList.add('hidden');
+    document.getElementById('import-results-modal').classList.remove('flex');
+}
+
+function showFailedImportsFromResults() {
+    hideImportResultsModal();
+    loadFailedImports().then(() => showFailedImportsModal());
 }
 
 // Bulk Operations Management

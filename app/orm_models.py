@@ -202,6 +202,63 @@ class StoryArticle(Base):
     )
 
 
+class ImportHistory(Base):
+    """
+    History of OPML feed imports.
+
+    Tracks import attempts with statistics and links to any failed feeds.
+    Retained for 30 days for user reference.
+    """
+
+    __tablename__ = "import_history"
+
+    id = Column(Integer, primary_key=True)
+    imported_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
+    filename = Column(Text)
+    feeds_added = Column(Integer, default=0)
+    feeds_updated = Column(Integer, default=0)
+    feeds_skipped = Column(Integer, default=0)
+    feeds_failed = Column(Integer, default=0)
+    validation_enabled = Column(Boolean, default=True)
+
+    # Relationships
+    failed_feeds = relationship(
+        "FailedImport", back_populates="import_history", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (Index("idx_import_history_date", "imported_at"),)
+
+
+class FailedImport(Base):
+    """
+    Failed feed imports from OPML.
+
+    Stores details about feeds that failed validation during import,
+    allowing users to review and retry.
+    """
+
+    __tablename__ = "failed_imports"
+
+    id = Column(Integer, primary_key=True)
+    import_id = Column(
+        Integer, ForeignKey("import_history.id", ondelete="CASCADE"), nullable=False
+    )
+    feed_url = Column(Text, nullable=False)
+    feed_name = Column(Text)
+    error_message = Column(Text)
+    status = Column(String(20), default="pending")  # pending, resolved, dismissed
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    resolved_at = Column(DateTime)
+
+    # Relationships
+    import_history = relationship("ImportHistory", back_populates="failed_feeds")
+
+    __table_args__ = (
+        Index("idx_failed_imports_import_id", "import_id"),
+        Index("idx_failed_imports_status", "status"),
+    )
+
+
 class SynthesisCache(Base):
     """
     Cache for LLM synthesis results.

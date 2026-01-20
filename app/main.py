@@ -24,12 +24,17 @@ from .feeds import (
     add_feed,
     export_opml,
     fetch_and_store,
+    get_failed_imports,
+    get_import_history,
+    get_latest_import_summary,
     import_opml,
     import_opml_content,
     migrate_sanitize_existing_summaries,
     recalculate_rankings_and_topics,
+    update_failed_import_status,
     update_feed_health_scores,
     update_feed_names,
+    validate_feed_url,
 )
 from .llm import DEFAULT_MODEL, OLLAMA_BASE_URL, get_llm_service, is_llm_available
 from .logging_config import configure_logging
@@ -663,7 +668,9 @@ async def import_feeds_opml_upload(
         opml_content = file_content.decode("utf-8")
 
         # Process OPML import with validation
-        result = import_opml_content(opml_content, validate=validate)
+        result = import_opml_content(
+            opml_content, validate=validate, filename=file.filename
+        )
 
         failed_msg = (
             f", {result['feeds_failed']} failed" if result["feeds_failed"] > 0 else ""
@@ -682,6 +689,97 @@ async def import_feeds_opml_upload(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
+
+
+@app.get("/feeds/import/history")
+def get_import_history_endpoint(
+    days: int = Query(30, description="Number of days of history to retrieve")
+):
+    """Get import history for the last N days."""
+    return get_import_history(days=days)
+
+
+@app.get("/feeds/import/failed")
+def get_failed_imports_endpoint(
+    status: Optional[str] = Query(
+        "pending",
+        description="Filter by status: pending, resolved, dismissed, or None for all",
+    )
+):
+    """Get failed feed imports."""
+    return get_failed_imports(status=status if status != "all" else None)
+
+
+@app.get("/feeds/import/latest")
+def get_latest_import_endpoint():
+    """Get summary of the most recent import including any pending failed feeds."""
+    result = get_latest_import_summary()
+    if not result:
+        return {"has_import": False}
+    return {"has_import": True, **result}
+
+
+@app.post("/feeds/import/failed/{failed_id}/dismiss")
+def dismiss_failed_import(failed_id: int):
+    """Dismiss a failed import (user acknowledges and won't retry)."""
+    success = update_failed_import_status(failed_id, "dismissed")
+    if not success:
+        raise HTTPException(status_code=404, detail="Failed import not found")
+    return {"success": True, "status": "dismissed"}
+
+
+@app.post("/feeds/import/failed/{failed_id}/retry")
+def retry_failed_import(
+    failed_id: int,
+    validate: bool = Query(True, description="Validate the feed URL before adding"),
+):
+    """Retry adding a failed feed."""
+    # Get the failed import details
+    failed_imports = get_failed_imports(status=None)
+    failed_import = next((f for f in failed_imports if f["id"] == failed_id), None)
+
+    if not failed_import:
+        raise HTTPException(status_code=404, detail="Failed import not found")
+
+    feed_url = failed_import["feed_url"]
+    feed_name = failed_import["feed_name"]
+
+    # Validate if requested
+    if validate:
+        validation = validate_feed_url(feed_url)
+        if not validation.is_valid:
+            return {
+                "success": False,
+                "error": validation.error,
+                "message": f"Feed still invalid: {validation.error}",
+            }
+
+    # Try to add the feed
+    try:
+        feed_id = add_feed(feed_url)
+
+        # Update with name if available
+        if feed_name:
+            with session_scope() as s:
+                s.execute(
+                    text("UPDATE feeds SET name = :name WHERE id = :id"),
+                    {"name": feed_name, "id": feed_id},
+                )
+
+        # Mark as resolved
+        update_failed_import_status(failed_id, "resolved")
+
+        return {
+            "success": True,
+            "feed_id": feed_id,
+            "message": f"Feed added successfully",
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "message": f"Failed to add feed: {str(e)}",
+        }
 
 
 @app.post("/feeds/categories/bulk-assign")
@@ -807,8 +905,22 @@ def get_feed(feed_id: int):
 
 
 @app.post("/feeds", response_model=FeedOut)
-def add_feed_endpoint(feed: FeedIn):
+def add_feed_endpoint(
+    feed: FeedIn,
+    validate: bool = Query(True, description="Validate feed URL before adding"),
+):
     """Add a new RSS/Atom feed."""
+    # Validate the feed URL first
+    if validate:
+        validation = validate_feed_url(str(feed.url))
+        if not validation.is_valid:
+            raise HTTPException(
+                status_code=400, detail=f"Feed validation failed: {validation.error}"
+            )
+        # Use validated title if not provided
+        if not feed.name and validation.feed_title:
+            feed.name = validation.feed_title
+
     # Use the existing add_feed function but with enhanced data
     fid = add_feed(str(feed.url))
 
