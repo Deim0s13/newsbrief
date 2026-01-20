@@ -52,28 +52,28 @@
 
     <!-- Failed Imports Banner (if any pending) -->
     <div id="failed-imports-banner" class="hidden mb-6">
-        <div class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-4">
+        <div class="bg-red-50 dark:bg-gray-800 border-l-4 border-red-500 rounded-r-lg p-4">
             <div class="flex items-start">
                 <div class="flex-shrink-0">
-                    <svg class="h-5 w-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="h-5 w-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
                     </svg>
                 </div>
                 <div class="ml-3 flex-1">
-                    <h3 class="text-sm font-medium text-amber-800 dark:text-amber-200">
+                    <h3 class="text-sm font-semibold text-red-800 dark:text-red-400">
                         <span id="failed-imports-count">0</span> feed(s) failed to import
                     </h3>
-                    <div class="mt-2 text-sm text-amber-700 dark:text-amber-300">
+                    <div class="mt-2 text-sm text-gray-700 dark:text-gray-300">
                         <p>Some feeds could not be validated during your last import. Review and retry or dismiss them.</p>
                     </div>
                     <div class="mt-3">
-                        <button onclick="showFailedImportsModal()" class="text-sm font-medium text-amber-800 dark:text-amber-200 hover:text-amber-600 dark:hover:text-amber-400 underline">
+                        <button onclick="showFailedImportsModal()" class="text-sm font-medium text-red-700 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300 underline">
                             Review Failed Feeds →
                         </button>
                     </div>
                 </div>
                 <div class="ml-auto pl-3">
-                    <button onclick="dismissAllFailedImports()" class="text-amber-400 hover:text-amber-600 dark:hover:text-amber-300">
+                    <button onclick="dismissAllFailedImports()" class="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">
                         <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                         </svg>
@@ -1160,11 +1160,35 @@ async function saveFeed() {
             body: JSON.stringify(feedData)
         });
 
-        const result = await response.json();
+        let result;
+        try {
+            result = await response.json();
+        } catch (jsonError) {
+            console.error('Failed to parse response:', jsonError);
+            throw new Error('Server returned invalid response');
+        }
 
         if (!response.ok) {
             // Handle validation error - keep modal open and show error
-            if (response.status === 400 && result.detail) {
+            if (response.status === 400) {
+                // Extract user-friendly error message
+                let errorMessage = result.detail || 'Invalid feed URL';
+
+                // Make the error more user-friendly
+                if (errorMessage.includes('Connection failed')) {
+                    errorMessage = 'Could not connect to this URL. Please check the address is correct.';
+                } else if (errorMessage.includes('timeout')) {
+                    errorMessage = 'Connection timed out. The server may be slow or unavailable.';
+                } else if (errorMessage.includes('Invalid feed format')) {
+                    errorMessage = 'This URL does not contain a valid RSS or Atom feed.';
+                } else if (errorMessage.includes('HTTP 404')) {
+                    errorMessage = 'Feed not found (404). Please check the URL.';
+                } else if (errorMessage.includes('HTTP 403') || errorMessage.includes('HTTP 401')) {
+                    errorMessage = 'Access denied. This feed may require authentication.';
+                } else if (errorMessage.includes('No feed content')) {
+                    errorMessage = 'No RSS/Atom content found at this URL.';
+                }
+
                 // Show validation error under URL field
                 urlInput.classList.add('border-red-500');
                 const errorDiv = document.createElement('div');
@@ -1174,12 +1198,12 @@ async function saveFeed() {
                     <svg class="inline h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                     </svg>
-                    ${result.detail}
+                    ${errorMessage}
                 `;
                 urlInput.parentNode.appendChild(errorDiv);
                 return; // Don't close modal
             }
-            throw new Error(result.detail || `HTTP error! status: ${response.status}`);
+            throw new Error(result.detail || `Server error (${response.status})`);
         }
 
         hideFeedModal();
@@ -1187,7 +1211,18 @@ async function saveFeed() {
         showNotification(currentEditingFeed ? 'Feed updated successfully' : 'Feed added successfully', 'success');
     } catch (error) {
         console.error('Error saving feed:', error);
-        showNotification(`Error saving feed: ${error.message}`, 'error');
+        // Show error inline if it's a validation-type error
+        urlInput.classList.add('border-red-500');
+        const errorDiv = document.createElement('div');
+        errorDiv.id = 'feed-url-error';
+        errorDiv.className = 'mt-1 text-sm text-red-600 dark:text-red-400';
+        errorDiv.innerHTML = `
+            <svg class="inline h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            ${error.message || 'Failed to validate feed. Please try again.'}
+        `;
+        urlInput.parentNode.appendChild(errorDiv);
     } finally {
         saveBtn.textContent = originalText;
         saveBtn.disabled = false;
@@ -1551,14 +1586,14 @@ function showImportResultsModal(results) {
             </div>
 
             ${hasFailures ? `
-            <div class="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
+            <div class="p-4 bg-red-50 dark:bg-gray-700 border-l-4 border-red-500 rounded">
                 <div class="flex items-start">
-                    <svg class="h-5 w-5 text-amber-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
                     </svg>
                     <div class="ml-3">
-                        <h4 class="text-sm font-medium text-amber-800 dark:text-amber-200">Some feeds failed validation</h4>
-                        <p class="mt-1 text-sm text-amber-700 dark:text-amber-300">
+                        <h4 class="text-sm font-semibold text-red-800 dark:text-red-400">Some feeds failed validation</h4>
+                        <p class="mt-1 text-sm text-gray-700 dark:text-gray-300">
                             ${results.feeds_failed} feed(s) could not be validated. These may be temporarily unavailable or have invalid URLs.
                         </p>
                     </div>

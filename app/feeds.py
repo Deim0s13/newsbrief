@@ -745,8 +745,8 @@ def _store_import_history(
             text(
                 """
                 INSERT INTO import_history
-                (filename, feeds_added, feeds_updated, feeds_skipped, feeds_failed, validation_enabled)
-                VALUES (:filename, :added, :updated, :skipped, :failed, :validation)
+                (imported_at, filename, feeds_added, feeds_updated, feeds_skipped, feeds_failed, validation_enabled)
+                VALUES (CURRENT_TIMESTAMP, :filename, :added, :updated, :skipped, :failed, :validation)
                 """
             ),
             {
@@ -761,14 +761,18 @@ def _store_import_history(
 
         # Get the import ID
         import_id = s.execute(text("SELECT last_insert_rowid()")).scalar()
+        logger.info(f"Created import_history with id={import_id}")
 
         # Store failed feeds
-        for failed in result.get("failed_feeds", []):
+        failed_feeds = result.get("failed_feeds", [])
+        logger.info(f"Storing {len(failed_feeds)} failed feeds for import {import_id}")
+        for failed in failed_feeds:
+            logger.debug(f"Inserting failed feed: {failed}")
             s.execute(
                 text(
                     """
-                    INSERT INTO failed_imports (import_id, feed_url, feed_name, error_message)
-                    VALUES (:import_id, :url, :name, :error)
+                    INSERT INTO failed_imports (import_id, feed_url, feed_name, error_message, status)
+                    VALUES (:import_id, :url, :name, :error, 'pending')
                     """
                 ),
                 {
@@ -778,6 +782,7 @@ def _store_import_history(
                     "error": failed.get("error"),
                 },
             )
+        logger.info(f"Stored {len(failed_feeds)} failed feeds")
 
         return import_id
 
