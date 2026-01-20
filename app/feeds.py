@@ -120,7 +120,7 @@ class RefreshStats:
 
 
 # Configurable limits (can be overridden by environment variables)
-MAX_ITEMS_PER_REFRESH = int(os.getenv("NEWSBRIEF_MAX_ITEMS_PER_REFRESH", "150"))
+MAX_ITEMS_PER_REFRESH = int(os.getenv("NEWSBRIEF_MAX_ITEMS_PER_REFRESH", "500"))
 MAX_ITEMS_PER_FEED = int(os.getenv("NEWSBRIEF_MAX_ITEMS_PER_FEED", "50"))
 MAX_REFRESH_TIME_SECONDS = int(
     os.getenv("NEWSBRIEF_MAX_REFRESH_TIME", "300")
@@ -343,10 +343,18 @@ def ensure_feed(feed_url: str) -> int:
 
 
 def list_feeds() -> Iterable[Tuple[int, str, Optional[str], Optional[str], int, int]]:
+    """
+    List all feeds for refresh processing.
+
+    Orders by fetch_count ASC to prioritize unfetched feeds (fetch_count=0),
+    ensuring newly imported feeds are processed first.
+    """
     with session_scope() as s:
         rows = s.execute(
             text(
-                "SELECT id, url, etag, last_modified, robots_allowed, disabled FROM feeds"
+                """SELECT id, url, etag, last_modified, robots_allowed, disabled
+                   FROM feeds
+                   ORDER BY fetch_count ASC, id ASC"""
             )
         ).all()
         for r in rows:

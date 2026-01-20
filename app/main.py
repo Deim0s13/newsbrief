@@ -449,7 +449,7 @@ def search_page(request: Request, q: str = ""):
                            created_at
                     FROM items
                     WHERE title LIKE :query OR summary LIKE :query OR ai_summary LIKE :query
-                    ORDER BY ranking_score DESC, COALESCE(published, created_at) DESC
+                    ORDER BY COALESCE(published, created_at) DESC, ranking_score DESC
                     LIMIT 50
                 """
                 ),
@@ -1040,7 +1040,7 @@ def list_items(
                i.structured_summary_json, i.structured_summary_model,
                i.structured_summary_content_hash, i.structured_summary_generated_at,
                i.ranking_score, i.topic, i.topic_confidence, i.source_weight,
-               i.created_at, COALESCE(i.published, i.created_at) AS sort_date
+               i.created_at, i.feed_id, COALESCE(i.published, i.created_at) AS sort_date
         FROM items i
         """
 
@@ -1091,7 +1091,9 @@ def list_items(
             query += " " + " ".join(joins)
         if where_clauses:
             query += " WHERE " + " AND ".join(where_clauses)
-        query += " ORDER BY i.ranking_score DESC, sort_date DESC"
+        query += (
+            " ORDER BY COALESCE(i.published, i.created_at) DESC, i.ranking_score DESC"
+        )
         query += " LIMIT :lim"
 
         rows = s.execute(text(query), params).all()
@@ -1149,7 +1151,7 @@ def list_items(
                     url=r[2],
                     published=r[3],
                     summary=r[4],
-                    feed_id=None,  # Not included in query, default to None
+                    feed_id=r[19],  # feed_id from query
                     ai_summary=r[7],  # Updated index
                     ai_model=r[8],  # Updated index
                     ai_generated_at=r[9],  # Updated index
@@ -1545,7 +1547,7 @@ def get_items_by_topic(topic_key: str, limit: int = Query(50, le=200)):
                ranking_score, topic, topic_confidence, source_weight
         FROM items
         WHERE topic = :topic_key
-        ORDER BY ranking_score DESC, COALESCE(published, created_at) DESC
+        ORDER BY COALESCE(published, created_at) DESC, ranking_score DESC
         LIMIT :lim
         """
             ),
