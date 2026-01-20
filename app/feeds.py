@@ -260,6 +260,86 @@ def is_article_url_allowed(article_url: str) -> bool:
         return True  # Error = allow (fail-safe)
 
 
+@dataclass
+class FeedValidationResult:
+    """Result of feed URL validation."""
+
+    is_valid: bool
+    url: str
+    error: Optional[str] = None
+    feed_title: Optional[str] = None
+    entry_count: int = 0
+
+
+def validate_feed_url(url: str, timeout: float = 10.0) -> FeedValidationResult:
+    """
+    Validate a feed URL by checking if it's reachable and returns valid RSS/Atom.
+
+    Args:
+        url: The feed URL to validate
+        timeout: Request timeout in seconds
+
+    Returns:
+        FeedValidationResult with validation status and details
+    """
+    try:
+        # Quick HTTP check first
+        with httpx.Client(timeout=timeout, follow_redirects=True) as client:
+            response = client.get(url, headers={"User-Agent": "newsbrief/0.1"})
+
+            if response.status_code >= 400:
+                return FeedValidationResult(
+                    is_valid=False,
+                    url=url,
+                    error=f"HTTP {response.status_code}: {response.reason_phrase}",
+                )
+
+            # Try to parse as feed
+            parsed = feedparser.parse(response.content)
+
+            # Check for parsing errors
+            if parsed.bozo and not parsed.entries:
+                bozo_msg = (
+                    str(parsed.bozo_exception)
+                    if parsed.bozo_exception
+                    else "Unknown parse error"
+                )
+                return FeedValidationResult(
+                    is_valid=False, url=url, error=f"Invalid feed format: {bozo_msg}"
+                )
+
+            # Check if feed has any entries or valid structure
+            if not parsed.feed and not parsed.entries:
+                return FeedValidationResult(
+                    is_valid=False, url=url, error="No feed content found"
+                )
+
+            # Valid feed
+            feed_title = None
+            if hasattr(parsed.feed, "title") and parsed.feed.title:
+                feed_title = parsed.feed.title
+
+            return FeedValidationResult(
+                is_valid=True,
+                url=url,
+                feed_title=feed_title,
+                entry_count=len(parsed.entries),
+            )
+
+    except httpx.TimeoutException:
+        return FeedValidationResult(
+            is_valid=False, url=url, error=f"Connection timeout after {timeout}s"
+        )
+    except httpx.ConnectError as e:
+        return FeedValidationResult(
+            is_valid=False, url=url, error=f"Connection failed: {str(e)}"
+        )
+    except Exception as e:
+        return FeedValidationResult(
+            is_valid=False, url=url, error=f"Validation error: {str(e)}"
+        )
+
+
 def ensure_feed(feed_url: str) -> int:
     with session_scope() as s:
         row = s.execute(
@@ -495,8 +575,23 @@ def import_opml(path: str) -> int:
         return 0
 
 
-def import_opml_content(opml_content: str) -> dict[str, Any]:
-    """Enhanced OPML import with detailed parsing and metadata extraction."""
+def import_opml_content(
+    opml_content: str,
+    validate: bool = True,
+    validation_timeout: float = 10.0,
+    filename: Optional[str] = None,
+) -> dict[str, Any]:
+    """
+    Enhanced OPML import with validation and detailed reporting.
+
+    Args:
+        opml_content: OPML XML content as string
+        validate: If True, validate each feed URL before importing
+        validation_timeout: Timeout in seconds for each validation request
+
+    Returns:
+        Dict with import statistics and any errors
+    """
     import xml.etree.ElementTree as ET
     from urllib.parse import urlparse
 
@@ -504,8 +599,11 @@ def import_opml_content(opml_content: str) -> dict[str, Any]:
         "feeds_added": 0,
         "feeds_updated": 0,
         "feeds_skipped": 0,
+        "feeds_failed": 0,
+        "failed_feeds": [],  # List of {url, error} for failed validations
         "errors": [],
         "categories_found": [],
+        "validation_enabled": validate,
     }
 
     try:
@@ -566,6 +664,29 @@ def import_opml_content(opml_content: str) -> dict[str, Any]:
                         else:
                             result["feeds_skipped"] += 1
                     else:
+                        # Validate new feed before adding
+                        if validate:
+                            validation = validate_feed_url(
+                                xml_url, timeout=validation_timeout
+                            )
+                            if not validation.is_valid:
+                                result["feeds_failed"] += 1
+                                result["failed_feeds"].append(
+                                    {
+                                        "url": xml_url,
+                                        "name": title or xml_url,
+                                        "error": validation.error,
+                                    }
+                                )
+                                logger.warning(
+                                    f"Feed validation failed for {xml_url}: {validation.error}"
+                                )
+                                continue
+
+                            # Use validated feed title if OPML didn't provide one
+                            if not title and validation.feed_title:
+                                title = validation.feed_title
+
                         # Add new feed
                         feed_id = ensure_feed(xml_url)
 
@@ -589,6 +710,7 @@ def import_opml_content(opml_content: str) -> dict[str, Any]:
                             )
 
                         result["feeds_added"] += 1
+                        logger.info(f"Added feed: {title or xml_url}")
 
                 except Exception as e:
                     result["errors"].append(
@@ -603,7 +725,242 @@ def import_opml_content(opml_content: str) -> dict[str, Any]:
     except Exception as e:
         result["errors"].append(f"Import error: {str(e)}")
 
+    # Store import history in database
+    try:
+        import_id = _store_import_history(result, filename)
+        result["import_id"] = import_id
+    except Exception as e:
+        logger.error(f"Failed to store import history: {e}")
+
     return result
+
+
+def _store_import_history(
+    result: dict[str, Any], filename: Optional[str] = None
+) -> int:
+    """Store import results in the database for user reference."""
+    with session_scope() as s:
+        # Create import history record
+        s.execute(
+            text(
+                """
+                INSERT INTO import_history
+                (imported_at, filename, feeds_added, feeds_updated, feeds_skipped, feeds_failed, validation_enabled)
+                VALUES (CURRENT_TIMESTAMP, :filename, :added, :updated, :skipped, :failed, :validation)
+                """
+            ),
+            {
+                "filename": filename,
+                "added": result["feeds_added"],
+                "updated": result["feeds_updated"],
+                "skipped": result["feeds_skipped"],
+                "failed": result["feeds_failed"],
+                "validation": result.get("validation_enabled", True),
+            },
+        )
+
+        # Get the import ID
+        import_id = s.execute(text("SELECT last_insert_rowid()")).scalar()
+        logger.info(f"Created import_history with id={import_id}")
+
+        # Store failed feeds
+        failed_feeds = result.get("failed_feeds", [])
+        logger.info(f"Storing {len(failed_feeds)} failed feeds for import {import_id}")
+        for failed in failed_feeds:
+            logger.debug(f"Inserting failed feed: {failed}")
+            s.execute(
+                text(
+                    """
+                    INSERT INTO failed_imports (import_id, feed_url, feed_name, error_message, status)
+                    VALUES (:import_id, :url, :name, :error, 'pending')
+                    """
+                ),
+                {
+                    "import_id": import_id,
+                    "url": failed["url"],
+                    "name": failed.get("name"),
+                    "error": failed.get("error"),
+                },
+            )
+        logger.info(f"Stored {len(failed_feeds)} failed feeds")
+
+        return import_id
+
+
+def get_import_history(days: int = 30) -> list[dict[str, Any]]:
+    """Get import history for the last N days."""
+    with session_scope() as s:
+        results = s.execute(
+            text(
+                """
+                SELECT id, imported_at, filename, feeds_added, feeds_updated,
+                       feeds_skipped, feeds_failed, validation_enabled
+                FROM import_history
+                WHERE imported_at >= datetime('now', :days_ago)
+                ORDER BY imported_at DESC
+                """
+            ),
+            {"days_ago": f"-{days} days"},
+        ).fetchall()
+
+        return [
+            {
+                "id": r[0],
+                "imported_at": r[1],
+                "filename": r[2],
+                "feeds_added": r[3],
+                "feeds_updated": r[4],
+                "feeds_skipped": r[5],
+                "feeds_failed": r[6],
+                "validation_enabled": bool(r[7]),
+            }
+            for r in results
+        ]
+
+
+def get_failed_imports(status: Optional[str] = "pending") -> list[dict[str, Any]]:
+    """Get failed imports, optionally filtered by status."""
+    with session_scope() as s:
+        if status:
+            results = s.execute(
+                text(
+                    """
+                    SELECT fi.id, fi.import_id, fi.feed_url, fi.feed_name,
+                           fi.error_message, fi.status, fi.created_at,
+                           ih.imported_at as import_date
+                    FROM failed_imports fi
+                    JOIN import_history ih ON fi.import_id = ih.id
+                    WHERE fi.status = :status
+                    ORDER BY fi.created_at DESC
+                    """
+                ),
+                {"status": status},
+            ).fetchall()
+        else:
+            results = s.execute(
+                text(
+                    """
+                    SELECT fi.id, fi.import_id, fi.feed_url, fi.feed_name,
+                           fi.error_message, fi.status, fi.created_at,
+                           ih.imported_at as import_date
+                    FROM failed_imports fi
+                    JOIN import_history ih ON fi.import_id = ih.id
+                    ORDER BY fi.created_at DESC
+                    """
+                )
+            ).fetchall()
+
+        return [
+            {
+                "id": r[0],
+                "import_id": r[1],
+                "feed_url": r[2],
+                "feed_name": r[3],
+                "error_message": r[4],
+                "status": r[5],
+                "created_at": r[6],
+                "import_date": r[7],
+            }
+            for r in results
+        ]
+
+
+def get_latest_import_summary() -> Optional[dict[str, Any]]:
+    """Get summary of the most recent import for UI display."""
+    with session_scope() as s:
+        result = s.execute(
+            text(
+                """
+                SELECT id, imported_at, filename, feeds_added, feeds_updated,
+                       feeds_skipped, feeds_failed
+                FROM import_history
+                ORDER BY imported_at DESC
+                LIMIT 1
+                """
+            )
+        ).fetchone()
+
+        if not result:
+            return None
+
+        # Get failed feeds for this import
+        failed_feeds = s.execute(
+            text(
+                """
+                SELECT feed_url, feed_name, error_message, status
+                FROM failed_imports
+                WHERE import_id = :import_id AND status = 'pending'
+                """
+            ),
+            {"import_id": result[0]},
+        ).fetchall()
+
+        return {
+            "id": result[0],
+            "imported_at": result[1],
+            "filename": result[2],
+            "feeds_added": result[3],
+            "feeds_updated": result[4],
+            "feeds_skipped": result[5],
+            "feeds_failed": result[6],
+            "pending_failed_feeds": [
+                {
+                    "url": f[0],
+                    "name": f[1],
+                    "error": f[2],
+                    "status": f[3],
+                }
+                for f in failed_feeds
+            ],
+        }
+
+
+def update_failed_import_status(
+    failed_import_id: int, status: str, resolved_feed_id: Optional[int] = None
+) -> bool:
+    """Update the status of a failed import (resolved, dismissed)."""
+    with session_scope() as s:
+        result = s.execute(
+            text(
+                """
+                UPDATE failed_imports
+                SET status = :status, resolved_at = CURRENT_TIMESTAMP
+                WHERE id = :id
+                """
+            ),
+            {"status": status, "id": failed_import_id},
+        )
+        return result.rowcount > 0
+
+
+def cleanup_old_import_history(days: int = 30) -> int:
+    """Delete import history older than N days."""
+    with session_scope() as s:
+        # Delete old failed imports first (cascade should handle this, but be explicit)
+        s.execute(
+            text(
+                """
+                DELETE FROM failed_imports
+                WHERE import_id IN (
+                    SELECT id FROM import_history
+                    WHERE imported_at < datetime('now', :days_ago)
+                )
+                """
+            ),
+            {"days_ago": f"-{days} days"},
+        )
+
+        # Delete old import history
+        result = s.execute(
+            text(
+                """
+                DELETE FROM import_history
+                WHERE imported_at < datetime('now', :days_ago)
+                """
+            ),
+            {"days_ago": f"-{days} days"},
+        )
+        return result.rowcount
 
 
 def export_opml() -> str:
