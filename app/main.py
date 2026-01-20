@@ -449,7 +449,7 @@ def search_page(request: Request, q: str = ""):
                            created_at
                     FROM items
                     WHERE title LIKE :query OR summary LIKE :query OR ai_summary LIKE :query
-                    ORDER BY ranking_score DESC, COALESCE(published, created_at) DESC
+                    ORDER BY COALESCE(published, created_at) DESC, ranking_score DESC
                     LIMIT 50
                 """
                 ),
@@ -1091,7 +1091,9 @@ def list_items(
             query += " " + " ".join(joins)
         if where_clauses:
             query += " WHERE " + " AND ".join(where_clauses)
-        query += " ORDER BY i.ranking_score DESC, sort_date DESC"
+        query += (
+            " ORDER BY COALESCE(i.published, i.created_at) DESC, i.ranking_score DESC"
+        )
         query += " LIMIT :lim"
 
         rows = s.execute(text(query), params).all()
@@ -1545,7 +1547,7 @@ def get_items_by_topic(topic_key: str, limit: int = Query(50, le=200)):
                ranking_score, topic, topic_confidence, source_weight
         FROM items
         WHERE topic = :topic_key
-        ORDER BY ranking_score DESC, COALESCE(published, created_at) DESC
+        ORDER BY COALESCE(published, created_at) DESC, ranking_score DESC
         LIMIT :lim
         """
             ),
