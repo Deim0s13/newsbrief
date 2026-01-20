@@ -211,12 +211,30 @@ function createArticleElement(article) {
 
     // Set content (AI summary or fallback)
     const content = element.querySelector('.article-content');
+
+    // Generate skim summary (one line)
+    let skimText = '';
+    if (article.structured_summary && article.structured_summary.bullets && article.structured_summary.bullets.length > 0) {
+        skimText = article.structured_summary.bullets[0]; // First bullet point
+    } else if (article.fallback_summary) {
+        skimText = article.fallback_summary;
+    } else if (article.summary) {
+        skimText = article.summary;
+    } else {
+        skimText = 'No summary available';
+    }
+    // Truncate skim text to ~150 chars
+    if (skimText.length > 150) {
+        skimText = skimText.substring(0, 147) + '...';
+    }
+
+    // Generate full content
+    let fullContent = '';
     if (article.structured_summary) {
-        // Show structured summary
         const bullets = article.structured_summary.bullets || [];
         const whyItMatters = article.structured_summary.why_it_matters || '';
 
-        content.innerHTML = `
+        fullContent = `
             <div class="space-y-3">
                 ${bullets.length > 0 ? `
                     <div>
@@ -236,12 +254,20 @@ function createArticleElement(article) {
         `;
         element.querySelector('.ai-indicator').classList.remove('hidden');
     } else if (article.fallback_summary) {
-        content.innerHTML = `<p class="text-gray-700 dark:text-gray-300">${article.fallback_summary}</p>`;
+        fullContent = `<p class="text-gray-700 dark:text-gray-300">${article.fallback_summary}</p>`;
     } else if (article.summary) {
-        content.innerHTML = `<p class="text-gray-700 dark:text-gray-300">${article.summary}</p>`;
+        fullContent = `<p class="text-gray-700 dark:text-gray-300">${article.summary}</p>`;
     } else {
-        content.innerHTML = `<p class="text-gray-500 dark:text-gray-400 italic">No summary available</p>`;
+        fullContent = `<p class="text-gray-500 dark:text-gray-400 italic">No summary available</p>`;
     }
+
+    // Set both views
+    content.innerHTML = `
+        <div class="article-content-full">${fullContent}</div>
+        <div class="article-content-skim">
+            <p class="text-gray-600 dark:text-gray-400 text-sm truncate">${skimText}</p>
+        </div>
+    `;
 
     // Set article detail link
     const articleDetailLink = element.querySelector('.article-detail-link');
