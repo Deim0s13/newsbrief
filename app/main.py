@@ -1657,6 +1657,46 @@ def get_topics_api():
     }
 
 
+@app.post("/api/topics/reclassify")
+def reclassify_topics_api(
+    batch_size: int = Query(100, description="Number of articles to process"),
+    use_llm: bool = Query(
+        True, description="Use LLM for classification (more accurate)"
+    ),
+):
+    """
+    Trigger topic reclassification for articles with 'general' topic or low confidence.
+
+    This endpoint allows manual triggering of the topic reclassification job.
+    Articles are processed in batches to avoid long-running requests.
+
+    Args:
+        batch_size: Number of articles to process (default: 100)
+        use_llm: Whether to use LLM classification (default: True)
+
+    Returns:
+        Dict with reclassification statistics
+    """
+    # Override batch size if provided
+    import app.scheduler as scheduler_module
+    from app.scheduler import TOPIC_RECLASSIFY_MODEL, scheduled_topic_reclassification
+
+    original_batch_size = scheduler_module.TOPIC_RECLASSIFY_BATCH_SIZE
+    original_use_llm = scheduler_module.TOPIC_RECLASSIFY_USE_LLM
+
+    try:
+        scheduler_module.TOPIC_RECLASSIFY_BATCH_SIZE = batch_size
+        scheduler_module.TOPIC_RECLASSIFY_USE_LLM = use_llm
+
+        result = scheduled_topic_reclassification()
+        return result
+
+    finally:
+        # Restore original settings
+        scheduler_module.TOPIC_RECLASSIFY_BATCH_SIZE = original_batch_size
+        scheduler_module.TOPIC_RECLASSIFY_USE_LLM = original_use_llm
+
+
 @app.get("/items/topic/{topic_key}")
 def get_items_by_topic(topic_key: str, limit: int = Query(50, le=200)):
     """Get articles filtered by topic, ordered by ranking score."""

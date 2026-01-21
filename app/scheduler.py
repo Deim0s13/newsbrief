@@ -48,6 +48,23 @@ STORY_MIN_ARTICLES = int(
 )  # Minimum articles per story
 STORY_MODEL = os.getenv("STORY_MODEL", "llama3.1:8b")  # LLM model for synthesis
 
+# Topic reclassification configuration (v0.7.6)
+TOPIC_RECLASSIFY_ENABLED = (
+    os.getenv("TOPIC_RECLASSIFY_ENABLED", "true").lower() == "true"
+)
+TOPIC_RECLASSIFY_SCHEDULE = os.getenv(
+    "TOPIC_RECLASSIFY_SCHEDULE", "0 4 * * *"
+)  # Default: 4 AM daily (before feed refresh)
+TOPIC_RECLASSIFY_USE_LLM = (
+    os.getenv("TOPIC_RECLASSIFY_USE_LLM", "true").lower() == "true"
+)
+TOPIC_RECLASSIFY_BATCH_SIZE = int(
+    os.getenv("TOPIC_RECLASSIFY_BATCH_SIZE", "100")
+)  # Process 100 articles per run
+TOPIC_RECLASSIFY_MODEL = os.getenv(
+    "TOPIC_RECLASSIFY_MODEL", "llama3.1:8b"
+)  # LLM model for classification
+
 # =============================================================================
 # Global state
 # =============================================================================
@@ -248,11 +265,151 @@ def scheduled_story_generation():
         }
 
 
+def scheduled_topic_reclassification() -> dict:
+    """
+    Reclassify articles with 'general' topic or low confidence.
+
+    This function is called by APScheduler according to the configured cron schedule.
+    It uses LLM-based classification for better accuracy than keyword-only.
+
+    Returns:
+        Dict with reclassification statistics
+    """
+    logger.info("Starting scheduled topic reclassification")
+    start_time = datetime.now(UTC)
+
+    try:
+        from sqlalchemy import text
+
+        from app.topics import classify_topic
+
+        stats = {
+            "articles_processed": 0,
+            "topics_changed": 0,
+            "errors": 0,
+        }
+
+        with session_scope() as session:
+            # Find articles needing reclassification:
+            # - topic = 'general' (catch-all)
+            # - topic_confidence < 0.5 (low confidence)
+            # Limit to batch size to avoid long-running jobs
+            rows = session.execute(
+                text(
+                    """
+                    SELECT id, title, summary, content, topic, topic_confidence
+                    FROM items
+                    WHERE topic = 'general' OR topic_confidence < 0.5 OR topic IS NULL
+                    ORDER BY created_at DESC
+                    LIMIT :batch_size
+                    """
+                ),
+                {"batch_size": TOPIC_RECLASSIFY_BATCH_SIZE},
+            ).all()
+
+            if not rows:
+                logger.info("No articles need reclassification")
+                return {
+                    "success": True,
+                    "articles_processed": 0,
+                    "topics_changed": 0,
+                    "message": "No articles need reclassification",
+                }
+
+            logger.info(f"Found {len(rows)} articles to reclassify")
+
+            for row in rows:
+                try:
+                    article_id = row[0]
+                    title = row[1] or ""
+                    summary = row[2] or ""
+                    content = row[3] or ""
+                    old_topic = row[4]
+                    old_confidence = row[5] or 0.0
+
+                    # Reclassify using LLM if enabled
+                    result = classify_topic(
+                        title=title,
+                        summary=f"{content} {summary}".strip(),
+                        use_llm=TOPIC_RECLASSIFY_USE_LLM,
+                        model=(
+                            TOPIC_RECLASSIFY_MODEL if TOPIC_RECLASSIFY_USE_LLM else None
+                        ),
+                    )
+
+                    stats["articles_processed"] += 1
+
+                    # Update if topic changed or confidence improved significantly
+                    if (
+                        result.topic != old_topic
+                        or result.confidence > old_confidence + 0.2
+                    ):
+                        session.execute(
+                            text(
+                                """
+                                UPDATE items
+                                SET topic = :topic, topic_confidence = :confidence
+                                WHERE id = :id
+                                """
+                            ),
+                            {
+                                "topic": result.topic,
+                                "confidence": result.confidence,
+                                "id": article_id,
+                            },
+                        )
+                        stats["topics_changed"] += 1
+
+                        logger.debug(
+                            f"Reclassified article {article_id}: "
+                            f"'{old_topic}' ({old_confidence:.2f}) -> "
+                            f"'{result.topic}' ({result.confidence:.2f})"
+                        )
+
+                except Exception as e:
+                    stats["errors"] += 1
+                    logger.warning(f"Failed to reclassify article {row[0]}: {e}")
+                    continue
+
+            session.commit()
+
+        elapsed = (datetime.now(UTC) - start_time).total_seconds()
+
+        logger.info(
+            f"Topic reclassification complete: "
+            f"{stats['articles_processed']} processed, "
+            f"{stats['topics_changed']} changed, "
+            f"{stats['errors']} errors, "
+            f"took {elapsed:.1f}s"
+        )
+
+        return {
+            "success": True,
+            **stats,
+            "elapsed_seconds": elapsed,
+            "use_llm": TOPIC_RECLASSIFY_USE_LLM,
+            "model": TOPIC_RECLASSIFY_MODEL if TOPIC_RECLASSIFY_USE_LLM else None,
+        }
+
+    except Exception as e:
+        elapsed = (datetime.now(UTC) - start_time).total_seconds()
+        logger.error(
+            f"Topic reclassification failed after {elapsed:.1f}s: {e}",
+            exc_info=True,
+        )
+        return {
+            "success": False,
+            "error": str(e),
+            "elapsed_seconds": elapsed,
+        }
+
+
 def start_scheduler():
     """
     Start the background scheduler.
 
     Initializes APScheduler and schedules:
+    - Topic reclassification (if enabled)
     - Feed refresh (if enabled)
     - Story generation
 
@@ -267,6 +424,27 @@ def start_scheduler():
     scheduler = BackgroundScheduler(timezone=STORY_GENERATION_TIMEZONE)
 
     try:
+        # Add scheduled topic reclassification job (v0.7.6)
+        if TOPIC_RECLASSIFY_ENABLED:
+            topic_trigger = CronTrigger.from_crontab(
+                TOPIC_RECLASSIFY_SCHEDULE, timezone=STORY_GENERATION_TIMEZONE
+            )
+            scheduler.add_job(
+                scheduled_topic_reclassification,
+                trigger=topic_trigger,
+                id="topic_reclassification",
+                name="Scheduled Topic Reclassification",
+                replace_existing=True,
+                max_instances=1,
+            )
+            logger.info(
+                f"Topic reclassification scheduled: {TOPIC_RECLASSIFY_SCHEDULE} {STORY_GENERATION_TIMEZONE}"
+            )
+        else:
+            logger.info(
+                "Topic reclassification disabled (TOPIC_RECLASSIFY_ENABLED=false)"
+            )
+
         # Add scheduled feed refresh job (v0.6.3)
         if FEED_REFRESH_ENABLED:
             feed_trigger = CronTrigger.from_crontab(
@@ -343,13 +521,15 @@ def get_scheduler_status() -> dict:
     Get current scheduler status.
 
     Returns:
-        Dict with scheduler status information including feed refresh and story generation
+        Dict with scheduler status information including topic reclassification,
+        feed refresh, and story generation
     """
     global scheduler
 
     if scheduler is None or not scheduler.running:
         return {
             "running": False,
+            "topic_reclassification": None,
             "feed_refresh": None,
             "story_generation": None,
         }
@@ -357,10 +537,21 @@ def get_scheduler_status() -> dict:
     jobs = scheduler.get_jobs()
     story_job = next((j for j in jobs if j.id == "story_generation"), None)
     feed_job = next((j for j in jobs if j.id == "feed_refresh"), None)
+    topic_job = next((j for j in jobs if j.id == "topic_reclassification"), None)
 
     return {
         "running": True,
         "timezone": STORY_GENERATION_TIMEZONE,
+        "topic_reclassification": {
+            "enabled": TOPIC_RECLASSIFY_ENABLED,
+            "schedule": TOPIC_RECLASSIFY_SCHEDULE if TOPIC_RECLASSIFY_ENABLED else None,
+            "next_run": topic_job.next_run_time.isoformat() if topic_job else None,
+            "configuration": {
+                "use_llm": TOPIC_RECLASSIFY_USE_LLM,
+                "batch_size": TOPIC_RECLASSIFY_BATCH_SIZE,
+                "model": TOPIC_RECLASSIFY_MODEL,
+            },
+        },
         "feed_refresh": {
             "enabled": FEED_REFRESH_ENABLED,
             "schedule": FEED_REFRESH_SCHEDULE if FEED_REFRESH_ENABLED else None,
