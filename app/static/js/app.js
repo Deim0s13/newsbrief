@@ -199,7 +199,12 @@ function createArticleElement(article) {
     // Set published date
     const publishedDate = element.querySelector('.published-date');
     if (article.published) {
-        publishedDate.textContent = new Date(article.published).toLocaleDateString();
+        // Ensure timestamp is treated as UTC if no timezone specified
+        let ts = article.published;
+        if (ts && !ts.endsWith('Z') && !ts.includes('+') && !ts.includes('-', 10)) {
+            ts = ts + 'Z';
+        }
+        publishedDate.textContent = new Date(ts).toLocaleDateString();
     } else {
         publishedDate.textContent = 'No date';
     }
@@ -306,7 +311,12 @@ function getTopicBadgeClasses(topic) {
 // Utility functions
 function formatDate(dateString) {
     if (!dateString) return 'No date';
-    const date = new Date(dateString);
+    // Ensure timestamp is treated as UTC if no timezone specified
+    let ts = dateString;
+    if (ts && !ts.endsWith('Z') && !ts.includes('+') && !ts.includes('-', 10)) {
+        ts = ts + 'Z';
+    }
+    const date = new Date(ts);
     const now = new Date();
     const diffMs = now - date;
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
@@ -347,8 +357,16 @@ async function refreshFeeds() {
         const result = await response.json();
         console.log('Refresh result:', result);
 
-        // Show success notification
-        showNotification(`Refreshed! Added ${result.items_added || 0} new articles`, 'success');
+        // Show success notification with detailed stats
+        const articlesAdded = result.ingested || result.stats?.items?.total || 0;
+        const feedsProcessed = result.stats?.feeds?.processed || 0;
+        const feedsWithErrors = result.stats?.feeds?.errors || 0;
+
+        let message = `Refreshed ${feedsProcessed} feeds: ${articlesAdded} new articles`;
+        if (feedsWithErrors > 0) {
+            message += ` (${feedsWithErrors} feeds had errors)`;
+        }
+        showNotification(message, articlesAdded > 0 ? 'success' : 'info');
 
         // Reload articles with current topic filter
         const topicSelect = document.querySelector('select');

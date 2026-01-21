@@ -403,14 +403,43 @@ def get_stories(
     else:
         # Standard database sorting
         if order_by == "importance":
-            query = query.order_by(desc(Story.importance_score))
+            # Fetch stories and sort by importance * dynamic freshness
+            # This ensures old stories decay even if stored freshness_score is stale
+            query = query.order_by(
+                desc(Story.importance_score), desc(Story.generated_at)
+            )
+            stories_raw = query.all()
+
+            # Calculate dynamic freshness and sort
+            now = datetime.now(UTC)
+            half_life_hours = 24.0  # 50% decay after 24 hours
+
+            scored = []
+            for story in stories_raw:
+                # Calculate dynamic freshness based on generated_at
+                gen_time = story.generated_at
+                if gen_time and gen_time.tzinfo is None:
+                    gen_time = gen_time.replace(tzinfo=UTC)
+                age_hours = (now - gen_time).total_seconds() / 3600 if gen_time else 999
+                dynamic_freshness = 2 ** (-age_hours / half_life_hours)
+
+                # Combined score: importance * dynamic_freshness
+                combined = (story.importance_score or 0.5) * dynamic_freshness
+                scored.append((combined, story))
+
+            # Sort by combined score descending
+            scored.sort(key=lambda x: x[0], reverse=True)
+            stories = [s[1] for s in scored[offset : offset + limit]]
         elif order_by == "freshness":
-            query = query.order_by(desc(Story.freshness_score))
+            query = query.order_by(
+                desc(Story.generated_at)
+            )  # Use generated_at for freshness
+            query = query.offset(offset).limit(limit)
+            stories = query.all()
         else:  # generated_at
             query = query.order_by(desc(Story.generated_at))
-
-        query = query.offset(offset).limit(limit)
-        stories = query.all()
+            query = query.offset(offset).limit(limit)
+            stories = query.all()
 
     # Convert to StoryOut models
     # For list view, we don't need full article details

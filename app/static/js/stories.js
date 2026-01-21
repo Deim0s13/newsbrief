@@ -313,9 +313,20 @@ async function refreshStories() {
 
         const result = await response.json();
 
-        // v0.6.1: Show detailed message based on results
+        // v0.7.6: Show detailed message with article/cluster counts
         if (result.stories_generated > 0) {
-            showNotification(`Successfully generated ${result.stories_generated} stories!`, 'success');
+            const articlesFound = result.articles_found || 0;
+            const clustersCreated = result.clusters_created || 0;
+            showNotification(
+                `Generated ${result.stories_generated} stories from ${articlesFound} articles (${clustersCreated} clusters)`,
+                'success'
+            );
+
+            // Switch to "Latest" sort to show newly generated stories at top
+            const sortSelect = document.getElementById('sort-filter');
+            if (sortSelect) {
+                sortSelect.value = 'generated_at';
+            }
         } else if (result.message) {
             // Show helpful message explaining why 0 stories
             showNotification(result.message, 'info');
@@ -323,7 +334,7 @@ async function refreshStories() {
             showNotification(`Generation complete: ${result.stories_generated} stories created.`, 'info');
         }
 
-        // Reload stories
+        // Reload stories with latest sort
         setTimeout(() => {
             loadStories();
         }, 1000);
@@ -355,7 +366,12 @@ function getTopicColor(topic) {
 // Helper: Format time ago
 function formatTimeAgo(timestamp) {
     const now = new Date();
-    const past = new Date(timestamp);
+    // Ensure timestamp is treated as UTC if no timezone specified
+    let ts = timestamp;
+    if (ts && !ts.endsWith('Z') && !ts.includes('+') && !ts.includes('-', 10)) {
+        ts = ts + 'Z';
+    }
+    const past = new Date(ts);
     const seconds = Math.floor((now - past) / 1000);
 
     if (seconds < 60) return 'just now';
