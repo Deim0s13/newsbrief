@@ -422,23 +422,28 @@ def ensure_feed(feed_url: str) -> int:
         return int(fid)
 
 
-def list_feeds() -> Iterable[Tuple[int, str, Optional[str], Optional[str], int, int]]:
+def list_feeds() -> (
+    Iterable[Tuple[int, str, Optional[str], Optional[str], int, int, Optional[str]]]
+):
     """
     List all feeds for refresh processing.
 
     Orders by fetch_count ASC to prioritize unfetched feeds (fetch_count=0),
     ensuring newly imported feeds are processed first.
+
+    Returns:
+        Tuple of (id, url, etag, last_modified, robots_allowed, disabled, category)
     """
     with session_scope() as s:
         rows = s.execute(
             text(
-                """SELECT id, url, etag, last_modified, robots_allowed, disabled
+                """SELECT id, url, etag, last_modified, robots_allowed, disabled, category
                    FROM feeds
                    ORDER BY fetch_count ASC, id ASC"""
             )
         ).all()
         for r in rows:
-            yield int(r[0]), r[1], r[2], r[3], int(r[4]), int(r[5])
+            yield int(r[0]), r[1], r[2], r[3], int(r[4]), int(r[5]), r[6]
 
 
 def add_feed(url: str) -> int:
@@ -610,6 +615,13 @@ def import_opml_content(
         # Parse XML content
         root = ET.fromstring(opml_content)
 
+        # Build parent map for stdlib ElementTree (doesn't have getparent())
+        # This maps each element to its parent
+        parent_map: dict[ET.Element, ET.Element] = {}
+        for parent in root.iter():
+            for child in parent:
+                parent_map[child] = parent
+
         # Find all outline elements with xmlUrl (feed entries)
         feed_outlines = root.findall(".//outline[@xmlUrl]")
         categories = set()
@@ -624,12 +636,14 @@ def import_opml_content(
                     category = outline.get("category", "")
 
                     # Extract category from parent outline if not set
-                    # Note: getparent() is lxml-specific; for stdlib ElementTree,
-                    # we'd need a different approach or skip this logic
-                    if not category and hasattr(outline, "getparent"):
-                        parent = outline.getparent()  # type: ignore[union-attr]
-                        if parent is not None and parent.get("text"):
-                            category = parent.get("text")
+                    # Use parent_map since stdlib ElementTree doesn't have getparent()
+                    if not category:
+                        parent = parent_map.get(outline)
+                        if parent is not None:
+                            # Parent outline's "text" attribute is typically the category name
+                            parent_text = parent.get("text") or parent.get("title")
+                            if parent_text and parent.tag == "outline":
+                                category = parent_text
 
                     if category:
                         categories.add(category)
@@ -1095,7 +1109,15 @@ def fetch_and_store() -> RefreshStats:
         headers={"User-Agent": "newsbrief/0.1"},
         verify=certifi.where(),  # Use bundled SSL certificates
     ) as client:
-        for fid, url, etag, last_mod, robots_allowed, disabled in list_feeds():
+        for (
+            fid,
+            url,
+            etag,
+            last_mod,
+            robots_allowed,
+            disabled,
+            feed_category,
+        ) in list_feeds():
             # Check time limit
             elapsed = time.time() - start_time
             if elapsed > MAX_REFRESH_TIME_SECONDS:
@@ -1314,7 +1336,9 @@ def fetch_and_store() -> RefreshStats:
                     ranking_score = _calculate_ranking_score_legacy(
                         article_data, source_weight=1.0
                     )
-                    topic, topic_confidence = classify_topic(article_data)
+                    topic, topic_confidence = classify_topic(
+                        article_data, feed_category=feed_category
+                    )
 
                     s.execute(
                         text(
@@ -1450,7 +1474,70 @@ def _calculate_ranking_score_legacy(
     return max(score, 0.1)  # Ensure minimum positive score
 
 
-def classify_topic(article_data: dict) -> tuple[str, float]:
+# Mapping from common feed category names to topic IDs
+CATEGORY_TO_TOPIC_MAP: dict[str, str] = {
+    # Sports
+    "sports": "sports",
+    "sport": "sports",
+    "football": "sports",
+    "soccer": "sports",
+    "basketball": "sports",
+    "tennis": "sports",
+    "cricket": "sports",
+    "rugby": "sports",
+    # Gaming
+    "gaming": "gaming",
+    "games": "gaming",
+    "video games": "gaming",
+    "esports": "gaming",
+    # Entertainment
+    "entertainment": "entertainment",
+    "movies": "entertainment",
+    "music": "entertainment",
+    "tv": "entertainment",
+    "television": "entertainment",
+    "celebrity": "entertainment",
+    # Finance
+    "finance": "finance",
+    "fsi": "finance",
+    "fsi / finance": "finance",
+    "banking": "finance",
+    "fintech": "finance",
+    "financial services": "finance",
+    # Tech categories
+    "tech": "devtools",
+    "technology": "devtools",
+    "engineering": "devtools",
+    "engineering / company tech blogs": "devtools",
+    "tech (ai, security, cloud, dev)": "devtools",
+    # News
+    "general news": "general",
+    "news": "general",
+    "world": "politics",
+    "politics": "politics",
+    # Regional
+    "a/nz region signals": "finance",  # Likely regulatory/finance focused
+}
+
+
+def map_category_to_topic(category: Optional[str]) -> Optional[str]:
+    """
+    Map a feed category name to a topic ID.
+
+    Args:
+        category: Feed category from OPML import
+
+    Returns:
+        Topic ID if a mapping exists, None otherwise
+    """
+    if not category:
+        return None
+    return CATEGORY_TO_TOPIC_MAP.get(category.lower().strip())
+
+
+def classify_topic(
+    article_data: dict, feed_category: Optional[str] = None
+) -> tuple[str, float]:
     """
     Classify article topic using the unified topic classification service.
 
@@ -1458,8 +1545,12 @@ def classify_topic(article_data: dict) -> tuple[str, float]:
     Uses keyword-based classification for feed ingestion (faster).
     LLM classification is available for reclassification operations.
 
+    If a feed_category is provided and maps to a known topic, it will be used
+    as a hint to boost that topic's score during classification.
+
     Args:
         article_data: Dictionary with 'title', 'content', 'summary' keys
+        feed_category: Optional category from the feed (OPML import)
 
     Returns:
         Tuple of (topic_id, confidence)
@@ -1468,12 +1559,33 @@ def classify_topic(article_data: dict) -> tuple[str, float]:
     content = article_data.get("content", "") or ""
     summary = article_data.get("summary", "") or ""
 
+    # Check if feed category maps to a known topic
+    category_topic = map_category_to_topic(feed_category)
+
     # Use unified topic service (keywords only for ingestion performance)
     result = classify_topic_unified(
         title=title,
         summary=f"{content} {summary}".strip(),
         use_llm=False,  # Use keywords for feed ingestion (faster)
     )
+
+    # If keyword classification returned 'general' but we have a category hint,
+    # use the category-based topic with moderate confidence
+    if result.topic == "general" and category_topic:
+        logger.debug(
+            f"Using feed category '{feed_category}' -> topic '{category_topic}' "
+            f"(keyword classification returned 'general')"
+        )
+        return category_topic, 0.6  # Moderate confidence from category hint
+
+    # If keyword classification has low confidence but category matches, boost it
+    if category_topic and result.topic == category_topic and result.confidence < 0.7:
+        boosted_confidence = min(result.confidence + 0.2, 0.9)
+        logger.debug(
+            f"Boosting confidence for '{result.topic}' from {result.confidence:.2f} "
+            f"to {boosted_confidence:.2f} (feed category match)"
+        )
+        return result.topic, boosted_confidence
 
     return result.topic, result.confidence
 
