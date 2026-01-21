@@ -187,46 +187,89 @@ def store_synthesis_in_cache(
     now = datetime.now(UTC)
     expires_at = now + timedelta(hours=SYNTHESIS_CACHE_TTL_HOURS)
 
-    # Check if entry already exists
-    existing = (
-        session.query(SynthesisCache)
-        .filter(SynthesisCache.cache_key == cache_key)
-        .first()
-    )
-
-    if existing:
-        # Update existing entry (type: ignore for SQLAlchemy Column assignments)
-        existing.synthesis = synthesis_result.get("synthesis", "")  # type: ignore[assignment]
-        existing.key_points_json = json.dumps(synthesis_result.get("key_points", []))  # type: ignore[assignment]
-        existing.why_it_matters = synthesis_result.get("why_it_matters", "")  # type: ignore[assignment]
-        existing.topics_json = json.dumps(synthesis_result.get("topics", []))  # type: ignore[assignment]
-        existing.entities_json = json.dumps(synthesis_result.get("entities", []))  # type: ignore[assignment]
-        existing.generation_time_ms = generation_time_ms  # type: ignore[assignment]
-        existing.token_count_input = token_count_input  # type: ignore[assignment]
-        existing.token_count_output = token_count_output  # type: ignore[assignment]
-        existing.created_at = now  # type: ignore[assignment]
-        existing.expires_at = expires_at  # type: ignore[assignment]
-        existing.invalidated_at = None  # type: ignore[assignment]
-        logger.debug(f"Cache UPDATE: refreshed entry for key {cache_key[:12]}...")
-    else:
-        # Create new entry
-        cache_entry = SynthesisCache(
-            cache_key=cache_key,
-            article_ids_json=json.dumps(sorted(article_ids)),
-            model=model,
-            synthesis=synthesis_result.get("synthesis", ""),
-            key_points_json=json.dumps(synthesis_result.get("key_points", [])),
-            why_it_matters=synthesis_result.get("why_it_matters", ""),
-            topics_json=json.dumps(synthesis_result.get("topics", [])),
-            entities_json=json.dumps(synthesis_result.get("entities", [])),
-            generation_time_ms=generation_time_ms,
-            token_count_input=token_count_input,
-            token_count_output=token_count_output,
-            created_at=now,
-            expires_at=expires_at,
+    try:
+        # Check if entry already exists
+        existing = (
+            session.query(SynthesisCache)
+            .filter(SynthesisCache.cache_key == cache_key)
+            .first()
         )
-        session.add(cache_entry)
-        logger.debug(f"Cache STORE: new entry for key {cache_key[:12]}...")
+
+        if existing:
+            # Update existing entry (type: ignore for SQLAlchemy Column assignments)
+            existing.synthesis = synthesis_result.get("synthesis", "")  # type: ignore[assignment]
+            existing.key_points_json = json.dumps(synthesis_result.get("key_points", []))  # type: ignore[assignment]
+            existing.why_it_matters = synthesis_result.get("why_it_matters", "")  # type: ignore[assignment]
+            existing.topics_json = json.dumps(synthesis_result.get("topics", []))  # type: ignore[assignment]
+            existing.entities_json = json.dumps(synthesis_result.get("entities", []))  # type: ignore[assignment]
+            existing.generation_time_ms = generation_time_ms  # type: ignore[assignment]
+            existing.token_count_input = token_count_input  # type: ignore[assignment]
+            existing.token_count_output = token_count_output  # type: ignore[assignment]
+            existing.created_at = now  # type: ignore[assignment]
+            existing.expires_at = expires_at  # type: ignore[assignment]
+            existing.invalidated_at = None  # type: ignore[assignment]
+            logger.debug(f"Cache UPDATE: refreshed entry for key {cache_key[:12]}...")
+        else:
+            # Create new entry
+            cache_entry = SynthesisCache(
+                cache_key=cache_key,
+                article_ids_json=json.dumps(sorted(article_ids)),
+                model=model,
+                synthesis=synthesis_result.get("synthesis", ""),
+                key_points_json=json.dumps(synthesis_result.get("key_points", [])),
+                why_it_matters=synthesis_result.get("why_it_matters", ""),
+                topics_json=json.dumps(synthesis_result.get("topics", [])),
+                entities_json=json.dumps(synthesis_result.get("entities", [])),
+                generation_time_ms=generation_time_ms,
+                token_count_input=token_count_input,
+                token_count_output=token_count_output,
+                created_at=now,
+                expires_at=expires_at,
+            )
+            session.add(cache_entry)
+            logger.debug(f"Cache STORE: new entry for key {cache_key[:12]}...")
+
+        # Flush to detect any constraint violations early
+        session.flush()
+
+    except Exception as e:
+        # Handle race condition: another process may have inserted the same key
+        logger.warning(f"Cache store failed for key {cache_key[:12]}...: {e}")
+        session.rollback()
+
+        # Try to update existing entry (may have been inserted by another process)
+        try:
+            existing = (
+                session.query(SynthesisCache)
+                .filter(SynthesisCache.cache_key == cache_key)
+                .first()
+            )
+            if existing:
+                existing.synthesis = synthesis_result.get("synthesis", "")  # type: ignore[assignment]
+                existing.key_points_json = json.dumps(synthesis_result.get("key_points", []))  # type: ignore[assignment]
+                existing.why_it_matters = synthesis_result.get("why_it_matters", "")  # type: ignore[assignment]
+                existing.topics_json = json.dumps(synthesis_result.get("topics", []))  # type: ignore[assignment]
+                existing.entities_json = json.dumps(synthesis_result.get("entities", []))  # type: ignore[assignment]
+                existing.generation_time_ms = generation_time_ms  # type: ignore[assignment]
+                existing.token_count_input = token_count_input  # type: ignore[assignment]
+                existing.token_count_output = token_count_output  # type: ignore[assignment]
+                existing.created_at = now  # type: ignore[assignment]
+                existing.expires_at = expires_at  # type: ignore[assignment]
+                existing.invalidated_at = None  # type: ignore[assignment]
+                session.flush()
+                logger.debug(
+                    f"Cache UPDATE (after conflict): updated entry for key {cache_key[:12]}..."
+                )
+            else:
+                # Entry doesn't exist after rollback - something else went wrong
+                logger.error(
+                    f"Cache store failed permanently for key {cache_key[:12]}..."
+                )
+        except Exception as retry_error:
+            logger.error(
+                f"Cache store retry failed for key {cache_key[:12]}...: {retry_error}"
+            )
+            # Don't re-raise - caching failures shouldn't break story generation
 
     return cache_key
 
