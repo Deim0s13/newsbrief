@@ -15,6 +15,7 @@ labels:
 resources:
   - ../../base
   - pdb.yaml  # PodDisruptionBudget for HA
+  - pvc.yaml  # Persistent storage for data
 
 # Override namespace name for prod
 patches:
@@ -25,8 +26,19 @@ patches:
       - op: replace
         path: /metadata/name
         value: newsbrief-prod
-  # Strategic merge patch for deployment
+  # Strategic merge patch for deployment (resources, probes, affinity)
   - path: deployment-patch.yaml
+  # JSON patch to replace emptyDir with PVC (more reliable than strategic merge)
+  - target:
+      kind: Deployment
+      name: newsbrief
+    patch: |
+      - op: replace
+        path: /spec/template/spec/volumes
+        value:
+          - name: data
+            persistentVolumeClaim:
+              claimName: newsbrief-data
 
 images:
   - name: localhost:5000/newsbrief

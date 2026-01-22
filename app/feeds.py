@@ -120,7 +120,7 @@ class RefreshStats:
 
 
 # Configurable limits (can be overridden by environment variables)
-MAX_ITEMS_PER_REFRESH = int(os.getenv("NEWSBRIEF_MAX_ITEMS_PER_REFRESH", "150"))
+MAX_ITEMS_PER_REFRESH = int(os.getenv("NEWSBRIEF_MAX_ITEMS_PER_REFRESH", "500"))
 MAX_ITEMS_PER_FEED = int(os.getenv("NEWSBRIEF_MAX_ITEMS_PER_FEED", "50"))
 MAX_REFRESH_TIME_SECONDS = int(
     os.getenv("NEWSBRIEF_MAX_REFRESH_TIME", "300")
@@ -260,6 +260,86 @@ def is_article_url_allowed(article_url: str) -> bool:
         return True  # Error = allow (fail-safe)
 
 
+@dataclass
+class FeedValidationResult:
+    """Result of feed URL validation."""
+
+    is_valid: bool
+    url: str
+    error: Optional[str] = None
+    feed_title: Optional[str] = None
+    entry_count: int = 0
+
+
+def validate_feed_url(url: str, timeout: float = 10.0) -> FeedValidationResult:
+    """
+    Validate a feed URL by checking if it's reachable and returns valid RSS/Atom.
+
+    Args:
+        url: The feed URL to validate
+        timeout: Request timeout in seconds
+
+    Returns:
+        FeedValidationResult with validation status and details
+    """
+    try:
+        # Quick HTTP check first
+        with httpx.Client(timeout=timeout, follow_redirects=True) as client:
+            response = client.get(url, headers={"User-Agent": "newsbrief/0.1"})
+
+            if response.status_code >= 400:
+                return FeedValidationResult(
+                    is_valid=False,
+                    url=url,
+                    error=f"HTTP {response.status_code}: {response.reason_phrase}",
+                )
+
+            # Try to parse as feed
+            parsed = feedparser.parse(response.content)
+
+            # Check for parsing errors
+            if parsed.bozo and not parsed.entries:
+                bozo_msg = (
+                    str(parsed.bozo_exception)
+                    if parsed.bozo_exception
+                    else "Unknown parse error"
+                )
+                return FeedValidationResult(
+                    is_valid=False, url=url, error=f"Invalid feed format: {bozo_msg}"
+                )
+
+            # Check if feed has any entries or valid structure
+            if not parsed.feed and not parsed.entries:
+                return FeedValidationResult(
+                    is_valid=False, url=url, error="No feed content found"
+                )
+
+            # Valid feed
+            feed_title = None
+            if hasattr(parsed.feed, "title") and parsed.feed.title:
+                feed_title = parsed.feed.title
+
+            return FeedValidationResult(
+                is_valid=True,
+                url=url,
+                feed_title=feed_title,
+                entry_count=len(parsed.entries),
+            )
+
+    except httpx.TimeoutException:
+        return FeedValidationResult(
+            is_valid=False, url=url, error=f"Connection timeout after {timeout}s"
+        )
+    except httpx.ConnectError as e:
+        return FeedValidationResult(
+            is_valid=False, url=url, error=f"Connection failed: {str(e)}"
+        )
+    except Exception as e:
+        return FeedValidationResult(
+            is_valid=False, url=url, error=f"Validation error: {str(e)}"
+        )
+
+
 def ensure_feed(feed_url: str) -> int:
     with session_scope() as s:
         row = s.execute(
@@ -342,15 +422,28 @@ def ensure_feed(feed_url: str) -> int:
         return int(fid)
 
 
-def list_feeds() -> Iterable[Tuple[int, str, Optional[str], Optional[str], int, int]]:
+def list_feeds() -> (
+    Iterable[Tuple[int, str, Optional[str], Optional[str], int, int, Optional[str]]]
+):
+    """
+    List all feeds for refresh processing.
+
+    Orders by fetch_count ASC to prioritize unfetched feeds (fetch_count=0),
+    ensuring newly imported feeds are processed first.
+
+    Returns:
+        Tuple of (id, url, etag, last_modified, robots_allowed, disabled, category)
+    """
     with session_scope() as s:
         rows = s.execute(
             text(
-                "SELECT id, url, etag, last_modified, robots_allowed, disabled FROM feeds"
+                """SELECT id, url, etag, last_modified, robots_allowed, disabled, category
+                   FROM feeds
+                   ORDER BY fetch_count ASC, id ASC"""
             )
         ).all()
         for r in rows:
-            yield int(r[0]), r[1], r[2], r[3], int(r[4]), int(r[5])
+            yield int(r[0]), r[1], r[2], r[3], int(r[4]), int(r[5]), r[6]
 
 
 def add_feed(url: str) -> int:
@@ -487,53 +580,50 @@ def import_opml(path: str) -> int:
         return 0
 
 
-def import_opml_content(opml_content: str) -> dict[str, Any]:
-    """Enhanced OPML import with detailed parsing and metadata extraction."""
-    import logging
+def import_opml_content(
+    opml_content: str,
+    validate: bool = True,
+    validation_timeout: float = 10.0,
+    filename: Optional[str] = None,
+) -> dict[str, Any]:
+    """
+    Enhanced OPML import with validation and detailed reporting.
+
+    Args:
+        opml_content: OPML XML content as string
+        validate: If True, validate each feed URL before importing
+        validation_timeout: Timeout in seconds for each validation request
+
+    Returns:
+        Dict with import statistics and any errors
+    """
     import xml.etree.ElementTree as ET
     from urllib.parse import urlparse
-
-    logger = logging.getLogger(__name__)
 
     result: dict[str, Any] = {
         "feeds_added": 0,
         "feeds_updated": 0,
         "feeds_skipped": 0,
+        "feeds_failed": 0,
+        "failed_feeds": [],  # List of {url, error} for failed validations
         "errors": [],
         "categories_found": [],
+        "validation_enabled": validate,
     }
 
     try:
         # Parse XML content
-        logger.info(f"Parsing OPML content ({len(opml_content)} bytes)")
-
-        # Pre-process: fix common XML issues like unescaped ampersands
-        # Replace & that's not already part of an entity (e.g., &amp; &lt; etc.)
-        import re
-
-        # Match & not followed by a valid entity name and semicolon
-        opml_content = re.sub(
-            r"&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)", "&amp;", opml_content
-        )
-
         root = ET.fromstring(opml_content)
-        logger.info(f"Parsed XML root: {root.tag}")
+
+        # Build parent map for stdlib ElementTree (doesn't have getparent())
+        # This maps each element to its parent
+        parent_map: dict[ET.Element, ET.Element] = {}
+        for parent in root.iter():
+            for child in parent:
+                parent_map[child] = parent
 
         # Find all outline elements with xmlUrl (feed entries)
-        # Some OPML files use xmlURL (capital L) instead of xmlUrl
         feed_outlines = root.findall(".//outline[@xmlUrl]")
-        if not feed_outlines:
-            # Try alternate attribute names
-            feed_outlines = root.findall(".//outline[@xmlURL]")
-            logger.info(f"Tried xmlURL (capital L), found {len(feed_outlines)}")
-        if not feed_outlines:
-            # Try finding any outline with url-like attribute
-            all_outlines = root.findall(".//outline")
-            logger.info(f"Total outlines found: {len(all_outlines)}")
-            for outline in all_outlines[:3]:  # Log first 3 for debug
-                logger.info(f"  Outline attribs: {dict(outline.attrib)}")
-
-        logger.info(f"Found {len(feed_outlines)} feed entries with xmlUrl")
         categories = set()
 
         with session_scope() as s:
@@ -546,12 +636,14 @@ def import_opml_content(opml_content: str) -> dict[str, Any]:
                     category = outline.get("category", "")
 
                     # Extract category from parent outline if not set
-                    # Note: getparent() is lxml-specific; for stdlib ElementTree,
-                    # we'd need a different approach or skip this logic
-                    if not category and hasattr(outline, "getparent"):
-                        parent = outline.getparent()  # type: ignore[union-attr]
-                        if parent is not None and parent.get("text"):
-                            category = parent.get("text")
+                    # Use parent_map since stdlib ElementTree doesn't have getparent()
+                    if not category:
+                        parent = parent_map.get(outline)
+                        if parent is not None:
+                            # Parent outline's "text" attribute is typically the category name
+                            parent_text = parent.get("text") or parent.get("title")
+                            if parent_text and parent.tag == "outline":
+                                category = parent_text
 
                     if category:
                         categories.add(category)
@@ -586,25 +678,53 @@ def import_opml_content(opml_content: str) -> dict[str, Any]:
                         else:
                             result["feeds_skipped"] += 1
                     else:
-                        # Add new feed - just insert without validation for faster import
-                        # (validation will happen on first refresh)
-                        s.execute(
-                            text(
+                        # Validate new feed before adding
+                        if validate:
+                            validation = validate_feed_url(
+                                xml_url, timeout=validation_timeout
+                            )
+                            if not validation.is_valid:
+                                result["feeds_failed"] += 1
+                                result["failed_feeds"].append(
+                                    {
+                                        "url": xml_url,
+                                        "name": title or xml_url,
+                                        "error": validation.error,
+                                    }
+                                )
+                                logger.warning(
+                                    f"Feed validation failed for {xml_url}: {validation.error}"
+                                )
+                                continue
+
+                            # Use validated feed title if OPML didn't provide one
+                            if not title and validation.feed_title:
+                                title = validation.feed_title
+
+                        # Add new feed
+                        feed_id = ensure_feed(xml_url)
+
+                        # Update with metadata
+                        if title or description or category:
+                            s.execute(
+                                text(
+                                    """
+                                    UPDATE feeds
+                                    SET name = :name, description = :description,
+                                        category = :category, updated_at = CURRENT_TIMESTAMP
+                                    WHERE id = :feed_id
                                 """
-                                INSERT INTO feeds (url, name, description, category, created_at, updated_at)
-                                VALUES (:url, :name, :description, :category, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                            """
-                            ),
-                            {
-                                "url": xml_url,
-                                "name": title if title else xml_url,
-                                "description": description if description else None,
-                                "category": category if category else None,
-                            },
-                        )
+                                ),
+                                {
+                                    "name": title if title else None,
+                                    "description": description if description else None,
+                                    "category": category if category else None,
+                                    "feed_id": feed_id,
+                                },
+                            )
+
                         result["feeds_added"] += 1
-                        if category:
-                            categories.add(category)
+                        logger.info(f"Added feed: {title or xml_url}")
 
                 except Exception as e:
                     result["errors"].append(
@@ -615,19 +735,246 @@ def import_opml_content(opml_content: str) -> dict[str, Any]:
         result["categories_found"] = sorted(list(categories))
 
     except ET.ParseError as e:
-        logger.error(f"OPML ParseError: {e}")
         result["errors"].append(f"Invalid OPML format: {str(e)}")
     except Exception as e:
-        logger.error(f"OPML Import Exception: {e}", exc_info=True)
         result["errors"].append(f"Import error: {str(e)}")
 
-    logger.info(
-        f"Import result: added={result['feeds_added']}, updated={result['feeds_updated']}, skipped={result['feeds_skipped']}, errors={len(result['errors'])}"
-    )
-    if result["errors"]:
-        logger.warning(f"Import errors: {result['errors']}")
+    # Store import history in database
+    try:
+        import_id = _store_import_history(result, filename)
+        result["import_id"] = import_id
+    except Exception as e:
+        logger.error(f"Failed to store import history: {e}")
 
     return result
+
+
+def _store_import_history(
+    result: dict[str, Any], filename: Optional[str] = None
+) -> int:
+    """Store import results in the database for user reference."""
+    with session_scope() as s:
+        # Create import history record
+        s.execute(
+            text(
+                """
+                INSERT INTO import_history
+                (imported_at, filename, feeds_added, feeds_updated, feeds_skipped, feeds_failed, validation_enabled)
+                VALUES (CURRENT_TIMESTAMP, :filename, :added, :updated, :skipped, :failed, :validation)
+                """
+            ),
+            {
+                "filename": filename,
+                "added": result["feeds_added"],
+                "updated": result["feeds_updated"],
+                "skipped": result["feeds_skipped"],
+                "failed": result["feeds_failed"],
+                "validation": result.get("validation_enabled", True),
+            },
+        )
+
+        # Get the import ID
+        import_id = s.execute(text("SELECT last_insert_rowid()")).scalar()
+        logger.info(f"Created import_history with id={import_id}")
+
+        # Store failed feeds
+        failed_feeds = result.get("failed_feeds", [])
+        logger.info(f"Storing {len(failed_feeds)} failed feeds for import {import_id}")
+        for failed in failed_feeds:
+            logger.debug(f"Inserting failed feed: {failed}")
+            s.execute(
+                text(
+                    """
+                    INSERT INTO failed_imports (import_id, feed_url, feed_name, error_message, status)
+                    VALUES (:import_id, :url, :name, :error, 'pending')
+                    """
+                ),
+                {
+                    "import_id": import_id,
+                    "url": failed["url"],
+                    "name": failed.get("name"),
+                    "error": failed.get("error"),
+                },
+            )
+        logger.info(f"Stored {len(failed_feeds)} failed feeds")
+
+        return import_id
+
+
+def get_import_history(days: int = 30) -> list[dict[str, Any]]:
+    """Get import history for the last N days."""
+    with session_scope() as s:
+        results = s.execute(
+            text(
+                """
+                SELECT id, imported_at, filename, feeds_added, feeds_updated,
+                       feeds_skipped, feeds_failed, validation_enabled
+                FROM import_history
+                WHERE imported_at >= datetime('now', :days_ago)
+                ORDER BY imported_at DESC
+                """
+            ),
+            {"days_ago": f"-{days} days"},
+        ).fetchall()
+
+        return [
+            {
+                "id": r[0],
+                "imported_at": r[1],
+                "filename": r[2],
+                "feeds_added": r[3],
+                "feeds_updated": r[4],
+                "feeds_skipped": r[5],
+                "feeds_failed": r[6],
+                "validation_enabled": bool(r[7]),
+            }
+            for r in results
+        ]
+
+
+def get_failed_imports(status: Optional[str] = "pending") -> list[dict[str, Any]]:
+    """Get failed imports, optionally filtered by status."""
+    with session_scope() as s:
+        if status:
+            results = s.execute(
+                text(
+                    """
+                    SELECT fi.id, fi.import_id, fi.feed_url, fi.feed_name,
+                           fi.error_message, fi.status, fi.created_at,
+                           ih.imported_at as import_date
+                    FROM failed_imports fi
+                    JOIN import_history ih ON fi.import_id = ih.id
+                    WHERE fi.status = :status
+                    ORDER BY fi.created_at DESC
+                    """
+                ),
+                {"status": status},
+            ).fetchall()
+        else:
+            results = s.execute(
+                text(
+                    """
+                    SELECT fi.id, fi.import_id, fi.feed_url, fi.feed_name,
+                           fi.error_message, fi.status, fi.created_at,
+                           ih.imported_at as import_date
+                    FROM failed_imports fi
+                    JOIN import_history ih ON fi.import_id = ih.id
+                    ORDER BY fi.created_at DESC
+                    """
+                )
+            ).fetchall()
+
+        return [
+            {
+                "id": r[0],
+                "import_id": r[1],
+                "feed_url": r[2],
+                "feed_name": r[3],
+                "error_message": r[4],
+                "status": r[5],
+                "created_at": r[6],
+                "import_date": r[7],
+            }
+            for r in results
+        ]
+
+
+def get_latest_import_summary() -> Optional[dict[str, Any]]:
+    """Get summary of the most recent import for UI display."""
+    with session_scope() as s:
+        result = s.execute(
+            text(
+                """
+                SELECT id, imported_at, filename, feeds_added, feeds_updated,
+                       feeds_skipped, feeds_failed
+                FROM import_history
+                ORDER BY imported_at DESC
+                LIMIT 1
+                """
+            )
+        ).fetchone()
+
+        if not result:
+            return None
+
+        # Get failed feeds for this import
+        failed_feeds = s.execute(
+            text(
+                """
+                SELECT feed_url, feed_name, error_message, status
+                FROM failed_imports
+                WHERE import_id = :import_id AND status = 'pending'
+                """
+            ),
+            {"import_id": result[0]},
+        ).fetchall()
+
+        return {
+            "id": result[0],
+            "imported_at": result[1],
+            "filename": result[2],
+            "feeds_added": result[3],
+            "feeds_updated": result[4],
+            "feeds_skipped": result[5],
+            "feeds_failed": result[6],
+            "pending_failed_feeds": [
+                {
+                    "url": f[0],
+                    "name": f[1],
+                    "error": f[2],
+                    "status": f[3],
+                }
+                for f in failed_feeds
+            ],
+        }
+
+
+def update_failed_import_status(
+    failed_import_id: int, status: str, resolved_feed_id: Optional[int] = None
+) -> bool:
+    """Update the status of a failed import (resolved, dismissed)."""
+    with session_scope() as s:
+        result = s.execute(
+            text(
+                """
+                UPDATE failed_imports
+                SET status = :status, resolved_at = CURRENT_TIMESTAMP
+                WHERE id = :id
+                """
+            ),
+            {"status": status, "id": failed_import_id},
+        )
+        return result.rowcount > 0
+
+
+def cleanup_old_import_history(days: int = 30) -> int:
+    """Delete import history older than N days."""
+    with session_scope() as s:
+        # Delete old failed imports first (cascade should handle this, but be explicit)
+        s.execute(
+            text(
+                """
+                DELETE FROM failed_imports
+                WHERE import_id IN (
+                    SELECT id FROM import_history
+                    WHERE imported_at < datetime('now', :days_ago)
+                )
+                """
+            ),
+            {"days_ago": f"-{days} days"},
+        )
+
+        # Delete old import history
+        result = s.execute(
+            text(
+                """
+                DELETE FROM import_history
+                WHERE imported_at < datetime('now', :days_ago)
+                """
+            ),
+            {"days_ago": f"-{days} days"},
+        )
+        return result.rowcount
 
 
 def export_opml() -> str:
@@ -655,12 +1002,11 @@ def export_opml() -> str:
         feeds_result = s.execute(
             text(
                 """
-                SELECT f.url, f.name, f.description, f.category, f.disabled, f.created_at,
+                SELECT url, name, description, category, disabled, created_at,
                        COUNT(i.id) as article_count
                 FROM feeds f
                 LEFT JOIN items i ON f.id = i.feed_id
-                GROUP BY f.id, f.url, f.name, f.description, f.category, f.disabled, f.created_at
-                ORDER BY f.category, f.name, f.url
+                ORDER BY category, name, url
             """
             )
         ).fetchall()
@@ -699,16 +1045,9 @@ def export_opml() -> str:
                 # Add metadata as custom attributes
                 feed_attrs["nb:articleCount"] = str(feed["article_count"])
                 feed_attrs["nb:disabled"] = str(bool(feed["disabled"])).lower()
-                # created_at may be datetime or string depending on SQLite driver
-                created_at = feed["created_at"]
-                if created_at:
-                    feed_attrs["nb:added"] = (
-                        created_at.isoformat()
-                        if hasattr(created_at, "isoformat")
-                        else str(created_at)
-                    )
-                else:
-                    feed_attrs["nb:added"] = ""
+                feed_attrs["nb:added"] = (
+                    feed["created_at"].isoformat() if feed["created_at"] else ""
+                )
 
                 ET.SubElement(category_outline, "outline", **feed_attrs)
 
@@ -728,16 +1067,9 @@ def export_opml() -> str:
                 # Add metadata
                 feed_attrs["nb:articleCount"] = str(feed["article_count"])
                 feed_attrs["nb:disabled"] = str(bool(feed["disabled"])).lower()
-                # created_at may be datetime or string depending on SQLite driver
-                created_at = feed["created_at"]
-                if created_at:
-                    feed_attrs["nb:added"] = (
-                        created_at.isoformat()
-                        if hasattr(created_at, "isoformat")
-                        else str(created_at)
-                    )
-                else:
-                    feed_attrs["nb:added"] = ""
+                feed_attrs["nb:added"] = (
+                    feed["created_at"].isoformat() if feed["created_at"] else ""
+                )
 
                 ET.SubElement(body, "outline", **feed_attrs)
 
@@ -777,7 +1109,15 @@ def fetch_and_store() -> RefreshStats:
         headers={"User-Agent": "newsbrief/0.1"},
         verify=certifi.where(),  # Use bundled SSL certificates
     ) as client:
-        for fid, url, etag, last_mod, robots_allowed, disabled in list_feeds():
+        for (
+            fid,
+            url,
+            etag,
+            last_mod,
+            robots_allowed,
+            disabled,
+            feed_category,
+        ) in list_feeds():
             # Check time limit
             elapsed = time.time() - start_time
             if elapsed > MAX_REFRESH_TIME_SECONDS:
@@ -996,7 +1336,9 @@ def fetch_and_store() -> RefreshStats:
                     ranking_score = _calculate_ranking_score_legacy(
                         article_data, source_weight=1.0
                     )
-                    topic, topic_confidence = classify_topic(article_data)
+                    topic, topic_confidence = classify_topic(
+                        article_data, feed_category=feed_category
+                    )
 
                     s.execute(
                         text(
@@ -1132,7 +1474,70 @@ def _calculate_ranking_score_legacy(
     return max(score, 0.1)  # Ensure minimum positive score
 
 
-def classify_topic(article_data: dict) -> tuple[str, float]:
+# Mapping from common feed category names to topic IDs
+CATEGORY_TO_TOPIC_MAP: dict[str, str] = {
+    # Sports
+    "sports": "sports",
+    "sport": "sports",
+    "football": "sports",
+    "soccer": "sports",
+    "basketball": "sports",
+    "tennis": "sports",
+    "cricket": "sports",
+    "rugby": "sports",
+    # Gaming
+    "gaming": "gaming",
+    "games": "gaming",
+    "video games": "gaming",
+    "esports": "gaming",
+    # Entertainment
+    "entertainment": "entertainment",
+    "movies": "entertainment",
+    "music": "entertainment",
+    "tv": "entertainment",
+    "television": "entertainment",
+    "celebrity": "entertainment",
+    # Finance
+    "finance": "finance",
+    "fsi": "finance",
+    "fsi / finance": "finance",
+    "banking": "finance",
+    "fintech": "finance",
+    "financial services": "finance",
+    # Tech categories
+    "tech": "devtools",
+    "technology": "devtools",
+    "engineering": "devtools",
+    "engineering / company tech blogs": "devtools",
+    "tech (ai, security, cloud, dev)": "devtools",
+    # News
+    "general news": "general",
+    "news": "general",
+    "world": "politics",
+    "politics": "politics",
+    # Regional
+    "a/nz region signals": "finance",  # Likely regulatory/finance focused
+}
+
+
+def map_category_to_topic(category: Optional[str]) -> Optional[str]:
+    """
+    Map a feed category name to a topic ID.
+
+    Args:
+        category: Feed category from OPML import
+
+    Returns:
+        Topic ID if a mapping exists, None otherwise
+    """
+    if not category:
+        return None
+    return CATEGORY_TO_TOPIC_MAP.get(category.lower().strip())
+
+
+def classify_topic(
+    article_data: dict, feed_category: Optional[str] = None
+) -> tuple[str, float]:
     """
     Classify article topic using the unified topic classification service.
 
@@ -1140,8 +1545,12 @@ def classify_topic(article_data: dict) -> tuple[str, float]:
     Uses keyword-based classification for feed ingestion (faster).
     LLM classification is available for reclassification operations.
 
+    If a feed_category is provided and maps to a known topic, it will be used
+    as a hint to boost that topic's score during classification.
+
     Args:
         article_data: Dictionary with 'title', 'content', 'summary' keys
+        feed_category: Optional category from the feed (OPML import)
 
     Returns:
         Tuple of (topic_id, confidence)
@@ -1150,12 +1559,33 @@ def classify_topic(article_data: dict) -> tuple[str, float]:
     content = article_data.get("content", "") or ""
     summary = article_data.get("summary", "") or ""
 
+    # Check if feed category maps to a known topic
+    category_topic = map_category_to_topic(feed_category)
+
     # Use unified topic service (keywords only for ingestion performance)
     result = classify_topic_unified(
         title=title,
         summary=f"{content} {summary}".strip(),
         use_llm=False,  # Use keywords for feed ingestion (faster)
     )
+
+    # If keyword classification returned 'general' but we have a category hint,
+    # use the category-based topic with moderate confidence
+    if result.topic == "general" and category_topic:
+        logger.debug(
+            f"Using feed category '{feed_category}' -> topic '{category_topic}' "
+            f"(keyword classification returned 'general')"
+        )
+        return category_topic, 0.6  # Moderate confidence from category hint
+
+    # If keyword classification has low confidence but category matches, boost it
+    if category_topic and result.topic == category_topic and result.confidence < 0.7:
+        boosted_confidence = min(result.confidence + 0.2, 0.9)
+        logger.debug(
+            f"Boosting confidence for '{result.topic}' from {result.confidence:.2f} "
+            f"to {boosted_confidence:.2f} (feed category match)"
+        )
+        return result.topic, boosted_confidence
 
     return result.topic, result.confidence
 

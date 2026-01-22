@@ -50,6 +50,39 @@
         </div>
     </div>
 
+    <!-- Failed Imports Banner (if any pending) -->
+    <div id="failed-imports-banner" class="hidden mb-6">
+        <div class="bg-red-50 dark:bg-gray-800 border-l-4 border-red-500 rounded-r-lg p-4">
+            <div class="flex items-start">
+                <div class="flex-shrink-0">
+                    <svg class="h-5 w-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                    </svg>
+                </div>
+                <div class="ml-3 flex-1">
+                    <h3 class="text-sm font-semibold text-red-800 dark:text-red-400">
+                        <span id="failed-imports-count">0</span> feed(s) failed to import
+                    </h3>
+                    <div class="mt-2 text-sm text-gray-700 dark:text-gray-300">
+                        <p>Some feeds could not be validated during your last import. Review and retry or dismiss them.</p>
+                    </div>
+                    <div class="mt-3">
+                        <button onclick="showFailedImportsModal()" class="text-sm font-medium text-red-700 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300 underline">
+                            Review Failed Feeds →
+                        </button>
+                    </div>
+                </div>
+                <div class="ml-auto pl-3">
+                    <button onclick="dismissAllFailedImports()" class="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Statistics Summary -->
     <div id="stats-summary" class="mb-8">
         <!-- Will be populated by JavaScript -->
@@ -151,34 +184,34 @@
     <!-- Feed List Table -->
     <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
         <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 table-fixed">
+            <table class="w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead class="bg-gray-50 dark:bg-gray-700">
                     <tr>
-                        <th class="w-12 px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap">
                             <input type="checkbox" id="select-all-checkbox" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-600 rounded">
                         </th>
-                        <th class="w-1/4 min-w-[200px] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                             Feed
                         </th>
-                        <th class="w-20 px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap">
                             Status
                         </th>
-                        <th class="w-28 px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap">
                             Health
                         </th>
-                        <th class="w-24 px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap">
                             Category
                         </th>
-                        <th class="w-20 px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap">
                             Priority
                         </th>
-                        <th class="w-20 px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap">
                             Articles
                         </th>
-                        <th class="w-32 px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap">
                             Performance
                         </th>
-                        <th class="w-32 px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                        <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap">
                             Actions
                         </th>
                     </tr>
@@ -359,6 +392,53 @@
     </div>
 </div>
 
+<!-- Failed Imports Modal -->
+<div id="failed-imports-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col">
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Failed Feed Imports</h3>
+            <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                These feeds could not be validated. You can retry, edit the URL, or dismiss them.
+            </p>
+        </div>
+        <div class="px-6 py-4 overflow-y-auto flex-1">
+            <div id="failed-imports-list" class="space-y-3">
+                <!-- Populated by JavaScript -->
+            </div>
+        </div>
+        <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-between">
+            <button onclick="dismissAllFailedImports()" class="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 text-sm">
+                Dismiss All
+            </button>
+            <button onclick="hideFailedImportsModal()" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-md">
+                Close
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Import Results Modal -->
+<div id="import-results-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-lg w-full mx-4">
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Import Results</h3>
+        </div>
+        <div class="px-6 py-4">
+            <div id="import-results-content">
+                <!-- Populated by JavaScript -->
+            </div>
+        </div>
+        <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end space-x-3">
+            <button id="view-failed-btn" onclick="showFailedImportsFromResults()" class="hidden px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-md">
+                Review Failed Feeds
+            </button>
+            <button onclick="hideImportResultsModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md">
+                Done
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- Notification Area -->
 <div id="notification-area" class="fixed top-4 right-4 z-50 space-y-2"></div>
 {% endblock %}
@@ -378,6 +458,7 @@ const statsContainer = document.getElementById('stats-summary');
 // Initialize page
 document.addEventListener('DOMContentLoaded', function() {
     loadFeeds();
+    loadFailedImports();
     setupEventListeners();
 });
 
@@ -468,12 +549,12 @@ function createFeedRow(feed) {
                       feed.last_error ? 'Error' : 'Active';
 
     row.innerHTML = `
-        <td class="px-4 py-4">
+        <td class="px-3 py-3">
             <input type="checkbox" class="feed-checkbox h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-600 rounded"
                    data-feed-id="${feed.id}" onchange="handleFeedSelection()">
         </td>
-        <td class="px-4 py-4">
-            <div>
+        <td class="px-3 py-3 max-w-xs">
+            <div class="truncate">
                 <div class="text-sm font-medium text-gray-900 dark:text-white truncate" title="${feed.name || 'Untitled Feed'}">
                     ${feed.name || 'Untitled Feed'}
                 </div>
@@ -482,31 +563,43 @@ function createFeedRow(feed) {
                 </div>
             </div>
         </td>
-        <td class="px-4 py-4">
+        <td class="px-3 py-3 whitespace-nowrap">
             <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${statusClass}">
                 ${statusText}
             </span>
         </td>
-        <td class="px-4 py-4">
+        <td class="px-3 py-3 whitespace-nowrap">
             ${renderHealthIndicator(feed)}
         </td>
-        <td class="px-4 py-4 text-sm text-gray-500 dark:text-gray-400">
+        <td class="px-3 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
             ${feed.category || '-'}
         </td>
-        <td class="px-4 py-4 text-sm text-gray-500 dark:text-gray-400">
+        <td class="px-3 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
             <span class="priority-${feed.priority}">★ ${feed.priority}</span>
         </td>
-        <td class="px-4 py-4 text-sm text-gray-500 dark:text-gray-400">
+        <td class="px-3 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
             ${feed.total_articles}
         </td>
-        <td class="px-4 py-4 text-sm text-gray-500 dark:text-gray-400">
+        <td class="px-3 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
             ${renderPerformanceMetrics(feed)}
         </td>
-        <td class="px-4 py-4 text-right text-sm font-medium">
-            <div class="flex justify-end space-x-2">
-                <button onclick="editFeed(${feed.id})" class="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300">Edit</button>
-                <button onclick="viewFeedStats(${feed.id})" class="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300">Stats</button>
-                <button onclick="deleteFeed(${feed.id})" class="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300">Delete</button>
+        <td class="px-3 py-3 text-right text-sm font-medium whitespace-nowrap">
+            <div class="flex justify-end space-x-1">
+                <button onclick="editFeed(${feed.id})" class="p-1.5 text-blue-600 hover:text-blue-900 hover:bg-blue-50 dark:text-blue-400 dark:hover:text-blue-300 dark:hover:bg-blue-900/20 rounded" title="Edit feed">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                    </svg>
+                </button>
+                <button onclick="viewFeedStats(${feed.id})" class="p-1.5 text-green-600 hover:text-green-900 hover:bg-green-50 dark:text-green-400 dark:hover:text-green-300 dark:hover:bg-green-900/20 rounded" title="View statistics">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                    </svg>
+                </button>
+                <button onclick="deleteFeed(${feed.id})" class="p-1.5 text-red-600 hover:text-red-900 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-900/20 rounded" title="Delete feed">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                    </svg>
+                </button>
             </div>
         </td>
     `;
@@ -1028,6 +1121,12 @@ function clearFeedForm() {
     document.getElementById('feed-category').value = '';
     document.getElementById('feed-priority').value = '3';
     document.getElementById('feed-disabled').checked = false;
+
+    // Clear any validation errors
+    const urlInput = document.getElementById('feed-url');
+    urlInput.classList.remove('border-red-500');
+    const existingError = document.getElementById('feed-url-error');
+    if (existingError) existingError.remove();
 }
 
 function populateFeedForm(feed) {
@@ -1049,6 +1148,18 @@ async function saveFeed() {
         disabled: document.getElementById('feed-disabled').checked
     };
 
+    // Show loading state on save button
+    const saveBtn = document.getElementById('save-feed-btn');
+    const originalText = saveBtn.textContent;
+    saveBtn.textContent = 'Validating...';
+    saveBtn.disabled = true;
+
+    // Clear any previous validation errors
+    const urlInput = document.getElementById('feed-url');
+    const existingError = document.getElementById('feed-url-error');
+    if (existingError) existingError.remove();
+    urlInput.classList.remove('border-red-500');
+
     try {
         const url = currentEditingFeed ? `/feeds/${currentEditingFeed.id}` : '/feeds';
         const method = currentEditingFeed ? 'PUT' : 'POST';
@@ -1061,8 +1172,50 @@ async function saveFeed() {
             body: JSON.stringify(feedData)
         });
 
+        let result;
+        try {
+            result = await response.json();
+        } catch (jsonError) {
+            console.error('Failed to parse response:', jsonError);
+            throw new Error('Server returned invalid response');
+        }
+
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            // Handle validation error - keep modal open and show error
+            if (response.status === 400) {
+                // Extract user-friendly error message
+                let errorMessage = result.detail || 'Invalid feed URL';
+
+                // Make the error more user-friendly
+                if (errorMessage.includes('Connection failed')) {
+                    errorMessage = 'Could not connect to this URL. Please check the address is correct.';
+                } else if (errorMessage.includes('timeout')) {
+                    errorMessage = 'Connection timed out. The server may be slow or unavailable.';
+                } else if (errorMessage.includes('Invalid feed format')) {
+                    errorMessage = 'This URL does not contain a valid RSS or Atom feed.';
+                } else if (errorMessage.includes('HTTP 404')) {
+                    errorMessage = 'Feed not found (404). Please check the URL.';
+                } else if (errorMessage.includes('HTTP 403') || errorMessage.includes('HTTP 401')) {
+                    errorMessage = 'Access denied. This feed may require authentication.';
+                } else if (errorMessage.includes('No feed content')) {
+                    errorMessage = 'No RSS/Atom content found at this URL.';
+                }
+
+                // Show validation error under URL field
+                urlInput.classList.add('border-red-500');
+                const errorDiv = document.createElement('div');
+                errorDiv.id = 'feed-url-error';
+                errorDiv.className = 'mt-1 text-sm text-red-600 dark:text-red-400';
+                errorDiv.innerHTML = `
+                    <svg class="inline h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    ${errorMessage}
+                `;
+                urlInput.parentNode.appendChild(errorDiv);
+                return; // Don't close modal
+            }
+            throw new Error(result.detail || `Server error (${response.status})`);
         }
 
         hideFeedModal();
@@ -1070,7 +1223,21 @@ async function saveFeed() {
         showNotification(currentEditingFeed ? 'Feed updated successfully' : 'Feed added successfully', 'success');
     } catch (error) {
         console.error('Error saving feed:', error);
-        showNotification('Error saving feed', 'error');
+        // Show error inline if it's a validation-type error
+        urlInput.classList.add('border-red-500');
+        const errorDiv = document.createElement('div');
+        errorDiv.id = 'feed-url-error';
+        errorDiv.className = 'mt-1 text-sm text-red-600 dark:text-red-400';
+        errorDiv.innerHTML = `
+            <svg class="inline h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            ${error.message || 'Failed to validate feed. Please try again.'}
+        `;
+        urlInput.parentNode.appendChild(errorDiv);
+    } finally {
+        saveBtn.textContent = originalText;
+        saveBtn.disabled = false;
     }
 }
 
@@ -1119,6 +1286,20 @@ Last error: ${stats.last_error || 'None'}`);
 }
 
 async function refreshAllFeeds() {
+    const btn = document.getElementById('refresh-feeds-btn');
+    const originalHTML = btn.innerHTML;
+
+    // Show loading state
+    btn.disabled = true;
+    btn.innerHTML = `
+        <svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <span>Refreshing...</span>
+    `;
+    btn.classList.add('opacity-75', 'cursor-wait');
+
     try {
         const response = await fetch('/refresh', {
             method: 'POST'
@@ -1130,10 +1311,31 @@ async function refreshAllFeeds() {
 
         const result = await response.json();
         await loadFeeds(); // Reload to get fresh data
-        showNotification(`Refresh completed! Ingested ${result.ingested} new articles`, 'success');
+
+        // Build detailed message
+        const feedsProcessed = result.stats?.feeds?.processed || 0;
+        const feedsWithErrors = result.stats?.feeds?.errors || 0;
+        const feedsCached = result.stats?.feeds?.cached_304 || 0;
+        const newArticles = result.ingested || 0;
+
+        let message = `Refresh completed! ${newArticles} new articles from ${feedsProcessed} feeds`;
+        if (feedsCached > 0) {
+            message += `, ${feedsCached} unchanged`;
+        }
+
+        if (feedsWithErrors > 0) {
+            showNotification(`${message}. ⚠️ ${feedsWithErrors} feed(s) had errors - check the table below.`, 'warning');
+        } else {
+            showNotification(message, 'success');
+        }
     } catch (error) {
         console.error('Error refreshing feeds:', error);
-        showNotification('Error refreshing feeds', 'error');
+        showNotification('Error refreshing feeds: ' + error.message, 'error');
+    } finally {
+        // Restore button state
+        btn.disabled = false;
+        btn.innerHTML = originalHTML;
+        btn.classList.remove('opacity-75', 'cursor-wait');
     }
 }
 
@@ -1200,23 +1402,12 @@ async function startOPMLImport() {
         if (response.ok && result.success) {
             hideOPMLImportModal();
             await loadFeeds(); // Reload feeds to show imported ones
+            await loadFailedImports(); // Refresh failed imports list
 
-            // Show detailed success message
-            const details = result.details;
-            let message = result.message;
-
-            if (details.categories_found && details.categories_found.length > 0) {
-                message += `\nCategories found: ${details.categories_found.join(', ')}`;
-            }
-
-            if (details.errors && details.errors.length > 0) {
-                message += `\n⚠️ ${details.errors.length} error(s) occurred during import`;
-                console.warn('OPML Import errors:', details.errors);
-            }
-
-            showNotification(message, 'success');
+            // Show detailed results modal
+            showImportResultsModal(result.details);
         } else {
-            throw new Error(result.message || 'Import failed');
+            throw new Error(result.message || result.detail || 'Import failed');
         }
     } catch (error) {
         console.error('Error importing OPML:', error);
@@ -1269,6 +1460,220 @@ async function exportOPML() {
         console.error('Error exporting OPML:', error);
         showNotification(`Export failed: ${error.message}`, 'error');
     }
+}
+
+// Failed Imports Management
+let failedImports = [];
+let lastImportResults = null;
+
+async function loadFailedImports() {
+    try {
+        const response = await fetch('/feeds/import/failed?status=pending');
+        failedImports = await response.json();
+
+        const banner = document.getElementById('failed-imports-banner');
+        const countEl = document.getElementById('failed-imports-count');
+
+        if (failedImports.length > 0) {
+            banner.classList.remove('hidden');
+            countEl.textContent = failedImports.length;
+        } else {
+            banner.classList.add('hidden');
+        }
+    } catch (error) {
+        console.error('Error loading failed imports:', error);
+    }
+}
+
+function showFailedImportsModal() {
+    const list = document.getElementById('failed-imports-list');
+
+    if (failedImports.length === 0) {
+        list.innerHTML = `
+            <div class="text-center text-gray-500 dark:text-gray-400 py-8">
+                No pending failed imports
+            </div>
+        `;
+    } else {
+        list.innerHTML = failedImports.map(fi => `
+            <div class="p-4 border border-gray-200 dark:border-gray-700 rounded-lg" data-failed-id="${fi.id}">
+                <div class="flex items-start justify-between">
+                    <div class="flex-1 min-w-0">
+                        <div class="font-medium text-gray-900 dark:text-white truncate" title="${fi.feed_name || fi.feed_url}">
+                            ${fi.feed_name || 'Unknown Feed'}
+                        </div>
+                        <div class="text-sm text-gray-500 dark:text-gray-400 truncate" title="${fi.feed_url}">
+                            ${fi.feed_url}
+                        </div>
+                        <div class="mt-1 text-sm text-red-600 dark:text-red-400">
+                            <svg class="inline h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            ${fi.error_message || 'Validation failed'}
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-2 ml-4">
+                        <button onclick="retryFailedImport(${fi.id})" class="px-3 py-1 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded">
+                            Retry
+                        </button>
+                        <button onclick="dismissFailedImport(${fi.id})" class="px-3 py-1 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600 rounded">
+                            Dismiss
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    document.getElementById('failed-imports-modal').classList.remove('hidden');
+    document.getElementById('failed-imports-modal').classList.add('flex');
+}
+
+function hideFailedImportsModal() {
+    document.getElementById('failed-imports-modal').classList.add('hidden');
+    document.getElementById('failed-imports-modal').classList.remove('flex');
+}
+
+async function retryFailedImport(failedId) {
+    try {
+        const response = await fetch(`/feeds/import/failed/${failedId}/retry`, {
+            method: 'POST'
+        });
+        const result = await response.json();
+
+        if (result.success) {
+            showNotification('Feed added successfully!', 'success');
+            await loadFailedImports();
+            await loadFeeds();
+
+            // Update modal if still open
+            if (!document.getElementById('failed-imports-modal').classList.contains('hidden')) {
+                showFailedImportsModal();
+            }
+        } else {
+            showNotification(`Retry failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        console.error('Error retrying import:', error);
+        showNotification('Error retrying import', 'error');
+    }
+}
+
+async function dismissFailedImport(failedId) {
+    try {
+        await fetch(`/feeds/import/failed/${failedId}/dismiss`, {
+            method: 'POST'
+        });
+
+        await loadFailedImports();
+
+        // Update modal if still open
+        if (!document.getElementById('failed-imports-modal').classList.contains('hidden')) {
+            showFailedImportsModal();
+        }
+    } catch (error) {
+        console.error('Error dismissing import:', error);
+        showNotification('Error dismissing import', 'error');
+    }
+}
+
+async function dismissAllFailedImports() {
+    if (!confirm('Dismiss all failed imports? You can always re-import them later from your OPML file.')) {
+        return;
+    }
+
+    try {
+        for (const fi of failedImports) {
+            await fetch(`/feeds/import/failed/${fi.id}/dismiss`, { method: 'POST' });
+        }
+
+        await loadFailedImports();
+        hideFailedImportsModal();
+        showNotification('All failed imports dismissed', 'info');
+    } catch (error) {
+        console.error('Error dismissing imports:', error);
+        showNotification('Error dismissing imports', 'error');
+    }
+}
+
+function showImportResultsModal(results) {
+    lastImportResults = results;
+    const content = document.getElementById('import-results-content');
+    const viewFailedBtn = document.getElementById('view-failed-btn');
+
+    const hasFailures = results.feeds_failed > 0;
+
+    content.innerHTML = `
+        <div class="space-y-4">
+            <!-- Success Stats -->
+            <div class="grid grid-cols-2 gap-4">
+                <div class="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg text-center">
+                    <div class="text-2xl font-bold text-green-600 dark:text-green-400">${results.feeds_added}</div>
+                    <div class="text-sm text-green-800 dark:text-green-200">Added</div>
+                </div>
+                <div class="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-center">
+                    <div class="text-2xl font-bold text-blue-600 dark:text-blue-400">${results.feeds_updated}</div>
+                    <div class="text-sm text-blue-800 dark:text-blue-200">Updated</div>
+                </div>
+                <div class="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg text-center">
+                    <div class="text-2xl font-bold text-gray-600 dark:text-gray-400">${results.feeds_skipped}</div>
+                    <div class="text-sm text-gray-800 dark:text-gray-200">Skipped</div>
+                </div>
+                ${hasFailures ? `
+                <div class="p-3 bg-red-50 dark:bg-red-900/20 rounded-lg text-center">
+                    <div class="text-2xl font-bold text-red-600 dark:text-red-400">${results.feeds_failed}</div>
+                    <div class="text-sm text-red-800 dark:text-red-200">Failed</div>
+                </div>
+                ` : `
+                <div class="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg text-center">
+                    <div class="text-2xl font-bold text-gray-600 dark:text-gray-400">0</div>
+                    <div class="text-sm text-gray-800 dark:text-gray-200">Failed</div>
+                </div>
+                `}
+            </div>
+
+            ${hasFailures ? `
+            <div class="p-4 bg-red-50 dark:bg-gray-700 border-l-4 border-red-500 rounded">
+                <div class="flex items-start">
+                    <svg class="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                    </svg>
+                    <div class="ml-3">
+                        <h4 class="text-sm font-semibold text-red-800 dark:text-red-400">Some feeds failed validation</h4>
+                        <p class="mt-1 text-sm text-gray-700 dark:text-gray-300">
+                            ${results.feeds_failed} feed(s) could not be validated. These may be temporarily unavailable or have invalid URLs.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            ` : ''}
+
+            ${results.categories_found && results.categories_found.length > 0 ? `
+            <div class="text-sm text-gray-600 dark:text-gray-400">
+                <span class="font-medium">Categories imported:</span> ${results.categories_found.join(', ')}
+            </div>
+            ` : ''}
+        </div>
+    `;
+
+    if (hasFailures) {
+        viewFailedBtn.classList.remove('hidden');
+    } else {
+        viewFailedBtn.classList.add('hidden');
+    }
+
+    document.getElementById('import-results-modal').classList.remove('hidden');
+    document.getElementById('import-results-modal').classList.add('flex');
+}
+
+function hideImportResultsModal() {
+    document.getElementById('import-results-modal').classList.add('hidden');
+    document.getElementById('import-results-modal').classList.remove('flex');
+}
+
+function showFailedImportsFromResults() {
+    hideImportResultsModal();
+    loadFailedImports().then(() => showFailedImportsModal());
 }
 
 // Bulk Operations Management
@@ -1418,18 +1823,10 @@ async function bulkAssignPriority() {
     }
 }
 
+// Using DateUtils for locale-aware date formatting
 function formatDate(dateString) {
     if (!dateString) return 'Never';
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now - date;
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffHours / 24);
-
-    if (diffHours < 1) return 'Just now';
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
+    return DateUtils.formatRelative(dateString);
 }
 
 function showNotification(message, type = 'info') {
@@ -1437,15 +1834,18 @@ function showNotification(message, type = 'info') {
     notification.className = `px-4 py-2 rounded-md text-white text-sm font-medium ${
         type === 'success' ? 'bg-green-500' :
         type === 'error' ? 'bg-red-500' :
+        type === 'warning' ? 'bg-orange-500' :
         'bg-blue-500'
     }`;
     notification.textContent = message;
 
     document.getElementById('notification-area').appendChild(notification);
 
+    // Warnings stay longer so user can read them
+    const timeout = type === 'warning' ? 8000 : 5000;
     setTimeout(() => {
         notification.remove();
-    }, 5000);
+    }, timeout);
 }
 </script>
 {% endblock %}

@@ -196,12 +196,11 @@ function createArticleElement(article) {
     const rankingScore = element.querySelector('.ranking-score');
     rankingScore.textContent = `Score: ${article.ranking_score?.toFixed(3) || 'N/A'}`;
 
-    // Set published date
+    // Set published date using DateUtils for locale-aware formatting
     const publishedDate = element.querySelector('.published-date');
+    publishedDate.textContent = DateUtils.formatShortDate(article.published);
     if (article.published) {
-        publishedDate.textContent = new Date(article.published).toLocaleDateString();
-    } else {
-        publishedDate.textContent = 'No date';
+        publishedDate.title = DateUtils.formatDateTime(article.published);
     }
 
     // Set title with link to detail page
@@ -211,12 +210,30 @@ function createArticleElement(article) {
 
     // Set content (AI summary or fallback)
     const content = element.querySelector('.article-content');
+
+    // Generate skim summary (one line)
+    let skimText = '';
+    if (article.structured_summary && article.structured_summary.bullets && article.structured_summary.bullets.length > 0) {
+        skimText = article.structured_summary.bullets[0]; // First bullet point
+    } else if (article.fallback_summary) {
+        skimText = article.fallback_summary;
+    } else if (article.summary) {
+        skimText = article.summary;
+    } else {
+        skimText = 'No summary available';
+    }
+    // Truncate skim text to ~150 chars
+    if (skimText.length > 150) {
+        skimText = skimText.substring(0, 147) + '...';
+    }
+
+    // Generate full content
+    let fullContent = '';
     if (article.structured_summary) {
-        // Show structured summary
         const bullets = article.structured_summary.bullets || [];
         const whyItMatters = article.structured_summary.why_it_matters || '';
 
-        content.innerHTML = `
+        fullContent = `
             <div class="space-y-3">
                 ${bullets.length > 0 ? `
                     <div>
@@ -236,12 +253,20 @@ function createArticleElement(article) {
         `;
         element.querySelector('.ai-indicator').classList.remove('hidden');
     } else if (article.fallback_summary) {
-        content.innerHTML = `<p class="text-gray-700 dark:text-gray-300">${article.fallback_summary}</p>`;
+        fullContent = `<p class="text-gray-700 dark:text-gray-300">${article.fallback_summary}</p>`;
     } else if (article.summary) {
-        content.innerHTML = `<p class="text-gray-700 dark:text-gray-300">${article.summary}</p>`;
+        fullContent = `<p class="text-gray-700 dark:text-gray-300">${article.summary}</p>`;
     } else {
-        content.innerHTML = `<p class="text-gray-500 dark:text-gray-400 italic">No summary available</p>`;
+        fullContent = `<p class="text-gray-500 dark:text-gray-400 italic">No summary available</p>`;
     }
+
+    // Set both views
+    content.innerHTML = `
+        <div class="article-content-full">${fullContent}</div>
+        <div class="article-content-skim">
+            <p class="text-gray-600 dark:text-gray-400 text-sm truncate">${skimText}</p>
+        </div>
+    `;
 
     // Set article detail link
     const articleDetailLink = element.querySelector('.article-detail-link');
@@ -277,19 +302,9 @@ function getTopicBadgeClasses(topic) {
     return classes[topic] || 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
 }
 
-// Utility functions
+// Utility functions - using DateUtils for locale-aware formatting
 function formatDate(dateString) {
-    if (!dateString) return 'No date';
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now - date;
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffHours / 24);
-
-    if (diffHours < 1) return 'Just now';
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
+    return DateUtils.formatRelative(dateString);
 }
 
 // Refresh functionality
@@ -321,8 +336,16 @@ async function refreshFeeds() {
         const result = await response.json();
         console.log('Refresh result:', result);
 
-        // Show success notification
-        showNotification(`Refreshed! Added ${result.items_added || 0} new articles`, 'success');
+        // Show success notification with detailed stats
+        const articlesAdded = result.ingested || result.stats?.items?.total || 0;
+        const feedsProcessed = result.stats?.feeds?.processed || 0;
+        const feedsWithErrors = result.stats?.feeds?.errors || 0;
+
+        let message = `Refreshed ${feedsProcessed} feeds: ${articlesAdded} new articles`;
+        if (feedsWithErrors > 0) {
+            message += ` (${feedsWithErrors} feeds had errors)`;
+        }
+        showNotification(message, articlesAdded > 0 ? 'success' : 'info');
 
         // Reload articles with current topic filter
         const topicSelect = document.querySelector('select');

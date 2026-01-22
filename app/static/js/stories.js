@@ -216,10 +216,10 @@ function createStoryElement(story) {
     scoresSpan.textContent = `I:${(story.importance_score * 100).toFixed(0)} F:${(story.freshness_score * 100).toFixed(0)}`;
     scoresSpan.title = `Importance: ${(story.importance_score * 100).toFixed(0)}%, Freshness: ${(story.freshness_score * 100).toFixed(0)}%`;
 
-    // Time
+    // Time - using DateUtils for locale-aware formatting
     const timeElement = element.querySelector('.story-time');
     timeElement.textContent = formatTimeAgo(story.generated_at);
-    timeElement.title = new Date(story.generated_at).toLocaleString();
+    timeElement.title = DateUtils.formatDateTime(story.generated_at);
 
     // Key points (show first 2)
     const keyPointsList = element.querySelector('.story-key-points ul');
@@ -313,9 +313,20 @@ async function refreshStories() {
 
         const result = await response.json();
 
-        // v0.6.1: Show detailed message based on results
+        // v0.7.6: Show detailed message with article/cluster counts
         if (result.stories_generated > 0) {
-            showNotification(`Successfully generated ${result.stories_generated} stories!`, 'success');
+            const articlesFound = result.articles_found || 0;
+            const clustersCreated = result.clusters_created || 0;
+            showNotification(
+                `Generated ${result.stories_generated} stories from ${articlesFound} articles (${clustersCreated} clusters)`,
+                'success'
+            );
+
+            // Switch to "Latest" sort to show newly generated stories at top
+            const sortSelect = document.getElementById('sort-filter');
+            if (sortSelect) {
+                sortSelect.value = 'generated_at';
+            }
         } else if (result.message) {
             // Show helpful message explaining why 0 stories
             showNotification(result.message, 'info');
@@ -323,7 +334,7 @@ async function refreshStories() {
             showNotification(`Generation complete: ${result.stories_generated} stories created.`, 'info');
         }
 
-        // Reload stories
+        // Reload stories with latest sort
         setTimeout(() => {
             loadStories();
         }, 1000);
@@ -352,17 +363,9 @@ function getTopicColor(topic) {
     return colors[topic] || 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
 }
 
-// Helper: Format time ago
+// Helper: Format time ago - using DateUtils for locale-aware formatting
 function formatTimeAgo(timestamp) {
-    const now = new Date();
-    const past = new Date(timestamp);
-    const seconds = Math.floor((now - past) / 1000);
-
-    if (seconds < 60) return 'just now';
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-    if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
-    return past.toLocaleDateString();
+    return DateUtils.formatRelative(timestamp);
 }
 
 // Helper: Show notification

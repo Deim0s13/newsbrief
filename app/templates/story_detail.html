@@ -142,7 +142,7 @@
                     {% endif %}
 
                     <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-                        <span>{{ article.published if article.published else 'Unknown date' }}</span>
+                        <span class="source-article-date" data-timestamp="{{ article.published.isoformat() if article.published else '' }}">{{ article.published.strftime('%d %b %Y') if article.published else 'Unknown date' }}</span>
                         <div class="flex items-center space-x-3">
                             <a href="/article/{{ article.id }}" class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 flex items-center">
                                 <span>View Detail</span>
@@ -200,18 +200,20 @@ document.addEventListener('DOMContentLoaded', function() {
         const timestamp = timeElement.getAttribute('data-timestamp');
         timeElement.textContent = formatTimeAgo(timestamp);
     }
+
+    // Format source article dates using DateUtils
+    document.querySelectorAll('.source-article-date').forEach(function(el) {
+        const timestamp = el.getAttribute('data-timestamp');
+        if (timestamp) {
+            el.textContent = DateUtils.formatShortDate(timestamp);
+            el.title = DateUtils.formatDateTime(timestamp);
+        }
+    });
 });
 
+// Using DateUtils for locale-aware date formatting
 function formatTimeAgo(timestamp) {
-    const now = new Date();
-    const past = new Date(timestamp);
-    const seconds = Math.floor((now - past) / 1000);
-
-    if (seconds < 60) return 'just now';
-    if (seconds < 3600) return `${Math.floor(seconds / 60)} minutes ago`;
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)} hours ago`;
-    if (seconds < 604800) return `${Math.floor(seconds / 86400)} days ago`;
-    return past.toLocaleDateString();
+    return DateUtils.formatRelative(timestamp);
 }
 </script>
 {% endblock %}

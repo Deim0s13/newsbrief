@@ -2,6 +2,7 @@
 # - Increased resources
 # - Enhanced health checks
 # - Pod anti-affinity for HA
+# Note: Persistent storage (PVC) is handled via JSON patch in kustomization.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
