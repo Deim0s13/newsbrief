@@ -5,6 +5,10 @@ metadata:
   labels:
     app.kubernetes.io/name: newsbrief
     app.kubernetes.io/component: storage
+  annotations:
+    # PVC uses WaitForFirstConsumer - it won't bind until a pod claims it
+    # Tell ArgoCD to proceed without waiting for Bound status
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   accessModes:
     - ReadWriteOnce
