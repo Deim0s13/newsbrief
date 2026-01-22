@@ -11,8 +11,8 @@ spec:
   params:
     - name: REGISTRY
       type: string
-      default: "localhost:5000"
-      description: Registry URL
+      default: "kind-registry:5000"
+      description: Registry URL (kind-registry for in-cluster access)
     - name: IMAGE_NAME
       type: string
       default: "newsbrief"

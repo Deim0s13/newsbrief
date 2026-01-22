@@ -53,7 +53,7 @@ spec:
         TRIVY_ARGS="image --severity $(params.SEVERITY)"
 
         # Add insecure flag for local registry (no TLS)
-        if echo "$(params.IMAGE)" | grep -qE "(registry\.registry|localhost:5000)"; then
+        if echo "$(params.IMAGE)" | grep -qE "(registry\.registry|localhost:5000|kind-registry:5000)"; then
           TRIVY_ARGS="$TRIVY_ARGS --insecure"
           echo "ℹ️  Using insecure mode for local registry"
         fi
