@@ -114,3 +114,6 @@ package-lock.json
 
 # Caddy persistent data (certificates)
 caddy-data/
+
+# Cosign private key - never commit
+cosign.key
