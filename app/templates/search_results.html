@@ -67,7 +67,8 @@
                         </span>
                         {% endif %}
                     </div>
-                    <time class="text-sm text-gray-500 dark:text-gray-400">
+                    <time class="text-sm text-gray-500 dark:text-gray-400 article-date"
+                          data-timestamp="{{ article.published.isoformat() if article.published else '' }}">
                         {{ article.published.strftime('%B %d, %Y') if article.published else 'No date' }}
                     </time>
                 </div>
@@ -177,4 +178,16 @@
 .topic-badge-devtools { @apply bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200; }
 .topic-badge-chips-hardware { @apply bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200; }
 </style>
+<script>
+// Format dates using DateUtils for locale-aware display
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.article-date').forEach(function(el) {
+        const timestamp = el.getAttribute('data-timestamp');
+        if (timestamp) {
+            el.textContent = DateUtils.formatMediumDate(timestamp);
+            el.title = DateUtils.formatDateTime(timestamp);
+        }
+    });
+});
+</script>
 {% endblock %}

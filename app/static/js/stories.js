@@ -216,10 +216,10 @@ function createStoryElement(story) {
     scoresSpan.textContent = `I:${(story.importance_score * 100).toFixed(0)} F:${(story.freshness_score * 100).toFixed(0)}`;
     scoresSpan.title = `Importance: ${(story.importance_score * 100).toFixed(0)}%, Freshness: ${(story.freshness_score * 100).toFixed(0)}%`;
 
-    // Time
+    // Time - using DateUtils for locale-aware formatting
     const timeElement = element.querySelector('.story-time');
     timeElement.textContent = formatTimeAgo(story.generated_at);
-    timeElement.title = new Date(story.generated_at).toLocaleString();
+    timeElement.title = DateUtils.formatDateTime(story.generated_at);
 
     // Key points (show first 2)
     const keyPointsList = element.querySelector('.story-key-points ul');
@@ -363,22 +363,9 @@ function getTopicColor(topic) {
     return colors[topic] || 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
 }
 
-// Helper: Format time ago
+// Helper: Format time ago - using DateUtils for locale-aware formatting
 function formatTimeAgo(timestamp) {
-    const now = new Date();
-    // Ensure timestamp is treated as UTC if no timezone specified
-    let ts = timestamp;
-    if (ts && !ts.endsWith('Z') && !ts.includes('+') && !ts.includes('-', 10)) {
-        ts = ts + 'Z';
-    }
-    const past = new Date(ts);
-    const seconds = Math.floor((now - past) / 1000);
-
-    if (seconds < 60) return 'just now';
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-    if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
-    return past.toLocaleDateString();
+    return DateUtils.formatRelative(timestamp);
 }
 
 // Helper: Show notification

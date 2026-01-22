@@ -117,7 +117,9 @@
                 <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
                 </svg>
-                <time>{{ article.published if article.published else 'No date' }}</time>
+                <time class="article-published-date" data-timestamp="{{ article.published.isoformat() if article.published else '' }}">
+                    {{ article.published.strftime('%d %b %Y') if article.published else 'No date' }}
+                </time>
             </div>
             {% endif %}
 
@@ -345,6 +347,15 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('Skim button found:', document.getElementById('skim-btn'));
     console.log('Detail button found:', document.getElementById('detail-btn'));
     setViewMode('detail');
+
+    // Format dates using DateUtils for locale-aware display
+    document.querySelectorAll('.article-published-date').forEach(function(el) {
+        const timestamp = el.getAttribute('data-timestamp');
+        if (timestamp) {
+            el.textContent = DateUtils.formatMediumDate(timestamp);
+            el.title = DateUtils.formatDateTime(timestamp);
+        }
+    });
 });
 </script>
 

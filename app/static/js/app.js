@@ -196,17 +196,11 @@ function createArticleElement(article) {
     const rankingScore = element.querySelector('.ranking-score');
     rankingScore.textContent = `Score: ${article.ranking_score?.toFixed(3) || 'N/A'}`;
 
-    // Set published date
+    // Set published date using DateUtils for locale-aware formatting
     const publishedDate = element.querySelector('.published-date');
+    publishedDate.textContent = DateUtils.formatShortDate(article.published);
     if (article.published) {
-        // Ensure timestamp is treated as UTC if no timezone specified
-        let ts = article.published;
-        if (ts && !ts.endsWith('Z') && !ts.includes('+') && !ts.includes('-', 10)) {
-            ts = ts + 'Z';
-        }
-        publishedDate.textContent = new Date(ts).toLocaleDateString();
-    } else {
-        publishedDate.textContent = 'No date';
+        publishedDate.title = DateUtils.formatDateTime(article.published);
     }
 
     // Set title with link to detail page
@@ -308,24 +302,9 @@ function getTopicBadgeClasses(topic) {
     return classes[topic] || 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
 }
 
-// Utility functions
+// Utility functions - using DateUtils for locale-aware formatting
 function formatDate(dateString) {
-    if (!dateString) return 'No date';
-    // Ensure timestamp is treated as UTC if no timezone specified
-    let ts = dateString;
-    if (ts && !ts.endsWith('Z') && !ts.includes('+') && !ts.includes('-', 10)) {
-        ts = ts + 'Z';
-    }
-    const date = new Date(ts);
-    const now = new Date();
-    const diffMs = now - date;
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffHours / 24);
-
-    if (diffHours < 1) return 'Just now';
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
+    return DateUtils.formatRelative(dateString);
 }
 
 // Refresh functionality
