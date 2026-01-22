@@ -22,8 +22,14 @@
   delay: 10
 
 - name: Apply ArgoCD configuration
-  command: kubectl apply -f {{ project_root }}/k8s/argocd/
+  shell: |
+    kubectl apply -f {{ project_root }}/k8s/argocd/project.yaml
+    kubectl apply -f {{ project_root }}/k8s/argocd/app-dev.yaml
+    kubectl apply -f {{ project_root }}/k8s/argocd/app-prod.yaml
+    kubectl apply -f {{ project_root }}/k8s/argocd/notifications-cm.yaml
+    kubectl apply -f {{ project_root }}/k8s/argocd/notifications-secret.yaml
   changed_when: false
+  # Note: appset.yaml and kustomization.yaml are optional and applied manually if needed
 
 - name: Verify ArgoCD apps exist
   command: kubectl get applications -n argocd
