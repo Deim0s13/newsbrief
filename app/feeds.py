@@ -613,7 +613,9 @@ def import_opml_content(
 
     try:
         # Parse XML content
+        logger.info(f"Parsing OPML content ({len(opml_content)} chars)")
         root = ET.fromstring(opml_content)
+        logger.info(f"Parsed XML root: {root.tag}")
 
         # Build parent map for stdlib ElementTree (doesn't have getparent())
         # This maps each element to its parent
@@ -624,6 +626,7 @@ def import_opml_content(
 
         # Find all outline elements with xmlUrl (feed entries)
         feed_outlines = root.findall(".//outline[@xmlUrl]")
+        logger.info(f"Found {len(feed_outlines)} feed outlines with xmlUrl attribute")
         categories = set()
 
         with session_scope() as s:

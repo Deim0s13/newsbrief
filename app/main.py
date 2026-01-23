@@ -667,6 +667,12 @@ async def import_feeds_opml_upload(
         file_content = await file.read()
         opml_content = file_content.decode("utf-8")
 
+        # Debug logging
+        logger.info(
+            f"OPML upload received: {file.filename}, size={len(file_content)} bytes"
+        )
+        logger.debug(f"OPML content preview: {opml_content[:500]}...")
+
         # Process OPML import with validation
         result = import_opml_content(
             opml_content, validate=validate, filename=file.filename
