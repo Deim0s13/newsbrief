@@ -19,7 +19,7 @@ This guide covers setting up a local Kubernetes environment for NewsBrief CI/CD 
 │                              ▼                                  │
 │  ┌──────────────────────────────────────────────────────────┐  │
 │  │              Local Container Registry                     │  │
-│  │                  (registry:5000)                          │  │
+│  │                (kind-registry:5000)                       │  │
 │  └──────────────────────────────────────────────────────────┘  │
 │                              │                                  │
 │                              ▼                                  │
@@ -117,17 +117,41 @@ kubectl get svc -n registry
 
 ### 5. Configure Cosign Signing Keys
 
+**Option A: Automatic via Bitwarden (Recommended)**
+
+If you have Bitwarden CLI configured with the cosign keys stored:
+
+```bash
+# Unlock Bitwarden
+export BW_SESSION=$(bw unlock --raw)
+
+# Run recovery - automatically creates cosign-keys secret
+make recover
+```
+
+**Option B: Manual Setup**
+
 ```bash
 # Generate key pair (one-time setup)
-COSIGN_PASSWORD="your-secure-password" cosign generate-key-pair k8s://default/cosign-keys
+cosign generate-key-pair
 
-# The public key is saved to cosign.pub
-# Move to project for verification
-mv cosign.pub k8s/secrets/
+# Create K8s secret with the keys
+kubectl create secret generic cosign-keys \
+  --from-file=cosign.key=cosign.key \
+  --from-file=cosign.pub=cosign.pub \
+  --from-literal=cosign.password='your-password' \
+  -n default
+
+# Copy public key to repo
+cp cosign.pub k8s/secrets/
 
 # Apply RBAC for Tekton to access keys
 kubectl apply -f k8s/infrastructure/tekton-rbac.yaml
 ```
+
+**Bitwarden Storage:**
+- Store `cosign.key` contents in a Secure Note named `newsbrief-cosign-key`
+- Store the password in a Login named `newsbrief-cosign-password`
 
 ## 📦 Tekton Resources
 
@@ -579,7 +603,7 @@ spec:
 ### Image Promotion Workflow
 
 ```
-dev branch ──► Tekton builds ──► registry:5000/newsbrief:dev-latest
+dev branch ──► Tekton builds ──► kind-registry:5000/newsbrief:dev-latest
                                         │
                                         ▼
                               ArgoCD syncs to newsbrief-dev
@@ -587,7 +611,7 @@ dev branch ──► Tekton builds ──► registry:5000/newsbrief:dev-latest
                     ┌───────────────────┴────────────────────┐
                     │                                        │
                     ▼                                        ▼
-main branch ──► Tekton builds ──► registry:5000/newsbrief:v0.7.5
+main branch ──► Tekton builds ──► kind-registry:5000/newsbrief:v0.7.x
                                         │
                                         ▼
                               ArgoCD syncs to newsbrief-prod
@@ -653,6 +677,59 @@ argocd app sync newsbrief-dev
 # Edit k8s/argocd/notifications-secret.yaml
 # Add your Slack token or webhook URL
 kubectl apply -f k8s/argocd/notifications-secret.yaml
+```
+
+## 🔄 Environment Recovery
+
+After a laptop reboot or when the environment needs to be restored, use the Ansible recovery playbook:
+
+### Quick Recovery
+
+```bash
+# Full environment recovery (recommended)
+make recover
+
+# With Bitwarden for automatic cosign secret creation
+export BW_SESSION=$(bw unlock --raw)
+make recover
+```
+
+### What `make recover` Does
+
+1. **Starts Podman** - Container runtime
+2. **Creates Kind cluster** - If not already running
+3. **Installs Tekton** - Pipelines, Triggers, Dashboard
+4. **Installs ArgoCD** - GitOps controller
+5. **Creates secrets** - Cosign keys from Bitwarden (if BW_SESSION set)
+6. **Starts port forwards** - Prod app, Tekton dashboard
+7. **Starts Caddy** - Reverse proxy for HTTPS
+8. **Starts Smee** - GitHub webhook relay
+
+### Check Status
+
+```bash
+# View current environment status
+make status
+
+# Or run the status playbook directly
+ansible-playbook -i ansible/inventory/localhost.yml ansible/playbooks/status.yml
+```
+
+### Manual Service Start
+
+If you need to start individual services:
+
+```bash
+# Port forwards
+kubectl port-forward svc/newsbrief -n newsbrief-prod 8788:8787 &
+kubectl port-forward svc/el-newsbrief-listener 8080:8080 &
+kubectl port-forward svc/tekton-dashboard -n tekton-pipelines 9097:9097 &
+
+# Smee webhook relay
+npx smee-client --url "https://smee.io/cddqBCYHwHG3ZcUY" --target "http://localhost:8080" &
+
+# Caddy (if not using launchd)
+cd caddy-data && caddy run --config ../Caddyfile &
 ```
 
 ## 📚 Related Documentation

@@ -103,6 +103,30 @@ tkn pipeline start ci-prod \
 
 See **[KUBERNETES.md](KUBERNETES.md)** for complete local cluster setup instructions.
 
+### Container Registry
+
+The local Kind cluster uses a container registry accessible at `kind-registry:5000` from within pods.
+
+**Important:** Use `kind-registry:5000` (not `localhost:5000`) in pipeline configurations because:
+- `localhost` inside a pod refers to the pod itself, not the host
+- `kind-registry` is the Docker container name on the Kind network
+- Both the Kind nodes and pods can resolve this address
+
+### GitHub Webhook Integration (Smee)
+
+GitHub webhooks are relayed to the local Tekton EventListener via [Smee.io](https://smee.io):
+
+```
+GitHub Push → smee.io/cddqBCYHwHG3ZcUY → localhost:8080 → Tekton EventListener
+```
+
+**Setup:**
+1. Configure GitHub webhook to use the Smee URL
+2. Run `make recover` to start the Smee relay automatically
+3. Or manually: `npx smee-client --url "https://smee.io/cddqBCYHwHG3ZcUY" --target "http://localhost:8080"`
+
+**Logs:** `/tmp/smee.log`
+
 ---
 
 ## Workflow Architecture
@@ -349,6 +373,34 @@ kubectl logs -f deployment/newsbrief-prod -n newsbrief-prod
 ## Security Considerations
 
 ### Secret Management
+
+NewsBrief uses Kubernetes secrets for sensitive data, with Bitwarden integration for secure storage.
+
+**Required Secrets:**
+
+| Secret | Purpose | Creation |
+|--------|---------|----------|
+| `cosign-keys` | Image signing | Auto-created via Bitwarden during `make recover` |
+| `github-release-token` | GitHub releases | Manual: `kubectl create secret generic github-release-token --from-literal=token='...'` |
+| `github-webhook-secret` | Webhook validation | Manual: Match GitHub webhook secret |
+
+**Bitwarden Integration:**
+
+Cosign keys are stored in Bitwarden and automatically retrieved during recovery:
+
+```bash
+# Unlock Bitwarden and set session
+export BW_SESSION=$(bw unlock --raw)
+
+# Run recovery (creates cosign-keys secret automatically)
+make recover
+```
+
+Bitwarden items required:
+- `newsbrief-cosign-key` - Secure Note with private key contents
+- `newsbrief-cosign-password` - Login with key password
+
+### Legacy Secret Management
 - Store sensitive values in GitHub Secrets
 - Use environment-specific secrets
 - Rotate secrets regularly
@@ -375,12 +427,19 @@ kubectl logs -f deployment/newsbrief-prod -n newsbrief-prod
 - **Cosign Signing** - Key-based image signatures
 - **SBOM Generation** - CycloneDX software bill of materials
 
+### ✅ Completed (v0.7.6)
+- **ArgoCD Integration** - GitOps deployment with auto-sync
+- **Tekton Triggers** - GitHub webhook-triggered pipelines
+- **Tekton Dashboard** - Visual pipeline monitoring (localhost:9097)
+- **Pipeline Notifications** - ntfy.sh and Slack alerts
+- **Persistent Storage** - PVC for prod data persistence
+- **Smee Webhook Relay** - GitHub webhook forwarding to local cluster
+- **Bitwarden Secrets** - Automated cosign key management via `bw` CLI
+- **Registry URL Fix** - Standardized to `kind-registry:5000` for pod access
+- **Ansible Recovery** - `make recover` automates full environment setup
+
 ### Planned Features
-- **ArgoCD Integration** - GitOps deployment controller (v0.7.6)
-- **Tekton Triggers** - Automatic pipeline execution (v0.7.7)
-- **Tekton Dashboard** - Visual pipeline monitoring
 - **Registry TLS** - HTTPS for local registry (Issue #157)
-- **Pipeline Notifications** - Slack/webhook alerts (Issue #156)
 
 ### Future Enhancements
 - **Helm Charts** - Kubernetes package management
