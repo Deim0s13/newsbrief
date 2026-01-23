@@ -8,7 +8,7 @@ NewsBrief is a self-hosted, privacy-focused news aggregator that replaces readin
 
 ## 🌟 Features
 
-### **🎯 Story-Based Aggregation (v0.7.5)** - *Current Release*
+### **🎯 Story-Based Aggregation (v0.7.6)** - *Current Release*
 Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **Time to informed: 30 min → 2 min**
 
 - **Automated Story Generation**: Daily scheduled generation at 6 AM (configurable timezone)
@@ -59,7 +59,16 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 - **Automated Dependency Management**: Weekly security audits, dependency updates, and base image maintenance
 - **Comprehensive Documentation**: Complete CI/CD guides, API documentation, and architecture decision records
 
-### **✅ Current: v0.7.5.1 - Pipeline Notifications** (Jan 2026)
+### **✅ Current: v0.7.6 - CI/CD Remediation** (Jan 2026)
+- ✅ **Persistent Storage**: Prod environment uses PVC for data persistence
+- ✅ **Registry Standardization**: All pipelines use `kind-registry:5000` for pod access
+- ✅ **Cosign Signing**: Key-based image signatures with Bitwarden integration
+- ✅ **Bitwarden Secrets**: Automated secret management via `bw` CLI in Ansible
+- ✅ **Smee Webhook Relay**: GitHub webhooks forwarded to local cluster
+- ✅ **Ansible Recovery**: `make recover` automates full environment setup
+- ✅ **Documentation**: Updated CI-CD.md and KUBERNETES.md
+
+### **✅ Previous: v0.7.5.1 - Pipeline Notifications** (Jan 2026)
 - ✅ **ntfy.sh Integration**: Native macOS/iOS push notifications for pipeline status (ADR-0021)
 - ✅ **Slack Webhook**: Optional team notifications (disabled by default)
 - ✅ **Finally Blocks**: Success/failure notifications on all pipelines
@@ -617,6 +626,7 @@ Development is organized with GitHub Projects and Milestones for clear visibilit
 - [v0.7.2 - Container & Deployment](https://github.com/Deim0s13/newsbrief/releases/tag/v0.7.2) - ✅ **COMPLETE** (Jan 2026)
 - [v0.7.5 - GitOps & Kubernetes](https://github.com/Deim0s13/newsbrief/milestone/14) - ✅ **COMPLETE** (Jan 2026)
 - [v0.7.5.1 - Pipeline Notifications](https://github.com/Deim0s13/newsbrief/milestone/22) - ✅ **COMPLETE** (Jan 2026)
+- [v0.7.6 - CI/CD Remediation](https://github.com/Deim0s13/newsbrief/milestone/23) - ✅ **COMPLETE** (Jan 2026)
 
 **Epics** (via labels):
 - **epic:stories** - Story-based aggregation and synthesis
