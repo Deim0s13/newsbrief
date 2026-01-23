@@ -55,6 +55,50 @@
     msg: "⚠️  GitHub token secret missing! Run: kubectl create secret generic github-release-token --from-literal=token=YOUR_TOKEN"
   when: github_secret.rc != 0
 
+# Cosign secret for image signing
+- name: Check for cosign-keys secret
+  command: kubectl get secret cosign-keys -n default
+  register: cosign_secret
+  changed_when: false
+  failed_when: false
+
+- name: Check for Bitwarden session
+  shell: echo $BW_SESSION
+  register: bw_session
+  changed_when: false
+  failed_when: false
+  when: cosign_secret.rc != 0
+
+- name: Create cosign-keys secret from Bitwarden
+  when: cosign_secret.rc != 0 and bw_session.stdout != ""
+  block:
+    - name: Get cosign key from Bitwarden
+      shell: bw get notes newsbrief-cosign-key
+      register: cosign_key
+      no_log: true
+
+    - name: Get cosign password from Bitwarden
+      shell: bw get password newsbrief-cosign-password
+      register: cosign_password
+      no_log: true
+
+    - name: Create cosign-keys secret
+      shell: |
+        kubectl create secret generic cosign-keys \
+          --from-literal=cosign.key="{{ cosign_key.stdout }}" \
+          --from-file=cosign.pub={{ project_root }}/cosign.pub \
+          --from-literal=cosign.password="{{ cosign_password.stdout }}" \
+          -n default
+      no_log: true
+
+- name: Warn if cosign secret missing and no Bitwarden session
+  debug:
+    msg: |
+      ⚠️  Cosign secret missing! Either:
+      1. Export BW_SESSION and re-run: export BW_SESSION=$(bw unlock --raw)
+      2. Or create manually: kubectl create secret generic cosign-keys ...
+  when: cosign_secret.rc != 0 and (bw_session.stdout is not defined or bw_session.stdout == "")
+
 - name: Display Tekton status
   debug:
     msg: "✅ Tekton Pipelines, Triggers, and Dashboard are installed"
