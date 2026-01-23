@@ -16,7 +16,7 @@ from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
-from .db import session_scope
+from .db import is_postgres, session_scope
 from .models import create_content_hash
 from .ranking import calculate_ranking_score, classify_article_topic
 from .readability import extract_readable
@@ -754,27 +754,40 @@ def _store_import_history(
 ) -> int:
     """Store import results in the database for user reference."""
     with session_scope() as s:
-        # Create import history record
-        s.execute(
-            text(
-                """
-                INSERT INTO import_history
-                (imported_at, filename, feeds_added, feeds_updated, feeds_skipped, feeds_failed, validation_enabled)
-                VALUES (CURRENT_TIMESTAMP, :filename, :added, :updated, :skipped, :failed, :validation)
-                """
-            ),
-            {
-                "filename": filename,
-                "added": result["feeds_added"],
-                "updated": result["feeds_updated"],
-                "skipped": result["feeds_skipped"],
-                "failed": result["feeds_failed"],
-                "validation": result.get("validation_enabled", True),
-            },
-        )
+        # Create import history record - use RETURNING for PostgreSQL, last_insert_rowid for SQLite
+        params = {
+            "filename": filename,
+            "added": result["feeds_added"],
+            "updated": result["feeds_updated"],
+            "skipped": result["feeds_skipped"],
+            "failed": result["feeds_failed"],
+            "validation": result.get("validation_enabled", True),
+        }
 
-        # Get the import ID
-        import_id = s.execute(text("SELECT last_insert_rowid()")).scalar()
+        if is_postgres():
+            import_id = s.execute(
+                text(
+                    """
+                    INSERT INTO import_history
+                    (imported_at, filename, feeds_added, feeds_updated, feeds_skipped, feeds_failed, validation_enabled)
+                    VALUES (NOW(), :filename, :added, :updated, :skipped, :failed, :validation)
+                    RETURNING id
+                    """
+                ),
+                params,
+            ).scalar()
+        else:
+            s.execute(
+                text(
+                    """
+                    INSERT INTO import_history
+                    (imported_at, filename, feeds_added, feeds_updated, feeds_skipped, feeds_failed, validation_enabled)
+                    VALUES (CURRENT_TIMESTAMP, :filename, :added, :updated, :skipped, :failed, :validation)
+                    """
+                ),
+                params,
+            )
+            import_id = s.execute(text("SELECT last_insert_rowid()")).scalar()
         logger.info(f"Created import_history with id={import_id}")
 
         # Store failed feeds
@@ -804,18 +817,31 @@ def _store_import_history(
 def get_import_history(days: int = 30) -> list[dict[str, Any]]:
     """Get import history for the last N days."""
     with session_scope() as s:
-        results = s.execute(
-            text(
+        # Use database-specific date arithmetic
+        if is_postgres():
+            query = (
                 """
+                SELECT id, imported_at, filename, feeds_added, feeds_updated,
+                       feeds_skipped, feeds_failed, validation_enabled
+                FROM import_history
+                WHERE imported_at >= NOW() - INTERVAL '%s days'
+                ORDER BY imported_at DESC
+            """
+                % days
+            )  # PostgreSQL doesn't support parameterized intervals
+        else:
+            query = """
                 SELECT id, imported_at, filename, feeds_added, feeds_updated,
                        feeds_skipped, feeds_failed, validation_enabled
                 FROM import_history
                 WHERE imported_at >= datetime('now', :days_ago)
                 ORDER BY imported_at DESC
-                """
-            ),
-            {"days_ago": f"-{days} days"},
-        ).fetchall()
+            """
+
+        if is_postgres():
+            results = s.execute(text(query)).fetchall()
+        else:
+            results = s.execute(text(query), {"days_ago": f"-{days} days"}).fetchall()
 
         return [
             {
@@ -950,30 +976,56 @@ def update_failed_import_status(
 def cleanup_old_import_history(days: int = 30) -> int:
     """Delete import history older than N days."""
     with session_scope() as s:
-        # Delete old failed imports first (cascade should handle this, but be explicit)
-        s.execute(
-            text(
-                """
-                DELETE FROM failed_imports
-                WHERE import_id IN (
-                    SELECT id FROM import_history
-                    WHERE imported_at < datetime('now', :days_ago)
+        # Use database-specific date arithmetic
+        if is_postgres():
+            # Delete old failed imports first (cascade should handle this, but be explicit)
+            s.execute(
+                text(
+                    """
+                    DELETE FROM failed_imports
+                    WHERE import_id IN (
+                        SELECT id FROM import_history
+                        WHERE imported_at < NOW() - INTERVAL '%s days'
+                    )
+                    """
+                    % days
                 )
-                """
-            ),
-            {"days_ago": f"-{days} days"},
-        )
+            )
 
-        # Delete old import history
-        result = s.execute(
-            text(
-                """
-                DELETE FROM import_history
-                WHERE imported_at < datetime('now', :days_ago)
-                """
-            ),
-            {"days_ago": f"-{days} days"},
-        )
+            # Delete old import history
+            result = s.execute(
+                text(
+                    """
+                    DELETE FROM import_history
+                    WHERE imported_at < NOW() - INTERVAL '%s days'
+                    """
+                    % days
+                )
+            )
+        else:
+            # SQLite
+            s.execute(
+                text(
+                    """
+                    DELETE FROM failed_imports
+                    WHERE import_id IN (
+                        SELECT id FROM import_history
+                        WHERE imported_at < datetime('now', :days_ago)
+                    )
+                    """
+                ),
+                {"days_ago": f"-{days} days"},
+            )
+
+            result = s.execute(
+                text(
+                    """
+                    DELETE FROM import_history
+                    WHERE imported_at < datetime('now', :days_ago)
+                    """
+                ),
+                {"days_ago": f"-{days} days"},
+            )
         return result.rowcount
 
 
