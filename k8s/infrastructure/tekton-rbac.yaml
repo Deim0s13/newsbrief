@@ -34,6 +34,10 @@ subjects:
   - kind: ServiceAccount
     name: tekton-pipeline
     namespace: default
+  # Also bind default SA since Tekton Triggers use it
+  - kind: ServiceAccount
+    name: default
+    namespace: default
 roleRef:
   kind: Role
   name: tekton-pipeline-role
