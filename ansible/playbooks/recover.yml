@@ -5,11 +5,11 @@
 # This playbook checks and restarts all NewsBrief services:
 # 1. Podman machine
 # 2. Kind cluster with local registry
-# 3. Tekton pipelines and triggers
+# 3. Tekton pipelines and triggers (+ cosign secret from Bitwarden)
 # 4. ArgoCD
 # 5. Port forwards
 # 6. Caddy reverse proxy
-# 7. Seed dev data if needed
+# 7. Smee webhook relay
 
 - name: Recover NewsBrief Development Environment
   hosts: localhost
@@ -43,6 +43,10 @@
       include_role:
         name: caddy
 
+    - name: Start Smee webhook relay
+      include_role:
+        name: smee
+
     - name: Display service status
       debug:
         msg: |
@@ -52,10 +56,15 @@
           ════════════════════════════════════════════════════════════════
 
           Prod (Kubernetes):
-            • App:             https://newsbrief.local
+            • App:              https://newsbrief.local
             • Tekton Dashboard: http://localhost:9097
+            • Smee Relay:       https://smee.io/cddqBCYHwHG3ZcUY
 
           Dev (Local):
             • Run: make dev → http://localhost:8787
+
+          CI/CD:
+            • GitHub webhooks relay to local EventListener via Smee
+            • Logs: /tmp/smee.log
 
           ════════════════════════════════════════════════════════════════

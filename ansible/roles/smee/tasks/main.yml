@@ -1,0 +1,27 @@
+---
+# Smee role - starts the webhook relay for GitHub
+# Runs smee-client in background to relay webhooks to local EventListener
+
+- name: Check if smee is already running
+  shell: pgrep -f "smee-client" || true
+  register: smee_running
+  changed_when: false
+
+- name: Start smee webhook relay (background)
+  shell: |
+    nohup npx --yes smee-client \
+      --url "https://smee.io/cddqBCYHwHG3ZcUY" \
+      --target "http://localhost:8080" \
+      > /tmp/smee.log 2>&1 &
+  async: 10
+  poll: 0
+  when: smee_running.stdout == ""
+
+- name: Wait for smee to start
+  pause:
+    seconds: 3
+  when: smee_running.stdout == ""
+
+- name: Display smee status
+  debug:
+    msg: "✅ Smee webhook relay {{ 'already running' if smee_running.stdout != '' else 'started' }}"
