@@ -411,7 +411,8 @@ def ensure_feed(feed_url: str) -> int:
         s.execute(
             text(
                 """
-        INSERT INTO feeds(url, name, robots_allowed) VALUES(:u, :name, :allowed)
+        INSERT INTO feeds(url, name, robots_allowed, priority, fetch_count, success_count, consecutive_failures, health_score)
+        VALUES(:u, :name, :allowed, 1, 0, 0, 0, 100.0)
         """
             ),
             {"u": feed_url, "name": feed_name, "allowed": allowed},
@@ -612,6 +613,14 @@ def import_opml_content(
     }
 
     try:
+        # Pre-process OPML to fix common XML issues (unescaped ampersands)
+        import re
+
+        # Match & that is NOT part of a valid XML entity (amp, lt, gt, quot, apos, or numeric)
+        opml_content = re.sub(
+            r"&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)", "&amp;", opml_content
+        )
+
         # Parse XML content
         logger.info(f"Parsing OPML content ({len(opml_content)} chars)")
         root = ET.fromstring(opml_content)
@@ -625,18 +634,48 @@ def import_opml_content(
                 parent_map[child] = parent
 
         # Find all outline elements with xmlUrl (feed entries)
+        # Try standard camelCase first, then fallback to case-insensitive search
         feed_outlines = root.findall(".//outline[@xmlUrl]")
+
+        # If no feeds found, try case-insensitive search for xmlurl variants
+        if not feed_outlines:
+            logger.info("No xmlUrl found, trying case-insensitive search...")
+            all_outlines = root.findall(".//outline")
+            feed_outlines = []
+            for outline in all_outlines:
+                # Check for any case variation of xmlUrl
+                for attr in outline.attrib:
+                    if attr.lower() == "xmlurl":
+                        feed_outlines.append(outline)
+                        break
+
         logger.info(f"Found {len(feed_outlines)} feed outlines with xmlUrl attribute")
         categories = set()
+
+        # Helper to get attribute case-insensitively
+        def get_attr_ci(elem: ET.Element, name: str, default: str = "") -> str:
+            """Get attribute case-insensitively."""
+            # Try exact match first
+            val = elem.get(name)
+            if val is not None:
+                return val
+            # Try case-insensitive
+            name_lower = name.lower()
+            for attr, val in elem.attrib.items():
+                if attr.lower() == name_lower:
+                    return val
+            return default
 
         with session_scope() as s:
             for outline in feed_outlines:
                 try:
-                    xml_url = outline.get("xmlUrl")
-                    html_url = outline.get("htmlUrl", "")
-                    title = outline.get("title", outline.get("text", ""))
-                    description = outline.get("description", "")
-                    category = outline.get("category", "")
+                    xml_url = get_attr_ci(outline, "xmlUrl")
+                    html_url = get_attr_ci(outline, "htmlUrl", "")
+                    title = get_attr_ci(outline, "title") or get_attr_ci(
+                        outline, "text", ""
+                    )
+                    description = get_attr_ci(outline, "description", "")
+                    category = get_attr_ci(outline, "category", "")
 
                     # Extract category from parent outline if not set
                     # Use parent_map since stdlib ElementTree doesn't have getparent()
