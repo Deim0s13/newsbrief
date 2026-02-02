@@ -1401,11 +1401,22 @@ async function startOPMLImport() {
 
         if (response.ok && result.success) {
             hideOPMLImportModal();
-            await loadFeeds(); // Reload feeds to show imported ones
-            await loadFailedImports(); // Refresh failed imports list
 
-            // Show detailed results modal
-            showImportResultsModal(result.details);
+            if (result.async) {
+                // Async import - show processing message
+                showNotification('Import started! Processing feeds in the background. Check Import History for results.', 'success');
+
+                // Poll for completion after a short delay
+                setTimeout(async () => {
+                    await loadFeeds();
+                    await loadFailedImports();
+                }, 3000);
+            } else {
+                // Synchronous import - show results immediately
+                await loadFeeds(); // Reload feeds to show imported ones
+                await loadFailedImports(); // Refresh failed imports list
+                showImportResultsModal(result.details);
+            }
         } else {
             throw new Error(result.message || result.detail || 'Import failed');
         }

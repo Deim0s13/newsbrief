@@ -5,7 +5,15 @@ import os
 from datetime import datetime
 from typing import Any, List, Optional
 
-from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi import (
+    BackgroundTasks,
+    FastAPI,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -645,12 +653,36 @@ def import_feeds_opml(
         raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
 
 
+def _process_opml_import_background(
+    opml_content: str, validate: bool, filename: str
+) -> None:
+    """Background task to process OPML import without blocking the main thread."""
+    try:
+        logger.info(f"Background OPML import starting: {filename}")
+        result = import_opml_content(opml_content, validate=validate, filename=filename)
+        logger.info(
+            f"Background OPML import completed: {filename} - "
+            f"{result['feeds_added']} added, {result['feeds_updated']} updated, "
+            f"{result['feeds_skipped']} skipped, {result['feeds_failed']} failed"
+        )
+    except Exception as e:
+        logger.error(f"Background OPML import failed: {filename} - {str(e)}")
+
+
 @app.post("/feeds/import/opml/upload")
 async def import_feeds_opml_upload(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    validate: bool = Query(True, description="Validate feed URLs before importing"),
+    validate: bool = Query(
+        False, description="Validate feed URLs before importing (slower)"
+    ),
+    async_import: bool = Query(True, description="Process import asynchronously"),
 ):
-    """Import feeds from OPML file upload (multipart form)."""
+    """Import feeds from OPML file upload (multipart form).
+
+    By default, imports are processed asynchronously to prevent timeout issues
+    with large OPML files. Check /feeds/import/history for import status.
+    """
 
     if not file:
         raise HTTPException(status_code=400, detail="No file provided")
@@ -673,20 +705,42 @@ async def import_feeds_opml_upload(
         )
         logger.debug(f"OPML content preview: {opml_content[:500]}...")
 
-        # Process OPML import with validation
-        result = import_opml_content(
-            opml_content, validate=validate, filename=file.filename
-        )
+        if async_import:
+            # Process in background to avoid liveness probe timeout
+            background_tasks.add_task(
+                _process_opml_import_background,
+                opml_content,
+                validate,
+                file.filename,
+            )
+            return {
+                "success": True,
+                "filename": file.filename,
+                "message": "Import started in background. Check /feeds/import/history for status.",
+                "async": True,
+                "details": {
+                    "status": "processing",
+                    "validation_enabled": validate,
+                },
+            }
+        else:
+            # Synchronous processing (may timeout for large files)
+            result = import_opml_content(
+                opml_content, validate=validate, filename=file.filename
+            )
 
-        failed_msg = (
-            f", {result['feeds_failed']} failed" if result["feeds_failed"] > 0 else ""
-        )
-        return {
-            "success": True,
-            "filename": file.filename,
-            "message": f"Import completed: {result['feeds_added']} added, {result['feeds_updated']} updated, {result['feeds_skipped']} skipped{failed_msg}",
-            "details": result,
-        }
+            failed_msg = (
+                f", {result['feeds_failed']} failed"
+                if result["feeds_failed"] > 0
+                else ""
+            )
+            return {
+                "success": True,
+                "filename": file.filename,
+                "message": f"Import completed: {result['feeds_added']} added, {result['feeds_updated']} updated, {result['feeds_skipped']} skipped{failed_msg}",
+                "async": False,
+                "details": result,
+            }
 
     except UnicodeDecodeError:
         raise HTTPException(
