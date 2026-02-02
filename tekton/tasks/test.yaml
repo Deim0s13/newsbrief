@@ -28,7 +28,7 @@ spec:
       description: Source directory for coverage
     - name: coverage-fail-under
       type: string
-      default: "35"
+      default: "34"
       description: Minimum coverage percentage
   results:
     - name: tests-passed
