@@ -2,7 +2,9 @@
 
 ## Status
 
-**Proposed**
+**Superseded by [ADR 0022: Dev/Prod Database Parity](0022-dev-prod-database-parity.md)**
+
+*Original status was "Proposed". This ADR established dual database support (PostgreSQL for production, SQLite for development). ADR 0022 supersedes this by mandating PostgreSQL for all environments to achieve dev/prod parity.*
 
 ## Date
 

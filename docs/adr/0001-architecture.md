@@ -2,7 +2,11 @@
 
 **Status**: Accepted
 **Date**: 2025-09-27
-**Updated**: 2025-09-27
+**Updated**: 2026-02-04
+
+> **Note**: The database sections of this ADR (SQLite as core database) have been superseded.
+> See [ADR 0007](0007-postgresql-database-migration.md) for PostgreSQL migration rationale and
+> [ADR 0022](0022-dev-prod-database-parity.md) for the decision to use PostgreSQL in all environments.
 
 ## Context
 
