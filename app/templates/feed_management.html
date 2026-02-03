@@ -392,6 +392,78 @@
     </div>
 </div>
 
+<!-- Import Progress Modal -->
+<div id="import-progress-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4">
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Importing Feeds</h3>
+            <p id="import-progress-filename" class="mt-1 text-sm text-gray-600 dark:text-gray-300"></p>
+        </div>
+        <div class="px-6 py-6">
+            <!-- Progress Bar -->
+            <div class="mb-4">
+                <div class="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-2">
+                    <span id="import-progress-status">Processing...</span>
+                    <span id="import-progress-percent">0%</span>
+                </div>
+                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+                    <div id="import-progress-bar" class="bg-purple-600 h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <!-- Stats (shown during processing) -->
+            <div id="import-progress-stats" class="grid grid-cols-2 gap-4 text-sm">
+                <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
+                    <div class="text-gray-500 dark:text-gray-400">Processed</div>
+                    <div class="text-lg font-semibold text-gray-900 dark:text-white">
+                        <span id="import-stat-processed">0</span> / <span id="import-stat-total">0</span>
+                    </div>
+                </div>
+                <div class="bg-green-50 dark:bg-green-900/20 rounded-lg p-3">
+                    <div class="text-green-600 dark:text-green-400">Added</div>
+                    <div id="import-stat-added" class="text-lg font-semibold text-green-700 dark:text-green-300">0</div>
+                </div>
+                <div class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3">
+                    <div class="text-blue-600 dark:text-blue-400">Updated</div>
+                    <div id="import-stat-updated" class="text-lg font-semibold text-blue-700 dark:text-blue-300">0</div>
+                </div>
+                <div class="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-3">
+                    <div class="text-yellow-600 dark:text-yellow-400">Skipped</div>
+                    <div id="import-stat-skipped" class="text-lg font-semibold text-yellow-700 dark:text-yellow-300">0</div>
+                </div>
+            </div>
+
+            <!-- Error display (shown on failure) -->
+            <div id="import-progress-error" class="hidden mt-4 p-4 bg-red-50 dark:bg-red-900/20 rounded-lg">
+                <div class="flex items-start">
+                    <svg class="h-5 w-5 text-red-500 mt-0.5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <div>
+                        <div class="font-medium text-red-800 dark:text-red-200">Import Failed</div>
+                        <div id="import-error-message" class="text-sm text-red-600 dark:text-red-300 mt-1"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Success message (shown on completion) -->
+            <div id="import-progress-success" class="hidden mt-4 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                <div class="flex items-center">
+                    <svg class="h-5 w-5 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                    </svg>
+                    <span class="font-medium text-green-800 dark:text-green-200">Import completed successfully!</span>
+                </div>
+            </div>
+        </div>
+        <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end">
+            <button id="close-import-progress-btn" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-md hidden">
+                Done
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- Failed Imports Modal -->
 <div id="failed-imports-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50">
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col">
@@ -1385,7 +1457,7 @@ async function startOPMLImport() {
 
     importBtn.disabled = true;
     importSpinner.classList.remove('hidden');
-    importBtnText.textContent = 'Importing...';
+    importBtnText.textContent = 'Starting...';
 
     try {
         // Create FormData for file upload
@@ -1402,15 +1474,9 @@ async function startOPMLImport() {
         if (response.ok && result.success) {
             hideOPMLImportModal();
 
-            if (result.async) {
-                // Async import - show processing message
-                showNotification('Import started! Processing feeds in the background. Check Import History for results.', 'success');
-
-                // Poll for completion after a short delay
-                setTimeout(async () => {
-                    await loadFeeds();
-                    await loadFailedImports();
-                }, 3000);
+            if (result.async && result.import_id) {
+                // Async import - show progress modal and poll for completion
+                showImportProgressModal(selectedOPMLFile.name, result.import_id);
             } else {
                 // Synchronous import - show results immediately
                 await loadFeeds(); // Reload feeds to show imported ones
@@ -1430,6 +1496,134 @@ async function startOPMLImport() {
         importBtnText.textContent = 'Import OPML';
     }
 }
+
+// Import Progress Modal Functions
+let importPollingInterval = null;
+
+function showImportProgressModal(filename, importId) {
+    // Reset modal state
+    document.getElementById('import-progress-filename').textContent = filename;
+    document.getElementById('import-progress-status').textContent = 'Processing...';
+    document.getElementById('import-progress-percent').textContent = '0%';
+    document.getElementById('import-progress-bar').style.width = '0%';
+    document.getElementById('import-stat-processed').textContent = '0';
+    document.getElementById('import-stat-total').textContent = '0';
+    document.getElementById('import-stat-added').textContent = '0';
+    document.getElementById('import-stat-updated').textContent = '0';
+    document.getElementById('import-stat-skipped').textContent = '0';
+    document.getElementById('import-progress-error').classList.add('hidden');
+    document.getElementById('import-progress-success').classList.add('hidden');
+    document.getElementById('close-import-progress-btn').classList.add('hidden');
+    document.getElementById('import-progress-stats').classList.remove('hidden');
+
+    // Show modal
+    document.getElementById('import-progress-modal').classList.remove('hidden');
+    document.getElementById('import-progress-modal').classList.add('flex');
+
+    // Start polling for progress
+    pollImportProgress(importId);
+}
+
+function hideImportProgressModal() {
+    document.getElementById('import-progress-modal').classList.add('hidden');
+    document.getElementById('import-progress-modal').classList.remove('flex');
+
+    // Stop polling
+    if (importPollingInterval) {
+        clearInterval(importPollingInterval);
+        importPollingInterval = null;
+    }
+}
+
+async function pollImportProgress(importId) {
+    // Clear any existing interval
+    if (importPollingInterval) {
+        clearInterval(importPollingInterval);
+    }
+
+    const poll = async () => {
+        try {
+            const response = await fetch(`/feeds/import/status/${importId}`);
+            if (!response.ok) {
+                throw new Error('Failed to get import status');
+            }
+
+            const status = await response.json();
+            updateImportProgressUI(status);
+
+            // Check if import is complete
+            if (status.status === 'completed' || status.status === 'failed') {
+                clearInterval(importPollingInterval);
+                importPollingInterval = null;
+
+                // Show close button
+                document.getElementById('close-import-progress-btn').classList.remove('hidden');
+
+                // Refresh feed list
+                await loadFeeds();
+                await loadFailedImports();
+            }
+        } catch (error) {
+            console.error('Error polling import status:', error);
+        }
+    };
+
+    // Poll immediately, then every 1 second
+    await poll();
+    importPollingInterval = setInterval(poll, 1000);
+}
+
+function updateImportProgressUI(status) {
+    // Update progress bar
+    const percent = status.progress_percent || 0;
+    document.getElementById('import-progress-percent').textContent = `${Math.round(percent)}%`;
+    document.getElementById('import-progress-bar').style.width = `${percent}%`;
+
+    // Update stats
+    document.getElementById('import-stat-processed').textContent = status.processed_feeds || 0;
+    document.getElementById('import-stat-total').textContent = status.total_feeds || 0;
+    document.getElementById('import-stat-added').textContent = status.feeds_added || 0;
+    document.getElementById('import-stat-updated').textContent = status.feeds_updated || 0;
+    document.getElementById('import-stat-skipped').textContent = status.feeds_skipped || 0;
+
+    // Update status text and show completion state
+    if (status.status === 'completed') {
+        document.getElementById('import-progress-status').textContent = 'Completed';
+        document.getElementById('import-progress-bar').classList.remove('bg-purple-600');
+        document.getElementById('import-progress-bar').classList.add('bg-green-500');
+        document.getElementById('import-progress-success').classList.remove('hidden');
+
+        // Check if there were any failures
+        if (status.feeds_failed > 0) {
+            document.getElementById('import-progress-success').innerHTML = `
+                <div class="flex items-center">
+                    <svg class="h-5 w-5 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                    </svg>
+                    <span class="font-medium text-green-800 dark:text-green-200">
+                        Import completed! ${status.feeds_failed} feed(s) failed - check Failed Imports.
+                    </span>
+                </div>
+            `;
+        }
+    } else if (status.status === 'failed') {
+        document.getElementById('import-progress-status').textContent = 'Failed';
+        document.getElementById('import-progress-bar').classList.remove('bg-purple-600');
+        document.getElementById('import-progress-bar').classList.add('bg-red-500');
+        document.getElementById('import-progress-error').classList.remove('hidden');
+        document.getElementById('import-error-message').textContent = status.error_message || 'Unknown error';
+    } else {
+        document.getElementById('import-progress-status').textContent = 'Processing...';
+    }
+}
+
+// Close button handler for progress modal
+document.addEventListener('DOMContentLoaded', function() {
+    const closeBtn = document.getElementById('close-import-progress-btn');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', hideImportProgressModal);
+    }
+});
 
 async function exportOPML() {
     try {

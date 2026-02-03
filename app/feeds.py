@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import calendar
 import hashlib
 import logging
 import os
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Iterable, Optional, Tuple
 
 import bleach
@@ -586,6 +587,7 @@ def import_opml_content(
     validate: bool = True,
     validation_timeout: float = 10.0,
     filename: Optional[str] = None,
+    import_id: Optional[int] = None,
 ) -> dict[str, Any]:
     """
     Enhanced OPML import with validation and detailed reporting.
@@ -594,6 +596,8 @@ def import_opml_content(
         opml_content: OPML XML content as string
         validate: If True, validate each feed URL before importing
         validation_timeout: Timeout in seconds for each validation request
+        filename: Original filename for tracking
+        import_id: Optional import_id for progress tracking (async imports)
 
     Returns:
         Dict with import statistics and any errors
@@ -649,8 +653,19 @@ def import_opml_content(
                         feed_outlines.append(outline)
                         break
 
-        logger.info(f"Found {len(feed_outlines)} feed outlines with xmlUrl attribute")
+        total_feeds = len(feed_outlines)
+        logger.info(f"Found {total_feeds} feed outlines with xmlUrl attribute")
         categories = set()
+
+        # Update total_feeds count if we have an import_id for tracking
+        if import_id:
+            with session_scope() as s:
+                s.execute(
+                    text(
+                        "UPDATE import_history SET total_feeds = :total WHERE id = :id"
+                    ),
+                    {"total": total_feeds, "id": import_id},
+                )
 
         # Helper to get attribute case-insensitively
         def get_attr_ci(elem: ET.Element, name: str, default: str = "") -> str:
@@ -666,6 +681,7 @@ def import_opml_content(
                     return val
             return default
 
+        processed_count = 0
         with session_scope() as s:
             for outline in feed_outlines:
                 try:
@@ -773,20 +789,45 @@ def import_opml_content(
                         f"Error processing feed {xml_url}: {str(e)}"
                     )
                     continue
+                finally:
+                    # Update progress after each feed (for async imports)
+                    processed_count += 1
+                    if import_id and processed_count % 5 == 0:
+                        # Update progress every 5 feeds to reduce DB writes
+                        update_import_progress(
+                            import_id,
+                            processed_feeds=processed_count,
+                            feeds_added=result["feeds_added"],
+                            feeds_updated=result["feeds_updated"],
+                            feeds_skipped=result["feeds_skipped"],
+                            feeds_failed=result["feeds_failed"],
+                        )
 
         result["categories_found"] = sorted(list(categories))
 
     except ET.ParseError as e:
         result["errors"].append(f"Invalid OPML format: {str(e)}")
+        if import_id:
+            fail_import(import_id, f"Invalid OPML format: {str(e)}")
+        return result
     except Exception as e:
         result["errors"].append(f"Import error: {str(e)}")
+        if import_id:
+            fail_import(import_id, f"Import error: {str(e)}")
+        return result
 
-    # Store import history in database
-    try:
-        import_id = _store_import_history(result, filename)
+    # Store import history in database or complete existing import
+    if import_id:
+        # Complete the existing import record
+        complete_import(import_id, result)
         result["import_id"] = import_id
-    except Exception as e:
-        logger.error(f"Failed to store import history: {e}")
+    else:
+        # Create new import history record (synchronous import)
+        try:
+            new_import_id = _store_import_history(result, filename)
+            result["import_id"] = new_import_id
+        except Exception as e:
+            logger.error(f"Failed to store import history: {e}")
 
     return result
 
@@ -856,6 +897,251 @@ def _store_import_history(
         return import_id
 
 
+def create_import_record(
+    filename: Optional[str] = None,
+    total_feeds: int = 0,
+    validation_enabled: bool = True,
+) -> int:
+    """Create a new import record in 'processing' status.
+
+    Used for async imports to track progress before completion.
+    Returns the import_id for status updates.
+    """
+    with session_scope() as s:
+        params = {
+            "filename": filename,
+            "total_feeds": total_feeds,
+            "validation": validation_enabled,
+        }
+
+        if is_postgres():
+            import_id = s.execute(
+                text(
+                    """
+                    INSERT INTO import_history
+                    (imported_at, filename, status, total_feeds, processed_feeds,
+                     feeds_added, feeds_updated, feeds_skipped, feeds_failed, validation_enabled)
+                    VALUES (NOW(), :filename, 'processing', :total_feeds, 0, 0, 0, 0, 0, :validation)
+                    RETURNING id
+                    """
+                ),
+                params,
+            ).scalar()
+        else:
+            s.execute(
+                text(
+                    """
+                    INSERT INTO import_history
+                    (imported_at, filename, status, total_feeds, processed_feeds,
+                     feeds_added, feeds_updated, feeds_skipped, feeds_failed, validation_enabled)
+                    VALUES (CURRENT_TIMESTAMP, :filename, 'processing', :total_feeds, 0, 0, 0, 0, 0, :validation)
+                    """
+                ),
+                params,
+            )
+            import_id = s.execute(text("SELECT last_insert_rowid()")).scalar()
+
+        logger.info(
+            f"Created import_history record (processing): id={import_id}, filename={filename}"
+        )
+        return import_id
+
+
+def update_import_progress(
+    import_id: int,
+    processed_feeds: int,
+    feeds_added: int = 0,
+    feeds_updated: int = 0,
+    feeds_skipped: int = 0,
+    feeds_failed: int = 0,
+) -> None:
+    """Update the progress of an in-progress import."""
+    with session_scope() as s:
+        s.execute(
+            text(
+                """
+                UPDATE import_history
+                SET processed_feeds = :processed,
+                    feeds_added = :added,
+                    feeds_updated = :updated,
+                    feeds_skipped = :skipped,
+                    feeds_failed = :failed
+                WHERE id = :import_id
+                """
+            ),
+            {
+                "import_id": import_id,
+                "processed": processed_feeds,
+                "added": feeds_added,
+                "updated": feeds_updated,
+                "skipped": feeds_skipped,
+                "failed": feeds_failed,
+            },
+        )
+
+
+def complete_import(
+    import_id: int,
+    result: dict[str, Any],
+) -> None:
+    """Mark an import as completed and store final results."""
+    with session_scope() as s:
+        # Update the import record with final stats
+        if is_postgres():
+            s.execute(
+                text(
+                    """
+                    UPDATE import_history
+                    SET status = 'completed',
+                        completed_at = NOW(),
+                        feeds_added = :added,
+                        feeds_updated = :updated,
+                        feeds_skipped = :skipped,
+                        feeds_failed = :failed,
+                        processed_feeds = :total
+                    WHERE id = :import_id
+                    """
+                ),
+                {
+                    "import_id": import_id,
+                    "added": result["feeds_added"],
+                    "updated": result["feeds_updated"],
+                    "skipped": result["feeds_skipped"],
+                    "failed": result["feeds_failed"],
+                    "total": result["feeds_added"]
+                    + result["feeds_updated"]
+                    + result["feeds_skipped"]
+                    + result["feeds_failed"],
+                },
+            )
+        else:
+            s.execute(
+                text(
+                    """
+                    UPDATE import_history
+                    SET status = 'completed',
+                        completed_at = CURRENT_TIMESTAMP,
+                        feeds_added = :added,
+                        feeds_updated = :updated,
+                        feeds_skipped = :skipped,
+                        feeds_failed = :failed,
+                        processed_feeds = :total
+                    WHERE id = :import_id
+                    """
+                ),
+                {
+                    "import_id": import_id,
+                    "added": result["feeds_added"],
+                    "updated": result["feeds_updated"],
+                    "skipped": result["feeds_skipped"],
+                    "failed": result["feeds_failed"],
+                    "total": result["feeds_added"]
+                    + result["feeds_updated"]
+                    + result["feeds_skipped"]
+                    + result["feeds_failed"],
+                },
+            )
+
+        # Store failed feeds
+        failed_feeds = result.get("failed_feeds", [])
+        for failed in failed_feeds:
+            s.execute(
+                text(
+                    """
+                    INSERT INTO failed_imports (import_id, feed_url, feed_name, error_message, status)
+                    VALUES (:import_id, :url, :name, :error, 'pending')
+                    """
+                ),
+                {
+                    "import_id": import_id,
+                    "url": failed["url"],
+                    "name": failed.get("name"),
+                    "error": failed.get("error"),
+                },
+            )
+
+        logger.info(
+            f"Import {import_id} completed: {result['feeds_added']} added, "
+            f"{result['feeds_updated']} updated, {result['feeds_skipped']} skipped, "
+            f"{result['feeds_failed']} failed"
+        )
+
+
+def fail_import(import_id: int, error_message: str) -> None:
+    """Mark an import as failed with an error message."""
+    with session_scope() as s:
+        if is_postgres():
+            s.execute(
+                text(
+                    """
+                    UPDATE import_history
+                    SET status = 'failed',
+                        completed_at = NOW(),
+                        error_message = :error
+                    WHERE id = :import_id
+                    """
+                ),
+                {"import_id": import_id, "error": error_message},
+            )
+        else:
+            s.execute(
+                text(
+                    """
+                    UPDATE import_history
+                    SET status = 'failed',
+                        completed_at = CURRENT_TIMESTAMP,
+                        error_message = :error
+                    WHERE id = :import_id
+                    """
+                ),
+                {"import_id": import_id, "error": error_message},
+            )
+        logger.error(f"Import {import_id} failed: {error_message}")
+
+
+def get_import_status(import_id: int) -> Optional[dict[str, Any]]:
+    """Get the current status of an import by ID."""
+    with session_scope() as s:
+        result = s.execute(
+            text(
+                """
+                SELECT id, imported_at, completed_at, filename, status,
+                       total_feeds, processed_feeds,
+                       feeds_added, feeds_updated, feeds_skipped, feeds_failed,
+                       error_message, validation_enabled
+                FROM import_history
+                WHERE id = :import_id
+                """
+            ),
+            {"import_id": import_id},
+        ).fetchone()
+
+        if not result:
+            return None
+
+        # Calculate progress percentage
+        total = result[5] if result[5] else 0
+        processed = result[6] if result[6] else 0
+        progress_pct = (processed / total * 100) if total > 0 else 0
+
+        return {
+            "id": result[0],
+            "imported_at": result[1],
+            "completed_at": result[2],
+            "filename": result[3],
+            "status": result[4],
+            "total_feeds": total,
+            "processed_feeds": processed,
+            "progress_percent": round(progress_pct, 1),
+            "feeds_added": result[7],
+            "feeds_updated": result[8],
+            "feeds_skipped": result[9],
+            "feeds_failed": result[10],
+            "error_message": result[11],
+            "validation_enabled": bool(result[12]),
+        }
+
+
 def get_import_history(days: int = 30) -> list[dict[str, Any]]:
     """Get import history for the last N days."""
     with session_scope() as s:
@@ -864,7 +1150,8 @@ def get_import_history(days: int = 30) -> list[dict[str, Any]]:
             query = (
                 """
                 SELECT id, imported_at, filename, feeds_added, feeds_updated,
-                       feeds_skipped, feeds_failed, validation_enabled
+                       feeds_skipped, feeds_failed, validation_enabled,
+                       status, total_feeds, processed_feeds, completed_at
                 FROM import_history
                 WHERE imported_at >= NOW() - INTERVAL '%s days'
                 ORDER BY imported_at DESC
@@ -874,7 +1161,8 @@ def get_import_history(days: int = 30) -> list[dict[str, Any]]:
         else:
             query = """
                 SELECT id, imported_at, filename, feeds_added, feeds_updated,
-                       feeds_skipped, feeds_failed, validation_enabled
+                       feeds_skipped, feeds_failed, validation_enabled,
+                       status, total_feeds, processed_feeds, completed_at
                 FROM import_history
                 WHERE imported_at >= datetime('now', :days_ago)
                 ORDER BY imported_at DESC
@@ -895,6 +1183,10 @@ def get_import_history(days: int = 30) -> list[dict[str, Any]]:
                 "feeds_skipped": r[5],
                 "feeds_failed": r[6],
                 "validation_enabled": bool(r[7]),
+                "status": r[8] if len(r) > 8 else "completed",
+                "total_feeds": r[9] if len(r) > 9 else 0,
+                "processed_feeds": r[10] if len(r) > 10 else 0,
+                "completed_at": r[11] if len(r) > 11 else None,
             }
             for r in results
         ]
@@ -954,7 +1246,7 @@ def get_latest_import_summary() -> Optional[dict[str, Any]]:
             text(
                 """
                 SELECT id, imported_at, filename, feeds_added, feeds_updated,
-                       feeds_skipped, feeds_failed
+                       feeds_skipped, feeds_failed, status, total_feeds, processed_feeds
                 FROM import_history
                 ORDER BY imported_at DESC
                 LIMIT 1
@@ -985,6 +1277,9 @@ def get_latest_import_summary() -> Optional[dict[str, Any]]:
             "feeds_updated": result[4],
             "feeds_skipped": result[5],
             "feeds_failed": result[6],
+            "status": result[7] if len(result) > 7 else "completed",
+            "total_feeds": result[8] if len(result) > 8 else 0,
+            "processed_feeds": result[9] if len(result) > 9 else 0,
             "pending_failed_feeds": [
                 {
                     "url": f[0],
@@ -1371,7 +1666,13 @@ def fetch_and_store() -> RefreshStats:
                 for key in ("published_parsed", "updated_parsed"):
                     if entry.get(key):
                         try:
-                            published = datetime.fromtimestamp(time.mktime(entry[key]))
+                            # feedparser returns struct_time in UTC
+                            # Use calendar.timegm to convert UTC struct_time to timestamp
+                            # Then create a timezone-aware UTC datetime
+                            utc_timestamp = calendar.timegm(entry[key])
+                            published = datetime.fromtimestamp(
+                                utc_timestamp, tz=timezone.utc
+                            )
                             break
                         except Exception:
                             pass

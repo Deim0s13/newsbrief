@@ -30,10 +30,13 @@ from .feeds import (
     MAX_REFRESH_TIME_SECONDS,
     RefreshStats,
     add_feed,
+    create_import_record,
     export_opml,
+    fail_import,
     fetch_and_store,
     get_failed_imports,
     get_import_history,
+    get_import_status,
     get_latest_import_summary,
     import_opml,
     import_opml_content,
@@ -654,12 +657,16 @@ def import_feeds_opml(
 
 
 def _process_opml_import_background(
-    opml_content: str, validate: bool, filename: str
+    opml_content: str, validate: bool, filename: str, import_id: int
 ) -> None:
     """Background task to process OPML import without blocking the main thread."""
     try:
-        logger.info(f"Background OPML import starting: {filename}")
-        result = import_opml_content(opml_content, validate=validate, filename=filename)
+        logger.info(
+            f"Background OPML import starting: {filename} (import_id={import_id})"
+        )
+        result = import_opml_content(
+            opml_content, validate=validate, filename=filename, import_id=import_id
+        )
         logger.info(
             f"Background OPML import completed: {filename} - "
             f"{result['feeds_added']} added, {result['feeds_updated']} updated, "
@@ -667,6 +674,8 @@ def _process_opml_import_background(
         )
     except Exception as e:
         logger.error(f"Background OPML import failed: {filename} - {str(e)}")
+        # Mark the import as failed
+        fail_import(import_id, str(e))
 
 
 @app.post("/feeds/import/opml/upload")
@@ -706,18 +715,27 @@ async def import_feeds_opml_upload(
         logger.debug(f"OPML content preview: {opml_content[:500]}...")
 
         if async_import:
+            # Create import record first to track progress
+            import_id = create_import_record(
+                filename=file.filename,
+                total_feeds=0,  # Will be updated when parsing starts
+                validation_enabled=validate,
+            )
+
             # Process in background to avoid liveness probe timeout
             background_tasks.add_task(
                 _process_opml_import_background,
                 opml_content,
                 validate,
                 file.filename,
+                import_id,
             )
             return {
                 "success": True,
                 "filename": file.filename,
                 "message": "Import started in background. Check /feeds/import/history for status.",
                 "async": True,
+                "import_id": import_id,
                 "details": {
                     "status": "processing",
                     "validation_enabled": validate,
@@ -757,6 +775,20 @@ def get_import_history_endpoint(
 ):
     """Get import history for the last N days."""
     return get_import_history(days=days)
+
+
+@app.get("/feeds/import/status/{import_id}")
+def get_import_status_endpoint(import_id: int):
+    """Get the current status of an import by ID.
+
+    Used for polling during async imports to show progress.
+    Returns status (processing/completed/failed), progress percentage,
+    and final results when complete.
+    """
+    result = get_import_status(import_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Import not found")
+    return result
 
 
 @app.get("/feeds/import/failed")

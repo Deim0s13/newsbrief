@@ -31,10 +31,21 @@ const DateUtils = (function() {
     function normalizeTimestamp(timestamp) {
         if (!timestamp) return null;
         let ts = String(timestamp);
-        // Add Z suffix if no timezone indicator present
-        if (ts && !ts.endsWith('Z') && !ts.includes('+') && !ts.includes('-', 10)) {
+
+        // Replace space with T for ISO format compatibility (some DBs return space-separated)
+        ts = ts.replace(' ', 'T');
+
+        // Check if timestamp already has timezone info
+        // Look for: Z suffix, + offset, or - offset after the time portion
+        const hasTimezone = ts.endsWith('Z') ||
+                           ts.includes('+') ||
+                           (ts.length > 19 && ts.lastIndexOf('-') > 10);
+
+        // Add Z suffix if no timezone indicator present (treat as UTC)
+        if (!hasTimezone) {
             ts = ts + 'Z';
         }
+
         return ts;
     }
 

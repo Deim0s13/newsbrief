@@ -221,12 +221,22 @@ class ImportHistory(Base):
     feeds_failed = Column(Integer, default=0)
     validation_enabled = Column(Boolean, default=True)
 
+    # Status tracking for async imports (v0.5.4)
+    status = Column(String(20), default="completed")  # processing, completed, failed
+    total_feeds = Column(Integer, default=0)
+    processed_feeds = Column(Integer, default=0)
+    completed_at = Column(DateTime, nullable=True)
+    error_message = Column(Text, nullable=True)
+
     # Relationships
     failed_feeds = relationship(
         "FailedImport", back_populates="import_history", cascade="all, delete-orphan"
     )
 
-    __table_args__ = (Index("idx_import_history_date", "imported_at"),)
+    __table_args__ = (
+        Index("idx_import_history_date", "imported_at"),
+        Index("idx_import_history_status", "status"),
+    )
 
 
 class FailedImport(Base):
