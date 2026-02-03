@@ -1472,11 +1472,13 @@ async function startOPMLImport() {
         const result = await response.json();
 
         if (response.ok && result.success) {
+            // Save filename before hiding modal (which clears selectedOPMLFile)
+            const filename = selectedOPMLFile.name;
             hideOPMLImportModal();
 
             if (result.async && result.import_id) {
                 // Async import - show progress modal and poll for completion
-                showImportProgressModal(selectedOPMLFile.name, result.import_id);
+                showImportProgressModal(filename, result.import_id);
             } else {
                 // Synchronous import - show results immediately
                 await loadFeeds(); // Reload feeds to show imported ones
