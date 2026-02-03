@@ -59,7 +59,16 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 - **Automated Dependency Management**: Weekly security audits, dependency updates, and base image maintenance
 - **Comprehensive Documentation**: Complete CI/CD guides, API documentation, and architecture decision records
 
-### **✅ Current: v0.7.7 - Import Progress & Date Fix** (Feb 2026)
+### **🚧 Current: v0.7.8 - Dev/Prod Environment Parity** (Feb 2026)
+Eliminate dev/prod differences by standardizing on PostgreSQL for all environments (ADR-0022).
+
+- [ ] **PostgreSQL for Dev**: New `make dev-full` target with Docker Compose PostgreSQL
+- [ ] **Code Cleanup**: Remove `is_postgres()` conditionals and SQLite code paths
+- [ ] **Single Migration System**: Alembic only, remove inline SQLite migrations
+- [ ] **Configuration**: Update alembic.ini, CI pipeline for PostgreSQL-only
+- [ ] **Documentation**: Update README, ARCHITECTURAL_ROADMAP.md
+
+### **✅ Previous: v0.7.7 - Import Progress & Date Fix** (Feb 2026)
 - ✅ **Import Progress Indicator**: Real-time progress modal for OPML imports with live stats
 - ✅ **Async Import Tracking**: New `/feeds/import/status/{id}` endpoint for polling
 - ✅ **Timezone Fix**: Proper UTC handling for article dates in PostgreSQL
@@ -632,8 +641,9 @@ Development is organized with GitHub Projects and Milestones for clear visibilit
 - [v0.7.2 - Container & Deployment](https://github.com/Deim0s13/newsbrief/releases/tag/v0.7.2) - ✅ **COMPLETE** (Jan 2026)
 - [v0.7.5 - GitOps & Kubernetes](https://github.com/Deim0s13/newsbrief/milestone/14) - ✅ **COMPLETE** (Jan 2026)
 - [v0.7.5.1 - Pipeline Notifications](https://github.com/Deim0s13/newsbrief/milestone/22) - ✅ **COMPLETE** (Jan 2026)
-- [v0.7.6 - CI/CD Remediation](https://github.com/Deim0s13/newsbrief/milestone/23) - ✅ **COMPLETE** (Jan 2026)
+- [v0.7.6 - CI/CD Remediation](https://github.com/Deim0s13/newsbrief/milestone/23) - ✅ **COMPLETE** (Feb 2026)
 - v0.7.7 - Import Progress & Date Fix - ✅ **COMPLETE** (Feb 2026)
+- [v0.7.8 - Dev/Prod Environment Parity](https://github.com/Deim0s13/newsbrief/milestone/25) - 🚧 **IN PROGRESS**
 
 **Epics** (via labels):
 - **epic:stories** - Story-based aggregation and synthesis
