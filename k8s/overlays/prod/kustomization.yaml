@@ -53,3 +53,4 @@ configMapGenerator:
       - ENVIRONMENT=production
       - NEWSBRIEF_MAX_ITEMS_PER_REFRESH=200
       - NEWSBRIEF_MAX_ITEMS_PER_FEED=100
+      - DATABASE_URL=postgresql://newsbrief:newsbrief_dev@host.containers.internal:5432/newsbrief
