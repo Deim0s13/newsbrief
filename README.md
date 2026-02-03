@@ -8,7 +8,7 @@ NewsBrief is a self-hosted, privacy-focused news aggregator that replaces readin
 
 ## 🌟 Features
 
-### **🎯 Story-Based Aggregation (v0.7.6)** - *Current Release*
+### **🎯 Story-Based Aggregation (v0.7.7)** - *Current Release*
 Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **Time to informed: 30 min → 2 min**
 
 - **Automated Story Generation**: Daily scheduled generation at 6 AM (configurable timezone)
@@ -59,7 +59,13 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 - **Automated Dependency Management**: Weekly security audits, dependency updates, and base image maintenance
 - **Comprehensive Documentation**: Complete CI/CD guides, API documentation, and architecture decision records
 
-### **✅ Current: v0.7.6 - CI/CD Remediation** (Jan 2026)
+### **✅ Current: v0.7.7 - Import Progress & Date Fix** (Feb 2026)
+- ✅ **Import Progress Indicator**: Real-time progress modal for OPML imports with live stats
+- ✅ **Async Import Tracking**: New `/feeds/import/status/{id}` endpoint for polling
+- ✅ **Timezone Fix**: Proper UTC handling for article dates in PostgreSQL
+- ✅ **Database Schema**: New status/progress columns in `import_history` table
+
+### **✅ Previous: v0.7.6 - CI/CD Remediation** (Jan 2026)
 - ✅ **Persistent Storage**: Prod environment uses PVC for data persistence
 - ✅ **Registry Standardization**: All pipelines use `kind-registry:5000` for pod access
 - ✅ **Cosign Signing**: Key-based image signatures with Bitwarden integration
@@ -627,6 +633,7 @@ Development is organized with GitHub Projects and Milestones for clear visibilit
 - [v0.7.5 - GitOps & Kubernetes](https://github.com/Deim0s13/newsbrief/milestone/14) - ✅ **COMPLETE** (Jan 2026)
 - [v0.7.5.1 - Pipeline Notifications](https://github.com/Deim0s13/newsbrief/milestone/22) - ✅ **COMPLETE** (Jan 2026)
 - [v0.7.6 - CI/CD Remediation](https://github.com/Deim0s13/newsbrief/milestone/23) - ✅ **COMPLETE** (Jan 2026)
+- v0.7.7 - Import Progress & Date Fix - ✅ **COMPLETE** (Feb 2026)
 
 **Epics** (via labels):
 - **epic:stories** - Story-based aggregation and synthesis

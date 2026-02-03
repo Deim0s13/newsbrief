@@ -521,7 +521,7 @@ Assign priority to multiple feeds at once.
 }
 ```
 
-## 📤📥 **OPML Management Endpoints (v0.5.3)** ⭐ *NEW*
+## 📤📥 **OPML Management Endpoints (v0.5.3, updated v0.7.7)**
 
 ### **GET /feeds/export/opml**
 
@@ -551,7 +551,7 @@ Export all feeds as an OPML file with metadata and categories.
 
 ### **POST /feeds/import/opml/upload**
 
-Import feeds from an uploaded OPML file.
+Import feeds from an uploaded OPML file. By default, imports are processed asynchronously to prevent timeout issues with large files.
 
 #### Request
 
@@ -562,21 +562,115 @@ Content-Type: multipart/form-data
 file: [OPML file content]
 ```
 
+#### Query Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `validate` | boolean | `false` | Validate feed URLs before importing (slower) |
+| `async_import` | boolean | `true` | Process import asynchronously |
+
 #### Response
 
-**Success (200)**
+**Success (200) - Async Import** *(default)*
+```json
+{
+  "success": true,
+  "filename": "my_feeds.opml",
+  "message": "Import started in background. Check /feeds/import/history for status.",
+  "async": true,
+  "import_id": 42,
+  "details": {
+    "status": "processing",
+    "validation_enabled": false
+  }
+}
+```
+
+**Success (200) - Sync Import** *(async_import=false)*
 ```json
 {
   "success": true,
   "filename": "my_feeds.opml",
   "message": "Import completed: 8 added, 2 updated, 1 skipped",
+  "async": false,
   "details": {
     "feeds_added": 8,
     "feeds_updated": 2,
     "feeds_skipped": 1,
+    "feeds_failed": 0,
     "errors": [],
     "categories_found": ["Technology", "News", "Science"]
   }
+}
+```
+
+---
+
+### **GET /feeds/import/status/{import_id}** ⭐ *NEW in v0.7.7*
+
+Get the current status of an async import. Used for polling during imports to show progress.
+
+#### Request
+
+```http
+GET /feeds/import/status/42 HTTP/1.1
+```
+
+#### Response
+
+**Processing (200)**
+```json
+{
+  "id": 42,
+  "imported_at": "2026-02-03T14:30:00+00:00",
+  "completed_at": null,
+  "filename": "my_feeds.opml",
+  "status": "processing",
+  "total_feeds": 50,
+  "processed_feeds": 25,
+  "progress_percent": 50.0,
+  "feeds_added": 20,
+  "feeds_updated": 3,
+  "feeds_skipped": 2,
+  "feeds_failed": 0,
+  "error_message": null,
+  "validation_enabled": false
+}
+```
+
+**Completed (200)**
+```json
+{
+  "id": 42,
+  "imported_at": "2026-02-03T14:30:00+00:00",
+  "completed_at": "2026-02-03T14:30:45+00:00",
+  "filename": "my_feeds.opml",
+  "status": "completed",
+  "total_feeds": 50,
+  "processed_feeds": 50,
+  "progress_percent": 100.0,
+  "feeds_added": 45,
+  "feeds_updated": 3,
+  "feeds_skipped": 2,
+  "feeds_failed": 0,
+  "error_message": null,
+  "validation_enabled": false
+}
+```
+
+**Failed (200)**
+```json
+{
+  "id": 42,
+  "status": "failed",
+  "error_message": "Invalid OPML format: mismatched tag at line 15"
+}
+```
+
+**Not Found (404)**
+```json
+{
+  "detail": "Import not found"
 }
 ```
 
