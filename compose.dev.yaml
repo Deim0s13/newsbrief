@@ -4,6 +4,9 @@
 #
 # This is a lightweight alternative to compose.yaml for local development.
 # No Caddy proxy, no API container - just the database.
+#
+# Port: 5433 (to avoid conflict with production PostgreSQL on 5432)
+# Connection: postgresql://newsbrief:newsbrief_dev@localhost:5433/newsbrief
 
 services:
   db:
@@ -16,7 +19,7 @@ services:
     volumes:
       - newsbrief_dev_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "5433:5432"  # Host:Container - dev uses 5433 to avoid prod conflict
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U newsbrief -d newsbrief"]
       interval: 2s

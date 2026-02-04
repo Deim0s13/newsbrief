@@ -30,7 +30,7 @@ run-local:
 
 dev:  ## Run development server (requires PostgreSQL - see make db-up)
 	@echo "🔧 Starting development server on http://localhost:$(PORT)"
-	@echo "   Database: PostgreSQL (localhost:5432)"
+	@echo "   Database: PostgreSQL (localhost:5433)"
 	@echo "   Production: https://newsbrief.local"
 	@echo ""
 	@# Check if PostgreSQL is running
@@ -39,7 +39,7 @@ dev:  ## Run development server (requires PostgreSQL - see make db-up)
 		echo "   Or use: make dev-full (starts DB + app together)"; \
 		exit 1; \
 	fi
-	ENVIRONMENT=development DATABASE_URL=postgresql://newsbrief:newsbrief_dev@localhost:5432/newsbrief \
+	ENVIRONMENT=development DATABASE_URL=postgresql://newsbrief:newsbrief_dev@localhost:5433/newsbrief \
 		.venv/bin/uvicorn app.main:app --reload --port $(PORT)
 
 dev-full:  ## Start PostgreSQL + development server (single command)
@@ -178,11 +178,11 @@ logs:
 	$(RUNTIME)-compose logs -f
 
 # ---------- Database (PostgreSQL for Development) ----------
-db-up:                              ## Start PostgreSQL for development
+db-up:                              ## Start PostgreSQL for development (port 5433)
 	@echo "🐘 Starting PostgreSQL for development..."
 	$(RUNTIME)-compose -f compose.dev.yaml up -d
-	@echo "✅ PostgreSQL running on localhost:5432"
-	@echo "   Connection: postgresql://newsbrief:newsbrief_dev@localhost:5432/newsbrief"
+	@echo "✅ PostgreSQL running on localhost:5433"
+	@echo "   Connection: postgresql://newsbrief:newsbrief_dev@localhost:5433/newsbrief"
 
 db-down:                            ## Stop PostgreSQL development container
 	$(RUNTIME)-compose -f compose.dev.yaml down
@@ -210,7 +210,7 @@ db-reset:                           ## Reset development database (WARNING: dele
 	$(RUNTIME)-compose -f compose.dev.yaml up -d
 	@echo "Waiting for PostgreSQL to be ready..."
 	@until $(RUNTIME) exec newsbrief-db-dev pg_isready -U newsbrief -d newsbrief >/dev/null 2>&1; do sleep 1; done
-	DATABASE_URL=postgresql://newsbrief:newsbrief_dev@localhost:5432/newsbrief .venv/bin/alembic upgrade head
+	DATABASE_URL=postgresql://newsbrief:newsbrief_dev@localhost:5433/newsbrief .venv/bin/alembic upgrade head
 	@echo "✅ Database reset and migrations applied"
 
 # ---------- Database Backup/Restore ----------
