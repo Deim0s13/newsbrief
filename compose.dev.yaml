@@ -1,0 +1,27 @@
+# Development-only PostgreSQL container
+# Usage: make db-up (starts), make db-down (stops)
+# Or: make dev-full (starts DB + app together)
+#
+# This is a lightweight alternative to compose.yaml for local development.
+# No Caddy proxy, no API container - just the database.
+
+services:
+  db:
+    image: postgres:16
+    container_name: newsbrief-db-dev
+    environment:
+      POSTGRES_DB: newsbrief
+      POSTGRES_USER: newsbrief
+      POSTGRES_PASSWORD: newsbrief_dev
+    volumes:
+      - newsbrief_dev_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U newsbrief -d newsbrief"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+
+volumes:
+  newsbrief_dev_data:

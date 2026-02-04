@@ -28,12 +28,30 @@ venv:
 run-local:
 	.venv/bin/uvicorn app.main:app --reload --port $(PORT)
 
-dev:  ## Run development server (localhost:8787) - shows DEV banner
+dev:  ## Run development server (requires PostgreSQL - see make db-up)
 	@echo "🔧 Starting development server on http://localhost:$(PORT)"
-	@echo "   Production remains at https://newsbrief.local"
+	@echo "   Database: PostgreSQL (localhost:5432)"
+	@echo "   Production: https://newsbrief.local"
 	@echo ""
-	ENVIRONMENT=development DATABASE_URL=sqlite:///./data/newsbrief.sqlite3 \
+	@# Check if PostgreSQL is running
+	@if ! $(RUNTIME) ps --format "{{.Names}}" 2>/dev/null | grep -q "newsbrief-db-dev"; then \
+		echo "❌ PostgreSQL not running. Start it with: make db-up"; \
+		echo "   Or use: make dev-full (starts DB + app together)"; \
+		exit 1; \
+	fi
+	ENVIRONMENT=development DATABASE_URL=postgresql://newsbrief:newsbrief_dev@localhost:5432/newsbrief \
 		.venv/bin/uvicorn app.main:app --reload --port $(PORT)
+
+dev-full:  ## Start PostgreSQL + development server (single command)
+	@echo "🚀 Starting full development environment..."
+	@$(MAKE) db-up
+	@echo "⏳ Waiting for PostgreSQL to be ready..."
+	@until $(RUNTIME) exec newsbrief-db-dev pg_isready -U newsbrief -d newsbrief >/dev/null 2>&1; do \
+		sleep 1; \
+	done
+	@echo "✅ PostgreSQL ready"
+	@echo ""
+	@$(MAKE) dev
 
 env-init:  ## Create .env from template with generated secure password
 	@if [ -f .env ]; then \
@@ -159,25 +177,40 @@ down:
 logs:
 	$(RUNTIME)-compose logs -f
 
-# ---------- Database (PostgreSQL) ----------
-db-up:                              ## Start PostgreSQL container only
-	$(RUNTIME)-compose up db -d
+# ---------- Database (PostgreSQL for Development) ----------
+db-up:                              ## Start PostgreSQL for development
+	@echo "🐘 Starting PostgreSQL for development..."
+	$(RUNTIME)-compose -f compose.dev.yaml up -d
+	@echo "✅ PostgreSQL running on localhost:5432"
+	@echo "   Connection: postgresql://newsbrief:newsbrief_dev@localhost:5432/newsbrief"
 
-db-down:                            ## Stop PostgreSQL container
-	$(RUNTIME)-compose stop db
+db-down:                            ## Stop PostgreSQL development container
+	$(RUNTIME)-compose -f compose.dev.yaml down
+
+db-status:                          ## Check if dev PostgreSQL is running
+	@if $(RUNTIME) ps --format "{{.Names}}" 2>/dev/null | grep -q "newsbrief-db-dev"; then \
+		echo "✅ PostgreSQL is running (newsbrief-db-dev)"; \
+		$(RUNTIME) exec newsbrief-db-dev pg_isready -U newsbrief -d newsbrief >/dev/null 2>&1 && \
+			echo "   Status: Ready for connections" || echo "   Status: Starting..."; \
+	else \
+		echo "❌ PostgreSQL not running"; \
+		echo "   Start with: make db-up"; \
+	fi
 
 db-logs:                            ## View PostgreSQL logs
-	$(RUNTIME)-compose logs -f db
+	$(RUNTIME)-compose -f compose.dev.yaml logs -f db
 
 db-psql:                            ## Connect to PostgreSQL with psql
-	$(RUNTIME) exec -it newsbrief-db psql -U newsbrief -d newsbrief
+	$(RUNTIME) exec -it newsbrief-db-dev psql -U newsbrief -d newsbrief
 
-db-reset:                           ## Reset PostgreSQL database (WARNING: deletes all data)
-	$(RUNTIME)-compose down -v
-	$(RUNTIME)-compose up db -d
+db-reset:                           ## Reset development database (WARNING: deletes all data)
+	@echo "⚠️  This will delete all development data!"
+	@read -p "Continue? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
+	$(RUNTIME)-compose -f compose.dev.yaml down -v
+	$(RUNTIME)-compose -f compose.dev.yaml up -d
 	@echo "Waiting for PostgreSQL to be ready..."
-	@sleep 5
-	. .venv/bin/activate && . .env && DATABASE_URL="$$DATABASE_URL" alembic upgrade head
+	@until $(RUNTIME) exec newsbrief-db-dev pg_isready -U newsbrief -d newsbrief >/dev/null 2>&1; do sleep 1; done
+	DATABASE_URL=postgresql://newsbrief:newsbrief_dev@localhost:5432/newsbrief .venv/bin/alembic upgrade head
 	@echo "✅ Database reset and migrations applied"
 
 # ---------- Database Backup/Restore ----------
@@ -325,4 +358,4 @@ smee:                             ## Start smee webhook bridge
 
 # ---------- Defaults ----------
 .DEFAULT_GOAL := run
-.PHONY: venv run-local build tag push release local-release clean-release cleanup-old-images run deploy deploy-stop deploy-status deploy-init up down logs db-up db-down db-logs db-psql db-reset db-backup db-restore db-backup-list migrate migrate-new migrate-stamp migrate-history migrate-current hostname-setup hostname-check hostname-remove autostart-install autostart-uninstall autostart-status autostart-start autostart-stop recover status port-forwards smee
+.PHONY: venv run-local dev dev-full build tag push release local-release clean-release cleanup-old-images run deploy deploy-stop deploy-status deploy-init up down logs db-up db-down db-status db-logs db-psql db-reset db-backup db-restore db-backup-list migrate migrate-new migrate-stamp migrate-history migrate-current hostname-setup hostname-check hostname-remove autostart-install autostart-uninstall autostart-status autostart-start autostart-stop recover status port-forwards smee
