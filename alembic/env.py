@@ -1,7 +1,7 @@
 """
 Alembic migration environment configuration.
 
-Supports both SQLite (development) and PostgreSQL (production) via DATABASE_URL.
+PostgreSQL only (ADR 0022). Requires DATABASE_URL environment variable.
 """
 
 import os
@@ -24,21 +24,22 @@ from app.orm_models import Base
 
 target_metadata = Base.metadata
 
-# Database URL configuration
-# Priority: DATABASE_URL env var > alembic.ini sqlalchemy.url
+# Database URL configuration - PostgreSQL required
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-if DATABASE_URL:
-    # Normalize for psycopg3 driver
-    db_url = DATABASE_URL
-    if db_url.startswith("postgresql://"):
-        db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
-    elif db_url.startswith("postgres://"):
-        db_url = db_url.replace("postgres://", "postgresql+psycopg://", 1)
-    config.set_main_option("sqlalchemy.url", db_url)
-else:
-    # Default to SQLite for development
-    config.set_main_option("sqlalchemy.url", "sqlite:///data/newsbrief.sqlite3")
+if not DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL environment variable is required for Alembic migrations. "
+        "Example: DATABASE_URL=postgresql://user:pass@localhost:5432/newsbrief"
+    )
+
+# Normalize for psycopg3 driver
+db_url = DATABASE_URL
+if db_url.startswith("postgresql://"):
+    db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+elif db_url.startswith("postgres://"):
+    db_url = db_url.replace("postgres://", "postgresql+psycopg://", 1)
+config.set_main_option("sqlalchemy.url", db_url)
 
 
 def run_migrations_offline() -> None:
@@ -70,17 +71,10 @@ def run_migrations_online() -> None:
     In this scenario we need to create an Engine
     and associate a connection with the context.
     """
-    # Handle SQLite-specific connection args
-    url = config.get_main_option("sqlalchemy.url")
-    connect_args = {}
-    if url and url.startswith("sqlite"):
-        connect_args = {"check_same_thread": False}
-
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
-        connect_args=connect_args,
     )
 
     with connectable.connect() as connection:
