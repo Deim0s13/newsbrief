@@ -17,7 +17,7 @@ from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
-from .db import is_postgres, session_scope
+from .db import session_scope
 from .models import create_content_hash
 from .ranking import calculate_ranking_score, classify_article_topic
 from .readability import extract_readable
@@ -847,30 +847,17 @@ def _store_import_history(
             "validation": result.get("validation_enabled", True),
         }
 
-        if is_postgres():
-            import_id = s.execute(
-                text(
-                    """
-                    INSERT INTO import_history
-                    (imported_at, filename, feeds_added, feeds_updated, feeds_skipped, feeds_failed, validation_enabled)
-                    VALUES (NOW(), :filename, :added, :updated, :skipped, :failed, :validation)
-                    RETURNING id
-                    """
-                ),
-                params,
-            ).scalar()
-        else:
-            s.execute(
-                text(
-                    """
-                    INSERT INTO import_history
-                    (imported_at, filename, feeds_added, feeds_updated, feeds_skipped, feeds_failed, validation_enabled)
-                    VALUES (CURRENT_TIMESTAMP, :filename, :added, :updated, :skipped, :failed, :validation)
-                    """
-                ),
-                params,
-            )
-            import_id = s.execute(text("SELECT last_insert_rowid()")).scalar()
+        import_id = s.execute(
+            text(
+                """
+                INSERT INTO import_history
+                (imported_at, filename, feeds_added, feeds_updated, feeds_skipped, feeds_failed, validation_enabled)
+                VALUES (NOW(), :filename, :added, :updated, :skipped, :failed, :validation)
+                RETURNING id
+                """
+            ),
+            params,
+        ).scalar()
         logger.info(f"Created import_history with id={import_id}")
 
         # Store failed feeds
@@ -914,32 +901,18 @@ def create_import_record(
             "validation": validation_enabled,
         }
 
-        if is_postgres():
-            import_id = s.execute(
-                text(
-                    """
-                    INSERT INTO import_history
-                    (imported_at, filename, status, total_feeds, processed_feeds,
-                     feeds_added, feeds_updated, feeds_skipped, feeds_failed, validation_enabled)
-                    VALUES (NOW(), :filename, 'processing', :total_feeds, 0, 0, 0, 0, 0, :validation)
-                    RETURNING id
-                    """
-                ),
-                params,
-            ).scalar()
-        else:
-            s.execute(
-                text(
-                    """
-                    INSERT INTO import_history
-                    (imported_at, filename, status, total_feeds, processed_feeds,
-                     feeds_added, feeds_updated, feeds_skipped, feeds_failed, validation_enabled)
-                    VALUES (CURRENT_TIMESTAMP, :filename, 'processing', :total_feeds, 0, 0, 0, 0, 0, :validation)
-                    """
-                ),
-                params,
-            )
-            import_id = s.execute(text("SELECT last_insert_rowid()")).scalar()
+        import_id = s.execute(
+            text(
+                """
+                INSERT INTO import_history
+                (imported_at, filename, status, total_feeds, processed_feeds,
+                 feeds_added, feeds_updated, feeds_skipped, feeds_failed, validation_enabled)
+                VALUES (NOW(), :filename, 'processing', :total_feeds, 0, 0, 0, 0, 0, :validation)
+                RETURNING id
+                """
+            ),
+            params,
+        ).scalar()
 
         logger.info(
             f"Created import_history record (processing): id={import_id}, filename={filename}"
@@ -987,60 +960,32 @@ def complete_import(
     """Mark an import as completed and store final results."""
     with session_scope() as s:
         # Update the import record with final stats
-        if is_postgres():
-            s.execute(
-                text(
-                    """
-                    UPDATE import_history
-                    SET status = 'completed',
-                        completed_at = NOW(),
-                        feeds_added = :added,
-                        feeds_updated = :updated,
-                        feeds_skipped = :skipped,
-                        feeds_failed = :failed,
-                        processed_feeds = :total
-                    WHERE id = :import_id
-                    """
-                ),
-                {
-                    "import_id": import_id,
-                    "added": result["feeds_added"],
-                    "updated": result["feeds_updated"],
-                    "skipped": result["feeds_skipped"],
-                    "failed": result["feeds_failed"],
-                    "total": result["feeds_added"]
-                    + result["feeds_updated"]
-                    + result["feeds_skipped"]
-                    + result["feeds_failed"],
-                },
-            )
-        else:
-            s.execute(
-                text(
-                    """
-                    UPDATE import_history
-                    SET status = 'completed',
-                        completed_at = CURRENT_TIMESTAMP,
-                        feeds_added = :added,
-                        feeds_updated = :updated,
-                        feeds_skipped = :skipped,
-                        feeds_failed = :failed,
-                        processed_feeds = :total
-                    WHERE id = :import_id
-                    """
-                ),
-                {
-                    "import_id": import_id,
-                    "added": result["feeds_added"],
-                    "updated": result["feeds_updated"],
-                    "skipped": result["feeds_skipped"],
-                    "failed": result["feeds_failed"],
-                    "total": result["feeds_added"]
-                    + result["feeds_updated"]
-                    + result["feeds_skipped"]
-                    + result["feeds_failed"],
-                },
-            )
+        s.execute(
+            text(
+                """
+                UPDATE import_history
+                SET status = 'completed',
+                    completed_at = NOW(),
+                    feeds_added = :added,
+                    feeds_updated = :updated,
+                    feeds_skipped = :skipped,
+                    feeds_failed = :failed,
+                    processed_feeds = :total
+                WHERE id = :import_id
+                """
+            ),
+            {
+                "import_id": import_id,
+                "added": result["feeds_added"],
+                "updated": result["feeds_updated"],
+                "skipped": result["feeds_skipped"],
+                "failed": result["feeds_failed"],
+                "total": result["feeds_added"]
+                + result["feeds_updated"]
+                + result["feeds_skipped"]
+                + result["feeds_failed"],
+            },
+        )
 
         # Store failed feeds
         failed_feeds = result.get("failed_feeds", [])
@@ -1070,32 +1015,18 @@ def complete_import(
 def fail_import(import_id: int, error_message: str) -> None:
     """Mark an import as failed with an error message."""
     with session_scope() as s:
-        if is_postgres():
-            s.execute(
-                text(
-                    """
-                    UPDATE import_history
-                    SET status = 'failed',
-                        completed_at = NOW(),
-                        error_message = :error
-                    WHERE id = :import_id
-                    """
-                ),
-                {"import_id": import_id, "error": error_message},
-            )
-        else:
-            s.execute(
-                text(
-                    """
-                    UPDATE import_history
-                    SET status = 'failed',
-                        completed_at = CURRENT_TIMESTAMP,
-                        error_message = :error
-                    WHERE id = :import_id
-                    """
-                ),
-                {"import_id": import_id, "error": error_message},
-            )
+        s.execute(
+            text(
+                """
+                UPDATE import_history
+                SET status = 'failed',
+                    completed_at = NOW(),
+                    error_message = :error
+                WHERE id = :import_id
+                """
+            ),
+            {"import_id": import_id, "error": error_message},
+        )
         logger.error(f"Import {import_id} failed: {error_message}")
 
 
@@ -1145,33 +1076,20 @@ def get_import_status(import_id: int) -> Optional[dict[str, Any]]:
 def get_import_history(days: int = 30) -> list[dict[str, Any]]:
     """Get import history for the last N days."""
     with session_scope() as s:
-        # Use database-specific date arithmetic
-        if is_postgres():
-            query = (
-                """
-                SELECT id, imported_at, filename, feeds_added, feeds_updated,
-                       feeds_skipped, feeds_failed, validation_enabled,
-                       status, total_feeds, processed_feeds, completed_at
-                FROM import_history
-                WHERE imported_at >= NOW() - INTERVAL '%s days'
-                ORDER BY imported_at DESC
+        # PostgreSQL date arithmetic (interval doesn't support parameterized values)
+        query = (
             """
-                % days
-            )  # PostgreSQL doesn't support parameterized intervals
-        else:
-            query = """
-                SELECT id, imported_at, filename, feeds_added, feeds_updated,
-                       feeds_skipped, feeds_failed, validation_enabled,
-                       status, total_feeds, processed_feeds, completed_at
-                FROM import_history
-                WHERE imported_at >= datetime('now', :days_ago)
-                ORDER BY imported_at DESC
-            """
+            SELECT id, imported_at, filename, feeds_added, feeds_updated,
+                   feeds_skipped, feeds_failed, validation_enabled,
+                   status, total_feeds, processed_feeds, completed_at
+            FROM import_history
+            WHERE imported_at >= NOW() - INTERVAL '%s days'
+            ORDER BY imported_at DESC
+        """
+            % days
+        )
 
-        if is_postgres():
-            results = s.execute(text(query)).fetchall()
-        else:
-            results = s.execute(text(query), {"days_ago": f"-{days} days"}).fetchall()
+        results = s.execute(text(query)).fetchall()
 
         return [
             {
@@ -1313,56 +1231,30 @@ def update_failed_import_status(
 def cleanup_old_import_history(days: int = 30) -> int:
     """Delete import history older than N days."""
     with session_scope() as s:
-        # Use database-specific date arithmetic
-        if is_postgres():
-            # Delete old failed imports first (cascade should handle this, but be explicit)
-            s.execute(
-                text(
-                    """
-                    DELETE FROM failed_imports
-                    WHERE import_id IN (
-                        SELECT id FROM import_history
-                        WHERE imported_at < NOW() - INTERVAL '%s days'
-                    )
-                    """
-                    % days
-                )
-            )
-
-            # Delete old import history
-            result = s.execute(
-                text(
-                    """
-                    DELETE FROM import_history
+        # Delete old failed imports first (cascade should handle this, but be explicit)
+        s.execute(
+            text(
+                """
+                DELETE FROM failed_imports
+                WHERE import_id IN (
+                    SELECT id FROM import_history
                     WHERE imported_at < NOW() - INTERVAL '%s days'
-                    """
-                    % days
                 )
+                """
+                % days
             )
-        else:
-            # SQLite
-            s.execute(
-                text(
-                    """
-                    DELETE FROM failed_imports
-                    WHERE import_id IN (
-                        SELECT id FROM import_history
-                        WHERE imported_at < datetime('now', :days_ago)
-                    )
-                    """
-                ),
-                {"days_ago": f"-{days} days"},
-            )
+        )
 
-            result = s.execute(
-                text(
-                    """
-                    DELETE FROM import_history
-                    WHERE imported_at < datetime('now', :days_ago)
-                    """
-                ),
-                {"days_ago": f"-{days} days"},
+        # Delete old import history
+        result = s.execute(
+            text(
+                """
+                DELETE FROM import_history
+                WHERE imported_at < NOW() - INTERVAL '%s days'
+                """
+                % days
             )
+        )
         return result.rowcount
 
 
