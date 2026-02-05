@@ -5,21 +5,19 @@ Tests the complete synthesis pipeline with actual AI generation.
 
 NOTE: These tests require Ollama to be running with llama3.1:8b model.
 They will be skipped in CI where Ollama is not available.
+
+Uses PostgreSQL via DATABASE_URL (ADR 0022).
 """
 
-import os
-import tempfile
+import hashlib
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import text
 
+from app.db import SessionLocal, init_db
 from app.llm import get_llm_service
-from app.stories import Base, _generate_story_synthesis, generate_stories_simple
-
-# Use a temporary file-based database for threading support
-_test_db_path = None
+from app.stories import _generate_story_synthesis, generate_stories_simple
 
 
 def _check_llm_available():
@@ -32,91 +30,29 @@ def _check_llm_available():
 
 
 def setup_test_db():
-    """Create a temporary test database with articles."""
-    global _test_db_path
+    """Get database session using app's PostgreSQL connection."""
+    # Initialize database connection (schema managed by Alembic)
+    init_db()
 
-    # Use file-based SQLite with check_same_thread=False for threading support
-    _test_db_path = tempfile.mktemp(suffix=".db")
-    engine = create_engine(
-        f"sqlite:///{_test_db_path}",
-        echo=False,
-        connect_args={"check_same_thread": False},
-    )
-    Base.metadata.create_all(engine)
+    # Create session
+    session = SessionLocal()
 
-    # Create additional tables needed for story generation
-    with engine.connect() as conn:
-        # Items table
-        conn.execute(
+    # Ensure test feed exists
+    try:
+        session.execute(
             text(
                 """
-            CREATE TABLE IF NOT EXISTS items (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT,
-                url TEXT,
-                published DATETIME,
-                summary TEXT,
-                ai_summary TEXT,
-                topic TEXT,
-                content TEXT,
-                feed_id INTEGER,
-                entities_json TEXT,
-                entities_extracted_at DATETIME,
-                entities_model TEXT
-            )
-        """
-            )
-        )
-
-        # Feeds table (required for health score lookups)
-        conn.execute(
-            text(
+                INSERT INTO feeds (id, name, url, health_score)
+                VALUES (1, 'Test Feed', 'http://test.com', 100.0)
+                ON CONFLICT (id) DO NOTHING
                 """
-            CREATE TABLE IF NOT EXISTS feeds (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT,
-                url TEXT,
-                health_score REAL DEFAULT 100.0
-            )
-        """
             )
         )
+        session.commit()
+    except Exception:
+        session.rollback()
 
-        # Insert a default feed
-        conn.execute(
-            text(
-                "INSERT INTO feeds (id, name, url, health_score) VALUES (1, 'Test Feed', 'http://test.com', 100.0)"
-            )
-        )
-
-        # Synthesis cache table
-        conn.execute(
-            text(
-                """
-            CREATE TABLE IF NOT EXISTS synthesis_cache (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                cache_key TEXT UNIQUE NOT NULL,
-                article_ids_json TEXT NOT NULL,
-                model TEXT NOT NULL,
-                synthesis TEXT NOT NULL,
-                key_points_json TEXT NOT NULL,
-                why_it_matters TEXT,
-                topics_json TEXT,
-                entities_json TEXT,
-                token_count_input INTEGER,
-                token_count_output INTEGER,
-                generation_time_ms INTEGER,
-                created_at DATETIME NOT NULL,
-                expires_at DATETIME NOT NULL,
-                invalidated_at DATETIME
-            )
-        """
-            )
-        )
-        conn.commit()
-
-    SessionLocal = sessionmaker(bind=engine)
-    return SessionLocal()
+    return session
 
 
 def test_llm_availability():
@@ -183,12 +119,15 @@ def test_synthesis_with_llm():
 
         article_ids = []
         for article in articles:
+            url = f"https://example.com/llm-test-article-{len(article_ids)}"
+            url_hash = hashlib.sha256(url.encode()).hexdigest()[:32]
             result = session.execute(
                 text(
                     """
-                    INSERT INTO items (title, summary, ai_summary, topic, published, url, content, feed_id)
-                    VALUES (:title, :summary, :ai_summary, :topic, :published, :url, :content, :feed_id)
-                """
+                    INSERT INTO items (title, summary, ai_summary, topic, published, url, url_hash, content, feed_id)
+                    VALUES (:title, :summary, :ai_summary, :topic, :published, :url, :url_hash, :content, :feed_id)
+                    RETURNING id
+                    """
                 ),
                 {
                     "title": article["title"],
@@ -196,13 +135,14 @@ def test_synthesis_with_llm():
                     "ai_summary": article["ai_summary"],
                     "topic": article["topic"],
                     "published": now - timedelta(hours=1),
-                    "url": f"https://example.com/article-{len(article_ids)}",
+                    "url": url,
+                    "url_hash": url_hash,
                     "content": article["summary"],
                     "feed_id": 1,
                 },
             )
             session.commit()
-            article_ids.append(result.lastrowid)
+            article_ids.append(result.scalar())
 
         print(f"✅ Inserted {len(article_ids)} related articles\n")
 
@@ -255,18 +195,18 @@ def test_synthesis_with_llm():
         else:
             print("\n⚠️  May have used fallback synthesis")
     finally:
-        session.close()
-        _cleanup_test_db()
-
-
-def _cleanup_test_db():
-    """Clean up temporary database file."""
-    global _test_db_path
-    if _test_db_path and os.path.exists(_test_db_path):
+        # Cleanup test data
         try:
-            os.unlink(_test_db_path)
-        except OSError:
-            pass  # Ignore cleanup errors
+            session.execute(
+                text(
+                    "DELETE FROM items WHERE url LIKE 'https://example.com/llm-test-%'"
+                )
+            )
+            session.commit()
+        except Exception:
+            session.rollback()
+        finally:
+            session.close()
 
 
 def test_full_pipeline_with_llm():
@@ -294,12 +234,14 @@ def test_full_pipeline_with_llm():
         ]
 
         for title, summary, topic in articles:
+            url = f"https://example.com/llm-pipeline-test-{title.replace(' ', '-')}"
+            url_hash = hashlib.sha256(url.encode()).hexdigest()[:32]
             session.execute(
                 text(
                     """
-                    INSERT INTO items (title, summary, ai_summary, topic, published, url, content, feed_id)
-                    VALUES (:title, :summary, :ai_summary, :topic, :published, :url, :content, :feed_id)
-                """
+                    INSERT INTO items (title, summary, ai_summary, topic, published, url, url_hash, content, feed_id)
+                    VALUES (:title, :summary, :ai_summary, :topic, :published, :url, :url_hash, :content, :feed_id)
+                    """
                 ),
                 {
                     "title": title,
@@ -307,7 +249,8 @@ def test_full_pipeline_with_llm():
                     "ai_summary": f"AI Summary: {summary}",
                     "topic": topic,
                     "published": now - timedelta(hours=2),
-                    "url": f"https://example.com/{title.replace(' ', '-')}",
+                    "url": url,
+                    "url_hash": url_hash,
                     "content": summary,
                     "feed_id": 1,
                 },
@@ -342,8 +285,18 @@ def test_full_pipeline_with_llm():
         # Still pass if we got stories, the count range is just informational
         assert len(story_ids) > 0, "Should generate at least one story"
     finally:
-        session.close()
-        _cleanup_test_db()
+        # Cleanup test data
+        try:
+            session.execute(
+                text(
+                    "DELETE FROM items WHERE url LIKE 'https://example.com/llm-pipeline-test-%'"
+                )
+            )
+            session.commit()
+        except Exception:
+            session.rollback()
+        finally:
+            session.close()
 
 
 def main():

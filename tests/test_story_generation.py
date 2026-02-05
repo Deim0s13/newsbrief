@@ -2,120 +2,51 @@
 """
 Test script for story generation pipeline.
 Validates that story generation works end-to-end.
+
+Uses PostgreSQL via DATABASE_URL (ADR 0022).
 """
 
 import os
-import tempfile
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import text
 
-from app.stories import Base, generate_stories_simple, get_stories
-
-# Use a temporary file-based database for threading support
-_test_db_path = None
+from app.db import SessionLocal, init_db
+from app.stories import generate_stories_simple, get_stories
 
 
 def setup_test_db():
-    """Create a temporary test database with articles."""
-    global _test_db_path
+    """Get database session using app's PostgreSQL connection."""
+    # Initialize database connection (schema managed by Alembic)
+    init_db()
 
-    # Use file-based SQLite with check_same_thread=False for threading support
-    # This is required because story generation uses ThreadPoolExecutor
-    _test_db_path = tempfile.mktemp(suffix=".db")
-    engine = create_engine(
-        f"sqlite:///{_test_db_path}",
-        echo=False,
-        connect_args={"check_same_thread": False},
-    )
+    # Create session
+    session = SessionLocal()
 
-    # Create all tables (stories, story_articles, and items)
-    Base.metadata.create_all(engine)
-
-    # Create additional tables needed for story generation
-    with engine.connect() as conn:
-        # Items table
-        conn.execute(
+    # Ensure test feed exists
+    try:
+        session.execute(
             text(
                 """
-            CREATE TABLE IF NOT EXISTS items (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT,
-                url TEXT,
-                published DATETIME,
-                summary TEXT,
-                ai_summary TEXT,
-                topic TEXT,
-                content TEXT,
-                feed_id INTEGER,
-                entities_json TEXT,
-                entities_extracted_at DATETIME,
-                entities_model TEXT
-            )
-        """
-            )
-        )
-
-        # Feeds table (required for health score lookups)
-        conn.execute(
-            text(
+                INSERT INTO feeds (id, name, url, health_score)
+                VALUES (1, 'Test Feed', 'http://test.com', 100.0)
+                ON CONFLICT (id) DO NOTHING
                 """
-            CREATE TABLE IF NOT EXISTS feeds (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT,
-                url TEXT,
-                health_score REAL DEFAULT 100.0
-            )
-        """
             )
         )
+        session.commit()
+    except Exception:
+        session.rollback()
 
-        # Insert a default feed
-        conn.execute(
-            text(
-                "INSERT INTO feeds (id, name, url, health_score) VALUES (1, 'Test Feed', 'http://test.com', 100.0)"
-            )
-        )
-
-        # Synthesis cache table
-        conn.execute(
-            text(
-                """
-            CREATE TABLE IF NOT EXISTS synthesis_cache (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                cache_key TEXT UNIQUE NOT NULL,
-                article_ids_json TEXT NOT NULL,
-                model TEXT NOT NULL,
-                synthesis TEXT NOT NULL,
-                key_points_json TEXT NOT NULL,
-                why_it_matters TEXT,
-                topics_json TEXT,
-                entities_json TEXT,
-                token_count_input INTEGER,
-                token_count_output INTEGER,
-                generation_time_ms INTEGER,
-                created_at DATETIME NOT NULL,
-                expires_at DATETIME NOT NULL,
-                invalidated_at DATETIME
-            )
-        """
-            )
-        )
-        conn.commit()
-
-    SessionLocal = sessionmaker(bind=engine)
-    return SessionLocal()
+    return session
 
 
 def insert_test_articles(session):
     """Insert test articles into database."""
-    # Current time - use ISO format string for consistent SQLite comparison
+    import hashlib
+
     now = datetime.now(UTC)
-    # Convert to ISO format string (without timezone) for SQLite compatibility
-    now_str = now.replace(tzinfo=None).isoformat()
 
     # Test articles about AI/ML topic
     ai_articles = [
@@ -174,28 +105,30 @@ def insert_test_articles(session):
 
     article_ids = []
     for title, summary, topic in all_articles:
+        url = f"https://example.com/story-gen-test-{len(article_ids)}"
+        url_hash = hashlib.sha256(url.encode()).hexdigest()[:32]
         result = session.execute(
             text(
                 """
-                INSERT INTO items (title, summary, ai_summary, topic, published, url, content, feed_id)
-                VALUES (:title, :summary, :ai_summary, :topic, :published, :url, :content, :feed_id)
-            """
+                INSERT INTO items (title, summary, ai_summary, topic, published, url, url_hash, content, feed_id)
+                VALUES (:title, :summary, :ai_summary, :topic, :published, :url, :url_hash, :content, :feed_id)
+                RETURNING id
+                """
             ),
             {
                 "title": title,
                 "summary": summary,
-                "ai_summary": f"AI Summary: {summary}",  # Simulate AI summary
+                "ai_summary": f"AI Summary: {summary}",
                 "topic": topic,
-                "published": (now - timedelta(hours=2))
-                .replace(tzinfo=None)
-                .isoformat(),  # 2 hours ago, ISO format
-                "url": f"https://example.com/{len(article_ids)}",
+                "published": now - timedelta(hours=2),
+                "url": url,
+                "url_hash": url_hash,
                 "content": f"Full content: {summary}",
-                "feed_id": 1,  # Default test feed
+                "feed_id": 1,
             },
         )
         session.commit()
-        article_ids.append(result.lastrowid)
+        article_ids.append(result.scalar())
 
     return article_ids
 
@@ -302,13 +235,18 @@ def test_story_generation():
 
         print("\n✅ All validation tests passed!")
     finally:
-        session.close()
-        # Cleanup temp database file
-        if _test_db_path and os.path.exists(_test_db_path):
-            try:
-                os.unlink(_test_db_path)
-            except OSError:
-                pass  # Ignore cleanup errors
+        # Cleanup test data
+        try:
+            session.execute(
+                text(
+                    "DELETE FROM items WHERE url LIKE 'https://example.com/story-gen-test-%'"
+                )
+            )
+            session.commit()
+        except Exception:
+            session.rollback()
+        finally:
+            session.close()
 
 
 def main():

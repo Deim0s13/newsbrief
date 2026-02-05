@@ -1,10 +1,12 @@
 # Tekton Task: Run Python tests
 #
 # Runs:
-#   1. pytest with coverage
-#   2. mypy type checking (non-blocking)
+#   1. Wait for PostgreSQL sidecar
+#   2. Run Alembic migrations
+#   3. pytest with coverage
+#   4. mypy type checking (non-blocking)
 #
-# Mirrors GitHub Actions test job behavior
+# Uses PostgreSQL sidecar for database tests (ADR 0022)
 
 apiVersion: tekton.dev/v1
 kind: Task
@@ -13,7 +15,7 @@ metadata:
   labels:
     app.kubernetes.io/part-of: newsbrief
 spec:
-  description: Run pytest and mypy on Python code
+  description: Run pytest and mypy on Python code with PostgreSQL
   workspaces:
     - name: source
       description: The source code to test
@@ -35,18 +37,51 @@ spec:
       description: Whether tests passed
     - name: coverage-percent
       description: Coverage percentage achieved
+  sidecars:
+    - name: postgres
+      image: postgres:16
+      env:
+        - name: POSTGRES_USER
+          value: test
+        - name: POSTGRES_PASSWORD
+          value: test
+        - name: POSTGRES_DB
+          value: newsbrief_test
+      readinessProbe:
+        exec:
+          command: ["pg_isready", "-U", "test", "-d", "newsbrief_test"]
+        periodSeconds: 2
+        initialDelaySeconds: 2
   steps:
-    - name: install-deps
+    - name: wait-for-postgres
+      image: postgres:16
+      script: |
+        #!/usr/bin/env bash
+        set -e
+        echo "⏳ Waiting for PostgreSQL to be ready..."
+        until pg_isready -h localhost -U test -d newsbrief_test; do
+          sleep 1
+        done
+        echo "✅ PostgreSQL is ready"
+
+    - name: install-deps-and-migrate
       image: python:3.11-slim
       workingDir: $(workspaces.source.path)
+      env:
+        - name: DATABASE_URL
+          value: "postgresql://test:test@localhost:5432/newsbrief_test"
       script: |
         #!/usr/bin/env bash
         set -e
         echo "📦 Installing dependencies..."
         pip install --quiet --upgrade pip
         pip install --quiet -r requirements.txt
-        pip install --quiet pytest pytest-asyncio pytest-cov mypy
+        pip install --quiet pytest pytest-asyncio pytest-cov mypy alembic
         echo "✅ Dependencies installed"
+
+        echo "🔄 Running Alembic migrations..."
+        alembic upgrade head
+        echo "✅ Database schema ready"
 
     - name: pytest
       image: python:3.11-slim
@@ -54,6 +89,8 @@ spec:
       env:
         - name: CI
           value: "true"
+        - name: DATABASE_URL
+          value: "postgresql://test:test@localhost:5432/newsbrief_test"
       script: |
         #!/usr/bin/env bash
         set -e
@@ -74,6 +111,9 @@ spec:
     - name: mypy
       image: python:3.11-slim
       workingDir: $(workspaces.source.path)
+      env:
+        - name: DATABASE_URL
+          value: "postgresql://test:test@localhost:5432/newsbrief_test"
       script: |
         #!/usr/bin/env bash
         # mypy is non-blocking (continue-on-error)

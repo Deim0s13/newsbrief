@@ -308,12 +308,13 @@ class TestEntityCaching:
             text(
                 """
             INSERT INTO items (feed_id, title, url, url_hash, published)
-            VALUES (1, 'Test Article', 'http://test.com/1', 'hash1', datetime('now'))
+            VALUES (1, 'Test Article', 'http://test.com/1', 'hash1', NOW())
+            RETURNING id
             """
             )
         )
         session.commit()
-        article_id = result.lastrowid
+        article_id = result.scalar()
 
         # Create and store entities
         entities = ExtractedEntities(
@@ -343,12 +344,13 @@ class TestEntityCaching:
             text(
                 """
             INSERT INTO items (feed_id, title, url, url_hash, published)
-            VALUES (1, 'Test Article', 'http://test.com/2', 'hash2', datetime('now'))
+            VALUES (1, 'Test Article', 'http://test.com/2', 'hash2', NOW())
+            RETURNING id
             """
             )
         )
         session.commit()
-        article_id = result.lastrowid
+        article_id = result.scalar()
 
         # Store entities with one model
         entities = ExtractedEntities(
@@ -373,12 +375,13 @@ class TestEntityCaching:
             text(
                 """
             INSERT INTO items (feed_id, title, url, url_hash, published)
-            VALUES (1, 'Test Article', 'http://test.com/3', 'hash3', datetime('now'))
+            VALUES (1, 'Test Article', 'http://test.com/3', 'hash3', NOW())
+            RETURNING id
             """
             )
         )
         session.commit()
-        article_id = result.lastrowid
+        article_id = result.scalar()
 
         # Try to retrieve entities (should be None)
         cached = get_cached_entities(article_id, session)
@@ -401,8 +404,9 @@ def setup_test_db():
         session.execute(
             text(
                 """
-            INSERT OR IGNORE INTO feeds (id, url, name)
+            INSERT INTO feeds (id, url, name)
             VALUES (1, 'http://test.com/feed', 'Test Feed')
+            ON CONFLICT (id) DO NOTHING
             """
             )
         )
