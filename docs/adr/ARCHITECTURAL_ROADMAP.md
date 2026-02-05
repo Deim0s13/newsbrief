@@ -171,17 +171,18 @@ NewsBrief is a **local-first, story-based news aggregator** that synthesizes mul
 - ✅ Kustomize overlays for dev/prod environments
 - ✅ GitHub Actions retired (replaced by Tekton)
 
-### v0.8.0 - Ranking & Personalization
+### v0.8.0 - Content Extraction Pipeline Upgrade
 
-**Focus**: User preferences and smarter content curation
+**Focus**: Better article content extraction for improved story quality
 
 **Planned Changes**:
-- User preference storage
-- Enhanced topic prioritization
-- Bookmarks and read-later
-- Advanced personalized ranking
+- Tiered content extraction module (Readability → Trafilatura → LLM fallback)
+- Database schema updates for extraction metadata
+- Integration into feed ingestion pipeline
+- Re-extraction job for existing articles
+- Documentation updates
 
-### v0.9.0 - LLM Quality & Intelligence
+### v0.8.1 - LLM Quality & Intelligence
 
 **Focus**: Better AI quality and flexibility
 
@@ -200,11 +201,22 @@ NewsBrief is a **local-first, story-based news aggregator** that synthesizes mul
 ```
 
 **Planned Changes**:
-- Pluggable LLM provider interface
-- Improved prompt engineering
-- Response quality evaluation
-- Support for larger context models
-- Model performance comparison
+- Pluggable LLM provider interface (OpenAI, Anthropic support)
+- Improved prompt engineering for better narratives
+- Story title quality improvements
+- Entity extraction accuracy
+- Model configuration profiles (fast vs quality)
+- Output quality metrics and tracking
+
+### v0.9.0 - Ranking & Personalization
+
+**Focus**: User preferences and smarter content curation
+
+**Planned Changes**:
+- User preference storage
+- Enhanced topic prioritization
+- Bookmarks and read-later
+- Advanced personalized ranking
 
 ---
 
@@ -294,7 +306,7 @@ Before introducing new dependencies, evaluate:
 
 | Technology | Use Case | Status |
 |------------|----------|--------|
-| **Chroma** | Vector embeddings | Evaluating for v0.9.0 |
+| **Chroma** | Vector embeddings | Evaluating for v0.9.x |
 | **PostgreSQL FTS** | Full-text search | Planned for v1.0.0 |
 | **WidgetKit** | macOS widget | Planned for v1.1.0 |
 | **htmx** | Dynamic UI without JS complexity | Considering |
