@@ -43,10 +43,10 @@ NewsBrief is a **local-first, story-based news aggregator** that synthesizes mul
 │               llama3.1:8b (default)                             │
 ├─────────────────────────────────────────────────────────────────┤
 │                       Data Layer                                 │
-│  ┌─────────────────────┐  ┌─────────────────────────────────┐   │
-│  │  SQLite (Dev)       │  │  PostgreSQL 16 (Production)     │   │
-│  │  Single-file DB     │  │  Container with persistent vol  │   │
-│  └─────────────────────┘  └─────────────────────────────────┘   │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │              PostgreSQL 16 (Dev + Production)           │    │
+│  │         Container with persistent volume (ADR-0022)     │    │
+│  └─────────────────────────────────────────────────────────┘    │
 │                    Alembic Migrations                            │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -56,9 +56,8 @@ NewsBrief is a **local-first, story-based news aggregator** that synthesizes mul
 | Component | Technology | Rationale |
 |-----------|------------|-----------|
 | **Web Framework** | FastAPI | Async support, auto OpenAPI docs, Pydantic validation |
-| **Database (Dev)** | SQLite | Zero-config, single-file backup, fast for development |
-| **Database (Prod)** | PostgreSQL 16 | ACID, concurrent writes, production-ready |
-| **ORM** | SQLAlchemy | Database abstraction, supports both SQLite and PostgreSQL |
+| **Database** | PostgreSQL 16 | ACID, concurrent writes, dev/prod parity (ADR-0022) |
+| **ORM** | SQLAlchemy | PostgreSQL database abstraction, async support |
 | **Migrations** | Alembic | Schema versioning, reproducible deployments |
 | **Reverse Proxy** | Caddy | Automatic TLS, simple config, friendly URL |
 | **Templates** | Jinja2 | Server-rendered, simple, no build step |
@@ -72,7 +71,7 @@ NewsBrief is a **local-first, story-based news aggregator** that synthesizes mul
 ### Key Characteristics
 
 - **Monolithic**: Single Python application, all components in one process
-- **Dual Database**: SQLite for dev (simple), PostgreSQL for prod (robust)
+- **PostgreSQL**: Same database engine in all environments (ADR-0022)
 - **Local-first**: All data stored locally, works offline (after feed fetch)
 - **Privacy-focused**: No telemetry, no external API calls (except feed fetching)
 - **Container-ready**: Multi-stage Dockerfile, Compose with Caddy + PostgreSQL
@@ -83,8 +82,8 @@ NewsBrief is a **local-first, story-based news aggregator** that synthesizes mul
 | Aspect | Development | Production |
 |--------|-------------|------------|
 | **Access** | `localhost:8787` | `newsbrief.local` |
-| **Database** | SQLite | PostgreSQL |
-| **Command** | `make dev` | `make deploy` |
+| **Database** | PostgreSQL (`localhost:5433`) | PostgreSQL (Docker volume) |
+| **Command** | `make dev-full` | `make deploy` |
 | **Visual** | DEV banner + tab prefix | Clean UI |
 | **Logging** | Human-readable | JSON structured |
 | **Container** | None (local Python) | Podman Compose |
@@ -115,7 +114,7 @@ NewsBrief is a **local-first, story-based news aggregator** that synthesizes mul
 | No semantic search | Keyword-only filtering | Vector embeddings | v0.9.x |
 | Single LLM provider | Ollama dependency | Pluggable providers | v0.9.x |
 | No user accounts | Single-user only | Auth layer | v1.0.x |
-| No full-text search | Limited article discovery | SQLite FTS5 | v0.9.x |
+| No full-text search | Limited article discovery | PostgreSQL FTS | v0.9.x |
 
 ---
 
@@ -222,7 +221,7 @@ NewsBrief is a **local-first, story-based news aggregator** that synthesizes mul
 │                    Deployment Options                            │
 │  ┌───────────────┐  ┌───────────────┐  ┌───────────────────┐    │
 │  │   Personal    │  │    Team       │  │   Enterprise      │    │
-│  │   (SQLite)    │  │  (PostgreSQL) │  │   (PostgreSQL +   │    │
+│  │  (PostgreSQL) │  │  (PostgreSQL) │  │   (PostgreSQL +   │    │
 │  │               │  │               │  │    Auth + Multi)  │    │
 │  └───────────────┘  └───────────────┘  └───────────────────┘    │
 └─────────────────────────────────────────────────────────────────┘
@@ -232,7 +231,7 @@ NewsBrief is a **local-first, story-based news aggregator** that synthesizes mul
 - Optional authentication (API keys, OAuth)
 - Multi-user support (team deployment)
 - Apple Containers support ([ADR-0008](0008-apple-containers-deferred.md))
-- Full-text search (SQLite FTS5)
+- Full-text search (PostgreSQL FTS)
 - Vector search for semantic similarity
 
 ### Platform Extensions
@@ -296,7 +295,7 @@ Before introducing new dependencies, evaluate:
 | Technology | Use Case | Status |
 |------------|----------|--------|
 | **Chroma** | Vector embeddings | Evaluating for v0.9.0 |
-| **SQLite FTS5** | Full-text search | Planned for v1.0.0 |
+| **PostgreSQL FTS** | Full-text search | Planned for v1.0.0 |
 | **WidgetKit** | macOS widget | Planned for v1.1.0 |
 | **htmx** | Dynamic UI without JS complexity | Considering |
 | **Ruff** | Fast Python linting | Considering |
