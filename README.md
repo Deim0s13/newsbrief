@@ -59,14 +59,14 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 - **Automated Dependency Management**: Weekly security audits, dependency updates, and base image maintenance
 - **Comprehensive Documentation**: Complete CI/CD guides, API documentation, and architecture decision records
 
-### **🚧 Current: v0.7.8 - Dev/Prod Environment Parity** (Feb 2026)
+### **✅ Current: v0.7.8 - Dev/Prod Environment Parity** (Feb 2026)
 Eliminate dev/prod differences by standardizing on PostgreSQL for all environments (ADR-0022).
 
 - [x] **PostgreSQL for Dev**: New `make dev-full` target with Docker Compose PostgreSQL
 - [x] **Code Cleanup**: Remove `is_postgres()` conditionals and SQLite code paths
 - [x] **Single Migration System**: Alembic only, remove inline SQLite migrations
 - [x] **Configuration**: Update alembic.ini, CI pipeline for PostgreSQL-only
-- [ ] **Documentation**: Update README, ARCHITECTURAL_ROADMAP.md
+- [x] **Documentation**: Update README, ARCHITECTURAL_ROADMAP.md
 
 ### **✅ Previous: v0.7.7 - Import Progress & Date Fix** (Feb 2026)
 - ✅ **Import Progress Indicator**: Real-time progress modal for OPML imports with live stats
