@@ -43,7 +43,7 @@ patches:
 images:
   - name: localhost:5000/newsbrief
     # This will be updated by CI pipeline with semantic version
-    newTag: v0.7.7-fix1
+    newTag: v0.7.6
 
 # Prod-specific configuration overrides
 configMapGenerator:
