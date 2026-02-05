@@ -62,10 +62,10 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 ### **🚧 Current: v0.7.8 - Dev/Prod Environment Parity** (Feb 2026)
 Eliminate dev/prod differences by standardizing on PostgreSQL for all environments (ADR-0022).
 
-- [ ] **PostgreSQL for Dev**: New `make dev-full` target with Docker Compose PostgreSQL
-- [ ] **Code Cleanup**: Remove `is_postgres()` conditionals and SQLite code paths
-- [ ] **Single Migration System**: Alembic only, remove inline SQLite migrations
-- [ ] **Configuration**: Update alembic.ini, CI pipeline for PostgreSQL-only
+- [x] **PostgreSQL for Dev**: New `make dev-full` target with Docker Compose PostgreSQL
+- [x] **Code Cleanup**: Remove `is_postgres()` conditionals and SQLite code paths
+- [x] **Single Migration System**: Alembic only, remove inline SQLite migrations
+- [x] **Configuration**: Update alembic.ini, CI pipeline for PostgreSQL-only
 - [ ] **Documentation**: Update README, ARCHITECTURAL_ROADMAP.md
 
 ### **✅ Previous: v0.7.7 - Import Progress & Date Fix** (Feb 2026)
@@ -151,7 +151,7 @@ make secrets-list
 
 ### **Development Mode**
 
-For local development with hot-reload, SQLite, and DEV banner:
+For local development with hot-reload and DEV banner:
 
 ```bash
 # Create virtual environment
@@ -159,12 +159,18 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Run development server (shows DEV banner, uses SQLite)
-make dev
+# Start PostgreSQL + Run app in one command
+make dev-full
+
+# OR start separately:
+make db-up      # Start PostgreSQL container (requires Docker/Podman)
+make dev        # Run development server
 
 # Access at http://localhost:8787
 # Orange "DEVELOPMENT MODE" banner distinguishes from production
 ```
+
+> **Note**: Development requires Docker or Podman for the PostgreSQL container.
 
 ### **Quick Container Test**
 
@@ -183,8 +189,8 @@ NewsBrief supports two distinct modes to separate your development work from dai
 
 | Aspect | Development | Production |
 |--------|-------------|------------|
-| **Database** | SQLite (`./data/newsbrief.sqlite3`) | PostgreSQL (Docker volume) |
-| **Data Location** | `./data/` directory | `newsbrief_data` Docker volume |
+| **Database** | PostgreSQL (`localhost:5433`) | PostgreSQL (Docker volume) |
+| **Data Location** | `newsbrief_dev_data` Docker volume | `newsbrief_data` Docker volume |
 | **URL** | `http://localhost:8787` | `https://newsbrief.local` |
 | **Visual Indicator** | Orange "DEV" banner + tab prefix | Clean UI (no banner) |
 | **Hot Reload** | ✅ Yes | ❌ No |
@@ -357,7 +363,7 @@ NewsBrief follows **local-first principles** with story-first aggregation:
 │  │ Manager  │ Extract  │  Llama 3.1 8B   │  │
 │  └──────────┴──────────┴─────────────────┘  │
 ├─────────────────────────────────────────────┤
-│         Database (SQLite / PostgreSQL)      │
+│              Database (PostgreSQL)          │
 │  Stories + Story-Articles + Articles        │
 │              + Feeds + Cache                │
 └─────────────────────────────────────────────┘
@@ -368,7 +374,7 @@ NewsBrief follows **local-first principles** with story-first aggregation:
 - **Local LLM**: Ollama (Llama 3.1 8B) for entity extraction and multi-doc synthesis
 - **Intelligent Clustering**: Entity overlap + text similarity + time proximity
 - **Daily Generation**: Auto-generate 5-10 stories daily + manual refresh
-- **Dual Database**: SQLite for development, PostgreSQL for production
+- **PostgreSQL**: Same database engine in dev and prod (ADR-0022)
 - **FastAPI**: Modern Python web framework with automatic OpenAPI docs
 - **Container-first**: Podman/Docker with Caddy reverse proxy
 - **Privacy-First**: All AI processing runs locally
@@ -410,28 +416,22 @@ uvicorn app.main:app --reload --port 8787
 
 ### **Database Configuration**
 
-NewsBrief supports two database backends:
-- **SQLite** (default): Zero-config, perfect for development and single-user
-- **PostgreSQL**: Production-ready, concurrent access, recommended for deployment
+NewsBrief uses PostgreSQL for both development and production (ADR-0022).
 
-#### SQLite (Default)
-No configuration needed. Database is created at `data/newsbrief.sqlite3`.
-
-#### PostgreSQL Setup
+#### Quick Setup
 
 ```bash
 # 1. Create environment file
 cp .env.example .env
 # Edit .env and set POSTGRES_PASSWORD
 
-# 2. Start PostgreSQL container
-make db-up
+# 2. Start PostgreSQL + app together
+make dev-full
 
-# 3. Run database migrations
-make migrate
-
-# 4. Run app with PostgreSQL
-source .env && make run-local
+# OR start separately:
+make db-up      # Start PostgreSQL container
+make migrate    # Run database migrations
+make dev        # Run development server
 ```
 
 #### Database Commands
@@ -452,8 +452,8 @@ make migrate-new MSG="description"  # Create new migration
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | *(SQLite if not set)* |
-| `POSTGRES_PASSWORD` | Password for docker-compose | *(required for Postgres)* |
+| `DATABASE_URL` | PostgreSQL connection string | *(required)* |
+| `POSTGRES_PASSWORD` | Password for docker-compose | *(required)* |
 
 ### **Development Workflow**
 
@@ -493,7 +493,7 @@ safety check -r requirements.txt    # Security audit
 newsbrief/
 ├── app/                    # Application code
 │   ├── main.py            # FastAPI app and routes
-│   ├── db.py              # Database connection (SQLite/PostgreSQL)
+│   ├── db.py              # Database connection (PostgreSQL)
 │   ├── orm_models.py      # SQLAlchemy ORM models
 │   ├── models.py          # Pydantic schemas
 │   ├── feeds.py           # RSS fetching and processing
@@ -520,8 +520,7 @@ newsbrief/
 ├── tekton/                 # Tekton CI/CD resources (v0.7.5+)
 │   ├── tasks/             # Reusable CI tasks
 │   └── pipelines/         # CI/CD pipeline definitions
-├── data/                   # Persistent data
-│   └── newsbrief.sqlite3  # Database (generated)
+├── data/                   # Persistent data (logs, cache)
 ├── scripts/               # Automation scripts
 ├── Dockerfile            # Multi-stage container build
 ├── compose.yaml          # Production stack (API + PostgreSQL + Caddy)
