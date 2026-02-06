@@ -1,8 +1,12 @@
 # NewsBrief Architecture Document
 
-> **Version**: 1.0
-> **Last Updated**: January 2026
+> **Version**: 1.1
+> **Last Updated**: February 2026
 > **Status**: Living Document
+
+---
+
+> **Future Direction**: NewsBrief is evolving from a news aggregator into an intelligence platform. See [ADR-0023: Intelligence Platform Strategy](adr/0023-intelligence-platform-strategy.md) for the strategic vision covering entity intelligence, multi-perspective synthesis, and premium features.
 
 ---
 

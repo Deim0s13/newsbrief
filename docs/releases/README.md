@@ -6,12 +6,27 @@ Quick reference for all NewsBrief releases. For detailed release notes, see [Git
 
 ## v0.7.x - Infrastructure & Operations
 
-### v0.7.5.1 - Pipeline Notifications (Current)
+### v0.7.8 - Dev/Prod Environment Parity (Current)
+**February 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.7.8)
+
+PostgreSQL for all environments (ADR-0022), removed SQLite support entirely, new `make dev-full` target, updated CI pipeline for PostgreSQL-only testing, comprehensive documentation updates.
+
+### v0.7.7 - Import Progress & Date Fix
+**February 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.7.7)
+
+Real-time OPML import progress modal with live stats, async import tracking via `/feeds/import/status/{id}`, proper UTC handling for article dates in PostgreSQL.
+
+### v0.7.6 - CI/CD Remediation
+**January 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.7.6)
+
+Persistent storage for prod environment with PVC, registry standardization (`kind-registry:5000`), Cosign key-based image signatures with Bitwarden integration, Smee webhook relay, Ansible recovery automation (`make recover`).
+
+### v0.7.5.1 - Pipeline Notifications
 **January 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.7.5)
 
 Pipeline notifications via ntfy.sh (macOS/iOS push), Slack webhook groundwork (disabled by default), finally blocks for all pipelines with success/failure alerts, Tekton Dashboard for pipeline monitoring.
 
-### v0.7.5 - GitOps & Automation (Current)
+### v0.7.5 - GitOps & Automation
 **January 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.7.5)
 
 Local Kubernetes with kind, Tekton CI/CD pipelines (lint, test, build, scan, sign), ArgoCD GitOps deployments, secure supply chain (Trivy, Cosign, SBOM), Tekton Triggers for webhook automation, **semantic versioning automation** (conventional commits), automated cleanup tasks (branches, images, runs), fixed registry DNS for cross-namespace access.

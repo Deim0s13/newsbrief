@@ -30,8 +30,9 @@ Developer documentation:
 Architectural decisions with context and rationale:
 - **[0001-architecture.md](adr/0001-architecture.md)** - Initial architecture
 - **[0002-story-based-aggregation.md](adr/0002-story-based-aggregation.md)** - Story-based approach
-- **[0007-postgresql-database-migration.md](adr/0007-postgresql-database-migration.md)** - PostgreSQL migration
-- **[0011-structured-logging.md](adr/0011-structured-logging.md)** - Structured logging
+- **[0022-dev-prod-database-parity.md](adr/0022-dev-prod-database-parity.md)** - PostgreSQL-only (v0.7.8)
+- **[0023-intelligence-platform-strategy.md](adr/0023-intelligence-platform-strategy.md)** - Future vision
+- **[ARCHITECTURAL_ROADMAP.md](adr/ARCHITECTURAL_ROADMAP.md)** - Complete roadmap
 - *...and more*
 
 ### 🚀 [Releases](releases/)
@@ -52,11 +53,11 @@ Historical documentation (no longer actively maintained):
 |----------|------|
 | **Quick Start** | [user-guide/QUICK-START.md](user-guide/QUICK-START.md) |
 | **API Reference** | [user-guide/API.md](user-guide/API.md) |
-| **Latest Release** | [v0.7.5](https://github.com/Deim0s13/newsbrief/releases/tag/v0.7.5) |
+| **Latest Release** | [v0.7.8](https://github.com/Deim0s13/newsbrief/releases/tag/v0.7.8) |
 | **Project Board** | [GitHub Projects](https://github.com/users/Deim0s13/projects/2) |
 | **Issues** | [GitHub Issues](https://github.com/Deim0s13/newsbrief/issues) |
 | **Milestones** | [GitHub Milestones](https://github.com/Deim0s13/newsbrief/milestones) |
 
 ---
 
-**Last Updated**: January 2026 · **Current Version**: v0.7.5
+**Last Updated**: February 2026 · **Current Version**: v0.7.8

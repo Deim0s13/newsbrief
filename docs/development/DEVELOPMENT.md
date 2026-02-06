@@ -73,11 +73,13 @@ NewsBrief supports separate development and production environments:
 | Aspect | Development | Production |
 |--------|-------------|------------|
 | **URL** | `http://localhost:8787` | `https://newsbrief.local` |
-| **Database** | SQLite (`data/newsbrief.sqlite3`) | PostgreSQL (container) |
-| **Command** | `make dev` | `make deploy` |
+| **Database** | PostgreSQL (`localhost:5433`) | PostgreSQL (Docker volume) |
+| **Command** | `make dev-full` | `make deploy` |
 | **Visual** | Orange DEV banner + tab prefix | Clean UI |
 | **Logging** | Human-readable | JSON structured |
-| **Container** | None (local Python) | Podman Compose |
+| **Container** | PostgreSQL only | Full Podman Compose |
+
+> **Note**: As of v0.7.8, development uses PostgreSQL for dev/prod parity (ADR-0022).
 
 **Development mode** shows a visible DEV banner and "DEV -" prefix in the browser tab to clearly distinguish from production.
 

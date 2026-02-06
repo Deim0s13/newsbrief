@@ -1,8 +1,10 @@
 # NewsBrief Architectural Roadmap
 
-> **Living Document** - Last Updated: January 2026
+> **Living Document** - Last Updated: February 2026
 
 This document outlines the architectural evolution of NewsBrief, from its current state through planned enhancements. It serves as a technical compass for development decisions and helps contributors understand where the project is heading.
+
+> **Strategic Vision**: See [ADR-0023: Intelligence Platform Strategy](0023-intelligence-platform-strategy.md) for the comprehensive plan to transform NewsBrief from a news aggregator into a premium intelligence platform.
 
 ---
 

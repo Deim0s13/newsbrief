@@ -52,7 +52,7 @@ make deploy                       # Automatically uses secrets
 
 ## 🛠️ Option 2: Development Setup
 
-Run locally with SQLite for development:
+Run locally with PostgreSQL for development (requires Docker/Podman):
 
 ```bash
 # Clone repository
@@ -71,17 +71,25 @@ npm install
 pip install pre-commit
 pre-commit install
 
-# Run development server
-make dev
+# Start PostgreSQL + dev server together
+make dev-full
+
+# OR start separately:
+make db-up      # Start PostgreSQL container
+make dev        # Start dev server
 
 # Access at http://localhost:8787 (shows DEV banner)
 ```
+
+> **Note**: As of v0.7.8, development uses PostgreSQL for dev/prod parity (ADR-0022).
 
 ### Development Commands
 
 | Command | Description |
 |---------|-------------|
-| `make dev` | Start dev server with hot reload |
+| `make dev-full` | Start PostgreSQL + dev server |
+| `make db-up` | Start PostgreSQL container |
+| `make dev` | Start dev server (requires DB running) |
 | `make test` | Run test suite |
 | `make lint` | Run linters |
 | `npm run build:css` | Rebuild Tailwind CSS |
