@@ -18,9 +18,9 @@ from sqlalchemy import text
 logger = logging.getLogger(__name__)
 
 from .db import session_scope
+from .extraction import extract_content
 from .models import create_content_hash
 from .ranking import calculate_ranking_score, classify_article_topic
-from .readability import extract_readable
 from .topics import classify_topic as classify_topic_unified
 
 # Allowed HTML tags for sanitized content (safe formatting only)
@@ -1573,7 +1573,14 @@ def fetch_and_store() -> RefreshStats:
                 summary = sanitize_html(entry.get("summary") or "")
 
                 # Fetch article page for full text (best-effort)
+                # Extraction metadata for v0.8.0 observability
                 content_text = None
+                extraction_method = "none"
+                extraction_quality = None
+                extraction_error = None
+                extracted_at = None
+                extraction_time_ms = None
+
                 try:
                     # Check robots.txt before fetching article content
                     if is_article_url_allowed(link):
@@ -1583,12 +1590,37 @@ def fetch_and_store() -> RefreshStats:
                         if page.status_code < 400 and page.headers.get(
                             "content-type", ""
                         ).startswith(("text/html", "application/xhtml")):
-                            _, content_text = extract_readable(page.text)
+                            # Use tiered extraction (v0.8.0)
+                            extraction_result = extract_content(
+                                html=page.text,
+                                url=link,
+                                rss_summary=summary,
+                            )
+                            content_text = extraction_result.content
+                            extraction_method = extraction_result.method
+                            extraction_quality = extraction_result.quality_score
+                            extraction_error = extraction_result.error
+                            extracted_at = datetime.now(timezone.utc)
+                            extraction_time_ms = extraction_result.extraction_time_ms
+
+                            # Use trafilatura's author when RSS doesn't provide one
+                            if not author and extraction_result.metadata.author:
+                                author = extraction_result.metadata.author
+
+                            logger.debug(
+                                f"Extracted {link} via {extraction_method}, "
+                                f"quality={extraction_quality:.2f}, "
+                                f"length={len(content_text) if content_text else 0}"
+                            )
                     else:
                         stats.robots_txt_blocked_articles += 1
+                        extraction_method = "blocked"
+                        extraction_error = "robots_txt_blocked"
                         # If robots.txt disallows, content_text remains None (graceful degradation)
-                except Exception:
-                    pass
+                except Exception as e:
+                    extraction_method = "failed"
+                    extraction_error = str(e)[:200]  # Truncate long errors
+                    logger.warning(f"Extraction failed for {link}: {e}")
 
                 # Calculate content hash for AI caching
                 content_hash = create_content_hash(title, content_text or summary or "")
@@ -1630,8 +1662,8 @@ def fetch_and_store() -> RefreshStats:
                     s.execute(
                         text(
                             """
-                    INSERT INTO items(feed_id, title, url, url_hash, published, author, summary, content, content_hash, ranking_score, topic, topic_confidence, source_weight)
-                    VALUES(:feed_id, :title, :url, :url_hash, :published, :author, :summary, :content, :content_hash, :ranking_score, :topic, :topic_confidence, :source_weight)
+                    INSERT INTO items(feed_id, title, url, url_hash, published, author, summary, content, content_hash, ranking_score, topic, topic_confidence, source_weight, extraction_method, extraction_quality, extraction_error, extracted_at, extraction_time_ms)
+                    VALUES(:feed_id, :title, :url, :url_hash, :published, :author, :summary, :content, :content_hash, :ranking_score, :topic, :topic_confidence, :source_weight, :extraction_method, :extraction_quality, :extraction_error, :extracted_at, :extraction_time_ms)
                     """
                         ),
                         {
@@ -1649,6 +1681,14 @@ def fetch_and_store() -> RefreshStats:
                             "topic": topic,
                             "topic_confidence": topic_confidence,
                             "source_weight": 1.0,
+                            # Extraction metadata (v0.8.0)
+                            "extraction_method": extraction_method,
+                            "extraction_quality": extraction_quality,
+                            "extraction_error": extraction_error,
+                            "extracted_at": (
+                                extracted_at.isoformat() if extracted_at else None
+                            ),
+                            "extraction_time_ms": extraction_time_ms,
                         },
                     )
 

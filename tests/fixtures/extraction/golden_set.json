@@ -1,0 +1,157 @@
+{
+  "version": "1.0",
+  "description": "Golden set for extraction regression testing. These fixtures test various extraction scenarios with known expected outcomes.",
+  "created": "2025-02-07",
+  "fixtures": [
+    {
+      "id": "clean_article_001",
+      "category": "news",
+      "description": "Clean, well-structured news article with semantic HTML",
+      "html_file": "html/clean_article_001.html",
+      "expected": {
+        "title": "Scientists Discover New Species in Deep Ocean Trench",
+        "min_content_length": 1800,
+        "max_content_length": 2500,
+        "should_succeed": true,
+        "key_phrases": [
+          "Mariana Trench",
+          "bioluminescent fish",
+          "Dr. Elena Rodriguez",
+          "Scripps Institution"
+        ],
+        "notes": "Standard news article format, should extract cleanly"
+      }
+    },
+    {
+      "id": "heavy_boilerplate_001",
+      "category": "news",
+      "description": "Article with heavy navigation, ads, sidebars, and footer content",
+      "html_file": "html/heavy_boilerplate_001.html",
+      "expected": {
+        "title": "Tech Company Announces Revolutionary AI Assistant",
+        "min_content_length": 1500,
+        "max_content_length": 2500,
+        "should_succeed": true,
+        "key_phrases": [
+          "NovaTech Industries",
+          "Aria",
+          "Sarah Martinez",
+          "natural language processing"
+        ],
+        "notes": "Tests boilerplate removal - should NOT include navigation, ads, or sidebar content"
+      }
+    },
+    {
+      "id": "blog_post_001",
+      "category": "blog",
+      "description": "Personal blog post with informal style",
+      "html_file": "html/blog_post_001.html",
+      "expected": {
+        "title": "Why I Switched to Linux After 20 Years on macOS",
+        "min_content_length": 2000,
+        "max_content_length": 2800,
+        "should_succeed": true,
+        "key_phrases": [
+          "macOS",
+          "Linux",
+          "dual-booting Ubuntu",
+          "Docker"
+        ],
+        "notes": "Personal blog format with subheadings and lists"
+      }
+    },
+    {
+      "id": "list_article_001",
+      "category": "news",
+      "description": "Listicle-style article with numbered sections",
+      "html_file": "html/list_article_001.html",
+      "expected": {
+        "title": "10 Best Practices for Remote Work in 2025",
+        "min_content_length": 2500,
+        "max_content_length": 3200,
+        "should_succeed": true,
+        "key_phrases": [
+          "Dedicated Workspace",
+          "Asynchronous Communication",
+          "Pomodoro Technique",
+          "deep work"
+        ],
+        "notes": "Tests extraction of structured content with multiple headings"
+      }
+    },
+    {
+      "id": "opinion_piece_001",
+      "category": "opinion",
+      "description": "Opinion/editorial piece with author disclaimer",
+      "html_file": "html/opinion_piece_001.html",
+      "expected": {
+        "title": "The Case for Universal Basic Income in the Age of AI",
+        "min_content_length": 2000,
+        "max_content_length": 2800,
+        "should_succeed": true,
+        "key_phrases": [
+          "Universal Basic Income",
+          "automation",
+          "$1,000 per month",
+          "Finland"
+        ],
+        "notes": "Opinion piece format with author attribution"
+      }
+    },
+    {
+      "id": "international_001",
+      "category": "international",
+      "description": "German language article about renewable energy",
+      "html_file": "html/international_001.html",
+      "expected": {
+        "title": "Neue Studie zeigt Fortschritte bei erneuerbaren Energien",
+        "min_content_length": 1000,
+        "max_content_length": 1800,
+        "should_succeed": true,
+        "key_phrases": [
+          "Fraunhofer-Institut",
+          "erneuerbare",
+          "Windenergie",
+          "Professor Dr. Klaus Weber"
+        ],
+        "notes": "Tests handling of non-English content and character encoding"
+      }
+    },
+    {
+      "id": "malformed_001",
+      "category": "malformed",
+      "description": "HTML with missing closing tags and structural issues",
+      "html_file": "html/malformed_001.html",
+      "expected": {
+        "title_contains": "Market",
+        "min_content_length": 800,
+        "max_content_length": 1600,
+        "should_succeed": true,
+        "key_phrases": [
+          "S&P 500",
+          "Federal Reserve",
+          "soft landing"
+        ],
+        "notes": "Tests resilience to malformed HTML - title may be mangled but content should extract"
+      }
+    },
+    {
+      "id": "minimal_content_001",
+      "category": "paywall",
+      "description": "Paywalled article with only teaser content visible",
+      "html_file": "html/minimal_content_001.html",
+      "expected": {
+        "title": "Exclusive: Major Tech Merger Announced",
+        "min_content_length": 100,
+        "max_content_length": 400,
+        "should_succeed": false,
+        "quality_ceiling": 0.5,
+        "key_phrases": [
+          "tech merger",
+          "$100 billion"
+        ],
+        "notes": "Expected low-quality extraction due to paywall - tests graceful degradation"
+      }
+    }
+  ]
+}

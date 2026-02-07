@@ -3,6 +3,8 @@ uvicorn
 httpx==0.27.*
 certifi>=2024.0.0
 feedparser
+# Content extraction (v0.8.0): trafilatura primary, readability-lxml fallback
+trafilatura>=2.0.0
 readability-lxml
 beautifulsoup4
 lxml

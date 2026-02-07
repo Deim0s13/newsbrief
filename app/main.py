@@ -2431,3 +2431,214 @@ def get_story_articles(story_id: int):
             )
 
         return items
+
+
+# =============================================================================
+# Admin: Extraction Dashboard (v0.8.0)
+# =============================================================================
+
+
+@app.get("/admin/extraction", response_class=HTMLResponse)
+def extraction_dashboard_page(request: Request):
+    """
+    Extraction quality monitoring dashboard.
+
+    Displays metrics about content extraction including success rates,
+    method distribution, and problem domains.
+    """
+    return templates.TemplateResponse(
+        "extraction_dashboard.html",
+        {
+            "request": request,
+            "current_page": "admin",
+            "environment": os.environ.get("ENVIRONMENT", "development"),
+        },
+    )
+
+
+@app.get("/api/extraction/stats")
+def get_extraction_stats():
+    """
+    Get content extraction statistics and metrics.
+
+    Returns aggregated data about extraction performance including:
+    - Overall success rate
+    - Method distribution (trafilatura, readability, rss_summary, failed, legacy)
+    - Average content length
+    - Top failure domains
+    - Failure reasons breakdown
+    - Recent extraction time series
+
+    Returns:
+        Extraction statistics for the admin dashboard
+    """
+    try:
+        with session_scope() as s:
+            # Total articles count
+            total_query = text("SELECT COUNT(*) FROM items")
+            total_articles = s.execute(total_query).scalar() or 0
+
+            # Method distribution
+            method_query = text(
+                """
+                SELECT
+                    COALESCE(extraction_method, 'legacy') as method,
+                    COUNT(*) as count
+                FROM items
+                GROUP BY COALESCE(extraction_method, 'legacy')
+                ORDER BY count DESC
+                """
+            )
+            method_rows = s.execute(method_query).fetchall()
+            method_distribution = {row[0]: row[1] for row in method_rows}
+
+            # Calculate success rate (everything except 'failed')
+            failed_count = method_distribution.get("failed", 0)
+            success_count = total_articles - failed_count
+            success_rate = success_count / total_articles if total_articles > 0 else 0
+
+            # Average content length (for non-null content)
+            avg_length_query = text(
+                """
+                SELECT AVG(LENGTH(content))
+                FROM items
+                WHERE content IS NOT NULL AND content != ''
+                """
+            )
+            avg_content_length = s.execute(avg_length_query).scalar() or 0
+
+            # Average extraction time (for articles with timing data)
+            avg_time_query = text(
+                """
+                SELECT AVG(extraction_time_ms)
+                FROM items
+                WHERE extraction_time_ms IS NOT NULL
+                """
+            )
+            avg_extraction_time = s.execute(avg_time_query).scalar()
+
+            # Top failure domains (extract domain from URL)
+            # Use a CTE to calculate domain totals first
+            failure_domains_query = text(
+                """
+                WITH domain_stats AS (
+                    SELECT
+                        SUBSTRING(url FROM '://([^/]+)') as domain,
+                        COUNT(*) as total_count,
+                        COUNT(CASE WHEN extraction_method = 'failed'
+                                   OR (content IS NULL AND extraction_method IS NULL)
+                              THEN 1 END) as failure_count
+                    FROM items
+                    GROUP BY SUBSTRING(url FROM '://([^/]+)')
+                )
+                SELECT
+                    domain,
+                    failure_count,
+                    CASE WHEN total_count > 0
+                         THEN failure_count * 100.0 / total_count
+                         ELSE 0 END as failure_rate
+                FROM domain_stats
+                WHERE failure_count > 0
+                ORDER BY failure_count DESC
+                LIMIT 10
+                """
+            )
+            failure_domain_rows = s.execute(failure_domains_query).fetchall()
+            failures_by_domain = [
+                {
+                    "domain": row[0] or "unknown",
+                    "count": row[1],
+                    "rate": round(row[2], 1) if row[2] else 0,
+                }
+                for row in failure_domain_rows
+            ]
+
+            # Failure reasons breakdown
+            failure_reasons_query = text(
+                """
+                SELECT
+                    COALESCE(extraction_error, 'unknown') as reason,
+                    COUNT(*) as count
+                FROM items
+                WHERE extraction_method = 'failed'
+                   OR extraction_error IS NOT NULL
+                GROUP BY COALESCE(extraction_error, 'unknown')
+                ORDER BY count DESC
+                LIMIT 10
+                """
+            )
+            failure_reason_rows = s.execute(failure_reasons_query).fetchall()
+            failures_by_reason = {row[0]: row[1] for row in failure_reason_rows}
+
+            # Recent extractions time series (last 7 days, by day)
+            time_series_query = text(
+                """
+                SELECT
+                    DATE(COALESCE(extracted_at, created_at)) as date,
+                    COUNT(*) as total,
+                    COUNT(CASE WHEN extraction_method != 'failed'
+                               AND extraction_method IS NOT NULL THEN 1 END) as success,
+                    COUNT(CASE WHEN extraction_method = 'failed' THEN 1 END) as failed
+                FROM items
+                WHERE COALESCE(extracted_at, created_at) >= CURRENT_DATE - INTERVAL '7 days'
+                GROUP BY DATE(COALESCE(extracted_at, created_at))
+                ORDER BY date DESC
+                """
+            )
+            time_series_rows = s.execute(time_series_query).fetchall()
+            recent_extractions = [
+                {
+                    "date": str(row[0]),
+                    "total": row[1],
+                    "success": row[2],
+                    "failed": row[3],
+                }
+                for row in time_series_rows
+            ]
+
+            # Quality distribution (for articles with quality scores)
+            quality_query = text(
+                """
+                SELECT
+                    CASE
+                        WHEN extraction_quality >= 0.9 THEN 'excellent'
+                        WHEN extraction_quality >= 0.7 THEN 'good'
+                        WHEN extraction_quality >= 0.5 THEN 'fair'
+                        WHEN extraction_quality >= 0.3 THEN 'poor'
+                        WHEN extraction_quality IS NOT NULL THEN 'very_poor'
+                        ELSE 'unknown'
+                    END as quality_tier,
+                    COUNT(*) as count
+                FROM items
+                GROUP BY quality_tier
+                ORDER BY count DESC
+                """
+            )
+            quality_rows = s.execute(quality_query).fetchall()
+            quality_distribution = {row[0]: row[1] for row in quality_rows}
+
+            return {
+                "total_articles": total_articles,
+                "extraction_stats": {
+                    "success_rate": round(success_rate, 3),
+                    "success_count": success_count,
+                    "failed_count": failed_count,
+                    "method_distribution": method_distribution,
+                    "avg_content_length": (
+                        int(avg_content_length) if avg_content_length else 0
+                    ),
+                    "avg_extraction_time_ms": (
+                        int(avg_extraction_time) if avg_extraction_time else None
+                    ),
+                    "quality_distribution": quality_distribution,
+                },
+                "failures_by_domain": failures_by_domain,
+                "failures_by_reason": failures_by_reason,
+                "recent_extractions": recent_extractions,
+            }
+    except Exception as e:
+        logger.error(f"Failed to get extraction stats: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve extraction statistics: {str(e)}",
+        )

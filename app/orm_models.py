@@ -110,6 +110,12 @@ class Item(Base):
     entities_json = Column(Text)
     entities_extracted_at = Column(DateTime)
     entities_model = Column(Text)
+    # Content extraction metadata (v0.8.0 - ADR-0024)
+    extraction_method = Column(String(20), default="legacy")
+    extraction_quality = Column(Float)
+    extraction_error = Column(Text)
+    extracted_at = Column(DateTime)
+    extraction_time_ms = Column(Integer)
     # Timestamps
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
 
@@ -129,6 +135,11 @@ class Item(Base):
             "idx_structured_summary_cache",
             "structured_summary_content_hash",
             "structured_summary_model",
+        ),
+        # Extraction metadata indexes (v0.8.0)
+        Index("idx_items_extraction_method", "extraction_method"),
+        Index(
+            "idx_items_extraction_quality", "extraction_method", "extraction_quality"
         ),
     )
 

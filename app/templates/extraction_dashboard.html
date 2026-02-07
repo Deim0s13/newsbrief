@@ -1,0 +1,406 @@
+{% extends "base.html" %}
+
+{% block title %}Extraction Dashboard - NewsBrief{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 dark:bg-gray-900 py-6">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Extraction Dashboard</h1>
+            <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                Monitor content extraction quality, success rates, and identify problem domains
+            </p>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loading-state" class="flex items-center justify-center py-12">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <span class="ml-3 text-gray-600 dark:text-gray-400">Loading extraction data...</span>
+        </div>
+
+        <!-- Main Content -->
+        <div id="dashboard-content" class="hidden space-y-8">
+
+            <!-- Overview Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <!-- Success Rate -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <div class="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
+                                <svg class="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Success Rate</div>
+                            <div id="success-rate" class="text-2xl font-bold text-gray-900 dark:text-white">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Total Articles -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <div class="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
+                                <svg class="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"></path>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Articles</div>
+                            <div id="total-articles" class="text-2xl font-bold text-gray-900 dark:text-white">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Avg Content Length -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <div class="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center">
+                                <svg class="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Avg Content Length</div>
+                            <div id="avg-length" class="text-2xl font-bold text-gray-900 dark:text-white">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Failed Extractions -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <div class="w-12 h-12 bg-red-100 dark:bg-red-900 rounded-lg flex items-center justify-center">
+                                <svg class="w-6 h-6 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Failed Extractions</div>
+                            <div id="failed-count" class="text-2xl font-bold text-gray-900 dark:text-white">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Method Distribution & Quality -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- Method Distribution -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Extraction Method Distribution</h3>
+                    <div id="method-distribution" class="space-y-3">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                </div>
+
+                <!-- Quality Distribution -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Quality Distribution</h3>
+                    <div id="quality-distribution" class="space-y-3">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Failure Analysis -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- Top Failure Domains -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Top Failure Domains</h3>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                            <thead>
+                                <tr>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Domain</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Failures</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Rate</th>
+                                </tr>
+                            </thead>
+                            <tbody id="failure-domains" class="divide-y divide-gray-200 dark:divide-gray-700">
+                                <!-- Populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="no-failures-domain" class="hidden text-center py-4 text-gray-500 dark:text-gray-400">
+                        No extraction failures recorded
+                    </div>
+                </div>
+
+                <!-- Failure Reasons -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Failure Reasons</h3>
+                    <div id="failure-reasons" class="space-y-3">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                    <div id="no-failures-reason" class="hidden text-center py-4 text-gray-500 dark:text-gray-400">
+                        No failure reasons recorded
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Extractions Time Series -->
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-white">Extraction Activity (Last 7 Days)</h3>
+                    <button id="refresh-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm">
+                        <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                        Refresh
+                    </button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                        <thead>
+                            <tr>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Total</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Success</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Failed</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Success Rate</th>
+                            </tr>
+                        </thead>
+                        <tbody id="time-series" class="divide-y divide-gray-200 dark:divide-gray-700">
+                            <!-- Populated by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+                <div id="no-time-series" class="hidden text-center py-4 text-gray-500 dark:text-gray-400">
+                    No recent extraction data available
+                </div>
+            </div>
+
+            <!-- Info Banner -->
+            <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <svg class="h-5 w-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-sm text-blue-700 dark:text-blue-300">
+                            <strong>Note:</strong> Articles extracted before v0.8.0 are marked as "legacy" and don't have detailed extraction metadata.
+                            New extractions will show method, quality scores, and timing data.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadExtractionStats();
+
+    document.getElementById('refresh-btn').addEventListener('click', function() {
+        loadExtractionStats();
+    });
+});
+
+async function loadExtractionStats() {
+    try {
+        document.getElementById('loading-state').classList.remove('hidden');
+        document.getElementById('dashboard-content').classList.add('hidden');
+
+        const response = await fetch('/api/extraction/stats');
+        const data = await response.json();
+
+        // Update overview cards
+        const successRate = (data.extraction_stats.success_rate * 100).toFixed(1);
+        document.getElementById('success-rate').textContent = successRate + '%';
+        document.getElementById('total-articles').textContent = data.total_articles.toLocaleString();
+        document.getElementById('avg-length').textContent = data.extraction_stats.avg_content_length.toLocaleString() + ' chars';
+        document.getElementById('failed-count').textContent = data.extraction_stats.failed_count.toLocaleString();
+
+        // Update method distribution
+        updateMethodDistribution(data.extraction_stats.method_distribution, data.total_articles);
+
+        // Update quality distribution
+        updateQualityDistribution(data.extraction_stats.quality_distribution, data.total_articles);
+
+        // Update failure domains
+        updateFailureDomains(data.failures_by_domain);
+
+        // Update failure reasons
+        updateFailureReasons(data.failures_by_reason);
+
+        // Update time series
+        updateTimeSeries(data.recent_extractions);
+
+        document.getElementById('loading-state').classList.add('hidden');
+        document.getElementById('dashboard-content').classList.remove('hidden');
+
+    } catch (error) {
+        console.error('Error loading extraction stats:', error);
+        document.getElementById('loading-state').innerHTML = `
+            <div class="text-red-600 dark:text-red-400">
+                Failed to load extraction data. Please try again.
+            </div>
+        `;
+    }
+}
+
+function updateMethodDistribution(distribution, total) {
+    const container = document.getElementById('method-distribution');
+    container.innerHTML = '';
+
+    const methods = Object.entries(distribution).sort((a, b) => b[1] - a[1]);
+    const colors = {
+        'trafilatura': 'bg-green-500',
+        'readability': 'bg-blue-500',
+        'rss_summary': 'bg-yellow-500',
+        'legacy': 'bg-gray-500',
+        'failed': 'bg-red-500'
+    };
+
+    methods.forEach(([method, count]) => {
+        const percentage = total > 0 ? ((count / total) * 100).toFixed(1) : 0;
+        const color = colors[method] || 'bg-gray-400';
+
+        container.innerHTML += `
+            <div>
+                <div class="flex justify-between text-sm mb-1">
+                    <span class="text-gray-700 dark:text-gray-300 capitalize">${method.replace('_', ' ')}</span>
+                    <span class="text-gray-500 dark:text-gray-400">${count.toLocaleString()} (${percentage}%)</span>
+                </div>
+                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                    <div class="${color} h-2 rounded-full" style="width: ${percentage}%"></div>
+                </div>
+            </div>
+        `;
+    });
+}
+
+function updateQualityDistribution(distribution, total) {
+    const container = document.getElementById('quality-distribution');
+    container.innerHTML = '';
+
+    const tiers = ['excellent', 'good', 'fair', 'poor', 'very_poor', 'unknown'];
+    const colors = {
+        'excellent': 'bg-green-500',
+        'good': 'bg-blue-500',
+        'fair': 'bg-yellow-500',
+        'poor': 'bg-orange-500',
+        'very_poor': 'bg-red-500',
+        'unknown': 'bg-gray-400'
+    };
+
+    tiers.forEach(tier => {
+        const count = distribution[tier] || 0;
+        if (count === 0 && tier !== 'unknown') return;
+
+        const percentage = total > 0 ? ((count / total) * 100).toFixed(1) : 0;
+        const color = colors[tier];
+        const label = tier.replace('_', ' ');
+
+        container.innerHTML += `
+            <div>
+                <div class="flex justify-between text-sm mb-1">
+                    <span class="text-gray-700 dark:text-gray-300 capitalize">${label}</span>
+                    <span class="text-gray-500 dark:text-gray-400">${count.toLocaleString()} (${percentage}%)</span>
+                </div>
+                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                    <div class="${color} h-2 rounded-full" style="width: ${percentage}%"></div>
+                </div>
+            </div>
+        `;
+    });
+}
+
+function updateFailureDomains(domains) {
+    const tbody = document.getElementById('failure-domains');
+    const noData = document.getElementById('no-failures-domain');
+
+    if (domains.length === 0) {
+        tbody.innerHTML = '';
+        noData.classList.remove('hidden');
+        return;
+    }
+
+    noData.classList.add('hidden');
+    tbody.innerHTML = domains.map(d => `
+        <tr>
+            <td class="px-4 py-2 text-sm text-gray-900 dark:text-white">${escapeHtml(d.domain)}</td>
+            <td class="px-4 py-2 text-sm text-gray-900 dark:text-white">${d.count}</td>
+            <td class="px-4 py-2 text-sm">
+                <span class="px-2 py-1 text-xs rounded ${d.rate > 50 ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'}">
+                    ${d.rate}%
+                </span>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function updateFailureReasons(reasons) {
+    const container = document.getElementById('failure-reasons');
+    const noData = document.getElementById('no-failures-reason');
+
+    const entries = Object.entries(reasons);
+    if (entries.length === 0) {
+        container.innerHTML = '';
+        noData.classList.remove('hidden');
+        return;
+    }
+
+    noData.classList.add('hidden');
+    const total = entries.reduce((sum, [_, count]) => sum + count, 0);
+
+    container.innerHTML = entries.sort((a, b) => b[1] - a[1]).map(([reason, count]) => {
+        const percentage = total > 0 ? ((count / total) * 100).toFixed(1) : 0;
+        return `
+            <div class="flex justify-between items-center">
+                <span class="text-sm text-gray-700 dark:text-gray-300">${escapeHtml(reason)}</span>
+                <span class="text-sm text-gray-500 dark:text-gray-400">${count} (${percentage}%)</span>
+            </div>
+        `;
+    }).join('');
+}
+
+function updateTimeSeries(data) {
+    const tbody = document.getElementById('time-series');
+    const noData = document.getElementById('no-time-series');
+
+    if (data.length === 0) {
+        tbody.innerHTML = '';
+        noData.classList.remove('hidden');
+        return;
+    }
+
+    noData.classList.add('hidden');
+    tbody.innerHTML = data.map(d => {
+        const rate = d.total > 0 ? ((d.success / d.total) * 100).toFixed(1) : 0;
+        const rateClass = rate >= 90 ? 'text-green-600' : rate >= 70 ? 'text-yellow-600' : 'text-red-600';
+        return `
+            <tr>
+                <td class="px-4 py-2 text-sm text-gray-900 dark:text-white">${d.date}</td>
+                <td class="px-4 py-2 text-sm text-gray-900 dark:text-white">${d.total}</td>
+                <td class="px-4 py-2 text-sm text-green-600 dark:text-green-400">${d.success}</td>
+                <td class="px-4 py-2 text-sm text-red-600 dark:text-red-400">${d.failed}</td>
+                <td class="px-4 py-2 text-sm font-medium ${rateClass}">${rate}%</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+</script>
+{% endblock %}
