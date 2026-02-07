@@ -82,41 +82,6 @@ Standardized on PostgreSQL for all environments (ADR-0022).
 - ✅ **Timezone Fix**: Proper UTC handling for article dates in PostgreSQL
 - ✅ **Database Schema**: New status/progress columns in `import_history` table
 
-### **✅ Previous: v0.7.6 - CI/CD Remediation** (Jan 2026)
-- ✅ **Persistent Storage**: Prod environment uses PVC for data persistence
-- ✅ **Registry Standardization**: All pipelines use `kind-registry:5000` for pod access
-- ✅ **Cosign Signing**: Key-based image signatures with Bitwarden integration
-- ✅ **Bitwarden Secrets**: Automated secret management via `bw` CLI in Ansible
-- ✅ **Smee Webhook Relay**: GitHub webhooks forwarded to local cluster
-- ✅ **Ansible Recovery**: `make recover` automates full environment setup
-- ✅ **Documentation**: Updated CI-CD.md and KUBERNETES.md
-
-### **✅ Previous: v0.7.5.1 - Pipeline Notifications** (Jan 2026)
-- ✅ **ntfy.sh Integration**: Native macOS/iOS push notifications for pipeline status (ADR-0021)
-- ✅ **Slack Webhook**: Optional team notifications (disabled by default)
-- ✅ **Finally Blocks**: Success/failure notifications on all pipelines
-- ✅ **Tekton Dashboard**: Web UI for pipeline monitoring
-
-### **✅ Previous: v0.7.5 - GitOps & Kubernetes** (Jan 2026)
-- ✅ **Local Kubernetes**: kind cluster for development (ADR-0015, ADR-0020)
-- ✅ **Tekton CI/CD**: Kubernetes-native pipelines with Triggers (ADR-0016, ADR-0019)
-- ✅ **Secure Supply Chain**: Trivy scanning, Cosign signing, SBOM (ADR-0018)
-- ✅ **ArgoCD GitOps**: Declarative deployments (ADR-0017)
-- ✅ **Full Automation**: Build → Test → Scan → Sign → SBOM → Release → Deploy
-- ✅ **Cleanup Tasks**: Automated pruning of branches, images, and pipeline runs
-
-### **✅ Previous: v0.7.4 - Security** (Jan 2026)
-- ✅ **HTTPS/TLS**: Caddy automatic certificates with `tls internal` (ADR-0012)
-- ✅ **Podman Secrets**: Encrypted credential storage for production (ADR-0013)
-- ✅ **API Rate Limiting**: 100/min default, 10/min for LLM endpoints (ADR-0014)
-- ✅ **Security Headers**: HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy
-
-### **✅ Previous: v0.7.3 - Operations & Observability** (Jan 2026)
-- ✅ **Structured Logging**: JSON logs in production, human-readable in development
-- ✅ **Health Endpoints**: Kubernetes-style `/healthz`, `/readyz`, `/ollamaz` probes
-- ✅ **Feed Management UI**: Fixed legibility issues with proper column widths
-- ✅ **Dev/Prod Separation**: Visual DEV banner and browser tab prefix in development mode
-
 📚 **[Full Release History →](docs/releases/README.md)**
 
 ## 🚀 Quick Start
