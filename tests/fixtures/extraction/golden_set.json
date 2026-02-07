@@ -141,7 +141,7 @@
       "description": "Paywalled article with only teaser content visible",
       "html_file": "html/minimal_content_001.html",
       "expected": {
-        "title": "Premium Content - Subscribe to Continue",
+        "title": "Exclusive: Major Tech Merger Announced",
         "min_content_length": 100,
         "max_content_length": 400,
         "should_succeed": false,

@@ -53,16 +53,14 @@ class TestExtractionGoldenSet:
         html_path = FIXTURES_DIR / fixture["html_file"]
         html = html_path.read_text(errors="replace")
 
-        # Import extraction function
-        # TODO: Update to use app.extraction once #181 is complete
-        from app.readability import extract_readable
+        from app.extraction import extract_content
 
-        title, content = extract_readable(html)
+        result = extract_content(html=html)
 
         # Basic assertions - extraction should produce something
-        assert title is not None, f"Title extraction failed for {fixture_id}"
-        assert content is not None, f"Content extraction failed for {fixture_id}"
-        assert len(content) > 0, f"Empty content for {fixture_id}"
+        assert result.title is not None, f"Title extraction failed for {fixture_id}"
+        assert result.content is not None, f"Content extraction failed for {fixture_id}"
+        assert len(result.content) > 0, f"Empty content for {fixture_id}"
 
     @pytest.mark.parametrize("fixture_id", get_fixture_ids())
     def test_content_length_bounds(self, fixture_id: str):
@@ -72,10 +70,10 @@ class TestExtractionGoldenSet:
         html_path = FIXTURES_DIR / fixture["html_file"]
         html = html_path.read_text(errors="replace")
 
-        from app.readability import extract_readable
+        from app.extraction import extract_content
 
-        _, content = extract_readable(html)
-        content_length = len(content)
+        result = extract_content(html=html)
+        content_length = len(result.content) if result.content else 0
 
         min_length = expected.get("min_content_length", 0)
         max_length = expected.get("max_content_length", float("inf"))
@@ -97,9 +95,10 @@ class TestExtractionGoldenSet:
         html_path = FIXTURES_DIR / fixture["html_file"]
         html = html_path.read_text(errors="replace")
 
-        from app.readability import extract_readable
+        from app.extraction import extract_content
 
-        title, _ = extract_readable(html)
+        result = extract_content(html=html)
+        title = result.title or ""
 
         # Check exact title match if specified
         if "title" in expected:
@@ -122,11 +121,11 @@ class TestExtractionGoldenSet:
         html_path = FIXTURES_DIR / fixture["html_file"]
         html = html_path.read_text(errors="replace")
 
-        from app.readability import extract_readable
+        from app.extraction import extract_content
 
-        title, content = extract_readable(html)
+        result = extract_content(html=html)
         # Combine title and content for phrase search
-        full_text = f"{title} {content}".lower()
+        full_text = f"{result.title or ''} {result.content or ''}".lower()
 
         key_phrases = expected.get("key_phrases", [])
         missing_phrases = []
@@ -149,10 +148,10 @@ class TestBoilerplateRemoval:
         html_path = FIXTURES_DIR / fixture["html_file"]
         html = html_path.read_text(errors="replace")
 
-        from app.readability import extract_readable
+        from app.extraction import extract_content
 
-        _, content = extract_readable(html)
-        content_lower = content.lower()
+        result = extract_content(html=html)
+        content_lower = (result.content or "").lower()
 
         # These navigation items should NOT be in the extracted content
         nav_items = ["trending now", "newsletter", "subscribe for daily"]
@@ -161,19 +160,16 @@ class TestBoilerplateRemoval:
                 nav_item not in content_lower
             ), f"Navigation/sidebar content found in extraction: '{nav_item}'"
 
-    @pytest.mark.xfail(
-        reason="readability-lxml doesn't filter inline ad markers - trafilatura should improve this"
-    )
     def test_no_advertisement_markers(self):
         """Test that advertisement markers are not in extracted content."""
         fixture = get_fixture_by_id("heavy_boilerplate_001")
         html_path = FIXTURES_DIR / fixture["html_file"]
         html = html_path.read_text(errors="replace")
 
-        from app.readability import extract_readable
+        from app.extraction import extract_content
 
-        _, content = extract_readable(html)
-        content_lower = content.lower()
+        result = extract_content(html=html)
+        content_lower = (result.content or "").lower()
 
         # Ad markers should NOT be in extracted content
         ad_markers = ["advertisement", "ad-placeholder", "sidebar-ad"]
@@ -192,16 +188,18 @@ class TestEdgeCases:
         html_path = FIXTURES_DIR / fixture["html_file"]
         html = html_path.read_text(errors="replace")
 
-        from app.readability import extract_readable
+        from app.extraction import extract_content
 
         # Should not raise an exception
-        title, content = extract_readable(html)
+        result = extract_content(html=html)
 
         # Should extract meaningful content despite malformed HTML
         assert (
-            len(content) > 500
+            len(result.content or "") > 500
         ), "Should extract substantial content from malformed HTML"
-        assert "s&p 500" in content.lower(), "Key content should be extracted"
+        assert (
+            "s&p 500" in (result.content or "").lower()
+        ), "Key content should be extracted"
 
     def test_paywall_graceful_degradation(self):
         """Test that paywalled content extracts what's available."""
@@ -209,9 +207,10 @@ class TestEdgeCases:
         html_path = FIXTURES_DIR / fixture["html_file"]
         html = html_path.read_text(errors="replace")
 
-        from app.readability import extract_readable
+        from app.extraction import extract_content
 
-        title, content = extract_readable(html)
+        result = extract_content(html=html)
+        content = result.content or ""
 
         # Should extract the teaser content that is available
         assert len(content) > 50, "Should extract at least teaser content"
@@ -225,9 +224,10 @@ class TestEdgeCases:
         html_path = FIXTURES_DIR / fixture["html_file"]
         html = html_path.read_text(errors="replace")
 
-        from app.readability import extract_readable
+        from app.extraction import extract_content
 
-        title, content = extract_readable(html)
+        result = extract_content(html=html)
+        content = result.content or ""
 
         # German umlauts and special characters should be preserved
         assert (
@@ -244,7 +244,7 @@ class TestExtractionMetrics:
         successes = 0
         failures = []
 
-        from app.readability import extract_readable
+        from app.extraction import extract_content
 
         for fixture in golden_set:
             html_path = FIXTURES_DIR / fixture["html_file"]
@@ -252,7 +252,8 @@ class TestExtractionMetrics:
             expected = fixture["expected"]
 
             try:
-                title, content = extract_readable(html)
+                result = extract_content(html=html)
+                content = result.content or ""
                 min_length = expected.get("min_content_length", 100)
 
                 if len(content) >= min_length:
@@ -522,9 +523,11 @@ def manual_test_fixture(fixture_id: str) -> None:
     html_path = FIXTURES_DIR / fixture["html_file"]
     html = html_path.read_text(errors="replace")
 
-    from app.readability import extract_readable
+    from app.extraction import extract_content
 
-    title, content = extract_readable(html)
+    result = extract_content(html=html)
+    title = result.title or ""
+    content = result.content or ""
 
     print(f"\n{'='*60}")
     print(f"Fixture: {fixture_id}")
@@ -533,6 +536,8 @@ def manual_test_fixture(fixture_id: str) -> None:
     print(f"{'='*60}")
     print(f"\nExtracted Title: {title}")
     print(f"Content Length: {len(content)} chars")
+    print(f"Extraction Method: {result.method}")
+    print(f"Quality Score: {result.quality_score:.2f}")
     print(f"\nExpected:")
     print(f"  Title: {fixture['expected'].get('title', 'N/A')}")
     print(f"  Min Length: {fixture['expected'].get('min_content_length', 'N/A')}")

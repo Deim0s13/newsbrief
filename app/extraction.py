@@ -183,6 +183,7 @@ def _try_trafilatura(
         result = trafilatura.bare_extraction(
             html,
             url=url,
+            with_metadata=True,  # Required for title extraction
             include_comments=False,
             include_tables=True,
             include_images=True,
@@ -208,9 +209,13 @@ def _try_trafilatura(
                 metadata,
             )
 
-        # Extract content and title
-        content = result.get("text", "")
-        title = result.get("title", "")
+        # trafilatura 2.0.0 returns a Document object, convert to dict
+        if hasattr(result, "as_dict"):
+            result = result.as_dict()
+
+        # Extract content and title (handle None values)
+        content = result.get("text") or ""
+        title = result.get("title") or ""
 
         # Check content length
         if len(content) < min_length:
