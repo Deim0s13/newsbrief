@@ -8,7 +8,7 @@ NewsBrief is a self-hosted, privacy-focused news aggregator that replaces readin
 
 ## 🌟 Features
 
-### **🎯 Story-Based Aggregation (v0.7.7)** - *Current Release*
+### **🎯 Story-Based Aggregation (v0.8.0)** - *Current Release*
 Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **Time to informed: 30 min → 2 min**
 
 - **Automated Story Generation**: Daily scheduled generation at 6 AM (configurable timezone)
@@ -36,7 +36,7 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 
 ### **🤖 AI-Powered Content Processing**
 - **Structured AI Summarization**: Local LLM via Ollama generates JSON summaries with bullets and significance
-- **Intelligent Content Extraction**: Mozilla Readability for clean article content
+- **Intelligent Content Extraction**: Tiered extraction (trafilatura → readability-lxml → RSS fallback) with quality scoring
 - **Long Article Handling**: Map-reduce summarization for articles exceeding context limits
 - **Fallback Summaries**: Intelligent first-sentence extraction when LLM unavailable
 - **Advanced Caching**: Hash+model based caching for instant responses
@@ -59,14 +59,22 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 - **Automated Dependency Management**: Weekly security audits, dependency updates, and base image maintenance
 - **Comprehensive Documentation**: Complete CI/CD guides, API documentation, and architecture decision records
 
-### **✅ Current: v0.7.8 - Dev/Prod Environment Parity** (Feb 2026)
-Eliminate dev/prod differences by standardizing on PostgreSQL for all environments (ADR-0022).
+### **✅ Current: v0.8.0 - Content Extraction Pipeline Upgrade** (Feb 2026)
+Complete overhaul of content extraction with tiered fallback strategy (ADR-0024).
+
+- [x] **Tiered Extraction**: trafilatura (primary) → readability-lxml (fallback) → RSS summary (salvage)
+- [x] **Quality Scoring**: 0-1 quality score per article based on extraction method and content
+- [x] **Rich Metadata**: Author, date, images, categories, and tags captured when available
+- [x] **Extraction Dashboard**: New admin UI at `/admin/extraction` with metrics and failure analysis
+- [x] **Observability**: Database columns track extraction method, quality, timing, and errors
+- [x] **Regression Tests**: Golden set of synthetic HTML fixtures for quality validation
+
+### **✅ Previous: v0.7.8 - Dev/Prod Environment Parity** (Feb 2026)
+Standardized on PostgreSQL for all environments (ADR-0022).
 
 - [x] **PostgreSQL for Dev**: New `make dev-full` target with Docker Compose PostgreSQL
 - [x] **Code Cleanup**: Remove `is_postgres()` conditionals and SQLite code paths
 - [x] **Single Migration System**: Alembic only, remove inline SQLite migrations
-- [x] **Configuration**: Update alembic.ini, CI pipeline for PostgreSQL-only
-- [x] **Documentation**: Update README, ARCHITECTURAL_ROADMAP.md
 
 ### **✅ Previous: v0.7.7 - Import Progress & Date Fix** (Feb 2026)
 - ✅ **Import Progress Indicator**: Real-time progress modal for OPML imports with live stats
@@ -642,7 +650,8 @@ Development is organized with GitHub Projects and Milestones for clear visibilit
 - [v0.7.5.1 - Pipeline Notifications](https://github.com/Deim0s13/newsbrief/milestone/22) - ✅ **COMPLETE** (Jan 2026)
 - [v0.7.6 - CI/CD Remediation](https://github.com/Deim0s13/newsbrief/milestone/23) - ✅ **COMPLETE** (Feb 2026)
 - v0.7.7 - Import Progress & Date Fix - ✅ **COMPLETE** (Feb 2026)
-- [v0.7.8 - Dev/Prod Environment Parity](https://github.com/Deim0s13/newsbrief/milestone/25) - 🚧 **IN PROGRESS**
+- [v0.7.8 - Dev/Prod Environment Parity](https://github.com/Deim0s13/newsbrief/releases/tag/v0.7.8) - ✅ **COMPLETE** (Feb 2026)
+- [v0.8.0 - Content Extraction Pipeline Upgrade](https://github.com/Deim0s13/newsbrief/releases/tag/v0.8.0) - ✅ **COMPLETE** (Feb 2026)
 
 **Epics** (via labels):
 - **epic:stories** - Story-based aggregation and synthesis
@@ -688,7 +697,8 @@ git push origin feature/amazing-feature
 
 ## 🙏 Acknowledgments
 
-- [Mozilla Readability](https://github.com/mozilla/readability) for content extraction
+- [Trafilatura](https://github.com/adbar/trafilatura) for primary content extraction
+- [Readability-lxml](https://github.com/buriy/python-readability) for fallback content extraction
 - [FastAPI](https://fastapi.tiangolo.com/) for the excellent web framework
 - [Ollama](https://ollama.ai/) for local LLM capabilities
 - [Caddy](https://caddyserver.com/) for the reverse proxy
