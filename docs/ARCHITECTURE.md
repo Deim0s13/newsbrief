@@ -417,7 +417,7 @@ sequenceDiagram
 | **Migrations** | Alembic | Schema versioning |
 | **LLM** | Ollama (llama3.1:8b) | Local, private, free |
 | **Scheduler** | APScheduler | Python-native background jobs |
-| **Content Extraction** | Mozilla Readability | Clean article extraction |
+| **Content Extraction** | Trafilatura + Readability | Tiered extraction with fallback (see ADR-0024) |
 | **Reverse Proxy** | Caddy | Auto TLS, simple config |
 | **Container Runtime** | Podman/Docker | OCI-compliant |
 | **Orchestration** | Podman Compose | Multi-container |
@@ -463,7 +463,7 @@ flowchart TB
 
     subgraph Support["Support Services"]
         LLMSvc["LLM Service (llm.py)"]
-        ReadSvc["Readability (readability.py)"]
+        ExtractSvc["Content Extraction (extraction.py)"]
         CacheSvc["Synthesis Cache"]
         SchedSvc["Scheduler (scheduler.py)"]
     end
@@ -479,7 +479,7 @@ flowchart TB
     StorySvc --> LLMSvc
     StorySvc --> Cluster
     StorySvc --> RankSvc
-    FeedSvc --> ReadSvc
+    FeedSvc --> ExtractSvc
     LLMSvc --> CacheSvc
     SchedSvc --> FeedSvc
     SchedSvc --> StorySvc
@@ -498,7 +498,7 @@ flowchart TB
 | **Topic Classifier** | Categorization (Security, AI/ML, etc.) | `topics.py` |
 | **Ranking Engine** | Interest matching, source weighting | `ranking.py` |
 | **LLM Service** | Ollama integration, prompt management | `llm.py` |
-| **Readability** | Article content extraction | `readability.py` |
+| **Content Extraction** | Tiered article extraction with quality scoring | `extraction.py` |
 | **Scheduler** | Background job orchestration | `scheduler.py` |
 | **Synthesis Cache** | LLM response caching | `synthesis_cache.py` |
 
