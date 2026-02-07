@@ -4,9 +4,36 @@ Quick reference for all NewsBrief releases. For detailed release notes, see [Git
 
 ---
 
+## v0.8.x - Content Quality
+
+### v0.8.0 - Content Extraction Pipeline Upgrade (Current)
+**February 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.8.0)
+
+Complete overhaul of content extraction with tiered fallback strategy for improved article quality.
+
+**Highlights:**
+- **Tiered Extraction**: Trafilatura (primary) → Readability-lxml (fallback) → RSS summary (salvage)
+- **Quality Scoring**: 0-1 quality score per article based on extraction method and content length
+- **Rich Metadata**: Author, date, images, categories, and tags captured when available
+- **Extraction Dashboard**: New admin UI at `/admin/extraction` with success rates, method distribution, and failure analysis
+- **Observability**: New database columns track extraction method, quality, timing, and errors
+- **Regression Tests**: Golden set of synthetic HTML fixtures for extraction quality validation
+
+**Technical Changes:**
+- New `app/extraction.py` module with `ExtractionResult` dataclass
+- Removed legacy `app/readability.py`
+- Database migration `004_extraction_metadata` adds tracking columns
+- Trafilatura 2.0.0 API compatibility
+
+**Documentation:**
+- ADR-0024: Content Extraction Libraries decision
+- Updated ARCHITECTURE.md with new extraction component
+
+---
+
 ## v0.7.x - Infrastructure & Operations
 
-### v0.7.8 - Dev/Prod Environment Parity (Current)
+### v0.7.8 - Dev/Prod Environment Parity
 **February 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.7.8)
 
 PostgreSQL for all environments (ADR-0022), removed SQLite support entirely, new `make dev-full` target, updated CI pipeline for PostgreSQL-only testing, comprehensive documentation updates.
