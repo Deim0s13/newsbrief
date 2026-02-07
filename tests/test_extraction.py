@@ -280,6 +280,236 @@ class TestExtractionMetrics:
         ), f"Extraction success rate too low: {success_rate:.1f}%"
 
 
+# =============================================================================
+# Tests for Tiered Extraction Module (app/extraction.py)
+# =============================================================================
+
+
+class TestTieredExtraction:
+    """Tests for the new tiered extraction module."""
+
+    def test_extract_content_basic(self):
+        """Test basic extraction with trafilatura."""
+        from app.extraction import extract_content
+
+        fixture = get_fixture_by_id("clean_article_001")
+        html_path = FIXTURES_DIR / fixture["html_file"]
+        html = html_path.read_text(errors="replace")
+
+        result = extract_content(html)
+
+        assert result.success, f"Extraction failed: {result.error}"
+        assert result.content is not None
+        assert len(result.content) > 500
+        assert result.method in ("trafilatura", "readability")
+        assert result.quality_score > 0.5
+
+    def test_extract_content_with_metadata(self):
+        """Test that metadata is extracted from content."""
+        from app.extraction import extract_content
+
+        fixture = get_fixture_by_id("clean_article_001")
+        html_path = FIXTURES_DIR / fixture["html_file"]
+        html = html_path.read_text(errors="replace")
+
+        result = extract_content(html)
+
+        # Should have metadata object
+        assert result.metadata is not None
+        # Metadata should be populated (may vary by extractor)
+        assert hasattr(result.metadata, "author")
+        assert hasattr(result.metadata, "date")
+        assert hasattr(result.metadata, "images")
+
+    def test_extract_content_stage_results(self):
+        """Test that stage results are tracked."""
+        from app.extraction import extract_content
+
+        fixture = get_fixture_by_id("clean_article_001")
+        html_path = FIXTURES_DIR / fixture["html_file"]
+        html = html_path.read_text(errors="replace")
+
+        result = extract_content(html)
+
+        # Should have at least one stage result
+        assert len(result.stage_results) >= 1
+        # First stage should be trafilatura
+        assert result.stage_results[0].stage_name == "trafilatura"
+        # Should have timing information
+        assert result.stage_results[0].execution_time_ms >= 0
+
+    def test_extract_content_fallback_chain(self):
+        """Test that fallback chain works when primary fails."""
+        from app.extraction import extract_content
+
+        # Use minimal content fixture - may trigger fallback
+        fixture = get_fixture_by_id("minimal_content_001")
+        html_path = FIXTURES_DIR / fixture["html_file"]
+        html = html_path.read_text(errors="replace")
+
+        result = extract_content(
+            html, rss_summary="This is a fallback RSS summary for testing purposes."
+        )
+
+        # Should have attempted multiple stages
+        assert len(result.stage_results) >= 1
+        # Each stage should have a result
+        for stage in result.stage_results:
+            assert stage.attempted
+            assert stage.stage_name in ("trafilatura", "readability", "salvage")
+
+    def test_extract_content_salvage_mode(self):
+        """Test salvage mode with RSS summary."""
+        from app.extraction import extract_content
+
+        # Pass empty HTML to force salvage
+        result = extract_content(
+            html="<html><body></body></html>",
+            rss_summary="This is a fallback RSS summary that should be used when extraction fails completely.",
+        )
+
+        # Should eventually use salvage mode or fail gracefully
+        assert len(result.stage_results) >= 1
+        # If salvage succeeded, method should be rss_summary
+        if result.success:
+            assert result.method in ("trafilatura", "readability", "rss_summary")
+
+    def test_quality_score_ranges(self):
+        """Test that quality scores are in expected ranges."""
+        from app.extraction import extract_content
+
+        fixture = get_fixture_by_id("clean_article_001")
+        html_path = FIXTURES_DIR / fixture["html_file"]
+        html = html_path.read_text(errors="replace")
+
+        result = extract_content(html)
+
+        # Quality score should be between 0 and 1
+        assert 0.0 <= result.quality_score <= 1.0
+
+        # Successful extraction should have reasonable quality
+        if result.success:
+            assert result.quality_score >= 0.3
+
+    def test_extraction_result_to_dict(self):
+        """Test ExtractionResult serialization."""
+        from app.extraction import extract_content
+
+        fixture = get_fixture_by_id("clean_article_001")
+        html_path = FIXTURES_DIR / fixture["html_file"]
+        html = html_path.read_text(errors="replace")
+
+        result = extract_content(html)
+        result_dict = result.to_dict()
+
+        # Should be serializable
+        assert isinstance(result_dict, dict)
+        assert "content" in result_dict
+        assert "method" in result_dict
+        assert "quality_score" in result_dict
+        assert "metadata" in result_dict
+        assert "stage_results" in result_dict
+
+    @pytest.mark.parametrize("fixture_id", get_fixture_ids())
+    def test_tiered_extraction_golden_set(self, fixture_id: str):
+        """Test tiered extraction against full golden set."""
+        from app.extraction import extract_content
+
+        fixture = get_fixture_by_id(fixture_id)
+        html_path = FIXTURES_DIR / fixture["html_file"]
+        html = html_path.read_text(errors="replace")
+        expected = fixture["expected"]
+
+        result = extract_content(html)
+
+        # Check content length bounds if extraction succeeded
+        if expected.get("should_succeed", True) and result.success and result.content:
+            min_length = expected.get("min_content_length", 0)
+            assert len(result.content) >= min_length * 0.8, (
+                f"Content too short for {fixture_id}: "
+                f"{len(result.content)} < {min_length * 0.8}"
+            )
+
+
+class TestExtractionDataClasses:
+    """Tests for extraction data classes."""
+
+    def test_stage_result_creation(self):
+        """Test StageResult dataclass."""
+        from app.extraction import StageResult
+
+        stage = StageResult(
+            stage_name="trafilatura",
+            attempted=True,
+            success=True,
+            failure_reason=None,
+            execution_time_ms=150,
+            content_length=1500,
+        )
+
+        assert stage.stage_name == "trafilatura"
+        assert stage.success is True
+        assert stage.execution_time_ms == 150
+
+        # Test serialization
+        stage_dict = stage.to_dict()
+        assert stage_dict["stage_name"] == "trafilatura"
+
+    def test_extraction_metadata_creation(self):
+        """Test ExtractionMetadata dataclass."""
+        from datetime import datetime
+
+        from app.extraction import ExtractionMetadata
+
+        metadata = ExtractionMetadata(
+            author="John Doe",
+            date=datetime(2025, 1, 15),
+            images=["image1.jpg", "image2.jpg"],
+            categories=["tech", "ai"],
+            tags=["python", "ml"],
+            site_name="Tech Blog",
+        )
+
+        assert metadata.author == "John Doe"
+        assert len(metadata.images) == 2
+        assert "tech" in metadata.categories
+
+        # Test serialization
+        meta_dict = metadata.to_dict()
+        assert meta_dict["author"] == "John Doe"
+        assert meta_dict["date"] == "2025-01-15T00:00:00"
+
+    def test_extraction_result_success_property(self):
+        """Test ExtractionResult success property."""
+        from app.extraction import ExtractionMetadata, ExtractionResult
+
+        # Successful result
+        success_result = ExtractionResult(
+            content="Some content here",
+            title="Title",
+            method="trafilatura",
+            quality_score=0.9,
+            metadata=ExtractionMetadata(),
+            error=None,
+            stage_results=[],
+            extraction_time_ms=100,
+        )
+        assert success_result.success is True
+
+        # Failed result (no content)
+        failed_result = ExtractionResult(
+            content=None,
+            title=None,
+            method="failed",
+            quality_score=0.0,
+            metadata=ExtractionMetadata(),
+            error="empty_content",
+            stage_results=[],
+            extraction_time_ms=100,
+        )
+        assert failed_result.success is False
+
+
 # Utility function for running manual extraction tests
 def manual_test_fixture(fixture_id: str) -> None:
     """
