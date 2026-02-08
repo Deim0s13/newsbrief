@@ -17,6 +17,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .llm import get_llm_service
+from .llm_output import EntityOutput, parse_and_validate
 
 logger = logging.getLogger(__name__)
 
@@ -183,40 +184,42 @@ def extract_entities(
                 locations=[],
             )
 
-        # Clean markdown formatting if present
-        if raw_response.startswith("```json"):
-            raw_response = (
-                raw_response.replace("```json", "").replace("```", "").strip()
+        # Parse and validate with robust parser
+        parsed_output, parse_metrics = parse_and_validate(
+            raw_response,
+            EntityOutput,
+            required_fields=[],  # All fields are optional
+            allow_partial=True,
+            circuit_breaker_name="entity_extraction",
+        )
+
+        if parsed_output is None:
+            logger.warning(
+                f"Failed to parse entity extraction response: {parse_metrics.error_category}"
             )
-        elif raw_response.startswith("```"):
-            raw_response = raw_response.replace("```", "").strip()
+            return ExtractedEntities(
+                companies=[],
+                products=[],
+                people=[],
+                technologies=[],
+                locations=[],
+            )
 
-        # Parse JSON
-        data = json.loads(raw_response)
-
-        # Extract and validate entity lists
+        # Convert to ExtractedEntities dataclass
         entities = ExtractedEntities(
-            companies=data.get("companies", [])[:5],  # Limit to 5 per category
-            products=data.get("products", [])[:5],
-            people=data.get("people", [])[:5],
-            technologies=data.get("technologies", [])[:5],
-            locations=data.get("locations", [])[:5],
+            companies=list(parsed_output.companies),
+            products=list(parsed_output.products),
+            people=list(parsed_output.people),
+            technologies=list(parsed_output.technologies),
+            locations=list(parsed_output.locations),
         )
 
         logger.info(
-            f"Extracted {len(entities.all_entities())} entities from article: {title[:50]}..."
+            f"Extracted {len(entities.all_entities())} entities from article: "
+            f"{title[:50]}... (strategy={parse_metrics.strategy_used})"
         )
         return entities
 
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse JSON response for entity extraction: {e}")
-        return ExtractedEntities(
-            companies=[],
-            products=[],
-            people=[],
-            technologies=[],
-            locations=[],
-        )
     except Exception as e:
         logger.error(f"Entity extraction failed: {e}")
         return ExtractedEntities(

@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from .llm import get_llm_service
+from .llm_output import TopicOutput, parse_and_validate
 
 logger = logging.getLogger(__name__)
 
@@ -301,34 +302,43 @@ JSON:"""
     if not response:
         return None, None, 0.0
 
-    try:
-        data = json.loads(response)
-        match_type = data.get("match", "general")
-        topic_id = data.get("topic_id", "general").lower().strip().replace(" ", "-")
-        confidence = float(data.get("confidence", 0.5))
+    # Parse and validate with robust parser
+    parsed_output, parse_metrics = parse_and_validate(
+        response,
+        TopicOutput,
+        required_fields=["match", "topic_id"],
+        allow_partial=True,
+        circuit_breaker_name="topic_classification",
+    )
 
-        if match_type == "existing":
-            # Validate it's actually an existing topic
-            if topic_id in topics:
-                return topic_id, None, confidence
-            else:
-                logger.warning(f"LLM suggested non-existent topic '{topic_id}'")
-                return "general", None, 0.3
-
-        elif match_type == "new":
-            new_topic = {
-                "id": topic_id,
-                "name": data.get("name", topic_id.replace("-", " ").title()),
-                "description": data.get("description", f"Articles about {topic_id}"),
-            }
-            return None, new_topic, confidence
-
-        else:  # general
-            return "general", None, confidence
-
-    except (json.JSONDecodeError, KeyError, ValueError) as e:
-        logger.warning(f"Failed to parse normalization response: {e}")
+    if parsed_output is None:
+        logger.warning(
+            f"Failed to parse normalization response: {parse_metrics.error_category}"
+        )
         return None, None, 0.0
+
+    match_type = parsed_output.match
+    topic_id = parsed_output.topic_id
+    confidence = parsed_output.confidence
+
+    if match_type == "existing":
+        # Validate it's actually an existing topic
+        if topic_id in topics:
+            return topic_id, None, confidence
+        else:
+            logger.warning(f"LLM suggested non-existent topic '{topic_id}'")
+            return "general", None, 0.3
+
+    elif match_type == "new":
+        new_topic = {
+            "id": topic_id,
+            "name": parsed_output.name or topic_id.replace("-", " ").title(),
+            "description": parsed_output.description or f"Articles about {topic_id}",
+        }
+        return None, new_topic, confidence
+
+    else:  # general
+        return "general", None, confidence
 
 
 def _add_topic_to_config(topic_id: str, name: str, description: str) -> bool:

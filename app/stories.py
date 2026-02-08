@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 
 from .entities import ExtractedEntities, extract_and_cache_entities, get_entity_overlap
 from .llm import get_llm_service
+from .llm_output import SynthesisOutput, get_circuit_breaker, parse_and_validate
 from .models import (
     ItemOut,
     StoryOut,
@@ -1286,76 +1287,81 @@ JSON:"""
             },
         )
 
-        # Extract JSON from response
+        # Extract and validate JSON using robust parser
         response_text = response.get("response", "")
 
-        # Try to find JSON in response (might have extra text)
-        json_match = re.search(r"\{.*\}", response_text, re.DOTALL)
-        if json_match:
-            result = json.loads(json_match.group())
+        parsed_output, parse_metrics = parse_and_validate(
+            response_text,
+            SynthesisOutput,
+            required_fields=["synthesis", "key_points"],
+            allow_partial=True,
+            circuit_breaker_name="synthesis",
+        )
 
-            # Validate required fields
-            if all(k in result for k in ["synthesis", "key_points", "why_it_matters"]):
-                key_points = result.get("key_points", [])
+        if parsed_output is not None:
+            key_points = list(parsed_output.key_points)
 
-                # Ensure at least 3 key points (pad if LLM returns too few)
-                if len(key_points) < 3:
-                    logger.warning(
-                        f"LLM returned only {len(key_points)} key points, padding to 3"
-                    )
-
-                    # Pad with generic points from synthesis or article data
-                    if len(key_points) == 0:
-                        key_points = [
-                            "Multiple related articles aggregated",
-                            f"Based on {len(articles)} sources",
-                            "See supporting articles for details",
-                        ]
-                    elif len(key_points) == 1:
-                        key_points.append(f"Based on {len(articles)} sources")
-                        key_points.append("See supporting articles for details")
-                    elif len(key_points) == 2:
-                        key_points.append(f"Based on {len(articles)} sources")
-
-                # Generate title with fallback
-                title = _generate_fallback_title(
-                    title=result.get("title"),
-                    synthesis=result["synthesis"],
-                    entities=result.get("entities", []),
+            # Ensure at least 3 key points (pad if LLM returns too few)
+            if len(key_points) < 3:
+                logger.warning(
+                    f"LLM returned only {len(key_points)} key points, padding to 3"
                 )
 
-                synthesis_result = {
-                    "title": title,
-                    "synthesis": result["synthesis"],
-                    "key_points": key_points,
-                    "why_it_matters": result.get("why_it_matters", ""),
-                    "topics": result.get("topics", []),
-                    "entities": result.get("entities", []),
-                }
+                # Pad with generic points from synthesis or article data
+                if len(key_points) == 0:
+                    key_points = [
+                        "Multiple related articles aggregated",
+                        f"Based on {len(articles)} sources",
+                        "See supporting articles for details",
+                    ]
+                elif len(key_points) == 1:
+                    key_points.append(f"Based on {len(articles)} sources")
+                    key_points.append("See supporting articles for details")
+                elif len(key_points) == 2:
+                    key_points.append(f"Based on {len(articles)} sources")
 
-                # Count output tokens for metrics
-                token_count_output = count_tokens(response_text)
+            # Generate title with fallback
+            title = _generate_fallback_title(
+                title=parsed_output.title if parsed_output.title else None,
+                synthesis=parsed_output.synthesis,
+                entities=list(parsed_output.entities),
+            )
 
-                # Store successful result in cache with metrics
-                generation_time_ms = int((time.time() - generation_start) * 1000)
-                store_synthesis_in_cache(
-                    session=session,
-                    article_ids=article_ids,
-                    model=model,
-                    synthesis_result=synthesis_result,
-                    generation_time_ms=generation_time_ms,
-                    token_count_input=token_count_input,
-                    token_count_output=token_count_output,
-                )
+            synthesis_result = {
+                "title": title,
+                "synthesis": parsed_output.synthesis,
+                "key_points": key_points,
+                "why_it_matters": parsed_output.why_it_matters,
+                "topics": list(parsed_output.topics),
+                "entities": list(parsed_output.entities),
+            }
 
-                logger.debug(
-                    f"Synthesis complete: {token_count_input} input tokens, "
-                    f"{token_count_output} output tokens, {generation_time_ms}ms"
-                )
+            # Count output tokens for metrics
+            token_count_output = count_tokens(response_text)
 
-                return synthesis_result
+            # Store successful result in cache with metrics
+            generation_time_ms = int((time.time() - generation_start) * 1000)
+            store_synthesis_in_cache(
+                session=session,
+                article_ids=article_ids,
+                model=model,
+                synthesis_result=synthesis_result,
+                generation_time_ms=generation_time_ms,
+                token_count_input=token_count_input,
+                token_count_output=token_count_output,
+            )
 
-        logger.warning("LLM response invalid, using fallback")
+            logger.debug(
+                f"Synthesis complete: {token_count_input} input tokens, "
+                f"{token_count_output} output tokens, {generation_time_ms}ms, "
+                f"strategy={parse_metrics.strategy_used}"
+            )
+
+            return synthesis_result
+
+        logger.warning(
+            f"LLM response invalid (error={parse_metrics.error_category}), using fallback"
+        )
         return _fallback_synthesis(articles)
 
     except Exception as e:
