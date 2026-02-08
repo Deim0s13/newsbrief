@@ -90,6 +90,9 @@ make dev        # Start dev server
 | `make dev-full` | Start PostgreSQL + dev server |
 | `make db-up` | Start PostgreSQL container |
 | `make dev` | Start dev server (requires DB running) |
+| `make refresh` | Refresh all feeds (fetch new articles) |
+| `make stories-generate` | Generate stories from recent articles |
+| `make api-health` | Check API health status |
 | `make test` | Run test suite |
 | `make lint` | Run linters |
 | `npm run build:css` | Rebuild Tailwind CSS |
@@ -105,11 +108,13 @@ make dev        # Start dev server
 curl -X POST "https://newsbrief.local/feeds?url=https://hnrss.org/frontpage"
 curl -X POST "https://newsbrief.local/feeds?url=https://feeds.arstechnica.com/arstechnica/technology-lab"
 
-# Refresh feeds
+# Refresh feeds and generate stories
 curl -X POST "https://newsbrief.local/refresh"
-
-# Generate stories
 curl -X POST "https://newsbrief.local/stories/generate"
+
+# Or use make shortcuts (development only)
+make refresh
+make stories-generate
 ```
 
 ### Set Up Ollama (for AI Features)
