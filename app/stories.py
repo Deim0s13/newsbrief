@@ -618,7 +618,12 @@ def update_story_with_new_articles(
 
     # Create new version
     new_story = Story(
-        title=synthesis_data.get("synthesis", "")[:200],
+        title=synthesis_data.get("title")
+        or _generate_fallback_title(
+            None,
+            synthesis_data.get("synthesis", ""),
+            synthesis_data.get("entities", []),
+        ),
         synthesis=synthesis_data.get("synthesis", ""),
         key_points_json=serialize_story_json_field(
             synthesis_data.get("key_points", [])
@@ -1227,16 +1232,21 @@ Articles:
 {context}
 
 Generate a JSON response with:
-1. "synthesis": 2-3 sentence summary of the overall story (50-150 words)
-2. "key_points": List of 3-5 bullet points covering main facts
-3. "why_it_matters": 1-2 sentences explaining significance
-4. "topics": List of 1-3 relevant topic tags (e.g., "AI/ML", "Cloud", "Security")
-5. "entities": List of 3-7 key entities mentioned (companies, products, people)
+1. "title": A concise news headline (8-12 words, under 80 characters)
+   - Focus on the shared theme across all articles
+   - Use simple, common words
+   - Include the most newsworthy entity if relevant
+2. "synthesis": 2-3 sentence summary of the overall story (50-150 words)
+3. "key_points": List of 3-5 bullet points covering main facts
+4. "why_it_matters": 1-2 sentences explaining significance
+5. "topics": List of 1-3 relevant topic tags (e.g., "AI/ML", "Cloud", "Security")
+6. "entities": List of 3-7 key entities mentioned (companies, products, people)
 
 Respond ONLY with valid JSON, no other text.
 
 Example format:
 {{
+  "title": "OpenAI Launches GPT-5 with Major Performance Improvements",
   "synthesis": "OpenAI announced GPT-5 with significant improvements...",
   "key_points": [
     "Released March 2024",
@@ -1307,7 +1317,15 @@ JSON:"""
                     elif len(key_points) == 2:
                         key_points.append(f"Based on {len(articles)} sources")
 
+                # Generate title with fallback
+                title = _generate_fallback_title(
+                    title=result.get("title"),
+                    synthesis=result["synthesis"],
+                    entities=result.get("entities", []),
+                )
+
                 synthesis_result = {
+                    "title": title,
                     "synthesis": result["synthesis"],
                     "key_points": key_points,
                     "why_it_matters": result.get("why_it_matters", ""),
@@ -1343,6 +1361,67 @@ JSON:"""
     except Exception as e:
         logger.error(f"Failed to generate synthesis with LLM: {e}")
         return _fallback_synthesis(articles)
+
+
+def _generate_fallback_title(
+    title: Optional[str],
+    synthesis: str,
+    entities: Optional[List[str]] = None,
+    max_chars: int = 80,
+) -> str:
+    """
+    Generate or validate a story title with smart truncation.
+
+    Uses a tiered approach:
+    1. If LLM-generated title is valid (<= max_chars), use it
+    2. If title too long, truncate at word boundary with ellipsis
+    3. If no title, extract first sentence from synthesis
+    4. Apply word-boundary truncation as final step
+
+    Args:
+        title: LLM-generated title (may be None or too long)
+        synthesis: Full synthesis text (fallback source)
+        entities: Key entities for potential inclusion (future enhancement)
+        max_chars: Maximum character limit for title (default: 80)
+
+    Returns:
+        Valid title string within max_chars limit
+    """
+
+    # Helper to truncate at word boundary
+    def truncate_at_word_boundary(text: str, limit: int) -> str:
+        if len(text) <= limit:
+            return text
+        # Leave room for ellipsis
+        truncate_at = limit - 3
+        # Find last space before limit
+        last_space = text.rfind(" ", 0, truncate_at)
+        if last_space > limit // 2:  # Only use if reasonable
+            return text[:last_space].rstrip(".,;:") + "..."
+        # No good word boundary, hard truncate
+        return text[:truncate_at].rstrip(".,;:") + "..."
+
+    # Tier 1: Use LLM title if valid
+    if title and len(title.strip()) > 0:
+        title = title.strip()
+        if len(title) <= max_chars:
+            return title
+        # Title too long, truncate at word boundary
+        return truncate_at_word_boundary(title, max_chars)
+
+    # Tier 2: Extract first sentence from synthesis
+    if synthesis:
+        synthesis = synthesis.strip()
+        # Try to find first sentence
+        for delimiter in [". ", "! ", "? "]:
+            if delimiter in synthesis:
+                first_sentence = synthesis.split(delimiter)[0] + delimiter[0]
+                return truncate_at_word_boundary(first_sentence, max_chars)
+        # No sentence delimiter, use full synthesis
+        return truncate_at_word_boundary(synthesis, max_chars)
+
+    # Tier 3: Absolute fallback
+    return "News Story"
 
 
 def _fallback_synthesis(articles: Sequence[Any]) -> Dict[str, Any]:
@@ -1385,7 +1464,15 @@ def _fallback_synthesis(articles: Sequence[Any]) -> Dict[str, Any]:
                     f"• Topics: {', '.join(topics) if topics else 'Various'}"
                 )
 
+    # Generate title using fallback function
+    title = _generate_fallback_title(
+        title=None,
+        synthesis=synthesis,
+        entities=[],
+    )
+
     return {
+        "title": title,
         "synthesis": synthesis,
         "key_points": key_points,
         "why_it_matters": "See articles for details",
@@ -1857,7 +1944,12 @@ def generate_stories_simple(
         try:
             # Create story WITHOUT commit (will batch commit at end)
             story = Story(
-                title=synthesis_data["synthesis"][:200],
+                title=synthesis_data.get("title")
+                or _generate_fallback_title(
+                    None,
+                    synthesis_data["synthesis"],
+                    synthesis_data.get("entities", []),
+                ),
                 synthesis=synthesis_data["synthesis"],
                 key_points_json=serialize_story_json_field(
                     synthesis_data["key_points"]
