@@ -1670,6 +1670,67 @@ http://localhost:8787/admin/quality
 
 ---
 
+## 🔍 Entity Extraction ⭐ *Enhanced in v0.8.1*
+
+Entity extraction identifies key companies, products, people, technologies, and locations from article content. Enhanced in v0.8.1 (Issue #103) with confidence scores, roles, and disambiguation.
+
+### **Entity Structure (v0.8.1)**
+
+Each entity now includes rich metadata:
+
+```json
+{
+  "name": "OpenAI",
+  "confidence": 0.95,
+  "role": "primary_subject",
+  "disambiguation": "AI research company"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Entity name with proper capitalization |
+| `confidence` | float | 0.0-1.0 extraction confidence score |
+| `role` | string | `primary_subject`, `mentioned`, or `quoted` |
+| `disambiguation` | string | Optional context to avoid confusion |
+
+### **Entity Roles**
+
+| Role | Description | Example |
+|------|-------------|---------|
+| `primary_subject` | Central to the story | Company making an announcement |
+| `mentioned` | Referenced but not focus | Competitor mentioned in passing |
+| `quoted` | Source of statement/quote | CEO providing quotes |
+
+### **Confidence Scoring**
+
+| Range | Meaning |
+|-------|---------|
+| 0.9+ | Explicitly named and central to article |
+| 0.7-0.9 | Clearly mentioned, moderate relevance |
+| 0.5-0.7 | Inferred or tangentially mentioned |
+
+### **Backward Compatibility**
+
+The entity system maintains backward compatibility:
+
+- **Legacy format** (v1): Simple string arrays `["Google", "OpenAI"]`
+- **Enhanced format** (v2): Objects with metadata (shown above)
+
+When deserializing legacy data, strings are automatically converted to `EntityWithMetadata` objects with default values (confidence: 0.8, role: "mentioned").
+
+### **Entity Overlap Scoring**
+
+Entity overlap between articles uses confidence-weighted Jaccard similarity:
+
+- **High-confidence** matches count more than low-confidence
+- **Primary subjects** get 1.5x weight boost
+- **Quoted sources** get 1.2x weight boost
+
+This improved scoring helps with more accurate story clustering.
+
+---
+
 ## 🛡️ Error Handling
 
 ### **Standard Error Response**

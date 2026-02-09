@@ -216,6 +216,136 @@ class EntityOutput(BaseModel):
         return []
 
 
+class EntityItem(BaseModel):
+    """
+    Single entity with metadata.
+
+    Added in v0.8.1 (Issue #103) for enhanced entity extraction.
+    """
+
+    name: str = Field(..., min_length=1, max_length=100, description="Entity name")
+    confidence: float = Field(
+        default=0.8,
+        ge=0.0,
+        le=1.0,
+        description="Confidence score 0.0-1.0",
+    )
+    role: str = Field(
+        default="mentioned",
+        description="Entity role: primary_subject, mentioned, or quoted",
+    )
+    disambiguation: Optional[str] = Field(
+        default=None,
+        max_length=200,
+        description="Disambiguation hint (e.g., 'Apple Inc., tech company')",
+    )
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def clean_name(cls, v: Any) -> str:
+        """Clean and validate entity name."""
+        if isinstance(v, str):
+            return v.strip()[:100]
+        return str(v).strip()[:100]
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def coerce_confidence(cls, v: Any) -> float:
+        """Coerce confidence to float."""
+        try:
+            val = float(v)
+            return max(0.0, min(1.0, val))
+        except (ValueError, TypeError):
+            return 0.8
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def validate_role(cls, v: Any) -> str:
+        """Validate role is one of allowed values."""
+        allowed = {"primary_subject", "mentioned", "quoted"}
+        if isinstance(v, str) and v.lower() in allowed:
+            return v.lower()
+        return "mentioned"
+
+
+class EnhancedEntityOutput(BaseModel):
+    """
+    Validated output from enhanced entity extraction LLM calls.
+
+    Added in v0.8.1 (Issue #103) for richer entity data with:
+    - Confidence scores per entity
+    - Entity roles (primary_subject, mentioned, quoted)
+    - Disambiguation hints
+
+    Used by: app/entities.py extract_entities()
+    """
+
+    companies: List[EntityItem] = Field(
+        default_factory=list,
+        description="Company/organization entities with metadata",
+    )
+    products: List[EntityItem] = Field(
+        default_factory=list,
+        description="Product/service entities with metadata",
+    )
+    people: List[EntityItem] = Field(
+        default_factory=list,
+        description="Person entities with metadata",
+    )
+    technologies: List[EntityItem] = Field(
+        default_factory=list,
+        description="Technology/framework entities with metadata",
+    )
+    locations: List[EntityItem] = Field(
+        default_factory=list,
+        description="Location/place entities with metadata",
+    )
+
+    @field_validator(
+        "companies", "products", "people", "technologies", "locations", mode="before"
+    )
+    @classmethod
+    def normalize_entity_list(cls, v: Any) -> List[Dict[str, Any]]:
+        """
+        Normalize entity list, handling both simple strings and full objects.
+
+        Supports:
+        - List of strings: ["OpenAI", "Google"]
+        - List of dicts: [{"name": "OpenAI", "confidence": 0.9, ...}]
+        - Mixed: ["OpenAI", {"name": "Google", "confidence": 0.95}]
+        """
+        if not isinstance(v, list):
+            return []
+
+        result = []
+        for item in v[:5]:  # Limit to 5 items
+            if isinstance(item, str):
+                # Simple string - convert to dict with defaults
+                result.append(
+                    {
+                        "name": item.strip(),
+                        "confidence": 0.8,
+                        "role": "mentioned",
+                        "disambiguation": None,
+                    }
+                )
+            elif isinstance(item, dict):
+                # Already a dict - ensure name exists
+                if "name" in item and item["name"]:
+                    result.append(item)
+            elif hasattr(item, "name"):
+                # Pydantic model or similar
+                result.append(
+                    {
+                        "name": getattr(item, "name", ""),
+                        "confidence": getattr(item, "confidence", 0.8),
+                        "role": getattr(item, "role", "mentioned"),
+                        "disambiguation": getattr(item, "disambiguation", None),
+                    }
+                )
+        return result
+
+
 class FreeFormTopicOutput(BaseModel):
     """
     Validated output from free-form topic classification.
