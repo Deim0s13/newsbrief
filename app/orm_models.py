@@ -10,6 +10,7 @@ Tables:
 - Story: Synthesized stories aggregating multiple articles
 - StoryArticle: Junction table linking stories to articles
 - SynthesisCache: LLM synthesis cache for performance
+- LLMMetrics: Quality metrics tracking for LLM operations (v0.8.1)
 
 See ADR 0007 for the database migration strategy.
 """
@@ -160,6 +161,10 @@ class Story(Base):
     importance_score = Column(Float, default=0.0)
     freshness_score = Column(Float, default=0.0)
     quality_score = Column(Float, default=0.5)
+    # Quality metrics breakdown (v0.8.1 - Issue #105)
+    quality_breakdown_json = Column(Text)  # JSON breakdown of score components
+    title_source = Column(String(20))  # 'llm' or 'fallback'
+    parse_strategy = Column(String(30))  # JSON parsing strategy used
     cluster_method = Column(String(50))
     story_hash = Column(String(64), unique=True)
     generated_at = Column(DateTime, default=lambda: datetime.now(UTC))
@@ -314,4 +319,61 @@ class SynthesisCache(Base):
     __table_args__ = (
         Index("idx_synthesis_cache_key", "cache_key"),
         Index("idx_synthesis_cache_expires", "expires_at"),
+    )
+
+
+class LLMMetrics(Base):
+    """
+    Quality metrics tracking for LLM operations.
+
+    Stores per-operation metrics for synthesis, entity extraction,
+    and topic classification to enable quality monitoring and trend analysis.
+
+    Added in v0.8.1 - Issue #105: Add output quality metrics and tracking.
+    """
+
+    __tablename__ = "llm_metrics"
+
+    id = Column(Integer, primary_key=True)
+    operation_type = Column(
+        String(50), nullable=False
+    )  # synthesis, entity_extraction, topic_classification
+    model = Column(String(50))
+
+    # Timing
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
+    generation_time_ms = Column(Integer)
+
+    # Parse metrics
+    parse_success = Column(Boolean, default=True)
+    parse_strategy = Column(String(30))  # direct, markdown_block, brace_match, etc.
+    repairs_applied = Column(Text)  # JSON array of repair types
+    retry_count = Column(Integer, default=0)
+
+    # Quality scores
+    quality_score = Column(Float)  # Overall quality score 0.0-1.0
+    quality_breakdown = Column(Text)  # JSON breakdown of components
+
+    # Token usage
+    token_count_input = Column(Integer)
+    token_count_output = Column(Integer)
+
+    # Context
+    story_id = Column(
+        Integer, ForeignKey("stories.id", ondelete="SET NULL"), nullable=True
+    )
+    article_id = Column(
+        Integer, ForeignKey("items.id", ondelete="SET NULL"), nullable=True
+    )
+    article_count = Column(Integer)
+
+    # Error tracking
+    error_category = Column(String(50))
+    error_message = Column(Text)
+
+    __table_args__ = (
+        Index("idx_llm_metrics_created_at", "created_at"),
+        Index("idx_llm_metrics_operation", "operation_type"),
+        Index("idx_llm_metrics_quality", "quality_score"),
+        Index("idx_llm_metrics_success", "parse_success"),
     )

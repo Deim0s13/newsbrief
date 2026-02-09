@@ -72,6 +72,9 @@ This allows high-interest topics (e.g., AI/ML) to rank above higher-importance b
       "article_count": 5,
       "importance_score": 0.92,
       "freshness_score": 0.98,
+      "quality_score": 0.93,
+      "title_source": "llm",
+      "parse_strategy": "direct",
       "generated_at": "2024-12-06T08:00:00Z",
       "supporting_articles": [
         {
@@ -1465,6 +1468,193 @@ curl "http://localhost:8787/items" | jq '{
   fallback_summaries: [.[] | select(.is_fallback_summary == true)] | length,
   percentage_fallback: (([.[] | select(.is_fallback_summary == true)] | length) / length * 100 | round)
 }'
+```
+
+---
+
+## 📊 Quality Metrics Endpoints ⭐ *New in v0.8.1*
+
+Monitor LLM output quality and story synthesis performance.
+
+### **GET /api/quality/summary**
+
+Get overall quality metrics summary for the past 7 days.
+
+#### Response (200)
+```json
+{
+  "period_days": 7,
+  "by_operation": {
+    "synthesis": {
+      "total_operations": 122,
+      "success_rate": 1.0,
+      "avg_quality_score": 0.929,
+      "avg_generation_time_ms": 15793
+    }
+  },
+  "synthesis": {
+    "quality_distribution": {
+      "excellent": 77,
+      "good": 45
+    },
+    "component_averages": {
+      "completeness": 1.0,
+      "coverage": 0.937,
+      "entity_consistency": 0.726,
+      "parse_success": 1.0,
+      "title_quality": 0.999
+    },
+    "trends": [
+      {
+        "date": "2026-02-09",
+        "avg_quality": 0.929,
+        "count": 122,
+        "success_rate": 1.0
+      }
+    ]
+  },
+  "recent_low_quality": []
+}
+```
+
+#### Quality Score Components
+
+| Component | Description | Weight |
+|-----------|-------------|--------|
+| `completeness` | Has title, synthesis, key_points, why_it_matters | 25% |
+| `coverage` | Synthesis length relative to article count | 20% |
+| `entity_consistency` | Entities appear in synthesis text | 15% |
+| `parse_success` | JSON parsed without retries/repairs | 25% |
+| `title_quality` | LLM-generated title (vs fallback) | 15% |
+
+#### Quality Distribution Thresholds
+
+| Rating | Score Range |
+|--------|-------------|
+| `excellent` | ≥ 0.85 |
+| `good` | 0.70 - 0.84 |
+| `fair` | 0.50 - 0.69 |
+| `poor` | < 0.50 |
+
+#### Example
+```bash
+curl http://localhost:8787/api/quality/summary | jq .
+```
+
+---
+
+### **GET /api/llm/stats**
+
+Get LLM operation statistics including success rates and failure analysis.
+
+#### Query Parameters
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `hours` | int | 24 | Time window in hours |
+
+#### Response (200)
+```json
+{
+  "success_rates": {
+    "SynthesisOutput": 1.0
+  },
+  "failure_summary": {
+    "total_failures": 0,
+    "time_window_hours": 24,
+    "by_category": {},
+    "by_model": {},
+    "recent_errors": []
+  },
+  "strategy_distribution": {
+    "direct": 122
+  },
+  "quality_distribution": {
+    "excellent": 77,
+    "good": 45
+  },
+  "by_operation": {
+    "synthesis": {
+      "total_operations": 122,
+      "success_rate": 1.0,
+      "avg_quality_score": 0.929,
+      "avg_generation_time_ms": 15793
+    }
+  }
+}
+```
+
+#### Parse Strategy Types
+
+| Strategy | Description |
+|----------|-------------|
+| `direct` | JSON parsed on first attempt |
+| `markdown_block` | Extracted from markdown code fence |
+| `brace_match` | Found JSON by brace matching |
+| `repair` | Required syntax repairs |
+
+#### Example
+```bash
+# Last 24 hours
+curl "http://localhost:8787/api/llm/stats?hours=24" | jq .
+
+# Last week
+curl "http://localhost:8787/api/llm/stats?hours=168" | jq .
+```
+
+---
+
+### **GET /api/quality/trends**
+
+Get quality score trends over time.
+
+#### Query Parameters
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `days` | int | 7 | Number of days to include |
+
+#### Response (200)
+```json
+{
+  "days": 7,
+  "trends": [
+    {
+      "date": "2026-02-03",
+      "avg_quality": 0.912,
+      "count": 15,
+      "success_rate": 1.0
+    },
+    {
+      "date": "2026-02-04",
+      "avg_quality": 0.935,
+      "count": 18,
+      "success_rate": 1.0
+    }
+  ]
+}
+```
+
+#### Example
+```bash
+curl "http://localhost:8787/api/quality/trends?days=30" | jq .
+```
+
+---
+
+### **GET /admin/quality** (Dashboard)
+
+Web UI dashboard for visualizing quality metrics.
+
+**Features:**
+- Overview cards (avg quality, parse success rate, direct parse rate)
+- Quality distribution chart
+- Parse strategy distribution
+- Quality component averages
+- Recent low-quality stories table
+- Operations by type breakdown
+
+**Access:**
+```
+http://localhost:8787/admin/quality
 ```
 
 ---

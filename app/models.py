@@ -348,6 +348,10 @@ class StoryOut(BaseModel):
     primary_article_id: Optional[int] = None
     model: Optional[str] = None  # LLM model used for synthesis
     status: str = "active"  # Story status: active or archived
+    # Quality metrics (v0.8.1 - Issue #105)
+    quality_score: Optional[float] = None
+    title_source: Optional[str] = None  # "llm" or "fallback"
+    parse_strategy: Optional[str] = None  # "direct", "markdown_block", etc.
 
     @validator("title")
     def validate_title(cls, v):

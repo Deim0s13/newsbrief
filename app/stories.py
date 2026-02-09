@@ -35,6 +35,7 @@ from .models import (
     deserialize_story_json_field,
     serialize_story_json_field,
 )
+from .quality_metrics import QualityBreakdown, calculate_quality_score, log_llm_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -635,7 +636,16 @@ def update_story_with_new_articles(
         article_count=len(merged_article_ids),
         importance_score=cluster_data.get("importance_score", 0.5),
         freshness_score=cluster_data.get("freshness_score", 0.5),
-        quality_score=cluster_data.get("quality_score", 0.5),
+        # Use synthesis quality score if available, else cluster score (v0.8.1)
+        quality_score=synthesis_data.get(
+            "_quality_score", cluster_data.get("quality_score", 0.5)
+        ),
+        # Quality metrics (v0.8.1 - Issue #105)
+        quality_breakdown_json=serialize_story_json_field(
+            synthesis_data.get("_quality_breakdown")
+        ),
+        title_source=synthesis_data.get("_title_source"),
+        parse_strategy=synthesis_data.get("_parse_strategy"),
         cluster_method="incremental_update",
         story_hash=cluster_data.get("cluster_hash"),
         generated_at=datetime.now(UTC),
@@ -767,6 +777,10 @@ def _story_db_to_model(  # type: ignore[misc]
         primary_article_id=primary_article_id,
         model=story.model,  # type: ignore[arg-type]
         status=story.status or "active",  # type: ignore[arg-type]
+        # Quality metrics (v0.8.1 - Issue #105)
+        quality_score=story.quality_score,  # type: ignore[arg-type]
+        title_source=story.title_source,  # type: ignore[arg-type]
+        parse_strategy=story.parse_strategy,  # type: ignore[arg-type]
     )
     # fmt: on
 
@@ -1320,11 +1334,16 @@ JSON:"""
                 elif len(key_points) == 2:
                     key_points.append(f"Based on {len(articles)} sources")
 
-            # Generate title with fallback
+            # Generate title with fallback and track source
+            llm_title = parsed_output.title if parsed_output.title else None
             title = _generate_fallback_title(
-                title=parsed_output.title if parsed_output.title else None,
+                title=llm_title,
                 synthesis=parsed_output.synthesis,
                 entities=list(parsed_output.entities),
+            )
+            # Determine if we used LLM title or fallback
+            title_source = (
+                "llm" if (llm_title and title == llm_title.strip()) else "fallback"
             )
 
             synthesis_result = {
@@ -1338,9 +1357,39 @@ JSON:"""
 
             # Count output tokens for metrics
             token_count_output = count_tokens(response_text)
+            generation_time_ms = int((time.time() - generation_start) * 1000)
+
+            # Calculate quality metrics (Issue #105)
+            quality_breakdown = calculate_quality_score(
+                synthesis=synthesis_result,
+                parse_metrics=parse_metrics,
+                article_count=len(articles),
+                title_source=title_source,
+            )
+
+            # Add quality metadata to result for storage on Story
+            synthesis_result["_quality_score"] = quality_breakdown.overall
+            synthesis_result["_quality_breakdown"] = quality_breakdown.to_dict()
+            synthesis_result["_title_source"] = title_source
+            synthesis_result["_parse_strategy"] = parse_metrics.strategy_used
+
+            # Log metrics to database for historical tracking
+            try:
+                log_llm_metrics(
+                    session=session,
+                    operation_type="synthesis",
+                    model=model,
+                    parse_metrics=parse_metrics,
+                    quality_breakdown=quality_breakdown,
+                    article_count=len(articles),
+                    token_count_input=token_count_input,
+                    token_count_output=token_count_output,
+                    generation_time_ms=generation_time_ms,
+                )
+            except Exception as metrics_error:
+                logger.warning(f"Failed to log LLM metrics: {metrics_error}")
 
             # Store successful result in cache with metrics
-            generation_time_ms = int((time.time() - generation_start) * 1000)
             store_synthesis_in_cache(
                 session=session,
                 article_ids=article_ids,
@@ -1354,7 +1403,7 @@ JSON:"""
             logger.debug(
                 f"Synthesis complete: {token_count_input} input tokens, "
                 f"{token_count_output} output tokens, {generation_time_ms}ms, "
-                f"strategy={parse_metrics.strategy_used}"
+                f"strategy={parse_metrics.strategy_used}, quality={quality_breakdown.overall:.2f}"
             )
 
             return synthesis_result
@@ -1949,6 +1998,7 @@ def generate_stories_simple(
         # No overlap - create new story
         try:
             # Create story WITHOUT commit (will batch commit at end)
+            # Use synthesis quality metrics if available (Issue #105)
             story = Story(
                 title=synthesis_data.get("title")
                 or _generate_fallback_title(
@@ -1966,7 +2016,16 @@ def generate_stories_simple(
                 article_count=len(cluster_data["article_ids"]),
                 importance_score=cluster_data["importance_score"],
                 freshness_score=cluster_data["freshness_score"],
-                quality_score=cluster_data["quality_score"],  # v0.6.1 quality scoring
+                # Use synthesis quality score if available, else cluster score
+                quality_score=synthesis_data.get(
+                    "_quality_score", cluster_data["quality_score"]
+                ),
+                # Quality metrics (v0.8.1 - Issue #105)
+                quality_breakdown_json=serialize_story_json_field(
+                    synthesis_data.get("_quality_breakdown")
+                ),
+                title_source=synthesis_data.get("_title_source"),
+                parse_strategy=synthesis_data.get("_parse_strategy"),
                 cluster_method="hybrid_topic_keywords_optimized",
                 story_hash=cluster_data["cluster_hash"],
                 generated_at=datetime.now(UTC),

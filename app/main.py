@@ -2242,6 +2242,110 @@ def get_synthesis_cache_stats():
         )
 
 
+@app.get("/api/llm/stats")
+def get_llm_quality_stats(
+    hours: int = Query(24, description="Hours of history to include"),
+):
+    """
+    Get LLM output quality statistics.
+
+    Returns success rates, strategy distribution, and quality trends
+    for all LLM operations (synthesis, entity extraction, topic classification).
+
+    Part of Issue #105: Add output quality metrics and tracking.
+    """
+    from .llm_output import get_output_logger
+    from .quality_metrics import (
+        get_quality_distribution,
+        get_quality_summary,
+        get_strategy_distribution,
+    )
+
+    try:
+        with session_scope() as s:
+            days = max(1, hours // 24)
+            return {
+                "success_rates": get_output_logger().get_success_rate(hours),
+                "failure_summary": get_output_logger().get_failure_summary(hours),
+                "strategy_distribution": get_strategy_distribution(s, days),
+                "quality_distribution": get_quality_distribution(s, days),
+                "by_operation": get_quality_summary(s, days),
+            }
+    except Exception as e:
+        logger.error(f"Failed to get LLM stats: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve LLM statistics: {str(e)}"
+        )
+
+
+@app.get("/api/quality/summary")
+def get_quality_summary_endpoint(
+    days: int = Query(7, description="Days of history to include"),
+):
+    """
+    Get overall quality summary across all LLM operations.
+
+    Returns aggregated metrics including:
+    - Quality scores by operation type
+    - Quality distribution (excellent/good/fair/poor)
+    - Component averages (completeness, coverage, etc.)
+    - Recent low-quality stories for investigation
+
+    Part of Issue #105: Add output quality metrics and tracking.
+    """
+    from .quality_metrics import (
+        get_component_averages,
+        get_quality_distribution,
+        get_quality_summary,
+        get_quality_trends,
+        get_recent_low_quality_stories,
+    )
+
+    try:
+        with session_scope() as s:
+            return {
+                "period_days": days,
+                "by_operation": get_quality_summary(s, days),
+                "synthesis": {
+                    "quality_distribution": get_quality_distribution(s, days),
+                    "component_averages": get_component_averages(s, days),
+                    "trends": get_quality_trends(s, days, "synthesis"),
+                },
+                "recent_low_quality": get_recent_low_quality_stories(s, threshold=0.5),
+            }
+    except Exception as e:
+        logger.error(f"Failed to get quality summary: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve quality summary: {str(e)}"
+        )
+
+
+@app.get("/api/quality/trends")
+def get_quality_trends_endpoint(
+    days: int = Query(7, description="Days of history to include"),
+    operation: str = Query("synthesis", description="Operation type to filter"),
+):
+    """
+    Get quality score trends over time.
+
+    Returns daily averages for the specified operation type.
+    """
+    from .quality_metrics import get_quality_trends
+
+    try:
+        with session_scope() as s:
+            return {
+                "operation": operation,
+                "period_days": days,
+                "trends": get_quality_trends(s, days, operation),
+            }
+    except Exception as e:
+        logger.error(f"Failed to get quality trends: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve quality trends: {str(e)}"
+        )
+
+
 @app.post("/stories/cache/clear")
 def clear_synthesis_cache(
     expired_only: bool = Query(
@@ -2448,6 +2552,26 @@ def extraction_dashboard_page(request: Request):
     """
     return templates.TemplateResponse(
         "extraction_dashboard.html",
+        {
+            "request": request,
+            "current_page": "admin",
+            "environment": os.environ.get("ENVIRONMENT", "development"),
+        },
+    )
+
+
+@app.get("/admin/quality", response_class=HTMLResponse)
+def quality_dashboard_page(request: Request):
+    """
+    LLM output quality monitoring dashboard.
+
+    Displays metrics about synthesis quality, parsing success rates,
+    quality component breakdowns, and low-quality story identification.
+
+    Part of Issue #105: Add output quality metrics and tracking.
+    """
+    return templates.TemplateResponse(
+        "quality_dashboard.html",
         {
             "request": request,
             "current_page": "admin",
