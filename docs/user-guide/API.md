@@ -226,6 +226,17 @@ Manually trigger story generation. Clusters articles from last 24 hours and gene
 curl -X POST http://localhost:8787/stories/generate | jq .
 ```
 
+**Enhanced Synthesis Pipeline** ⭐ *New in v0.8.1*
+
+Story synthesis now uses a multi-pass pipeline for higher quality output:
+
+1. **Story Type Detection** - Classifies cluster as: breaking, evolving, trend, or comparison
+2. **Chain-of-Thought Analysis** - Extracts timeline, core facts, tensions, key players
+3. **Type-Specific Synthesis** - Generates narrative appropriate to story pattern
+4. **Quality Refinement** - Self-critique and polish pass
+
+This produces more coherent narratives with better "why it matters" sections, at the cost of longer generation time (~2 min per story vs ~20s previously).
+
 ---
 
 #### **GET /scheduler/status** ⭐ *Updated in v0.6.3*

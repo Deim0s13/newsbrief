@@ -35,6 +35,18 @@ from .models import (
     deserialize_story_json_field,
     serialize_story_json_field,
 )
+from .prompts import (
+    AnalysisResult,
+    StoryType,
+    StoryTypeResult,
+    create_analysis_prompt,
+    create_detection_prompt,
+    create_refinement_prompt,
+    get_synthesis_prompt,
+    parse_analysis_response,
+    parse_detection_response,
+    parse_refinement_response,
+)
 from .quality_metrics import QualityBreakdown, calculate_quality_score, log_llm_metrics
 
 logger = logging.getLogger(__name__)
@@ -1153,6 +1165,337 @@ def _calculate_story_scores(
     return (importance, freshness, quality)
 
 
+# =============================================================================
+# Enhanced Multi-Pass Synthesis Pipeline (Issue #102)
+# =============================================================================
+
+
+def _run_llm_call(
+    llm_service: Any,
+    model: str,
+    prompt: str,
+    temperature: float = 0.3,
+    max_tokens: int = 600,
+) -> str:
+    """
+    Run a single LLM call with standard options.
+
+    Args:
+        llm_service: The LLM service instance
+        model: Model name to use
+        prompt: The prompt to send
+        temperature: Generation temperature (0.0-1.0)
+        max_tokens: Maximum tokens to generate
+
+    Returns:
+        Response text from LLM
+    """
+    response = llm_service.client.generate(
+        model=model,
+        prompt=prompt,
+        options={
+            "temperature": temperature,
+            "top_k": 40,
+            "top_p": 0.9,
+            "num_predict": max_tokens,
+        },
+    )
+    return response.get("response", "")
+
+
+def _detect_story_type(
+    llm_service: Any,
+    model: str,
+    article_summaries: list[dict[str, str]],
+) -> StoryTypeResult:
+    """
+    Detect the story type pattern from article cluster.
+
+    Args:
+        llm_service: The LLM service instance
+        model: Model name to use
+        article_summaries: List of article dicts with title/summary
+
+    Returns:
+        StoryTypeResult with type, confidence, and reasoning
+    """
+    prompt = create_detection_prompt(article_summaries)
+    response = _run_llm_call(
+        llm_service, model, prompt, temperature=0.2, max_tokens=200
+    )
+
+    result = parse_detection_response(response)
+    if result is None:
+        # Default to BREAKING if detection fails
+        logger.warning("Story type detection failed, defaulting to BREAKING")
+        return StoryTypeResult(
+            story_type=StoryType.BREAKING,
+            confidence=0.5,
+            reasoning="Detection failed, using default",
+        )
+
+    logger.debug(
+        f"Detected story type: {result.story_type.value} "
+        f"(confidence: {result.confidence:.2f})"
+    )
+    return result
+
+
+def _run_analysis_pass(
+    llm_service: Any,
+    model: str,
+    article_summaries: list[dict[str, str]],
+    story_type: StoryType,
+) -> AnalysisResult:
+    """
+    Run chain-of-thought analysis to extract structured information.
+
+    Args:
+        llm_service: The LLM service instance
+        model: Model name to use
+        article_summaries: List of article dicts with title/summary
+        story_type: Detected story type
+
+    Returns:
+        AnalysisResult with timeline, facts, tensions, etc.
+    """
+    prompt = create_analysis_prompt(article_summaries, story_type.value.upper())
+    response = _run_llm_call(
+        llm_service, model, prompt, temperature=0.2, max_tokens=800
+    )
+
+    result = parse_analysis_response(response)
+    if result is None:
+        # Return minimal analysis if parsing fails
+        logger.warning("Analysis pass failed, using minimal defaults")
+        return AnalysisResult(
+            timeline=[],
+            core_facts=[],
+            tensions=[],
+            key_players=[],
+            gaps=[],
+            narrative_thread="Related news articles on a common topic",
+        )
+
+    logger.debug(
+        f"Analysis complete: {len(result.core_facts)} facts, "
+        f"{len(result.tensions)} tensions, thread: {result.narrative_thread[:50]}..."
+    )
+    return result
+
+
+def _run_synthesis_pass(
+    llm_service: Any,
+    model: str,
+    story_type: StoryType,
+    analysis: AnalysisResult,
+    article_summaries: list[dict[str, str]],
+) -> Optional[dict[str, Any]]:
+    """
+    Generate the story synthesis using type-specific prompt.
+
+    Args:
+        llm_service: The LLM service instance
+        model: Model name to use
+        story_type: Detected story type
+        analysis: Results from analysis pass
+        article_summaries: List of article dicts
+
+    Returns:
+        Draft synthesis dict or None if generation fails
+    """
+    prompt = get_synthesis_prompt(story_type, analysis, article_summaries)
+    response = _run_llm_call(
+        llm_service, model, prompt, temperature=0.4, max_tokens=800
+    )
+
+    # Parse using our robust parser
+    parsed_output, parse_metrics = parse_and_validate(
+        response,
+        SynthesisOutput,
+        required_fields=["synthesis", "key_points"],
+        allow_partial=True,
+        circuit_breaker_name="synthesis",
+    )
+
+    if parsed_output is None:
+        logger.warning("Synthesis pass failed to produce valid output")
+        return None
+
+    return {
+        "title": parsed_output.title,
+        "synthesis": parsed_output.synthesis,
+        "key_points": list(parsed_output.key_points),
+        "why_it_matters": parsed_output.why_it_matters,
+        "topics": list(parsed_output.topics),
+        "entities": list(parsed_output.entities),
+        "_parse_metrics": parse_metrics,
+    }
+
+
+def _run_refinement_pass(
+    llm_service: Any,
+    model: str,
+    draft_synthesis: dict[str, Any],
+    story_type: StoryType,
+    article_count: int,
+) -> dict[str, Any]:
+    """
+    Run quality refinement pass to polish the synthesis.
+
+    Args:
+        llm_service: The LLM service instance
+        model: Model name to use
+        draft_synthesis: The initial synthesis from synthesis pass
+        story_type: Detected story type
+        article_count: Number of source articles
+
+    Returns:
+        Refined synthesis dict (may be same as input if refinement fails)
+    """
+    # Create a clean copy without internal metadata
+    clean_draft = {k: v for k, v in draft_synthesis.items() if not k.startswith("_")}
+
+    prompt = create_refinement_prompt(clean_draft, story_type.value, article_count)
+    response = _run_llm_call(
+        llm_service, model, prompt, temperature=0.3, max_tokens=800
+    )
+
+    refined = parse_refinement_response(response)
+    if refined is None:
+        logger.debug("Refinement pass failed, using draft synthesis")
+        return draft_synthesis
+
+    # Preserve internal metadata from draft
+    refined["_parse_metrics"] = draft_synthesis.get("_parse_metrics")
+
+    logger.debug("Refinement pass completed successfully")
+    return refined
+
+
+def _enhanced_synthesis_pipeline(
+    session: Session,
+    article_ids: list[int],
+    model: str,
+    articles_cache: Optional[dict] = None,
+) -> dict[str, Any]:
+    """
+    Run the enhanced multi-pass synthesis pipeline.
+
+    This pipeline produces higher quality syntheses by:
+    1. Detecting the story type (breaking, evolving, trend, comparison)
+    2. Running chain-of-thought analysis to extract structure
+    3. Generating synthesis with type-appropriate prompts
+    4. Refining output with quality self-checks
+
+    Args:
+        session: Database session
+        article_ids: List of article IDs to synthesize
+        model: LLM model to use
+        articles_cache: Optional pre-fetched article data
+
+    Returns:
+        Synthesis result dict with title, synthesis, key_points, etc.
+
+    Raises:
+        ValueError: If no articles found or LLM not available
+    """
+    pipeline_start = time.time()
+
+    # Fetch articles if not cached
+    if articles_cache:
+        articles = [articles_cache[aid] for aid in article_ids if aid in articles_cache]
+    else:
+        placeholders = ", ".join([f":id_{i}" for i in range(len(article_ids))])
+        params = {f"id_{i}": aid for i, aid in enumerate(article_ids)}
+        articles = list(
+            session.execute(
+                text(
+                    f"""
+                    SELECT id, title, summary, ai_summary, topic
+                    FROM items
+                    WHERE id IN ({placeholders})
+                    ORDER BY published DESC
+                    """
+                ),
+                params,
+            ).fetchall()
+        )
+
+    if not articles:
+        raise ValueError("No articles found for synthesis")
+
+    # Build article summaries for prompts
+    article_summaries = []
+    for article in articles:
+        if articles_cache:
+            title = article["title"]
+            summary = article["ai_summary"] or article["summary"] or ""
+        else:
+            _, title, summary, ai_summary, _ = article
+            summary = ai_summary or summary or ""
+
+        article_summaries.append(
+            {
+                "title": title or "Untitled",
+                "summary": summary[:500],  # Limit length for context window
+            }
+        )
+
+    # Get LLM service
+    llm_service = get_llm_service()
+    if not llm_service.is_available():
+        raise ValueError("LLM service not available")
+    if not llm_service.ensure_model(model):
+        raise ValueError(f"Model {model} not available")
+
+    # === PASS 1: Story Type Detection ===
+    logger.debug(f"Pipeline: Detecting story type for {len(articles)} articles")
+    story_type_result = _detect_story_type(llm_service, model, article_summaries)
+
+    # === PASS 2: Chain-of-Thought Analysis ===
+    logger.debug(
+        f"Pipeline: Running analysis pass ({story_type_result.story_type.value})"
+    )
+    analysis = _run_analysis_pass(
+        llm_service, model, article_summaries, story_type_result.story_type
+    )
+
+    # === PASS 3: Type-Specific Synthesis ===
+    logger.debug("Pipeline: Running synthesis pass")
+    draft = _run_synthesis_pass(
+        llm_service, model, story_type_result.story_type, analysis, article_summaries
+    )
+
+    if draft is None:
+        raise ValueError("Synthesis pass failed to produce output")
+
+    # === PASS 4: Quality Refinement ===
+    logger.debug("Pipeline: Running refinement pass")
+    refined = _run_refinement_pass(
+        llm_service, model, draft, story_type_result.story_type, len(articles)
+    )
+
+    # Add pipeline metadata
+    pipeline_time_ms = int((time.time() - pipeline_start) * 1000)
+    refined["_pipeline_time_ms"] = pipeline_time_ms
+    refined["_story_type"] = story_type_result.story_type.value
+    refined["_story_type_confidence"] = story_type_result.confidence
+    refined["_analysis"] = {
+        "narrative_thread": analysis.narrative_thread,
+        "core_facts_count": len(analysis.core_facts),
+        "tensions_count": len(analysis.tensions),
+    }
+
+    logger.info(
+        f"Enhanced pipeline completed in {pipeline_time_ms}ms "
+        f"(type: {story_type_result.story_type.value}, "
+        f"confidence: {story_type_result.confidence:.2f})"
+    )
+
+    return refined
+
+
 def _generate_story_synthesis(
     session: Session,
     article_ids: List[int],
@@ -1221,197 +1564,129 @@ def _generate_story_synthesis(
     if not articles:
         raise ValueError("No articles found for synthesis")
 
-    # Build context for LLM
-    article_summaries = []
-    for article in articles:
-        if articles_cache:
-            # Cached data is already a dict/tuple
-            article_id, title, summary, ai_summary, topic = (
-                article["id"],
-                article["title"],
-                article["summary"],
-                article["ai_summary"],
-                article["topic"],
-            )
-        else:
-            article_id, title, summary, ai_summary, topic = article
-        content = ai_summary or summary or title
-        article_summaries.append(f"- {title}\n  {content[:200]}")
-
-    context = "\n\n".join(article_summaries)
-
-    # Create prompt for multi-document synthesis
-    prompt = f"""You are a news aggregator. Synthesize these related articles into a single coherent story.
-
-Articles:
-{context}
-
-Generate a JSON response with:
-1. "title": A concise news headline (8-12 words, under 80 characters)
-   - Focus on the shared theme across all articles
-   - Use simple, common words
-   - Include the most newsworthy entity if relevant
-2. "synthesis": 2-3 sentence summary of the overall story (50-150 words)
-3. "key_points": List of 3-5 bullet points covering main facts
-4. "why_it_matters": 1-2 sentences explaining significance
-5. "topics": List of 1-3 relevant topic tags (e.g., "AI/ML", "Cloud", "Security")
-6. "entities": List of 3-7 key entities mentioned (companies, products, people)
-
-Respond ONLY with valid JSON, no other text.
-
-Example format:
-{{
-  "title": "OpenAI Launches GPT-5 with Major Performance Improvements",
-  "synthesis": "OpenAI announced GPT-5 with significant improvements...",
-  "key_points": [
-    "Released March 2024",
-    "10x faster than GPT-4",
-    "New multimodal capabilities"
-  ],
-  "why_it_matters": "This represents a major leap in AI capabilities...",
-  "topics": ["AI/ML", "Enterprise"],
-  "entities": ["OpenAI", "GPT-5", "Sam Altman"]
-}}
-
-JSON:"""
-
-    # Count input tokens for metrics
-    token_count_input = count_tokens(prompt)
-
     try:
-        llm_service = get_llm_service()
+        # === Enhanced Multi-Pass Synthesis Pipeline (Issue #102) ===
+        # This pipeline produces higher quality syntheses through:
+        # 1. Story type detection (breaking, evolving, trend, comparison)
+        # 2. Chain-of-thought analysis to extract structure
+        # 3. Type-specific synthesis generation
+        # 4. Quality refinement self-check
 
-        if not llm_service.is_available():
-            logger.warning("LLM service not available, using fallback synthesis")
-            return _fallback_synthesis(articles)
-
-        if not llm_service.ensure_model(model):
-            logger.warning(f"Model {model} not available, using fallback synthesis")
-            return _fallback_synthesis(articles)
-
-        # Generate synthesis
-        response = llm_service.client.generate(
+        pipeline_result = _enhanced_synthesis_pipeline(
+            session=session,
+            article_ids=article_ids,
             model=model,
-            prompt=prompt,
-            options={
-                "temperature": 0.3,
-                "top_k": 40,
-                "top_p": 0.9,
-                "num_predict": 500,
-            },
+            articles_cache=articles_cache,
         )
 
-        # Extract and validate JSON using robust parser
-        response_text = response.get("response", "")
+        # Process pipeline result
+        key_points = list(pipeline_result.get("key_points", []))
 
-        parsed_output, parse_metrics = parse_and_validate(
-            response_text,
-            SynthesisOutput,
-            required_fields=["synthesis", "key_points"],
-            allow_partial=True,
-            circuit_breaker_name="synthesis",
+        # Ensure at least 3 key points (pad if needed)
+        if len(key_points) < 3:
+            logger.warning(
+                f"Pipeline returned only {len(key_points)} key points, padding to 3"
+            )
+            if len(key_points) == 0:
+                key_points = [
+                    "Multiple related articles aggregated",
+                    f"Based on {len(articles)} sources",
+                    "See supporting articles for details",
+                ]
+            elif len(key_points) == 1:
+                key_points.append(f"Based on {len(articles)} sources")
+                key_points.append("See supporting articles for details")
+            elif len(key_points) == 2:
+                key_points.append(f"Based on {len(articles)} sources")
+
+        # Generate title with fallback and track source
+        llm_title = pipeline_result.get("title")
+        title = _generate_fallback_title(
+            title=llm_title,
+            synthesis=pipeline_result.get("synthesis", ""),
+            entities=pipeline_result.get("entities", []),
+        )
+        title_source = (
+            "llm" if (llm_title and title == llm_title.strip()) else "fallback"
         )
 
-        if parsed_output is not None:
-            key_points = list(parsed_output.key_points)
+        # Build final synthesis result
+        synthesis_result = {
+            "title": title,
+            "synthesis": pipeline_result.get("synthesis", ""),
+            "key_points": key_points,
+            "why_it_matters": pipeline_result.get("why_it_matters"),
+            "topics": pipeline_result.get("topics", []),
+            "entities": pipeline_result.get("entities", []),
+        }
 
-            # Ensure at least 3 key points (pad if LLM returns too few)
-            if len(key_points) < 3:
-                logger.warning(
-                    f"LLM returned only {len(key_points)} key points, padding to 3"
-                )
-
-                # Pad with generic points from synthesis or article data
-                if len(key_points) == 0:
-                    key_points = [
-                        "Multiple related articles aggregated",
-                        f"Based on {len(articles)} sources",
-                        "See supporting articles for details",
-                    ]
-                elif len(key_points) == 1:
-                    key_points.append(f"Based on {len(articles)} sources")
-                    key_points.append("See supporting articles for details")
-                elif len(key_points) == 2:
-                    key_points.append(f"Based on {len(articles)} sources")
-
-            # Generate title with fallback and track source
-            llm_title = parsed_output.title if parsed_output.title else None
-            title = _generate_fallback_title(
-                title=llm_title,
-                synthesis=parsed_output.synthesis,
-                entities=list(parsed_output.entities),
-            )
-            # Determine if we used LLM title or fallback
-            title_source = (
-                "llm" if (llm_title and title == llm_title.strip()) else "fallback"
-            )
-
-            synthesis_result = {
-                "title": title,
-                "synthesis": parsed_output.synthesis,
-                "key_points": key_points,
-                "why_it_matters": parsed_output.why_it_matters,
-                "topics": list(parsed_output.topics),
-                "entities": list(parsed_output.entities),
-            }
-
-            # Count output tokens for metrics
-            token_count_output = count_tokens(response_text)
+        # Get parse metrics from pipeline (if available)
+        parse_metrics = pipeline_result.get("_parse_metrics")
+        generation_time_ms = pipeline_result.get("_pipeline_time_ms", 0)
+        if generation_time_ms == 0:
             generation_time_ms = int((time.time() - generation_start) * 1000)
 
-            # Calculate quality metrics (Issue #105)
-            quality_breakdown = calculate_quality_score(
-                synthesis=synthesis_result,
-                parse_metrics=parse_metrics,
-                article_count=len(articles),
-                title_source=title_source,
+        # Calculate quality metrics (Issue #105)
+        # Use a mock parse_metrics if not available from pipeline
+        if parse_metrics is None:
+            from .llm_output import LLMParseMetrics
+
+            parse_metrics = LLMParseMetrics(
+                success=True,
+                strategy_used="enhanced_pipeline",
+                repairs_applied=[],
+                retry_count=0,
             )
 
-            # Add quality metadata to result for storage on Story
-            synthesis_result["_quality_score"] = quality_breakdown.overall
-            synthesis_result["_quality_breakdown"] = quality_breakdown.to_dict()
-            synthesis_result["_title_source"] = title_source
-            synthesis_result["_parse_strategy"] = parse_metrics.strategy_used
-
-            # Log metrics to database for historical tracking
-            try:
-                log_llm_metrics(
-                    session=session,
-                    operation_type="synthesis",
-                    model=model,
-                    parse_metrics=parse_metrics,
-                    quality_breakdown=quality_breakdown,
-                    article_count=len(articles),
-                    token_count_input=token_count_input,
-                    token_count_output=token_count_output,
-                    generation_time_ms=generation_time_ms,
-                )
-            except Exception as metrics_error:
-                logger.warning(f"Failed to log LLM metrics: {metrics_error}")
-
-            # Store successful result in cache with metrics
-            store_synthesis_in_cache(
-                session=session,
-                article_ids=article_ids,
-                model=model,
-                synthesis_result=synthesis_result,
-                generation_time_ms=generation_time_ms,
-                token_count_input=token_count_input,
-                token_count_output=token_count_output,
-            )
-
-            logger.debug(
-                f"Synthesis complete: {token_count_input} input tokens, "
-                f"{token_count_output} output tokens, {generation_time_ms}ms, "
-                f"strategy={parse_metrics.strategy_used}, quality={quality_breakdown.overall:.2f}"
-            )
-
-            return synthesis_result
-
-        logger.warning(
-            f"LLM response invalid (error={parse_metrics.error_category}), using fallback"
+        quality_breakdown = calculate_quality_score(
+            synthesis=synthesis_result,
+            parse_metrics=parse_metrics,
+            article_count=len(articles),
+            title_source=title_source,
         )
-        return _fallback_synthesis(articles)
+
+        # Add quality and pipeline metadata
+        synthesis_result["_quality_score"] = quality_breakdown.overall
+        synthesis_result["_quality_breakdown"] = quality_breakdown.to_dict()
+        synthesis_result["_title_source"] = title_source
+        synthesis_result["_parse_strategy"] = (
+            parse_metrics.strategy_used if parse_metrics else "enhanced_pipeline"
+        )
+        synthesis_result["_story_type"] = pipeline_result.get("_story_type")
+        synthesis_result["_story_type_confidence"] = pipeline_result.get(
+            "_story_type_confidence"
+        )
+
+        # Log metrics to database for historical tracking
+        try:
+            log_llm_metrics(
+                session=session,
+                operation_type="synthesis",
+                model=model,
+                parse_metrics=parse_metrics,
+                quality_breakdown=quality_breakdown,
+                article_count=len(articles),
+                generation_time_ms=generation_time_ms,
+            )
+        except Exception as metrics_error:
+            logger.warning(f"Failed to log LLM metrics: {metrics_error}")
+
+        # Store successful result in cache
+        store_synthesis_in_cache(
+            session=session,
+            article_ids=article_ids,
+            model=model,
+            synthesis_result=synthesis_result,
+            generation_time_ms=generation_time_ms,
+        )
+
+        logger.info(
+            f"Enhanced synthesis complete: {generation_time_ms}ms, "
+            f"type={pipeline_result.get('_story_type', 'unknown')}, "
+            f"quality={quality_breakdown.overall:.2f}"
+        )
+
+        return synthesis_result
 
     except Exception as e:
         logger.error(f"Failed to generate synthesis with LLM: {e}")
