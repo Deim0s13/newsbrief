@@ -339,6 +339,101 @@ This metadata powers the "Why Grouped Together" panel in the story detail UI, pr
 
 ---
 
+### Topic Reclassification API ⭐ *New in v0.8.1 (Issue #248)*
+
+Async API for bulk topic reclassification with progress tracking and cancellation.
+
+#### **GET /api/topics/stats**
+
+Get statistics about articles needing topic reclassification.
+
+**Response (200)**
+```json
+{
+  "general_count": 23,
+  "low_confidence_count": 38,
+  "total_articles": 1250,
+  "needs_reclassification": 61,
+  "last_run": {
+    "completed_at": "2026-02-10T11:15:00Z",
+    "processed_articles": 100,
+    "changed_articles": 52
+  },
+  "active_job_id": null
+}
+```
+
+#### **POST /api/topics/reclassify**
+
+Start an async topic reclassification job. Returns immediately with a job ID.
+
+**Query Parameters**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `batch_size` | int | 100 | Articles to process (10-1000) |
+| `use_llm` | bool | true | Use LLM (accurate) or keywords (fast) |
+
+**Response (200)**
+```json
+{
+  "job_id": 42,
+  "status": "started",
+  "message": "Reclassification job started. Poll /api/topics/reclassify/status/{job_id} for progress.",
+  "batch_size": 100,
+  "use_llm": true
+}
+```
+
+**Error (409)** - Job already running
+```json
+{
+  "detail": "Reclassification job 41 is already running"
+}
+```
+
+#### **GET /api/topics/reclassify/status/{job_id}**
+
+Poll for job progress.
+
+**Response (200)**
+```json
+{
+  "job_id": 42,
+  "status": "running",
+  "total_articles": 100,
+  "processed_articles": 45,
+  "changed_articles": 23,
+  "error_count": 0,
+  "progress_percent": 45.0,
+  "elapsed_seconds": 120.5,
+  "batch_size": 100,
+  "use_llm": true,
+  "created_at": "2026-02-10T12:00:00Z",
+  "started_at": "2026-02-10T12:00:01Z",
+  "completed_at": null,
+  "error_message": null
+}
+```
+
+**Status values**: `pending`, `running`, `completed`, `cancelled`, `failed`
+
+#### **DELETE /api/topics/reclassify/{job_id}**
+
+Cancel a running job.
+
+**Response (200)**
+```json
+{
+  "job_id": 42,
+  "status": "cancelled",
+  "message": "Job cancellation initiated"
+}
+```
+
+**Admin UI**: Available at `/admin/topics` with real-time progress bar, batch size configuration, and cancellation support.
+
+---
+
 #### **GET /scheduler/status** ⭐ *Updated in v0.6.3*
 
 Get background scheduler status including feed refresh and story generation jobs.

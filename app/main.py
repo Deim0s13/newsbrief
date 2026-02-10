@@ -1749,44 +1749,123 @@ def get_topics_api():
     }
 
 
+@app.get("/api/topics/stats")
+def get_topics_stats_api():
+    """
+    Get statistics about articles needing topic reclassification.
+
+    Returns counts for:
+    - Articles with 'general' topic (unclassified)
+    - Articles with low confidence (< 0.5)
+    - Last reclassification run info
+    - Active job ID if running
+    """
+    from app.topics import get_reclassification_stats
+
+    return get_reclassification_stats()
+
+
 @app.post("/api/topics/reclassify")
-def reclassify_topics_api(
-    batch_size: int = Query(100, description="Number of articles to process"),
+async def reclassify_topics_api(
+    background_tasks: BackgroundTasks,
+    batch_size: int = Query(
+        100, description="Number of articles to process", ge=10, le=1000
+    ),
     use_llm: bool = Query(
         True, description="Use LLM for classification (more accurate)"
     ),
 ):
     """
-    Trigger topic reclassification for articles with 'general' topic or low confidence.
+    Start async topic reclassification for articles with 'general' topic or low confidence.
 
-    This endpoint allows manual triggering of the topic reclassification job.
-    Articles are processed in batches to avoid long-running requests.
+    This endpoint starts a background job and returns immediately with a job ID.
+    Use GET /api/topics/reclassify/status/{job_id} to poll for progress.
+    Use DELETE /api/topics/reclassify/{job_id} to cancel.
 
     Args:
-        batch_size: Number of articles to process (default: 100)
+        batch_size: Number of articles to process (default: 100, max: 1000)
         use_llm: Whether to use LLM classification (default: True)
 
     Returns:
-        Dict with reclassification statistics
+        Dict with job_id for status polling
     """
-    # Override batch size if provided
-    import app.scheduler as scheduler_module
-    from app.scheduler import TOPIC_RECLASSIFY_MODEL, scheduled_topic_reclassification
+    from app.topics import (
+        create_reclassify_job,
+        get_reclassification_stats,
+        run_reclassify_job_async,
+    )
 
-    original_batch_size = scheduler_module.TOPIC_RECLASSIFY_BATCH_SIZE
-    original_use_llm = scheduler_module.TOPIC_RECLASSIFY_USE_LLM
+    # Check if there's already an active job
+    stats = get_reclassification_stats()
+    if stats.get("active_job_id"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Reclassification job {stats['active_job_id']} is already running",
+        )
 
-    try:
-        scheduler_module.TOPIC_RECLASSIFY_BATCH_SIZE = batch_size
-        scheduler_module.TOPIC_RECLASSIFY_USE_LLM = use_llm
+    # Create job record
+    job_id = create_reclassify_job(batch_size=batch_size, use_llm=use_llm)
 
-        result = scheduled_topic_reclassification()
-        return result
+    # Start background task
+    background_tasks.add_task(run_reclassify_job_async, job_id)
 
-    finally:
-        # Restore original settings
-        scheduler_module.TOPIC_RECLASSIFY_BATCH_SIZE = original_batch_size
-        scheduler_module.TOPIC_RECLASSIFY_USE_LLM = original_use_llm
+    return {
+        "job_id": job_id,
+        "status": "started",
+        "message": "Reclassification job started. Poll /api/topics/reclassify/status/{job_id} for progress.",
+        "batch_size": batch_size,
+        "use_llm": use_llm,
+    }
+
+
+@app.get("/api/topics/reclassify/status/{job_id}")
+def get_reclassify_status_api(job_id: int):
+    """
+    Get the status of a reclassification job.
+
+    Returns progress information including:
+    - Current status (pending, running, completed, cancelled, failed)
+    - Progress percentage
+    - Articles processed/changed/errors
+    - Elapsed time
+    """
+    from app.topics import get_reclassify_job
+
+    job = get_reclassify_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+    return job
+
+
+@app.delete("/api/topics/reclassify/{job_id}")
+def cancel_reclassify_api(job_id: int):
+    """
+    Cancel a running reclassification job.
+
+    Only pending or running jobs can be cancelled.
+    """
+    from app.topics import cancel_reclassify_job, get_reclassify_job
+
+    job = get_reclassify_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+    if job["status"] not in ("pending", "running"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot cancel job with status '{job['status']}'",
+        )
+
+    success = cancel_reclassify_job(job_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to cancel job")
+
+    return {
+        "job_id": job_id,
+        "status": "cancelled",
+        "message": "Job cancellation initiated",
+    }
 
 
 @app.get("/items/topic/{topic_key}")
@@ -2576,6 +2655,36 @@ def quality_dashboard_page(request: Request):
             "request": request,
             "current_page": "admin",
             "environment": os.environ.get("ENVIRONMENT", "development"),
+        },
+    )
+
+
+@app.get("/admin/topics", response_class=HTMLResponse)
+def topics_management_page(request: Request):
+    """
+    Topic management dashboard for article reclassification.
+
+    Displays:
+    - Count of unclassified ('general') articles
+    - Count of low-confidence articles
+    - Controls to trigger reclassification
+    - Real-time progress tracking
+
+    Part of Issue #248: UI for article topic reclassification.
+    """
+    from app.topics import get_available_topics, get_reclassification_stats
+
+    stats = get_reclassification_stats()
+    topics = get_available_topics()
+
+    return templates.TemplateResponse(
+        "topics_management.html",
+        {
+            "request": request,
+            "current_page": "admin",
+            "environment": os.environ.get("ENVIRONMENT", "development"),
+            "stats": stats,
+            "topics": topics,
         },
     )
 

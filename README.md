@@ -72,6 +72,7 @@ Comprehensive improvements to LLM output quality and content intelligence.
 - [x] **Context Window Handling** (#106): Smart handling for large clusters (map-reduce/hierarchical synthesis)
 - [x] **Quality Breakdown Panel** (#233): Visual breakdown of synthesis quality scores on story pages
 - [x] **Why Grouped Together** (#232): Clustering metadata showing shared entities, keywords, and similarity scores
+- [x] **Topic Reclassification UI** (#248): Admin page at `/admin/topics` for async bulk topic reclassification
 - [ ] **Research: Alternative Models** (#108): Evaluate smaller/faster models for quality tradeoffs
 
 ### **✅ Previous: v0.8.0 - Content Extraction Pipeline Upgrade** (Feb 2026)

@@ -381,3 +381,27 @@ class LLMMetrics(Base):
         Index("idx_llm_metrics_quality", "quality_score"),
         Index("idx_llm_metrics_success", "parse_success"),
     )
+
+
+class ReclassifyJob(Base):
+    """Track async topic reclassification jobs (v0.8.1 - Issue #248)."""
+
+    __tablename__ = "reclassify_jobs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    status = Column(String(20), nullable=False, default="pending")
+    total_articles = Column(Integer, nullable=False, default=0)
+    processed_articles = Column(Integer, nullable=False, default=0)
+    changed_articles = Column(Integer, nullable=False, default=0)
+    error_count = Column(Integer, nullable=False, default=0)
+    batch_size = Column(Integer, nullable=False, default=100)
+    use_llm = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    started_at = Column(DateTime(timezone=True))
+    completed_at = Column(DateTime(timezone=True))
+    error_message = Column(Text)
+
+    __table_args__ = (
+        Index("idx_reclassify_jobs_status", "status"),
+        Index("idx_reclassify_jobs_created", "created_at"),
+    )
