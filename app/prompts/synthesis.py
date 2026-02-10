@@ -13,6 +13,8 @@ def get_synthesis_prompt(
     story_type: StoryType,
     analysis: AnalysisResult,
     article_summaries: list[dict[str, str]],
+    max_articles: int = 8,
+    max_title_chars: int = 80,
 ) -> str:
     """
     Get the appropriate synthesis prompt for the story type.
@@ -21,6 +23,9 @@ def get_synthesis_prompt(
         story_type: The detected story pattern
         analysis: Results from chain-of-thought analysis
         article_summaries: Original article data
+            (should be pre-prioritized with most important first)
+        max_articles: Maximum articles to include (default: 8)
+        max_title_chars: Maximum characters per title (default: 80)
 
     Returns:
         Prompt string for synthesis LLM call
@@ -30,7 +35,8 @@ def get_synthesis_prompt(
 
     # Format article context (abbreviated)
     articles_context = "\n".join(
-        f"- {a.get('title', 'Untitled')[:80]}" for a in article_summaries[:8]
+        f"- {a.get('title', 'Untitled')[:max_title_chars]}"
+        for a in article_summaries[:max_articles]
     )
 
     # Get type-specific instructions

@@ -1,0 +1,60 @@
+{
+  "version": "1.0",
+  "description": "LLM model configuration for context window handling",
+  "defaults": {
+    "max_articles_per_prompt": 8,
+    "summary_chars_per_article": 500,
+    "title_chars_per_article": 80,
+    "token_safety_margin": 0.9
+  },
+  "models": {
+    "llama3.1:8b": {
+      "context_window": 8192,
+      "synthesis_budget": 6000,
+      "output_reserved": 1000,
+      "description": "Llama 3.1 8B - recommended for quality"
+    },
+    "llama3.2:3b": {
+      "context_window": 8192,
+      "synthesis_budget": 6000,
+      "output_reserved": 1000,
+      "description": "Llama 3.2 3B - faster, slightly lower quality"
+    },
+    "llama3.2:1b": {
+      "context_window": 8192,
+      "synthesis_budget": 6000,
+      "output_reserved": 1000,
+      "description": "Llama 3.2 1B - fastest, basic quality"
+    },
+    "mistral:7b": {
+      "context_window": 8192,
+      "synthesis_budget": 6000,
+      "output_reserved": 1000,
+      "description": "Mistral 7B - good alternative"
+    },
+    "gemma2:9b": {
+      "context_window": 8192,
+      "synthesis_budget": 6000,
+      "output_reserved": 1000,
+      "description": "Gemma 2 9B - Google's model"
+    }
+  },
+  "synthesis_strategies": {
+    "direct": {
+      "max_articles": 8,
+      "description": "Single-pass synthesis for small clusters"
+    },
+    "map_reduce": {
+      "min_articles": 9,
+      "max_articles": 15,
+      "group_size": 5,
+      "description": "Two-pass synthesis for medium clusters"
+    },
+    "hierarchical": {
+      "min_articles": 16,
+      "tier1_group_size": 5,
+      "tier2_max_summaries": 4,
+      "description": "Multi-tier synthesis for large clusters"
+    }
+  }
+}

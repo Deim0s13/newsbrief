@@ -6,8 +6,11 @@ This module contains structured prompts for the multi-pass synthesis pipeline:
 2. Chain-of-Thought Analysis - Extract facts, timeline, tensions
 3. Type-Specific Synthesis - Generate narrative appropriate to story type
 4. Quality Refinement - Polish and self-critique
+5. Map-Reduce Synthesis - Handle large clusters (9+ articles)
+6. Hierarchical Synthesis - Handle very large clusters (16+ articles)
 
 Part of Issue #102: Improve synthesis prompts for better narratives.
+Part of Issue #106: Context window handling for large clusters.
 """
 
 from enum import Enum
@@ -45,6 +48,13 @@ class AnalysisResult(NamedTuple):
 # Re-export prompt functions
 from .analysis import create_analysis_prompt, parse_analysis_response
 from .detection import create_detection_prompt, parse_detection_response
+from .map_reduce import (
+    create_group_summary_prompt,
+    create_hierarchical_tier1_prompt,
+    create_hierarchical_tier2_prompt,
+    create_reduce_prompt,
+    parse_group_summary_response,
+)
 from .refinement import create_refinement_prompt, parse_refinement_response
 from .synthesis import get_synthesis_prompt
 
@@ -59,4 +69,10 @@ __all__ = [
     "get_synthesis_prompt",
     "create_refinement_prompt",
     "parse_refinement_response",
+    # Map-reduce prompts (Issue #106)
+    "create_group_summary_prompt",
+    "parse_group_summary_response",
+    "create_reduce_prompt",
+    "create_hierarchical_tier1_prompt",
+    "create_hierarchical_tier2_prompt",
 ]

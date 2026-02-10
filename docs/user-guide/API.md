@@ -237,6 +237,52 @@ Story synthesis now uses a multi-pass pipeline for higher quality output:
 
 This produces more coherent narratives with better "why it matters" sections, at the cost of longer generation time (~2 min per story vs ~20s previously).
 
+**Context Window Handling** ⭐ *New in v0.8.1*
+
+For large article clusters, the pipeline automatically selects the optimal synthesis strategy:
+
+| Cluster Size | Strategy | Description |
+|--------------|----------|-------------|
+| 1-8 articles | `direct` | Single-pass multi-pass pipeline (default) |
+| 9-15 articles | `map_reduce` | Groups articles, summarizes each group, combines results |
+| 16+ articles | `hierarchical` | Multi-tier processing for very large clusters |
+
+**Key Features:**
+- **Article Prioritization**: Articles are sorted by `ranking_score` so the most important articles are always included
+- **Token Budgeting**: Automatic truncation to fit model context windows (default: 6000 tokens)
+- **Context Metrics**: Each synthesis includes metrics about articles used/dropped and token utilization
+
+**Response includes context metrics:**
+```json
+{
+  "stories_generated": 7,
+  "_context_metrics": {
+    "cluster_size": 12,
+    "articles_used": 12,
+    "articles_dropped": 0,
+    "token_utilization_percent": 65.3
+  },
+  "_strategy": "map_reduce"
+}
+```
+
+**Model Configuration** (`data/model_config.json`):
+```json
+{
+  "models": {
+    "llama3.1:8b": {
+      "context_window": 8192,
+      "synthesis_budget": 6000
+    }
+  },
+  "synthesis_strategies": {
+    "direct": { "max_articles": 8 },
+    "map_reduce": { "min_articles": 9, "max_articles": 15, "group_size": 5 },
+    "hierarchical": { "min_articles": 16, "tier1_group_size": 5 }
+  }
+}
+```
+
 ---
 
 #### **GET /scheduler/status** ⭐ *Updated in v0.6.3*

@@ -18,6 +18,7 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 - **🎯 Multi-Topic Classification (v0.8.1)**: Primary + secondary topics with calibrated confidence scores
 - **Intelligent Clustering**: Hybrid topic grouping + keyword similarity for related article detection
 - **Multi-Pass Synthesis (v0.8.1)**: Story type detection → chain-of-thought analysis → synthesis → refinement
+- **Large Cluster Handling (v0.8.1)**: Map-reduce and hierarchical synthesis for 9+ article clusters
 - **Topic Auto-Classification**: Stories tagged with Security, AI/ML, DevTools, Cloud/K8s, etc.
 - **Story-First UI**: Landing page shows stories (not articles) with filters, sorting, and pagination
 - **Supporting Articles**: Each story links to source articles with structured summaries
@@ -67,6 +68,7 @@ Comprehensive improvements to LLM output quality and content intelligence.
 - [x] **Enhanced Synthesis Pipeline** (#102): Multi-pass generation (detection → analysis → synthesis → refinement)
 - [x] **Enhanced Entity Extraction** (#103): Confidence scores, roles (primary/mentioned/quoted), disambiguation
 - [x] **Enhanced Topic Classification** (#104): Multi-topic support, calibrated confidence, edge case detection
+- [x] **Context Window Handling** (#106): Smart handling for large clusters (map-reduce/hierarchical synthesis)
 - [ ] **Research: Alternative Models** (#108): Evaluate smaller/faster models for quality tradeoffs
 
 ### **✅ Previous: v0.8.0 - Content Extraction Pipeline Upgrade** (Feb 2026)

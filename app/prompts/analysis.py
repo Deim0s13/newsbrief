@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 def create_analysis_prompt(
     article_summaries: list[dict[str, str]],
     story_type: str,
+    max_articles: int = 8,
+    max_summary_chars: int = 400,
 ) -> str:
     """
     Create chain-of-thought analysis prompt.
@@ -26,14 +28,18 @@ def create_analysis_prompt(
 
     Args:
         article_summaries: List of dicts with 'title' and 'summary' keys
+            (should be pre-prioritized with most important first)
         story_type: The detected story type (BREAKING, EVOLVING, etc.)
+        max_articles: Maximum articles to include (default: 8)
+        max_summary_chars: Maximum characters per summary (default: 400)
 
     Returns:
         Prompt string for LLM
     """
     articles_text = "\n\n".join(
-        f"ARTICLE {i + 1}:\nTitle: {a.get('title', 'Untitled')}\n{a.get('summary', '')[:400]}"
-        for i, a in enumerate(article_summaries[:8])
+        f"ARTICLE {i + 1}:\nTitle: {a.get('title', 'Untitled')}\n"
+        f"{a.get('summary', '')[:max_summary_chars]}"
+        for i, a in enumerate(article_summaries[:max_articles])
     )
 
     return f"""You are a senior news analyst preparing to write a synthesized story from multiple sources.

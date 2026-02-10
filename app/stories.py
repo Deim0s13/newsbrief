@@ -26,6 +26,21 @@ from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, cast
 from sqlalchemy import desc, text
 from sqlalchemy.orm import Session
 
+from .context_manager import (
+    ArticleForSynthesis,
+    ContextMetrics,
+    SelectionResult,
+    calculate_context_metrics,
+    create_article_groups,
+    determine_strategy,
+    get_context_summary,
+)
+from .context_manager import load_config as load_context_config
+from .context_manager import (
+    prepare_articles_from_data,
+    prioritize_articles,
+    select_articles_for_synthesis,
+)
 from .entities import ExtractedEntities, extract_and_cache_entities, get_entity_overlap
 from .llm import get_llm_service
 from .llm_output import SynthesisOutput, get_circuit_breaker, parse_and_validate
@@ -41,10 +56,15 @@ from .prompts import (
     StoryTypeResult,
     create_analysis_prompt,
     create_detection_prompt,
+    create_group_summary_prompt,
+    create_hierarchical_tier1_prompt,
+    create_hierarchical_tier2_prompt,
+    create_reduce_prompt,
     create_refinement_prompt,
     get_synthesis_prompt,
     parse_analysis_response,
     parse_detection_response,
+    parse_group_summary_response,
     parse_refinement_response,
 )
 from .quality_metrics import QualityBreakdown, calculate_quality_score, log_llm_metrics
@@ -1373,6 +1393,248 @@ def _run_refinement_pass(
     return refined
 
 
+# =============================================================================
+# Map-Reduce and Hierarchical Synthesis (Issue #106)
+# =============================================================================
+
+
+def _run_map_reduce_synthesis(
+    llm_service: Any,
+    model: str,
+    articles: List[ArticleForSynthesis],
+    story_type: StoryType,
+) -> dict[str, Any]:
+    """
+    Run map-reduce synthesis for medium-sized clusters (9-15 articles).
+
+    Process:
+    1. Split articles into groups
+    2. Summarize each group (MAP phase)
+    3. Combine summaries into final synthesis (REDUCE phase)
+
+    Args:
+        llm_service: The LLM service instance
+        model: Model name to use
+        articles: Prioritized list of articles
+        story_type: Detected story type
+
+    Returns:
+        Synthesis result dict
+    """
+    config = load_context_config()
+    group_size = config.map_reduce_group_size
+
+    # Create groups from prioritized articles
+    groups = create_article_groups(articles, group_size)
+    total_groups = len(groups)
+
+    logger.info(
+        f"Map-reduce synthesis: {len(articles)} articles → {total_groups} groups"
+    )
+
+    # MAP phase: Summarize each group
+    group_summaries = []
+    for i, group in enumerate(groups, 1):
+        # Convert to dict format for prompts
+        article_dicts = [{"title": a.title, "summary": a.summary} for a in group]
+
+        prompt = create_group_summary_prompt(
+            article_dicts, i, total_groups, story_type.value.upper()
+        )
+        response = _run_llm_call(
+            llm_service, model, prompt, temperature=0.2, max_tokens=400
+        )
+
+        parsed = parse_group_summary_response(response)
+        if parsed:
+            group_summaries.append(parsed)
+            logger.debug(f"Group {i}/{total_groups} summarized successfully")
+        else:
+            # Fallback: create minimal summary
+            group_summaries.append(
+                {
+                    "summary": f"Group of {len(group)} articles about {story_type.value}",
+                    "key_facts": [a.title for a in group[:3]],
+                    "entities": [],
+                    "unique_angle": "",
+                }
+            )
+            logger.warning(
+                f"Group {i}/{total_groups} summary parsing failed, using fallback"
+            )
+
+    # REDUCE phase: Combine into final synthesis
+    reduce_prompt = create_reduce_prompt(
+        group_summaries, story_type.value.upper(), len(articles)
+    )
+    response = _run_llm_call(
+        llm_service, model, reduce_prompt, temperature=0.4, max_tokens=800
+    )
+
+    # Parse using our robust parser
+    parsed_output, parse_metrics = parse_and_validate(
+        response,
+        SynthesisOutput,
+        required_fields=["synthesis", "key_points"],
+        allow_partial=True,
+        circuit_breaker_name="synthesis",
+    )
+
+    if parsed_output is None:
+        logger.warning("Map-reduce final synthesis failed")
+        # Return a minimal result
+        return {
+            "title": f"{story_type.value.title()} Story from {len(articles)} Sources",
+            "synthesis": f"A {story_type.value} story synthesized from {len(articles)} articles.",
+            "key_points": [g.get("summary", "")[:100] for g in group_summaries[:4]],
+            "why_it_matters": "This story aggregates multiple sources.",
+            "topics": [],
+            "entities": list(
+                set(e for g in group_summaries for e in g.get("entities", []))
+            )[:5],
+            "_strategy": "map_reduce",
+            "_groups": total_groups,
+            "_parse_metrics": parse_metrics,
+        }
+
+    return {
+        "title": parsed_output.title,
+        "synthesis": parsed_output.synthesis,
+        "key_points": list(parsed_output.key_points),
+        "why_it_matters": parsed_output.why_it_matters,
+        "topics": list(parsed_output.topics),
+        "entities": list(parsed_output.entities),
+        "_strategy": "map_reduce",
+        "_groups": total_groups,
+        "_parse_metrics": parse_metrics,
+    }
+
+
+def _run_hierarchical_synthesis(
+    llm_service: Any,
+    model: str,
+    articles: List[ArticleForSynthesis],
+    story_type: StoryType,
+) -> dict[str, Any]:
+    """
+    Run hierarchical synthesis for large clusters (16+ articles).
+
+    Process:
+    1. Split into tier 1 groups
+    2. Create detailed summaries for each tier 1 group
+    3. Combine tier 1 summaries into final synthesis (tier 2)
+
+    Args:
+        llm_service: The LLM service instance
+        model: Model name to use
+        articles: Prioritized list of articles
+        story_type: Detected story type
+
+    Returns:
+        Synthesis result dict
+    """
+    config = load_context_config()
+    tier1_group_size = config.hierarchical_tier1_group_size
+    max_tier2_summaries = config.hierarchical_tier2_max_summaries
+
+    # Create tier 1 groups
+    groups = create_article_groups(articles, tier1_group_size)
+    total_tiers = len(groups)
+
+    # Limit to max summaries for tier 2 (use most important groups)
+    if len(groups) > max_tier2_summaries:
+        logger.info(
+            f"Hierarchical: limiting from {len(groups)} to {max_tier2_summaries} groups"
+        )
+        groups = groups[:max_tier2_summaries]
+
+    logger.info(
+        f"Hierarchical synthesis: {len(articles)} articles → "
+        f"{total_tiers} tier-1 groups → {len(groups)} for tier-2"
+    )
+
+    # TIER 1: Create detailed summaries for each group
+    tier1_summaries = []
+    for i, group in enumerate(groups, 1):
+        article_dicts = [{"title": a.title, "summary": a.summary} for a in group]
+
+        prompt = create_hierarchical_tier1_prompt(article_dicts, i, len(groups))
+        response = _run_llm_call(
+            llm_service, model, prompt, temperature=0.2, max_tokens=500
+        )
+
+        # Parse tier 1 response
+        parsed = parse_group_summary_response(response)  # Reuse parser
+        if parsed:
+            # Adapt to tier 1 format
+            tier1_summaries.append(
+                {
+                    "headline": parsed.get("summary", "")[:80],
+                    "summary": parsed.get("summary", ""),
+                    "key_facts": parsed.get("key_facts", []),
+                    "entities": parsed.get("entities", []),
+                    "timeline_events": [],
+                }
+            )
+            logger.debug(f"Tier-1 group {i}/{len(groups)} completed")
+        else:
+            tier1_summaries.append(
+                {
+                    "headline": f"Group {i} summary",
+                    "summary": f"Articles covering {story_type.value} topic",
+                    "key_facts": [a.title for a in group[:2]],
+                    "entities": [],
+                    "timeline_events": [],
+                }
+            )
+            logger.warning(f"Tier-1 group {i} parsing failed, using fallback")
+
+    # TIER 2: Combine into final synthesis
+    tier2_prompt = create_hierarchical_tier2_prompt(tier1_summaries, len(articles))
+    response = _run_llm_call(
+        llm_service, model, tier2_prompt, temperature=0.4, max_tokens=1000
+    )
+
+    # Parse using robust parser
+    parsed_output, parse_metrics = parse_and_validate(
+        response,
+        SynthesisOutput,
+        required_fields=["synthesis", "key_points"],
+        allow_partial=True,
+        circuit_breaker_name="synthesis",
+    )
+
+    if parsed_output is None:
+        logger.warning("Hierarchical tier-2 synthesis failed")
+        return {
+            "title": f"Major {story_type.value.title()} Story ({len(articles)} Sources)",
+            "synthesis": f"A comprehensive {story_type.value} story from {len(articles)} articles.",
+            "key_points": [t.get("headline", "") for t in tier1_summaries[:5]],
+            "why_it_matters": "This major story has been covered by numerous sources.",
+            "topics": [],
+            "entities": list(
+                set(e for t in tier1_summaries for e in t.get("entities", []))
+            )[:7],
+            "_strategy": "hierarchical",
+            "_tier1_groups": len(groups),
+            "_total_groups": total_tiers,
+            "_parse_metrics": parse_metrics,
+        }
+
+    return {
+        "title": parsed_output.title,
+        "synthesis": parsed_output.synthesis,
+        "key_points": list(parsed_output.key_points),
+        "why_it_matters": parsed_output.why_it_matters,
+        "topics": list(parsed_output.topics),
+        "entities": list(parsed_output.entities),
+        "_strategy": "hierarchical",
+        "_tier1_groups": len(groups),
+        "_total_groups": total_tiers,
+        "_parse_metrics": parse_metrics,
+    }
+
+
 def _enhanced_synthesis_pipeline(
     session: Session,
     article_ids: list[int],
@@ -1388,6 +1650,9 @@ def _enhanced_synthesis_pipeline(
     3. Generating synthesis with type-appropriate prompts
     4. Refining output with quality self-checks
 
+    For large clusters (9+ articles), uses map-reduce or hierarchical strategies.
+    See Issue #106 for context window handling details.
+
     Args:
         session: Database session
         article_ids: List of article IDs to synthesize
@@ -1402,45 +1667,74 @@ def _enhanced_synthesis_pipeline(
     """
     pipeline_start = time.time()
 
-    # Fetch articles if not cached
+    # Fetch articles if not cached (include ranking_score for prioritization)
     if articles_cache:
-        articles = [articles_cache[aid] for aid in article_ids if aid in articles_cache]
+        raw_articles = [
+            articles_cache[aid] for aid in article_ids if aid in articles_cache
+        ]
     else:
         placeholders = ", ".join([f":id_{i}" for i in range(len(article_ids))])
         params = {f"id_{i}": aid for i, aid in enumerate(article_ids)}
-        articles = list(
+        raw_articles = list(
             session.execute(
                 text(
                     f"""
-                    SELECT id, title, summary, ai_summary, topic
+                    SELECT id, title, summary, ai_summary, topic, ranking_score, published
                     FROM items
                     WHERE id IN ({placeholders})
-                    ORDER BY published DESC
+                    ORDER BY COALESCE(ranking_score, 0) DESC, published DESC
                     """
                 ),
                 params,
             ).fetchall()
         )
 
-    if not articles:
+    if not raw_articles:
         raise ValueError("No articles found for synthesis")
 
-    # Build article summaries for prompts
-    article_summaries = []
-    for article in articles:
+    # Convert to ArticleForSynthesis objects for prioritization
+    articles_for_synthesis: List[ArticleForSynthesis] = []
+    for article in raw_articles:
         if articles_cache:
-            title = article["title"]
-            summary = article["ai_summary"] or article["summary"] or ""
+            articles_for_synthesis.append(
+                ArticleForSynthesis(
+                    id=article.get("id", 0),
+                    title=article.get("title") or "Untitled",
+                    summary=article.get("ai_summary") or article.get("summary") or "",
+                    ranking_score=article.get("ranking_score", 0.0) or 0.0,
+                    published=(
+                        str(article.get("published", ""))
+                        if article.get("published")
+                        else None
+                    ),
+                    topic=article.get("topic"),
+                )
+            )
         else:
-            _, title, summary, ai_summary, _ = article
-            summary = ai_summary or summary or ""
+            # Tuple format: (id, title, summary, ai_summary, topic, ranking_score, published)
+            articles_for_synthesis.append(
+                ArticleForSynthesis(
+                    id=article[0],
+                    title=article[1] or "Untitled",
+                    summary=article[3] or article[2] or "",  # ai_summary or summary
+                    ranking_score=(
+                        article[5] if len(article) > 5 and article[5] else 0.0
+                    ),
+                    published=(
+                        str(article[6]) if len(article) > 6 and article[6] else None
+                    ),
+                    topic=article[4] if len(article) > 4 else None,
+                )
+            )
 
-        article_summaries.append(
-            {
-                "title": title or "Untitled",
-                "summary": summary[:500],  # Limit length for context window
-            }
-        )
+    # Determine synthesis strategy and select articles
+    cluster_size = len(articles_for_synthesis)
+    selection_result = select_articles_for_synthesis(articles_for_synthesis, model)
+    strategy = selection_result.strategy
+
+    # Calculate context metrics for logging
+    context_metrics = calculate_context_metrics(cluster_size, selection_result, model)
+    logger.info(get_context_summary(context_metrics))
 
     # Get LLM service
     llm_service = get_llm_service()
@@ -1449,51 +1743,114 @@ def _enhanced_synthesis_pipeline(
     if not llm_service.ensure_model(model):
         raise ValueError(f"Model {model} not available")
 
-    # === PASS 1: Story Type Detection ===
-    logger.debug(f"Pipeline: Detecting story type for {len(articles)} articles")
-    story_type_result = _detect_story_type(llm_service, model, article_summaries)
+    # === STRATEGY-BASED SYNTHESIS ===
+    if strategy == "hierarchical":
+        # Use all articles for hierarchical synthesis
+        prioritized = prioritize_articles(articles_for_synthesis)
 
-    # === PASS 2: Chain-of-Thought Analysis ===
-    logger.debug(
-        f"Pipeline: Running analysis pass ({story_type_result.story_type.value})"
-    )
-    analysis = _run_analysis_pass(
-        llm_service, model, article_summaries, story_type_result.story_type
-    )
+        # Quick story type detection on a sample
+        sample_dicts = [
+            {"title": a.title, "summary": a.summary[:300]} for a in prioritized[:5]
+        ]
+        story_type_result = _detect_story_type(llm_service, model, sample_dicts)
 
-    # === PASS 3: Type-Specific Synthesis ===
-    logger.debug("Pipeline: Running synthesis pass")
-    draft = _run_synthesis_pass(
-        llm_service, model, story_type_result.story_type, analysis, article_summaries
-    )
+        # Run hierarchical synthesis
+        result = _run_hierarchical_synthesis(
+            llm_service, model, prioritized, story_type_result.story_type
+        )
 
-    if draft is None:
-        raise ValueError("Synthesis pass failed to produce output")
+    elif strategy == "map_reduce":
+        # Use all articles for map-reduce synthesis
+        prioritized = prioritize_articles(articles_for_synthesis)
 
-    # === PASS 4: Quality Refinement ===
-    logger.debug("Pipeline: Running refinement pass")
-    refined = _run_refinement_pass(
-        llm_service, model, draft, story_type_result.story_type, len(articles)
-    )
+        # Quick story type detection on a sample
+        sample_dicts = [
+            {"title": a.title, "summary": a.summary[:300]} for a in prioritized[:5]
+        ]
+        story_type_result = _detect_story_type(llm_service, model, sample_dicts)
+
+        # Run map-reduce synthesis
+        result = _run_map_reduce_synthesis(
+            llm_service, model, prioritized, story_type_result.story_type
+        )
+
+    else:
+        # Direct strategy: use selected (prioritized) articles
+        selected_articles = selection_result.selected
+
+        # Build article summaries for prompts (already prioritized)
+        article_summaries = [
+            {
+                "title": a.title,
+                "summary": a.summary[:500],
+            }
+            for a in selected_articles
+        ]
+
+        # === PASS 1: Story Type Detection ===
+        logger.debug(
+            f"Pipeline: Detecting story type for {len(selected_articles)} articles"
+        )
+        story_type_result = _detect_story_type(llm_service, model, article_summaries)
+
+        # === PASS 2: Chain-of-Thought Analysis ===
+        logger.debug(
+            f"Pipeline: Running analysis pass ({story_type_result.story_type.value})"
+        )
+        analysis = _run_analysis_pass(
+            llm_service, model, article_summaries, story_type_result.story_type
+        )
+
+        # === PASS 3: Type-Specific Synthesis ===
+        logger.debug("Pipeline: Running synthesis pass")
+        draft = _run_synthesis_pass(
+            llm_service,
+            model,
+            story_type_result.story_type,
+            analysis,
+            article_summaries,
+        )
+
+        if draft is None:
+            raise ValueError("Synthesis pass failed to produce output")
+
+        # === PASS 4: Quality Refinement ===
+        logger.debug("Pipeline: Running refinement pass")
+        result = _run_refinement_pass(
+            llm_service,
+            model,
+            draft,
+            story_type_result.story_type,
+            len(selected_articles),
+        )
+
+        # Add analysis metadata for direct strategy
+        result["_analysis"] = {
+            "narrative_thread": analysis.narrative_thread,
+            "core_facts_count": len(analysis.core_facts),
+            "tensions_count": len(analysis.tensions),
+        }
 
     # Add pipeline metadata
     pipeline_time_ms = int((time.time() - pipeline_start) * 1000)
-    refined["_pipeline_time_ms"] = pipeline_time_ms
-    refined["_story_type"] = story_type_result.story_type.value
-    refined["_story_type_confidence"] = story_type_result.confidence
-    refined["_analysis"] = {
-        "narrative_thread": analysis.narrative_thread,
-        "core_facts_count": len(analysis.core_facts),
-        "tensions_count": len(analysis.tensions),
+    result["_pipeline_time_ms"] = pipeline_time_ms
+    result["_story_type"] = story_type_result.story_type.value
+    result["_story_type_confidence"] = story_type_result.confidence
+    result["_strategy"] = strategy
+    result["_context_metrics"] = {
+        "cluster_size": context_metrics.cluster_size,
+        "articles_used": context_metrics.articles_used,
+        "articles_dropped": context_metrics.articles_dropped,
+        "token_utilization_percent": round(context_metrics.utilization_percent, 1),
     }
 
     logger.info(
         f"Enhanced pipeline completed in {pipeline_time_ms}ms "
-        f"(type: {story_type_result.story_type.value}, "
-        f"confidence: {story_type_result.confidence:.2f})"
+        f"(strategy: {strategy}, type: {story_type_result.story_type.value}, "
+        f"articles: {context_metrics.articles_used}/{cluster_size})"
     )
 
-    return refined
+    return result
 
 
 def _generate_story_synthesis(

@@ -14,19 +14,27 @@ from . import StoryType, StoryTypeResult
 logger = logging.getLogger(__name__)
 
 
-def create_detection_prompt(article_summaries: list[dict[str, str]]) -> str:
+def create_detection_prompt(
+    article_summaries: list[dict[str, str]],
+    max_articles: int = 8,
+    max_summary_chars: int = 300,
+) -> str:
     """
     Create prompt for detecting story type from article cluster.
 
     Args:
         article_summaries: List of dicts with 'title' and 'summary' keys
+            (should be pre-prioritized with most important first)
+        max_articles: Maximum articles to include (default: 8)
+        max_summary_chars: Maximum characters per summary (default: 300)
 
     Returns:
         Prompt string for LLM
     """
     articles_text = "\n\n".join(
-        f"ARTICLE {i + 1}:\nTitle: {a.get('title', 'Untitled')}\n{a.get('summary', '')[:300]}"
-        for i, a in enumerate(article_summaries[:8])  # Limit to 8 for context window
+        f"ARTICLE {i + 1}:\nTitle: {a.get('title', 'Untitled')}\n"
+        f"{a.get('summary', '')[:max_summary_chars]}"
+        for i, a in enumerate(article_summaries[:max_articles])
     )
 
     return f"""Analyze these related news articles and classify the story pattern.
