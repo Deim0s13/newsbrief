@@ -45,6 +45,7 @@ from .entities import ExtractedEntities, extract_and_cache_entities, get_entity_
 from .llm import get_llm_service
 from .llm_output import SynthesisOutput, get_circuit_breaker, parse_and_validate
 from .models import (
+    ClusteringMetadataOut,
     ItemOut,
     QualityBreakdownOut,
     StoryOut,
@@ -679,6 +680,12 @@ def update_story_with_new_articles(
         ),
         title_source=synthesis_data.get("_title_source"),
         parse_strategy=synthesis_data.get("_parse_strategy"),
+        # Clustering metadata (v0.8.1 - Issue #232)
+        clustering_metadata_json=(
+            json.dumps(cluster_data.get("clustering_metadata"))
+            if cluster_data.get("clustering_metadata")
+            else None
+        ),
         cluster_method="incremental_update",
         story_hash=cluster_data.get("cluster_hash"),
         generated_at=datetime.now(UTC),
@@ -799,6 +806,15 @@ def _story_db_to_model(  # type: ignore[misc]
         except (json.JSONDecodeError, TypeError, ValueError) as e:
             logger.debug(f"Failed to parse quality_breakdown_json: {e}")
 
+    # Parse clustering metadata JSON if available (Issue #232)
+    clustering_metadata = None
+    if story.clustering_metadata_json:
+        try:
+            clustering_data = json.loads(story.clustering_metadata_json)
+            clustering_metadata = ClusteringMetadataOut(**clustering_data)
+        except (json.JSONDecodeError, TypeError, ValueError) as e:
+            logger.debug(f"Failed to parse clustering_metadata_json: {e}")
+
     # SQLAlchemy Column types vs runtime values - mypy doesn't understand ORM magic
     # fmt: off
     return StoryOut(
@@ -825,6 +841,8 @@ def _story_db_to_model(  # type: ignore[misc]
         parse_strategy=story.parse_strategy,  # type: ignore[arg-type]
         # Quality breakdown (v0.8.1 - Issue #233)
         quality_breakdown=quality_breakdown,
+        # Clustering metadata (v0.8.1 - Issue #232)
+        clustering_metadata=clustering_metadata,
     )
     # fmt: on
 
@@ -989,6 +1007,165 @@ def _calculate_keyword_overlap(keywords1: Set[str], keywords2: Set[str]) -> floa
     union = len(keywords1 | keywords2)
 
     return intersection / union if union > 0 else 0.0
+
+
+def _calculate_clustering_metadata(
+    cluster_article_ids: List[int],
+    articles_cache: Dict[int, Any],
+    session: Session,
+    model: str,
+) -> Dict[str, Any]:
+    """
+    Calculate clustering metadata for 'Why Grouped Together' feature (Issue #232).
+
+    Analyzes the articles in a cluster to find:
+    - Shared entities across articles
+    - Shared keywords across articles
+    - Average similarity scores
+    - Topic consensus
+
+    Args:
+        cluster_article_ids: List of article IDs in the cluster
+        articles_cache: Cached article data
+        session: Database session for entity extraction
+        model: LLM model for entity extraction
+
+    Returns:
+        Dict with clustering metadata
+    """
+    if len(cluster_article_ids) < 2:
+        return {
+            "shared_entities": [],
+            "shared_keywords": [],
+            "avg_similarity": 1.0,
+            "topic_consensus": None,
+            "topic_confidence_avg": 0.0,
+            "article_count": len(cluster_article_ids),
+            "clustering_factors": {
+                "entity_weight": SIMILARITY_ENTITY_WEIGHT,
+                "keyword_weight": SIMILARITY_KEYWORD_WEIGHT,
+                "topic_weight": SIMILARITY_TOPIC_WEIGHT,
+            },
+        }
+
+    # Collect keywords and entities for all articles
+    all_keywords: List[Set[str]] = []
+    all_entity_names: List[Set[str]] = []
+    topics: List[str] = []
+    topic_confidences: List[float] = []
+
+    for article_id in cluster_article_ids:
+        article = articles_cache.get(article_id)
+        if not article:
+            continue
+
+        title = article.get("title", "") or ""
+        summary = article.get("ai_summary") or article.get("summary") or ""
+        topic = article.get("topic")
+        topic_confidence = article.get("topic_confidence", 0.0) or 0.0
+
+        # Extract keywords
+        keywords = _extract_keywords(title, str(summary), include_bigrams=False)
+        all_keywords.append(keywords)
+
+        # Get entities
+        try:
+            entities = extract_and_cache_entities(
+                article_id=article_id,
+                title=title,
+                summary=str(summary),
+                session=session,
+                model=model,
+                use_cache=True,
+            )
+            if entities:
+                entity_names = set()
+                for category in [
+                    "companies",
+                    "products",
+                    "people",
+                    "technologies",
+                    "locations",
+                ]:
+                    entity_names.update(getattr(entities, category, []))
+                all_entity_names.append(entity_names)
+        except Exception:
+            pass
+
+        if topic:
+            topics.append(topic)
+            topic_confidences.append(topic_confidence)
+
+    # Find shared keywords (appear in 2+ articles)
+    keyword_counts: Dict[str, int] = {}
+    for kw_set in all_keywords:
+        for kw in kw_set:
+            keyword_counts[kw] = keyword_counts.get(kw, 0) + 1
+
+    shared_keywords = sorted(
+        [kw for kw, count in keyword_counts.items() if count >= 2],
+        key=lambda x: keyword_counts[x],
+        reverse=True,
+    )[
+        :10
+    ]  # Top 10 shared keywords
+
+    # Find shared entities (appear in 2+ articles)
+    entity_counts: Dict[str, int] = {}
+    for ent_set in all_entity_names:
+        for ent in ent_set:
+            # Normalize entity name for comparison
+            if isinstance(ent, str):
+                entity_counts[ent] = entity_counts.get(ent, 0) + 1
+
+    shared_entities = sorted(
+        [ent for ent, count in entity_counts.items() if count >= 2],
+        key=lambda x: entity_counts[x],
+        reverse=True,
+    )[
+        :8
+    ]  # Top 8 shared entities
+
+    # Calculate average pairwise similarity
+    similarities = []
+    for i, aid1 in enumerate(cluster_article_ids):
+        for aid2 in cluster_article_ids[i + 1 :]:
+            if aid1 < len(all_keywords) and aid2 < len(all_keywords):
+                idx1 = cluster_article_ids.index(aid1)
+                idx2 = cluster_article_ids.index(aid2)
+                if idx1 < len(all_keywords) and idx2 < len(all_keywords):
+                    sim = _calculate_keyword_overlap(
+                        all_keywords[idx1], all_keywords[idx2]
+                    )
+                    similarities.append(sim)
+
+    avg_similarity = sum(similarities) / len(similarities) if similarities else 0.0
+
+    # Topic consensus
+    topic_consensus = None
+    if topics:
+        from collections import Counter
+
+        topic_counts = Counter(topics)
+        topic_consensus = topic_counts.most_common(1)[0][0]
+
+    topic_confidence_avg = (
+        sum(topic_confidences) / len(topic_confidences) if topic_confidences else 0.0
+    )
+
+    return {
+        "shared_entities": shared_entities,
+        "shared_keywords": shared_keywords,
+        "avg_similarity": round(avg_similarity, 3),
+        "topic_consensus": topic_consensus,
+        "topic_confidence_avg": round(topic_confidence_avg, 3),
+        "article_count": len(cluster_article_ids),
+        "clustering_factors": {
+            "entity_weight": SIMILARITY_ENTITY_WEIGHT,
+            "keyword_weight": SIMILARITY_KEYWORD_WEIGHT,
+            "topic_weight": SIMILARITY_TOPIC_WEIGHT,
+        },
+    }
 
 
 def _calculate_combined_similarity(
@@ -2473,6 +2650,11 @@ def generate_stories_simple(
             feed_health_scores=feed_health_scores,
         )
 
+        # Calculate clustering metadata for "Why Grouped Together" (Issue #232)
+        clustering_metadata = _calculate_clustering_metadata(
+            cluster_article_ids, articles_cache, session, model
+        )
+
         cluster_data_list.append(
             {
                 "article_ids": cluster_article_ids,
@@ -2484,6 +2666,7 @@ def generate_stories_simple(
                 "cluster_hash": hashlib.md5(
                     json.dumps(sorted(cluster_article_ids)).encode()
                 ).hexdigest(),
+                "clustering_metadata": clustering_metadata,
             }
         )
 
@@ -2670,6 +2853,12 @@ def generate_stories_simple(
                 ),
                 title_source=synthesis_data.get("_title_source"),
                 parse_strategy=synthesis_data.get("_parse_strategy"),
+                # Clustering metadata (v0.8.1 - Issue #232)
+                clustering_metadata_json=(
+                    json.dumps(cluster_data.get("clustering_metadata"))
+                    if cluster_data.get("clustering_metadata")
+                    else None
+                ),
                 cluster_method="hybrid_topic_keywords_optimized",
                 story_hash=cluster_data["cluster_hash"],
                 generated_at=datetime.now(UTC),

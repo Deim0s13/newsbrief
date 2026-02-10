@@ -272,6 +272,97 @@
         </div>
         {% endif %}
 
+        <!-- Why Grouped Together Panel (Issue #232) -->
+        {% if story.clustering_metadata %}
+        <div id="clustering-panel" class="mb-6 p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-200 dark:border-indigo-700">
+            <button onclick="toggleClusteringPanel()" class="w-full flex items-center justify-between text-left">
+                <h3 class="text-sm font-semibold text-indigo-800 dark:text-indigo-300 flex items-center">
+                    <svg class="h-4 w-4 mr-2 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                    </svg>
+                    Why These {{ story.clustering_metadata.article_count }} Articles Are Grouped Together
+                </h3>
+                <svg id="clustering-chevron" class="h-4 w-4 text-indigo-600 dark:text-indigo-400 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+            </button>
+
+            <div id="clustering-details" class="hidden mt-4 space-y-4">
+                <!-- Shared Entities -->
+                {% if story.clustering_metadata.shared_entities %}
+                <div>
+                    <h4 class="text-xs font-medium text-indigo-700 dark:text-indigo-300 uppercase tracking-wide mb-2 flex items-center">
+                        <svg class="h-3.5 w-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
+                        </svg>
+                        Shared Entities
+                    </h4>
+                    <div class="flex flex-wrap gap-1.5">
+                        {% for entity in story.clustering_metadata.shared_entities %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-800 dark:text-indigo-200">
+                            {{ entity }}
+                        </span>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Shared Keywords -->
+                {% if story.clustering_metadata.shared_keywords %}
+                <div>
+                    <h4 class="text-xs font-medium text-indigo-700 dark:text-indigo-300 uppercase tracking-wide mb-2 flex items-center">
+                        <svg class="h-3.5 w-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"></path>
+                        </svg>
+                        Shared Keywords
+                    </h4>
+                    <div class="flex flex-wrap gap-1.5">
+                        {% for keyword in story.clustering_metadata.shared_keywords %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+                            {{ keyword }}
+                        </span>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Clustering Stats -->
+                <div class="pt-3 border-t border-indigo-200 dark:border-indigo-700">
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                        <div>
+                            <span class="block text-lg font-semibold text-indigo-800 dark:text-indigo-200">{{ (story.clustering_metadata.avg_similarity * 100)|round|int }}%</span>
+                            <span class="text-xs text-indigo-600 dark:text-indigo-400">Avg Similarity</span>
+                        </div>
+                        {% if story.clustering_metadata.topic_consensus %}
+                        <div>
+                            <span class="block text-lg font-semibold text-indigo-800 dark:text-indigo-200">{{ story.clustering_metadata.topic_consensus }}</span>
+                            <span class="text-xs text-indigo-600 dark:text-indigo-400">Topic</span>
+                        </div>
+                        {% endif %}
+                        <div>
+                            <span class="block text-lg font-semibold text-indigo-800 dark:text-indigo-200">{{ (story.clustering_metadata.topic_confidence_avg * 100)|round|int }}%</span>
+                            <span class="text-xs text-indigo-600 dark:text-indigo-400">Topic Confidence</span>
+                        </div>
+                        <div>
+                            <span class="block text-lg font-semibold text-indigo-800 dark:text-indigo-200">{{ story.clustering_metadata.shared_entities|length }}</span>
+                            <span class="text-xs text-indigo-600 dark:text-indigo-400">Common Entities</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Clustering Factors Explanation -->
+                {% if story.clustering_metadata.clustering_factors %}
+                <div class="text-xs text-indigo-600 dark:text-indigo-400 pt-2">
+                    <span class="font-medium">Clustering weights:</span>
+                    Entity {{ (story.clustering_metadata.clustering_factors.entity_weight * 100)|round|int }}%,
+                    Keyword {{ (story.clustering_metadata.clustering_factors.keyword_weight * 100)|round|int }}%,
+                    Topic {{ (story.clustering_metadata.clustering_factors.topic_weight * 100)|round|int }}%
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Story Title -->
         <h1 class="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-6">
             {{ story.title }}
@@ -445,6 +536,16 @@ function toggleQualityPanel() {
 
     if (panel && chevron) {
         panel.classList.toggle('hidden');
+        chevron.classList.toggle('rotate-180');
+    }
+}
+
+function toggleClusteringPanel() {
+    const details = document.getElementById('clustering-details');
+    const chevron = document.getElementById('clustering-chevron');
+
+    if (details && chevron) {
+        details.classList.toggle('hidden');
         chevron.classList.toggle('rotate-180');
     }
 }

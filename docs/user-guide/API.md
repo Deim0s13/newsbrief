@@ -75,6 +75,27 @@ This allows high-interest topics (e.g., AI/ML) to rank above higher-importance b
       "quality_score": 0.93,
       "title_source": "llm",
       "parse_strategy": "direct",
+      "quality_breakdown": {
+        "completeness": 0.95,
+        "coverage": 0.88,
+        "entity_consistency": 0.92,
+        "parse_success": 1.0,
+        "title_quality": 0.85,
+        "overall": 0.93
+      },
+      "clustering_metadata": {
+        "shared_entities": ["Google", "Gemini", "AI Studio"],
+        "shared_keywords": ["gemini", "multimodal", "ai"],
+        "avg_similarity": 0.72,
+        "topic_consensus": "ai-ml",
+        "topic_confidence_avg": 0.89,
+        "article_count": 5,
+        "clustering_factors": {
+          "entity_weight": 0.5,
+          "keyword_weight": 0.3,
+          "topic_weight": 0.2
+        }
+      },
       "generated_at": "2024-12-06T08:00:00Z",
       "supporting_articles": [
         {
@@ -282,6 +303,39 @@ For large article clusters, the pipeline automatically selects the optimal synth
   }
 }
 ```
+
+**Clustering Metadata** ⭐ *New in v0.8.1 (Issue #232)*
+
+Each story includes metadata explaining why its source articles were grouped together:
+
+```json
+{
+  "clustering_metadata": {
+    "shared_entities": ["Google", "Gemini", "AI Studio"],
+    "shared_keywords": ["gemini", "multimodal", "ai"],
+    "avg_similarity": 0.72,
+    "topic_consensus": "ai-ml",
+    "topic_confidence_avg": 0.89,
+    "article_count": 5,
+    "clustering_factors": {
+      "entity_weight": 0.5,
+      "keyword_weight": 0.3,
+      "topic_weight": 0.2
+    }
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `shared_entities` | Named entities (companies, people, products) appearing in 2+ articles |
+| `shared_keywords` | Keywords appearing in 2+ articles (up to 10) |
+| `avg_similarity` | Average pairwise similarity between all articles in the cluster |
+| `topic_consensus` | Most common topic classification across articles |
+| `topic_confidence_avg` | Average confidence of topic classification |
+| `clustering_factors` | Weights used in similarity calculation (entity 50%, keyword 30%, topic 20%) |
+
+This metadata powers the "Why Grouped Together" panel in the story detail UI, providing transparency into the clustering algorithm's decisions.
 
 ---
 

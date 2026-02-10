@@ -355,6 +355,45 @@ class QualityBreakdownOut(BaseModel):
         from_attributes = True
 
 
+# Clustering factors model (v0.8.1 - Issue #232)
+class ClusteringFactorsOut(BaseModel):
+    """Weights used in clustering similarity calculation."""
+
+    entity_weight: float = Field(0.5, description="Weight for entity overlap")
+    keyword_weight: float = Field(0.3, description="Weight for keyword overlap")
+    topic_weight: float = Field(0.2, description="Weight for topic bonus")
+
+
+# Clustering metadata model (v0.8.1 - Issue #232)
+class ClusteringMetadataOut(BaseModel):
+    """Metadata explaining why articles were grouped together."""
+
+    shared_entities: List[str] = Field(
+        default_factory=list, description="Entities appearing in multiple articles"
+    )
+    shared_keywords: List[str] = Field(
+        default_factory=list, description="Keywords appearing in multiple articles"
+    )
+    avg_similarity: float = Field(
+        0.0, description="Average pairwise similarity between articles"
+    )
+    topic_consensus: Optional[str] = Field(
+        None, description="Most common topic in the cluster"
+    )
+    topic_confidence_avg: float = Field(
+        0.0, description="Average topic classification confidence"
+    )
+    article_count: int = Field(0, description="Number of articles in cluster")
+    clustering_factors: Optional[ClusteringFactorsOut] = Field(
+        None, description="Weights used in similarity calculation"
+    )
+
+    class Config:
+        """Pydantic config."""
+
+        from_attributes = True
+
+
 # Story models for aggregated news
 class StoryOut(BaseModel):
     """A synthesized news story aggregating multiple articles."""
@@ -382,6 +421,8 @@ class StoryOut(BaseModel):
     parse_strategy: Optional[str] = None  # "direct", "markdown_block", etc.
     # Quality breakdown (v0.8.1 - Issue #233)
     quality_breakdown: Optional["QualityBreakdownOut"] = None
+    # Clustering metadata (v0.8.1 - Issue #232)
+    clustering_metadata: Optional["ClusteringMetadataOut"] = None
 
     @validator("title")
     def validate_title(cls, v):

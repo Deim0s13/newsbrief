@@ -165,6 +165,10 @@ class Story(Base):
     quality_breakdown_json = Column(Text)  # JSON breakdown of score components
     title_source = Column(String(20))  # 'llm' or 'fallback'
     parse_strategy = Column(String(30))  # JSON parsing strategy used
+    # Clustering metadata (v0.8.1 - Issue #232)
+    clustering_metadata_json = Column(
+        Text
+    )  # JSON: shared entities, keywords, similarity
     cluster_method = Column(String(50))
     story_hash = Column(String(64), unique=True)
     generated_at = Column(DateTime, default=lambda: datetime.now(UTC))
