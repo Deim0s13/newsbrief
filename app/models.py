@@ -327,6 +327,34 @@ def parse_cache_key(cache_key: str) -> tuple[str, str]:
         raise ValueError(f"Invalid cache key format: {cache_key}")
 
 
+# Quality breakdown model (v0.8.1 - Issue #233)
+class QualityBreakdownOut(BaseModel):
+    """Quality score breakdown with component scores."""
+
+    completeness: float = Field(
+        0.0,
+        description="Presence of required fields (key points, synthesis, why_it_matters)",
+    )
+    coverage: float = Field(
+        0.0, description="Synthesis depth relative to source article count"
+    )
+    entity_consistency: float = Field(
+        0.0, description="Percentage of entities mentioned in synthesis text"
+    )
+    parse_success: float = Field(
+        0.0, description="Parsing quality (direct parse vs repairs/fallbacks)"
+    )
+    title_quality: float = Field(
+        0.0, description="Title source (LLM vs fallback) and length quality"
+    )
+    overall: float = Field(0.0, description="Weighted composite quality score")
+
+    class Config:
+        """Pydantic config."""
+
+        from_attributes = True
+
+
 # Story models for aggregated news
 class StoryOut(BaseModel):
     """A synthesized news story aggregating multiple articles."""
@@ -352,6 +380,8 @@ class StoryOut(BaseModel):
     quality_score: Optional[float] = None
     title_source: Optional[str] = None  # "llm" or "fallback"
     parse_strategy: Optional[str] = None  # "direct", "markdown_block", etc.
+    # Quality breakdown (v0.8.1 - Issue #233)
+    quality_breakdown: Optional["QualityBreakdownOut"] = None
 
     @validator("title")
     def validate_title(cls, v):

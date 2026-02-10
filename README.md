@@ -69,6 +69,7 @@ Comprehensive improvements to LLM output quality and content intelligence.
 - [x] **Enhanced Entity Extraction** (#103): Confidence scores, roles (primary/mentioned/quoted), disambiguation
 - [x] **Enhanced Topic Classification** (#104): Multi-topic support, calibrated confidence, edge case detection
 - [x] **Context Window Handling** (#106): Smart handling for large clusters (map-reduce/hierarchical synthesis)
+- [x] **Quality Breakdown Panel** (#233): Visual breakdown of synthesis quality scores on story pages
 - [ ] **Research: Alternative Models** (#108): Evaluate smaller/faster models for quality tradeoffs
 
 ### **✅ Previous: v0.8.0 - Content Extraction Pipeline Upgrade** (Feb 2026)

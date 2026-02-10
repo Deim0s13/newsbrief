@@ -46,6 +46,7 @@ from .llm import get_llm_service
 from .llm_output import SynthesisOutput, get_circuit_breaker, parse_and_validate
 from .models import (
     ItemOut,
+    QualityBreakdownOut,
     StoryOut,
     deserialize_story_json_field,
     serialize_story_json_field,
@@ -789,6 +790,15 @@ def _story_db_to_model(  # type: ignore[misc]
     Returns:
         StoryOut model
     """
+    # Parse quality breakdown JSON if available (Issue #233)
+    quality_breakdown = None
+    if story.quality_breakdown_json:
+        try:
+            breakdown_data = json.loads(story.quality_breakdown_json)
+            quality_breakdown = QualityBreakdownOut(**breakdown_data)
+        except (json.JSONDecodeError, TypeError, ValueError) as e:
+            logger.debug(f"Failed to parse quality_breakdown_json: {e}")
+
     # SQLAlchemy Column types vs runtime values - mypy doesn't understand ORM magic
     # fmt: off
     return StoryOut(
@@ -813,6 +823,8 @@ def _story_db_to_model(  # type: ignore[misc]
         quality_score=story.quality_score,  # type: ignore[arg-type]
         title_source=story.title_source,  # type: ignore[arg-type]
         parse_strategy=story.parse_strategy,  # type: ignore[arg-type]
+        # Quality breakdown (v0.8.1 - Issue #233)
+        quality_breakdown=quality_breakdown,
     )
     # fmt: on
 
