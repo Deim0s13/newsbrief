@@ -170,6 +170,116 @@ class TopicOutput(BaseModel):
         return 0.5
 
 
+class TopicScore(BaseModel):
+    """
+    Score for a single topic in multi-topic classification.
+
+    Added in v0.8.1 (Issue #104) for enhanced topic classification.
+    """
+
+    topic_id: str = Field(
+        ..., min_length=1, max_length=50, description="Topic identifier"
+    )
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence 0.0-1.0")
+    is_primary: bool = Field(
+        default=False, description="Whether this is the primary topic"
+    )
+    reasoning: Optional[str] = Field(
+        default=None, max_length=200, description="Why this topic matches"
+    )
+
+    @field_validator("topic_id", mode="before")
+    @classmethod
+    def normalize_topic_id(cls, v: Any) -> str:
+        """Normalize topic ID."""
+        if isinstance(v, str):
+            return v.lower().strip().replace(" ", "-").replace("_", "-")
+        return str(v)
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def coerce_confidence(cls, v: Any) -> float:
+        """Coerce confidence to float."""
+        try:
+            val = float(v)
+            if val > 1.0:
+                val = val / 100.0
+            return max(0.0, min(1.0, val))
+        except (ValueError, TypeError):
+            return 0.5
+
+
+class EnhancedTopicOutput(BaseModel):
+    """
+    Validated output from enhanced topic classification LLM calls.
+
+    Added in v0.8.1 (Issue #104) for improved topic classification with:
+    - Multi-topic support (primary + secondary)
+    - Confidence calibration
+    - Classification reasoning
+    - Edge case handling
+
+    Used by: app/topics.py classify_topic_enhanced()
+    """
+
+    primary_topic: TopicScore = Field(
+        ...,
+        description="The main topic of the article",
+    )
+    secondary_topics: List[TopicScore] = Field(
+        default_factory=list,
+        description="Additional relevant topics (max 2)",
+    )
+    edge_case: Optional[str] = Field(
+        default=None,
+        description="Edge case flag: 'overlapping', 'ambiguous', 'emerging', or null",
+    )
+    classification_notes: Optional[str] = Field(
+        default=None,
+        max_length=300,
+        description="Brief notes on the classification decision",
+    )
+
+    @field_validator("secondary_topics", mode="before")
+    @classmethod
+    def limit_secondary_topics(cls, v: Any) -> List[Dict[str, Any]]:
+        """Ensure secondary topics list is properly formatted and limited."""
+        if not isinstance(v, list):
+            return []
+        result = []
+        for item in v[:2]:  # Max 2 secondary topics
+            if isinstance(item, dict):
+                item["is_primary"] = False  # Ensure not marked as primary
+                result.append(item)
+            elif isinstance(item, str):
+                # Handle simple string format
+                result.append(
+                    {
+                        "topic_id": item,
+                        "confidence": 0.6,
+                        "is_primary": False,
+                    }
+                )
+        return result
+
+    @field_validator("edge_case", mode="before")
+    @classmethod
+    def validate_edge_case(cls, v: Any) -> Optional[str]:
+        """Validate edge case is one of allowed values."""
+        if v is None:
+            return None
+        allowed = {"overlapping", "ambiguous", "emerging", "multi-domain"}
+        if isinstance(v, str) and v.lower() in allowed:
+            return v.lower()
+        return None
+        if isinstance(v, (int, float)):
+            val = float(v)
+            if val > 1.0:
+                val = val / 100.0
+            return max(0.0, min(1.0, val))
+        return 0.5
+
+
 class EntityOutput(BaseModel):
     """
     Validated output from entity extraction LLM calls.

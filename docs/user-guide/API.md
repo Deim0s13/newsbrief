@@ -1731,6 +1731,98 @@ This improved scoring helps with more accurate story clustering.
 
 ---
 
+## 🏷️ Topic Classification ⭐ *Enhanced in v0.8.1*
+
+Topic classification automatically categorizes articles and stories. Enhanced in v0.8.1 (Issue #104) with multi-topic support, confidence calibration, and improved accuracy.
+
+### **Classification Methods**
+
+| Method | Description | When Used |
+|--------|-------------|-----------|
+| `llm-enhanced` | Single-pass LLM with multi-topic support | Default (v0.8.1) |
+| `llm` | Legacy two-step LLM classification | Fallback if enhanced fails |
+| `keywords` | Keyword matching with phrase support | When LLM unavailable |
+| `fallback` | Returns "general" topic | When all else fails |
+
+### **Multi-Topic Support (v0.8.1)**
+
+Articles often span multiple domains. The enhanced classifier detects:
+
+- **Primary topic**: The main focus of the article
+- **Secondary topics**: Additional relevant topics (max 2, confidence > 0.5)
+
+```json
+{
+  "topic": "business",
+  "confidence": 0.85,
+  "method": "llm-enhanced",
+  "display_name": "Business",
+  "secondary_topics": [
+    {
+      "topic": "ai-ml",
+      "confidence": 0.65,
+      "display_name": "AI/ML",
+      "reasoning": "OpenAI mentioned"
+    }
+  ],
+  "reasoning": "Focus on investment and stock movement",
+  "edge_case": "overlapping"
+}
+```
+
+### **Confidence Calibration**
+
+| Range | Meaning |
+|-------|---------|
+| 0.90-1.00 | Perfect match, article entirely about this topic |
+| 0.75-0.89 | Strong match, topic is central |
+| 0.60-0.74 | Good match, topic clearly relevant |
+| 0.45-0.59 | Moderate match, somewhat relevant |
+| < 0.45 | Weak match, consider different topic |
+
+### **Edge Case Flags**
+
+| Flag | Description |
+|------|-------------|
+| `overlapping` | Article equally belongs to 2+ topics |
+| `ambiguous` | Hard to categorize definitively |
+| `emerging` | Topic seems new, not well covered by existing categories |
+| `multi-domain` | Spans multiple unrelated domains |
+
+### **Topic Relationships**
+
+Topics have defined relationships that help with multi-topic classification:
+
+```json
+{
+  "ai-ml": ["chips-hardware", "business", "science", "devtools"],
+  "chips-hardware": ["ai-ml", "business", "science"],
+  "security": ["cloud-k8s", "devtools", "business"]
+}
+```
+
+When the primary topic is `chips-hardware` and keywords match `ai-ml`, the classifier recognizes this as a natural overlap and includes AI/ML as a secondary topic.
+
+### **Available Topics**
+
+| ID | Name | Description |
+|----|------|-------------|
+| `ai-ml` | AI/ML | Artificial intelligence, machine learning, LLMs |
+| `security` | Security | Cybersecurity, vulnerabilities, privacy |
+| `cloud-k8s` | Cloud/K8s | Cloud computing, Kubernetes, containers |
+| `devtools` | DevTools | Programming languages, frameworks, tools |
+| `chips-hardware` | Chips/Hardware | Semiconductors, processors, hardware |
+| `politics` | Politics | Government, elections, international relations |
+| `business` | Business | Finance, markets, companies |
+| `science` | Science | Research, discoveries, space, medicine |
+| `sports` | Sports | Athletic events, teams, competitions |
+| `gaming` | Gaming | Video games, esports |
+| `entertainment` | Entertainment | Movies, TV, music, celebrities |
+| `finance` | Finance | Banking, fintech, regulatory |
+| `general` | General | Miscellaneous content |
+
+---
+
 ## 🛡️ Error Handling
 
 ### **Standard Error Response**

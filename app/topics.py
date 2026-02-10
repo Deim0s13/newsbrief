@@ -128,24 +128,70 @@ def get_valid_topics() -> List[str]:
 
 
 @dataclass
+class SecondaryTopic:
+    """A secondary topic with its confidence score."""
+
+    topic: str
+    confidence: float
+    display_name: str
+    reasoning: Optional[str] = None
+
+    def to_dict(self) -> Dict:
+        """Convert to dictionary."""
+        return {
+            "topic": self.topic,
+            "confidence": self.confidence,
+            "display_name": self.display_name,
+            "reasoning": self.reasoning,
+        }
+
+
+@dataclass
 class TopicClassificationResult:
-    """Result of topic classification."""
+    """
+    Result of topic classification.
+
+    Enhanced in v0.8.1 (Issue #104) with:
+    - Secondary topics support
+    - Classification reasoning
+    - Edge case flags
+    """
 
     topic: str  # Topic ID (e.g., "ai-ml", "politics")
     confidence: float  # 0.0 to 1.0
-    method: str  # "llm", "keywords", or "fallback"
+    method: str  # "llm", "llm-enhanced", "keywords", or "fallback"
     display_name: str  # Human-readable name (e.g., "AI/ML", "Politics")
     matched_keywords: List[str] = field(default_factory=list)
+    # v0.8.1 additions
+    secondary_topics: List[SecondaryTopic] = field(default_factory=list)
+    reasoning: Optional[str] = None
+    edge_case: Optional[str] = (
+        None  # "overlapping", "ambiguous", "emerging", "multi-domain"
+    )
 
     def to_dict(self) -> Dict:
         """Convert to dictionary for JSON serialization."""
-        return {
+        result = {
             "topic": self.topic,
             "confidence": self.confidence,
             "method": self.method,
             "display_name": self.display_name,
             "matched_keywords": self.matched_keywords,
         }
+        # Add v0.8.1 fields if present
+        if self.secondary_topics:
+            result["secondary_topics"] = [st.to_dict() for st in self.secondary_topics]
+        if self.reasoning:
+            result["reasoning"] = self.reasoning
+        if self.edge_case:
+            result["edge_case"] = self.edge_case
+        return result
+
+    def all_topics(self) -> List[str]:
+        """Get all topic IDs (primary + secondary)."""
+        topics = [self.topic]
+        topics.extend(st.topic for st in self.secondary_topics)
+        return topics
 
 
 def get_topic_display_name(topic_id: str) -> str:
@@ -474,6 +520,225 @@ def classify_topic_with_llm(
 
 
 # =============================================================================
+# Enhanced LLM Classification (v0.8.1 - Issue #104)
+# =============================================================================
+
+
+def _create_enhanced_classification_prompt(
+    title: str,
+    summary: str,
+    topics: Dict[str, Dict],
+) -> str:
+    """
+    Create enhanced classification prompt with few-shot examples and
+    multi-topic support.
+
+    Args:
+        title: Article title
+        summary: Article summary
+        topics: Topic definitions
+
+    Returns:
+        Prompt string
+    """
+    content = f"Title: {title}\n\nSummary: {summary[:500]}".strip()
+
+    # Build topic list with descriptions
+    topic_list = "\n".join(
+        f"  - {tid}: {config['name']} - {config['description']}"
+        for tid, config in topics.items()
+        if tid != "general"
+    )
+
+    return f"""You are an expert news classifier. Classify the following article into topic categories.
+
+ARTICLE:
+{content}
+
+AVAILABLE TOPICS:
+{topic_list}
+  - general: General - Miscellaneous content that doesn't fit other categories
+
+=== CLASSIFICATION GUIDELINES ===
+
+CONFIDENCE CALIBRATION:
+- 0.90-1.00: Perfectly clear match, article is entirely about this topic
+- 0.75-0.89: Strong match, topic is central to the article
+- 0.60-0.74: Good match, topic is clearly relevant
+- 0.45-0.59: Moderate match, topic is somewhat relevant
+- Below 0.45: Weak match, consider different topic
+
+MULTI-TOPIC ARTICLES:
+Some articles span multiple domains. For example:
+- "OpenAI raises $10B funding" → Primary: ai-ml, Secondary: business
+- "AWS announces new security features" → Primary: cloud-k8s, Secondary: security
+- "NVIDIA releases new AI chip" → Primary: chips-hardware, Secondary: ai-ml
+
+Only include secondary topics if confidence > 0.5
+
+EDGE CASES:
+- "overlapping": Article clearly belongs to 2+ topics equally
+- "ambiguous": Hard to categorize, could fit multiple topics poorly
+- "emerging": Topic seems new/emerging, not well covered by existing categories
+- "multi-domain": Spans multiple unrelated domains
+
+=== FEW-SHOT EXAMPLES ===
+
+Example 1 - Clear single topic:
+Article: "Google DeepMind announces Gemini 2.0 with improved reasoning"
+Output:
+{{
+  "primary_topic": {{"topic_id": "ai-ml", "confidence": 0.95, "is_primary": true, "reasoning": "Article is entirely about AI model announcement"}},
+  "secondary_topics": [],
+  "edge_case": null,
+  "classification_notes": "Clear AI/ML article about new model release"
+}}
+
+Example 2 - Multi-topic:
+Article: "Microsoft invests $10B in OpenAI, stock surges 5%"
+Output:
+{{
+  "primary_topic": {{"topic_id": "business", "confidence": 0.85, "is_primary": true, "reasoning": "Focus is on investment and stock movement"}},
+  "secondary_topics": [{{"topic_id": "ai-ml", "confidence": 0.70, "is_primary": false, "reasoning": "OpenAI is an AI company"}}],
+  "edge_case": "overlapping",
+  "classification_notes": "Business news with AI context"
+}}
+
+Example 3 - Edge case:
+Article: "SpaceX Starlink helps restore internet in Gaza conflict zone"
+Output:
+{{
+  "primary_topic": {{"topic_id": "politics", "confidence": 0.75, "is_primary": true, "reasoning": "Gaza conflict is political/international relations"}},
+  "secondary_topics": [{{"topic_id": "science", "confidence": 0.55, "is_primary": false, "reasoning": "Space technology application"}}],
+  "edge_case": "multi-domain",
+  "classification_notes": "Political context with technology angle"
+}}
+
+=== YOUR TASK ===
+
+Classify the article above. Output valid JSON only:
+{{
+  "primary_topic": {{"topic_id": "...", "confidence": 0.0-1.0, "is_primary": true, "reasoning": "..."}},
+  "secondary_topics": [{{"topic_id": "...", "confidence": 0.0-1.0, "is_primary": false, "reasoning": "..."}}],
+  "edge_case": null | "overlapping" | "ambiguous" | "emerging" | "multi-domain",
+  "classification_notes": "Brief note on classification decision"
+}}
+
+JSON:"""
+
+
+def classify_topic_enhanced(
+    title: str,
+    summary: str = "",
+    model: Optional[str] = None,
+) -> Optional[TopicClassificationResult]:
+    """
+    Enhanced topic classification with multi-topic support and reasoning.
+
+    Added in v0.8.1 (Issue #104) for improved classification accuracy.
+
+    Features:
+    - Single-pass classification (more efficient)
+    - Multi-topic support (primary + secondary)
+    - Confidence calibration guidance
+    - Edge case detection
+    - Classification reasoning
+
+    Args:
+        title: Article title
+        summary: Article summary/content
+        model: LLM model to use
+
+    Returns:
+        TopicClassificationResult with enhanced metadata, or None if failed
+    """
+    from .llm_output import EnhancedTopicOutput, parse_and_validate
+
+    if not title:
+        return None
+
+    try:
+        llm_service = get_llm_service()
+        if not llm_service.is_available():
+            logger.debug("LLM not available for enhanced topic classification")
+            return None
+
+        topics = get_topic_definitions()
+        prompt = _create_enhanced_classification_prompt(title, summary or "", topics)
+
+        # Call LLM with slightly higher token limit for detailed response
+        response = llm_service.client.generate(
+            model=model or llm_service.model,
+            prompt=prompt,
+            options={"temperature": 0.1, "num_predict": 350},
+        )
+
+        raw_response = response.get("response", "").strip()
+        if not raw_response:
+            logger.warning("Empty response from enhanced topic classification")
+            return None
+
+        # Parse with robust parser
+        parsed_output, parse_metrics = parse_and_validate(
+            raw_response,
+            EnhancedTopicOutput,
+            required_fields=["primary_topic"],
+            allow_partial=True,
+            circuit_breaker_name="topic_classification_enhanced",
+        )
+
+        if parsed_output is None:
+            logger.warning(
+                f"Failed to parse enhanced topic response: {parse_metrics.error_category}"
+            )
+            return None
+
+        # Extract primary topic
+        primary = parsed_output.primary_topic
+        primary_topic_id = primary.topic_id
+
+        # Validate primary topic exists (or use general)
+        if primary_topic_id not in topics and primary_topic_id != "general":
+            logger.warning(f"Unknown topic '{primary_topic_id}', using general")
+            primary_topic_id = "general"
+
+        # Build secondary topics
+        secondary_topics: List[SecondaryTopic] = []
+        for st in parsed_output.secondary_topics:
+            if st.topic_id in topics and st.confidence >= 0.5:
+                secondary_topics.append(
+                    SecondaryTopic(
+                        topic=st.topic_id,
+                        confidence=st.confidence,
+                        display_name=get_topic_display_name(st.topic_id),
+                        reasoning=st.reasoning,
+                    )
+                )
+
+        result = TopicClassificationResult(
+            topic=primary_topic_id,
+            confidence=primary.confidence,
+            method="llm-enhanced",
+            display_name=get_topic_display_name(primary_topic_id),
+            secondary_topics=secondary_topics,
+            reasoning=primary.reasoning,
+            edge_case=parsed_output.edge_case,
+        )
+
+        logger.info(
+            f"Enhanced classification: {primary_topic_id} ({primary.confidence:.2f})"
+            + (f" + {len(secondary_topics)} secondary" if secondary_topics else "")
+            + (f" [edge: {parsed_output.edge_case}]" if parsed_output.edge_case else "")
+        )
+
+        return result
+
+    except Exception as e:
+        logger.warning(f"Enhanced topic classification failed: {e}")
+        return None
+
+
+# =============================================================================
 # Keyword-Based Classification (Fallback)
 # =============================================================================
 
@@ -481,15 +746,23 @@ def classify_topic_with_llm(
 def classify_topic_with_keywords(
     title: str,
     summary: str = "",
+    include_secondary: bool = True,
 ) -> TopicClassificationResult:
     """
     Classify article topic using keyword matching.
 
     This is the fallback method when LLM is unavailable.
 
+    Enhanced in v0.8.1 (Issue #104) with:
+    - Phrase matching (multi-word keywords matched as phrases)
+    - Title weighting (keywords in title count more)
+    - Secondary topic detection
+    - Core keyword boosting (first 5 keywords per topic are "core")
+
     Args:
         title: Article title
         summary: Article summary/content
+        include_secondary: Whether to detect secondary topics (v0.8.1)
 
     Returns:
         TopicClassificationResult (always returns a result, defaults to "general")
@@ -503,6 +776,7 @@ def classify_topic_with_keywords(
         )
 
     text = f"{title} {summary}".lower()
+    title_lower = title.lower()
 
     # Score each topic based on keyword matches
     topic_scores: Dict[str, Tuple[float, List[str]]] = {}
@@ -513,17 +787,43 @@ def classify_topic_with_keywords(
             continue
 
         matched = []
-        for keyword in keywords:
-            if keyword.lower() in text:
-                matched.append(keyword)
+        core_matches = 0  # First 5 keywords are "core" terms
+
+        for idx, keyword in enumerate(keywords):
+            kw_lower = keyword.lower()
+
+            # Phrase matching: check if multi-word keyword appears as phrase
+            if " " in kw_lower:
+                # Multi-word keyword - must appear as complete phrase
+                if kw_lower in text:
+                    matched.append(keyword)
+                    if idx < 5:  # Core keyword
+                        core_matches += 1
+            else:
+                # Single word - use word boundary matching for better accuracy
+                # Simple check: word must be surrounded by non-alphanumeric or at boundaries
+                import re
+
+                pattern = rf"\b{re.escape(kw_lower)}\b"
+                if re.search(pattern, text):
+                    matched.append(keyword)
+                    if idx < 5:
+                        core_matches += 1
 
         if matched:
-            # Score based on matches, with title matches weighted higher
-            title_lower = title.lower()
-            title_matches = sum(1 for kw in matched if kw.lower() in title_lower)
+            # Enhanced scoring (v0.8.1)
+            # Base score from match ratio
             base_score = len(matched) / max(len(keywords), 1)
-            title_boost = title_matches * 0.15
-            score = min(base_score + title_boost, 1.0)
+
+            # Title boost: keywords in title are more significant
+            title_matches = sum(1 for kw in matched if kw.lower() in title_lower)
+            title_boost = title_matches * 0.12
+
+            # Core keyword boost: matching core keywords is more significant
+            core_boost = core_matches * 0.08
+
+            # Calculate final score (capped at 0.95 for keywords)
+            score = min(base_score + title_boost + core_boost, 0.95)
             topic_scores[topic_id] = (score, matched)
 
     if not topic_scores:
@@ -534,9 +834,11 @@ def classify_topic_with_keywords(
             display_name="General",
         )
 
+    # Sort topics by score
+    sorted_topics = sorted(topic_scores.items(), key=lambda x: x[1][0], reverse=True)
+
     # Get best topic
-    best_topic = max(topic_scores.keys(), key=lambda k: topic_scores[k][0])
-    confidence, matched_keywords = topic_scores[best_topic]
+    best_topic, (confidence, matched_keywords) = sorted_topics[0]
 
     # Require minimum confidence threshold
     if confidence < 0.1:
@@ -547,12 +849,33 @@ def classify_topic_with_keywords(
             display_name="General",
         )
 
+    # Build secondary topics (v0.8.1)
+    secondary_topics: List[SecondaryTopic] = []
+    if include_secondary and len(sorted_topics) > 1:
+        # Get topic relationships for validation
+        config = get_topics_config()
+        relationships = config.get("topic_relationships", {}).get("overlaps", {})
+        related_to_primary = relationships.get(best_topic, [])
+
+        for topic_id, (score, _) in sorted_topics[1:3]:  # Max 2 secondary
+            # Only include if score is decent and topic is related
+            if score >= 0.3 and (topic_id in related_to_primary or score >= 0.5):
+                secondary_topics.append(
+                    SecondaryTopic(
+                        topic=topic_id,
+                        confidence=score,
+                        display_name=get_topic_display_name(topic_id),
+                        reasoning=f"Matched {len(topic_scores.get(topic_id, (0, []))[1])} keywords",
+                    )
+                )
+
     return TopicClassificationResult(
         topic=best_topic,
         confidence=confidence,
         method="keywords",
         display_name=get_topic_display_name(best_topic),
         matched_keywords=matched_keywords,
+        secondary_topics=secondary_topics,
     )
 
 
@@ -565,25 +888,44 @@ def classify_topic(
     title: str,
     summary: str = "",
     use_llm: bool = True,
+    use_enhanced: bool = True,
     model: Optional[str] = None,
 ) -> TopicClassificationResult:
     """
     Classify article topic using best available method.
 
-    Strategy:
-    1. Try LLM classification (more accurate)
-    2. Fall back to keyword matching if LLM unavailable
+    Strategy (v0.8.1 - Issue #104):
+    1. Try enhanced LLM classification (multi-topic, reasoning)
+    2. Fall back to legacy LLM classification
+    3. Fall back to keyword matching if LLM unavailable
 
     Args:
         title: Article title
         summary: Article summary/content
         use_llm: Whether to attempt LLM classification
+        use_enhanced: Use enhanced classification (v0.8.1, default True)
         model: LLM model to use (defaults to configured model)
 
     Returns:
-        TopicClassificationResult with topic ID and confidence
+        TopicClassificationResult with topic ID, confidence, and optional
+        secondary topics (v0.8.1)
     """
-    # Try LLM first
+    # Try enhanced LLM first (v0.8.1)
+    if use_llm and use_enhanced:
+        enhanced_result = classify_topic_enhanced(title, summary, model)
+        if enhanced_result and enhanced_result.confidence >= 0.5:
+            logger.debug(
+                f"Enhanced LLM classified as '{enhanced_result.topic}' "
+                f"(confidence: {enhanced_result.confidence:.2f})"
+                + (
+                    f", secondary: {[st.topic for st in enhanced_result.secondary_topics]}"
+                    if enhanced_result.secondary_topics
+                    else ""
+                )
+            )
+            return enhanced_result
+
+    # Fall back to legacy LLM
     if use_llm:
         llm_result = classify_topic_with_llm(title, summary, model)
         if llm_result and llm_result.confidence >= 0.5:
