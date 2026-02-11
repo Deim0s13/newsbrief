@@ -463,6 +463,7 @@ flowchart TB
 
     subgraph Support["Support Services"]
         LLMSvc["LLM Service (llm.py)"]
+        LLMOutput["LLM Output Validation (llm_output.py)"]
         ExtractSvc["Content Extraction (extraction.py)"]
         CacheSvc["Synthesis Cache"]
         SchedSvc["Scheduler (scheduler.py)"]
@@ -477,10 +478,13 @@ flowchart TB
     Routes --> FeedSvc
     Routes --> EntitySvc
     StorySvc --> LLMSvc
+    StorySvc --> LLMOutput
     StorySvc --> Cluster
     StorySvc --> RankSvc
+    EntitySvc --> LLMOutput
     FeedSvc --> ExtractSvc
     LLMSvc --> CacheSvc
+    LLMSvc --> LLMOutput
     SchedSvc --> FeedSvc
     SchedSvc --> StorySvc
 
@@ -493,11 +497,12 @@ flowchart TB
 | Component | Responsibility | Key Files |
 |-----------|----------------|-----------|
 | **Feed Manager** | RSS fetching, parsing, health monitoring | `feeds.py` |
-| **Story Generator** | Clustering, synthesis, archiving | `stories.py` |
+| **Story Generator** | Clustering, synthesis, title generation | `stories.py` |
 | **Entity Extractor** | NER for companies, people, products | `entities.py` |
 | **Topic Classifier** | Categorization (Security, AI/ML, etc.) | `topics.py` |
 | **Ranking Engine** | Interest matching, source weighting | `ranking.py` |
 | **LLM Service** | Ollama integration, prompt management | `llm.py` |
+| **LLM Output Validation** | JSON parsing, repair, schema validation, circuit breaker | `llm_output.py` |
 | **Content Extraction** | Tiered article extraction with quality scoring | `extraction.py` |
 | **Scheduler** | Background job orchestration | `scheduler.py` |
 | **Synthesis Cache** | LLM response caching | `synthesis_cache.py` |

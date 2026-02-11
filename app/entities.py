@@ -3,56 +3,170 @@
 This module provides entity extraction functionality to identify key entities
 (companies, products, people, technologies, locations) from article content.
 These entities are used for improved story clustering and similarity scoring.
+
+Enhanced in v0.8.1 (Issue #103) with:
+- Confidence scores per entity
+- Entity roles (primary_subject, mentioned, quoted)
+- Disambiguation hints
+- Few-shot examples for better accuracy
 """
 
 from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Union
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .llm import get_llm_service
+from .llm_output import EnhancedEntityOutput, EntityOutput, parse_and_validate
 
 logger = logging.getLogger(__name__)
 
 
+# Entity role constants
+ROLE_PRIMARY = "primary_subject"  # Central to the story
+ROLE_MENTIONED = "mentioned"  # Referenced but not focus
+ROLE_QUOTED = "quoted"  # Source of quotes/statements
+
+
+@dataclass
+class EntityWithMetadata:
+    """
+    Entity with rich metadata for improved accuracy and context.
+
+    Added in v0.8.1 (Issue #103).
+    """
+
+    name: str
+    confidence: float = 0.8  # 0.0-1.0, how certain the extraction is
+    role: str = ROLE_MENTIONED  # primary_subject, mentioned, quoted
+    disambiguation: Optional[str] = None  # e.g., "Apple Inc., tech company"
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "name": self.name,
+            "confidence": self.confidence,
+            "role": self.role,
+            "disambiguation": self.disambiguation,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "EntityWithMetadata":
+        """Create from dictionary."""
+        return cls(
+            name=data.get("name", ""),
+            confidence=data.get("confidence", 0.8),
+            role=data.get("role", ROLE_MENTIONED),
+            disambiguation=data.get("disambiguation"),
+        )
+
+    @classmethod
+    def from_string(cls, name: str) -> "EntityWithMetadata":
+        """Create from simple string (backward compatibility)."""
+        return cls(name=name, confidence=0.8, role=ROLE_MENTIONED)
+
+
 @dataclass
 class ExtractedEntities:
-    """Structured entity data extracted from article content."""
+    """
+    Structured entity data extracted from article content.
 
-    companies: List[str]  # e.g., ["Google", "OpenAI", "Microsoft"]
-    products: List[str]  # e.g., ["Gemini 2.0", "GPT-4", "ChatGPT"]
-    people: List[str]  # e.g., ["Sundar Pichai", "Sam Altman"]
-    technologies: List[str]  # e.g., ["AI", "Machine Learning", "Neural Networks"]
-    locations: List[str]  # e.g., ["San Francisco", "Silicon Valley"]
+    Supports both legacy (list of strings) and enhanced (list of EntityWithMetadata)
+    formats for backward compatibility.
+    """
+
+    companies: List[Union[str, EntityWithMetadata]] = field(default_factory=list)
+    products: List[Union[str, EntityWithMetadata]] = field(default_factory=list)
+    people: List[Union[str, EntityWithMetadata]] = field(default_factory=list)
+    technologies: List[Union[str, EntityWithMetadata]] = field(default_factory=list)
+    locations: List[Union[str, EntityWithMetadata]] = field(default_factory=list)
+
+    def _normalize_entity(
+        self, entity: Union[str, EntityWithMetadata, Dict]
+    ) -> EntityWithMetadata:
+        """Normalize entity to EntityWithMetadata."""
+        if isinstance(entity, EntityWithMetadata):
+            return entity
+        if isinstance(entity, dict):
+            return EntityWithMetadata.from_dict(entity)
+        return EntityWithMetadata.from_string(str(entity))
+
+    def _get_name(self, entity: Union[str, EntityWithMetadata, Dict]) -> str:
+        """Extract name from entity (any format)."""
+        if isinstance(entity, EntityWithMetadata):
+            return entity.name
+        if isinstance(entity, dict):
+            return entity.get("name", "")
+        return str(entity)
 
     def to_json_string(self) -> str:
-        """Serialize to JSON string for database storage."""
+        """Serialize to JSON string for database storage (enhanced format)."""
         return json.dumps(
             {
-                "companies": self.companies,
-                "products": self.products,
-                "people": self.people,
-                "technologies": self.technologies,
-                "locations": self.locations,
+                "version": 2,  # Mark as enhanced format
+                "companies": [
+                    self._normalize_entity(e).to_dict() for e in self.companies
+                ],
+                "products": [
+                    self._normalize_entity(e).to_dict() for e in self.products
+                ],
+                "people": [self._normalize_entity(e).to_dict() for e in self.people],
+                "technologies": [
+                    self._normalize_entity(e).to_dict() for e in self.technologies
+                ],
+                "locations": [
+                    self._normalize_entity(e).to_dict() for e in self.locations
+                ],
             }
         )
 
     @classmethod
-    def from_json_string(cls, json_str: str) -> ExtractedEntities:
-        """Deserialize from JSON string."""
+    def from_json_string(cls, json_str: str) -> "ExtractedEntities":
+        """Deserialize from JSON string (handles both legacy and enhanced)."""
         data = json.loads(json_str)
+
+        # Check for enhanced format (v2)
+        if data.get("version") == 2:
+            return cls(
+                companies=[
+                    EntityWithMetadata.from_dict(e) for e in data.get("companies", [])
+                ],
+                products=[
+                    EntityWithMetadata.from_dict(e) for e in data.get("products", [])
+                ],
+                people=[
+                    EntityWithMetadata.from_dict(e) for e in data.get("people", [])
+                ],
+                technologies=[
+                    EntityWithMetadata.from_dict(e)
+                    for e in data.get("technologies", [])
+                ],
+                locations=[
+                    EntityWithMetadata.from_dict(e) for e in data.get("locations", [])
+                ],
+            )
+
+        # Legacy format (v1) - convert strings to EntityWithMetadata
         return cls(
-            companies=data.get("companies", []),
-            products=data.get("products", []),
-            people=data.get("people", []),
-            technologies=data.get("technologies", []),
-            locations=data.get("locations", []),
+            companies=[
+                EntityWithMetadata.from_string(e) for e in data.get("companies", [])
+            ],
+            products=[
+                EntityWithMetadata.from_string(e) for e in data.get("products", [])
+            ],
+            people=[EntityWithMetadata.from_string(e) for e in data.get("people", [])],
+            technologies=[
+                EntityWithMetadata.from_string(e) for e in data.get("technologies", [])
+            ],
+            locations=[
+                EntityWithMetadata.from_string(e) for e in data.get("locations", [])
+            ],
         )
 
     def is_empty(self) -> bool:
@@ -66,22 +180,67 @@ class ExtractedEntities:
         )
 
     def all_entities(self) -> Set[str]:
-        """Get all entities as a flat set."""
-        return set(
+        """Get all entity names as a flat set."""
+        all_items = (
             self.companies
             + self.products
             + self.people
             + self.technologies
             + self.locations
         )
+        return {self._get_name(e) for e in all_items}
+
+    def all_entities_with_metadata(self) -> List[EntityWithMetadata]:
+        """Get all entities with their metadata."""
+        all_items = (
+            self.companies
+            + self.products
+            + self.people
+            + self.technologies
+            + self.locations
+        )
+        return [self._normalize_entity(e) for e in all_items]
+
+    def get_primary_entities(self) -> List[EntityWithMetadata]:
+        """Get only entities with primary_subject role."""
+        return [e for e in self.all_entities_with_metadata() if e.role == ROLE_PRIMARY]
+
+    def get_high_confidence_entities(
+        self, threshold: float = 0.7
+    ) -> List[EntityWithMetadata]:
+        """Get entities above confidence threshold."""
+        return [
+            e for e in self.all_entities_with_metadata() if e.confidence >= threshold
+        ]
+
+    def average_confidence(self) -> float:
+        """Calculate average confidence across all entities."""
+        all_entities = self.all_entities_with_metadata()
+        if not all_entities:
+            return 0.0
+        return sum(e.confidence for e in all_entities) / len(all_entities)
 
 
-def _create_entity_extraction_prompt(title: str, summary: str) -> str:
-    """Create LLM prompt for entity extraction."""
+def _create_entity_extraction_prompt(
+    title: str, summary: str, enhanced: bool = True
+) -> str:
+    """
+    Create LLM prompt for entity extraction.
+
+    Args:
+        title: Article title
+        summary: Article summary/content
+        enhanced: If True, use enhanced format with metadata (v0.8.1)
+
+    Returns:
+        Prompt string for LLM
+    """
     # Combine title and summary, clean up
     content = f"{title}\n\n{summary}".strip()
 
-    prompt = f"""You are an entity extraction AI. Extract key entities from this article.
+    if not enhanced:
+        # Legacy simple format
+        return f"""You are an entity extraction AI. Extract key entities from this article.
 
 ARTICLE:
 {content}
@@ -111,6 +270,114 @@ IMPORTANT:
 - Limit to 5 entities per category maximum
 
 JSON Response:"""
+
+    # Enhanced format with metadata (v0.8.1)
+    prompt = f"""You are an expert entity extraction system. Extract entities from this article with detailed metadata.
+
+ARTICLE:
+{content}
+
+=== ENTITY CATEGORIES ===
+
+1. COMPANIES: Organizations, corporations, agencies, institutions
+   - Include: Tech companies, startups, government agencies, NGOs
+   - Exclude: Generic terms like "the company" or "the startup"
+
+2. PRODUCTS: Named products, services, platforms, applications
+   - Include: Software products, hardware devices, services, APIs
+   - Exclude: Generic categories like "smartphone" or "database"
+
+3. PEOPLE: Named individuals mentioned or quoted
+   - Include: Full names when available (e.g., "Sundar Pichai" not just "Pichai")
+   - Include: Titles/roles when relevant for disambiguation
+
+4. TECHNOLOGIES: Specific technologies, frameworks, languages, standards
+   - Include: Programming languages, frameworks, protocols, AI models
+   - Exclude: Vague terms like "machine learning" unless specifically discussed
+
+5. LOCATIONS: Relevant geographic locations
+   - Include: Cities, countries, regions central to the story
+   - Exclude: Generic locations not meaningful to the article
+
+=== ENTITY METADATA ===
+
+For each entity, provide:
+- name: The canonical name (proper capitalization)
+- confidence: 0.0-1.0 (how certain is this extraction?)
+  - 0.9+: Explicitly named and central to article
+  - 0.7-0.9: Clearly mentioned, moderate relevance
+  - 0.5-0.7: Inferred or tangentially mentioned
+- role: The entity's role in the article
+  - "primary_subject": Central to the story
+  - "mentioned": Referenced but not focus
+  - "quoted": Source of a quote or statement
+- disambiguation: Brief context to avoid confusion (optional)
+  - e.g., "Apple Inc., technology company" vs "apple, fruit"
+  - e.g., "Sam Altman, OpenAI CEO"
+
+=== FEW-SHOT EXAMPLES ===
+
+Example 1 - Tech announcement:
+Article: "OpenAI announced GPT-5 today. CEO Sam Altman said the model represents a breakthrough in reasoning capabilities. Microsoft, a major investor, will integrate it into Azure."
+
+Output:
+{{
+  "companies": [
+    {{"name": "OpenAI", "confidence": 0.95, "role": "primary_subject", "disambiguation": "AI research company"}},
+    {{"name": "Microsoft", "confidence": 0.85, "role": "mentioned", "disambiguation": "OpenAI investor"}}
+  ],
+  "products": [
+    {{"name": "GPT-5", "confidence": 0.95, "role": "primary_subject", "disambiguation": "OpenAI language model"}},
+    {{"name": "Azure", "confidence": 0.7, "role": "mentioned", "disambiguation": "Microsoft cloud platform"}}
+  ],
+  "people": [
+    {{"name": "Sam Altman", "confidence": 0.9, "role": "quoted", "disambiguation": "OpenAI CEO"}}
+  ],
+  "technologies": [
+    {{"name": "large language models", "confidence": 0.8, "role": "mentioned", "disambiguation": null}}
+  ],
+  "locations": []
+}}
+
+Example 2 - Acquisition story:
+Article: "Cisco announced plans to acquire cybersecurity firm Splunk for $28B. The deal, expected to close in Q1, will strengthen Cisco's security portfolio. Analyst Jane Doe from Gartner called it 'transformative for the industry.'"
+
+Output:
+{{
+  "companies": [
+    {{"name": "Cisco", "confidence": 0.95, "role": "primary_subject", "disambiguation": "Acquiring company, networking giant"}},
+    {{"name": "Splunk", "confidence": 0.95, "role": "primary_subject", "disambiguation": "Target company, cybersecurity/data platform"}},
+    {{"name": "Gartner", "confidence": 0.7, "role": "mentioned", "disambiguation": "Research firm"}}
+  ],
+  "products": [],
+  "people": [
+    {{"name": "Jane Doe", "confidence": 0.85, "role": "quoted", "disambiguation": "Gartner analyst"}}
+  ],
+  "technologies": [
+    {{"name": "cybersecurity", "confidence": 0.8, "role": "mentioned", "disambiguation": null}}
+  ],
+  "locations": []
+}}
+
+=== YOUR TASK ===
+
+Now extract entities from the article above. Output ONLY valid JSON matching this structure:
+{{
+  "companies": [{{"name": "...", "confidence": 0.0-1.0, "role": "...", "disambiguation": "..."}}],
+  "products": [...],
+  "people": [...],
+  "technologies": [...],
+  "locations": [...]
+}}
+
+Rules:
+- Maximum 5 entities per category
+- Include empty arrays [] for categories with no entities
+- Use proper capitalization
+- Be precise: prefer fewer high-confidence entities over many low-confidence ones
+- Output ONLY the JSON, no additional text
+
+JSON:"""
     return prompt
 
 
@@ -118,6 +385,7 @@ def extract_entities(
     title: str,
     summary: str,
     model: str = "llama3.1:8b",
+    enhanced: bool = True,
 ) -> ExtractedEntities:
     """
     Extract named entities from article using LLM.
@@ -126,9 +394,10 @@ def extract_entities(
         title: Article title
         summary: Article summary/content
         model: LLM model to use for extraction
+        enhanced: Use enhanced format with metadata (v0.8.1, Issue #103)
 
     Returns:
-        ExtractedEntities object with categorized entities
+        ExtractedEntities object with categorized entities and metadata
     """
     # Validate inputs
     if not title and not summary:
@@ -156,8 +425,10 @@ def extract_entities(
         )
 
     try:
-        # Create prompt
-        prompt = _create_entity_extraction_prompt(title, summary or "")
+        # Create prompt (enhanced by default)
+        prompt = _create_entity_extraction_prompt(
+            title, summary or "", enhanced=enhanced
+        )
 
         # Call LLM
         response = llm_service.client.generate(
@@ -183,40 +454,121 @@ def extract_entities(
                 locations=[],
             )
 
-        # Clean markdown formatting if present
-        if raw_response.startswith("```json"):
-            raw_response = (
-                raw_response.replace("```json", "").replace("```", "").strip()
+        # Try enhanced parsing first if using enhanced mode
+        entities: Optional[ExtractedEntities] = None
+
+        if enhanced:
+            # Try parsing as enhanced format
+            parsed_enhanced, enhanced_metrics = parse_and_validate(
+                raw_response,
+                EnhancedEntityOutput,
+                required_fields=[],
+                allow_partial=True,
+                circuit_breaker_name="entity_extraction_enhanced",
             )
-        elif raw_response.startswith("```"):
-            raw_response = raw_response.replace("```", "").strip()
 
-        # Parse JSON
-        data = json.loads(raw_response)
+            if parsed_enhanced is not None:
+                # Convert EnhancedEntityOutput to ExtractedEntities with metadata
+                entities = ExtractedEntities(
+                    companies=[
+                        EntityWithMetadata(
+                            name=e.name,
+                            confidence=e.confidence,
+                            role=e.role,
+                            disambiguation=e.disambiguation,
+                        )
+                        for e in parsed_enhanced.companies
+                    ],
+                    products=[
+                        EntityWithMetadata(
+                            name=e.name,
+                            confidence=e.confidence,
+                            role=e.role,
+                            disambiguation=e.disambiguation,
+                        )
+                        for e in parsed_enhanced.products
+                    ],
+                    people=[
+                        EntityWithMetadata(
+                            name=e.name,
+                            confidence=e.confidence,
+                            role=e.role,
+                            disambiguation=e.disambiguation,
+                        )
+                        for e in parsed_enhanced.people
+                    ],
+                    technologies=[
+                        EntityWithMetadata(
+                            name=e.name,
+                            confidence=e.confidence,
+                            role=e.role,
+                            disambiguation=e.disambiguation,
+                        )
+                        for e in parsed_enhanced.technologies
+                    ],
+                    locations=[
+                        EntityWithMetadata(
+                            name=e.name,
+                            confidence=e.confidence,
+                            role=e.role,
+                            disambiguation=e.disambiguation,
+                        )
+                        for e in parsed_enhanced.locations
+                    ],
+                )
+                logger.info(
+                    f"Enhanced entity extraction: {len(entities.all_entities())} entities "
+                    f"(avg confidence: {entities.average_confidence():.2f})"
+                )
 
-        # Extract and validate entity lists
-        entities = ExtractedEntities(
-            companies=data.get("companies", [])[:5],  # Limit to 5 per category
-            products=data.get("products", [])[:5],
-            people=data.get("people", [])[:5],
-            technologies=data.get("technologies", [])[:5],
-            locations=data.get("locations", [])[:5],
-        )
+        # Fall back to legacy parsing if enhanced failed or not enabled
+        if entities is None:
+            parsed_output, parse_metrics = parse_and_validate(
+                raw_response,
+                EntityOutput,
+                required_fields=[],
+                allow_partial=True,
+                circuit_breaker_name="entity_extraction",
+            )
 
-        logger.info(
-            f"Extracted {len(entities.all_entities())} entities from article: {title[:50]}..."
-        )
+            if parsed_output is None:
+                logger.warning(
+                    f"Failed to parse entity extraction response: {parse_metrics.error_category}"
+                )
+                return ExtractedEntities(
+                    companies=[],
+                    products=[],
+                    people=[],
+                    technologies=[],
+                    locations=[],
+                )
+
+            # Convert legacy format to EntityWithMetadata
+            entities = ExtractedEntities(
+                companies=[
+                    EntityWithMetadata.from_string(c) for c in parsed_output.companies
+                ],
+                products=[
+                    EntityWithMetadata.from_string(p) for p in parsed_output.products
+                ],
+                people=[
+                    EntityWithMetadata.from_string(p) for p in parsed_output.people
+                ],
+                technologies=[
+                    EntityWithMetadata.from_string(t)
+                    for t in parsed_output.technologies
+                ],
+                locations=[
+                    EntityWithMetadata.from_string(l) for l in parsed_output.locations
+                ],
+            )
+            logger.info(
+                f"Extracted {len(entities.all_entities())} entities from article: "
+                f"{title[:50]}... (legacy format)"
+            )
+
         return entities
 
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse JSON response for entity extraction: {e}")
-        return ExtractedEntities(
-            companies=[],
-            products=[],
-            people=[],
-            technologies=[],
-            locations=[],
-        )
     except Exception as e:
         logger.error(f"Entity extraction failed: {e}")
         return ExtractedEntities(
@@ -326,20 +678,24 @@ def store_entity_cache(
 def get_entity_overlap(
     entities1: ExtractedEntities,
     entities2: ExtractedEntities,
+    use_confidence_weighting: bool = True,
 ) -> float:
     """
     Calculate overlap score between two entity sets.
 
-    Uses Jaccard similarity: |intersection| / |union|
+    Enhanced in v0.8.1 (Issue #103) with confidence weighting:
+    - High-confidence matches count more than low-confidence ones
+    - Primary subjects get extra weight
 
     Args:
         entities1: First entity set
         entities2: Second entity set
+        use_confidence_weighting: If True, weight matches by confidence (v0.8.1)
 
     Returns:
         Overlap score (0.0 to 1.0)
     """
-    # Get all entities as flat sets
+    # Get all entities as flat sets (names only for intersection)
     set1 = entities1.all_entities()
     set2 = entities2.all_entities()
 
@@ -347,11 +703,72 @@ def get_entity_overlap(
     if len(set1) == 0 and len(set2) == 0:
         return 0.0
 
-    # Calculate Jaccard similarity
-    intersection = len(set1 & set2)
-    union = len(set1 | set2)
+    # Simple Jaccard if weighting disabled
+    if not use_confidence_weighting:
+        intersection = len(set1 & set2)
+        union = len(set1 | set2)
+        return intersection / union if union > 0 else 0.0
 
-    return intersection / union if union > 0 else 0.0
+    # Confidence-weighted calculation
+    # Build lookup maps: name -> EntityWithMetadata
+    def _build_entity_map(entities: ExtractedEntities) -> Dict[str, EntityWithMetadata]:
+        entity_map: Dict[str, EntityWithMetadata] = {}
+        for e in entities.all_entities_with_metadata():
+            name_lower = e.name.lower()
+            # Keep the higher confidence version if duplicate
+            if (
+                name_lower not in entity_map
+                or e.confidence > entity_map[name_lower].confidence
+            ):
+                entity_map[name_lower] = e
+        return entity_map
+
+    map1 = _build_entity_map(entities1)
+    map2 = _build_entity_map(entities2)
+
+    # Find matching entities
+    common_names = set(map1.keys()) & set(map2.keys())
+
+    if not common_names:
+        return 0.0
+
+    # Calculate weighted score
+    # For each match: score = avg_confidence * role_multiplier
+    total_weighted_score = 0.0
+    max_possible_score = 0.0
+
+    for name in common_names:
+        e1 = map1[name]
+        e2 = map2[name]
+
+        # Average confidence of the match
+        avg_conf = (e1.confidence + e2.confidence) / 2
+
+        # Role multiplier: primary subjects count more
+        role_mult = 1.0
+        if e1.role == ROLE_PRIMARY or e2.role == ROLE_PRIMARY:
+            role_mult = 1.5
+        elif e1.role == ROLE_QUOTED or e2.role == ROLE_QUOTED:
+            role_mult = 1.2
+
+        total_weighted_score += avg_conf * role_mult
+        max_possible_score += 1.0 * role_mult  # Max if confidence were 1.0
+
+    # Calculate total possible (union with weighting)
+    all_names = set(map1.keys()) | set(map2.keys())
+    total_possible = len(all_names)
+
+    if total_possible == 0:
+        return 0.0
+
+    # Blend: weighted match quality + coverage
+    match_quality = (
+        total_weighted_score / max_possible_score if max_possible_score > 0 else 0.0
+    )
+    coverage = len(common_names) / total_possible
+
+    # Combined score: 70% match quality, 30% coverage
+    return 0.7 * match_quality + 0.3 * coverage
 
 
 def extract_and_cache_entities(

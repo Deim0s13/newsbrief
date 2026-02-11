@@ -96,6 +96,21 @@ make deploy-init  # First time only
 
 See [ADR-0007](../adr/0007-postgresql-database-migration.md) for database architecture details.
 
+### **API Convenience Commands** ⭐ *New in v0.8.1*
+
+Makefile targets for common API operations (requires dev server running):
+
+```bash
+# Refresh all feeds (fetch new articles)
+make refresh
+
+# Generate stories from recent articles
+make stories-generate
+
+# Check API health
+make api-health
+```
+
 ### **Environment Variables**
 
 NewsBrief supports several environment variables for configuration:
@@ -286,6 +301,37 @@ export NEWSBRIEF_CHUNK_OVERLAP=300          # More overlap for complex articles
 2. **Boundary Respect**: Never splits mid-sentence or mid-paragraph when possible
 3. **Context Preservation**: First chunk includes article title and context
 4. **Overlap Management**: Configurable overlap prevents information loss at chunk boundaries
+
+#### **LLM Output Validation** ⭐ *New in v0.8.1*
+
+NewsBrief includes robust LLM output parsing with automatic error recovery (`app/llm_output.py`):
+
+**Features:**
+- **Pydantic Schema Validation**: Validates all LLM outputs against strict schemas
+- **JSON Repair**: Automatically fixes common LLM mistakes (trailing commas, markdown wrappers, single quotes)
+- **Multi-Strategy Extraction**: Tries multiple methods to extract valid JSON (direct, markdown blocks, brace matching, regex)
+- **Partial Extraction**: Salvages valid fields even when some fail validation
+- **Circuit Breaker**: Prevents cascading failures when LLM service is degraded
+- **Retry Logic**: Exponential backoff with prompt adjustment on failures
+
+**Supported Output Types:**
+| Model | Used For | Key Files |
+|-------|----------|-----------|
+| `SynthesisOutput` | Story synthesis (title, summary, key points) | `stories.py` |
+| `TopicOutput` | Topic classification | `topics.py` |
+| `EntityOutput` | Entity extraction (companies, people, products) | `entities.py` |
+
+**Error Recovery Order:**
+1. Direct JSON parse
+2. Markdown code block extraction (`\`\`\`json ... \`\`\``)
+3. Brace matching (find outermost `{ }`)
+4. Greedy regex extraction
+5. Line-by-line reconstruction
+
+**Circuit Breaker States:**
+- `CLOSED` → Normal operation
+- `OPEN` → Failing fast after threshold failures (60s cooldown)
+- `HALF_OPEN` → Testing recovery with single request
 
 #### **Container Configuration Examples**
 ```bash

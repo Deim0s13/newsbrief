@@ -1,0 +1,463 @@
+{% extends "base.html" %}
+
+{% block title %}Topic Management - NewsBrief{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 dark:bg-gray-900 py-6">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Topic Management</h1>
+            <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                Reclassify articles with incorrect or missing topic classifications
+            </p>
+        </div>
+
+        <!-- Statistics Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <!-- Unclassified Articles -->
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-12 h-12 bg-yellow-100 dark:bg-yellow-900 rounded-lg flex items-center justify-center">
+                            <svg class="w-6 h-6 text-yellow-600 dark:text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-4">
+                        <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Unclassified</div>
+                        <div id="general-count" class="text-2xl font-bold text-gray-900 dark:text-white">{{ stats.general_count }}</div>
+                        <div class="text-xs text-gray-400 dark:text-gray-500">Topic: 'general' or null</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Low Confidence Articles -->
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-12 h-12 bg-orange-100 dark:bg-orange-900 rounded-lg flex items-center justify-center">
+                            <svg class="w-6 h-6 text-orange-600 dark:text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-4">
+                        <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Low Confidence</div>
+                        <div id="low-confidence-count" class="text-2xl font-bold text-gray-900 dark:text-white">{{ stats.low_confidence_count }}</div>
+                        <div class="text-xs text-gray-400 dark:text-gray-500">Confidence &lt; 50%</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Total Needing Review -->
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-12 h-12 bg-red-100 dark:bg-red-900 rounded-lg flex items-center justify-center">
+                            <svg class="w-6 h-6 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-4">
+                        <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Needs Review</div>
+                        <div id="needs-reclassification" class="text-2xl font-bold text-gray-900 dark:text-white">{{ stats.needs_reclassification }}</div>
+                        <div class="text-xs text-gray-400 dark:text-gray-500">Total requiring action</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Reclassification Control Panel -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-8">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
+                <svg class="h-5 w-5 mr-2 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                Reclassification
+            </h2>
+
+            <!-- Configuration Form -->
+            <div id="config-form" class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Batch Size -->
+                    <div>
+                        <label for="batch-size" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Batch Size
+                        </label>
+                        <select id="batch-size" class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                            <option value="50">50 articles</option>
+                            <option value="100" selected>100 articles</option>
+                            <option value="200">200 articles</option>
+                            <option value="500">500 articles</option>
+                        </select>
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Number of articles to process</p>
+                    </div>
+
+                    <!-- Classification Method -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Classification Method
+                        </label>
+                        <div class="flex items-center space-x-4 mt-2">
+                            <label class="inline-flex items-center">
+                                <input type="radio" name="use-llm" value="true" checked class="form-radio text-blue-600 dark:bg-gray-700">
+                                <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">LLM (accurate, slower)</span>
+                            </label>
+                            <label class="inline-flex items-center">
+                                <input type="radio" name="use-llm" value="false" class="form-radio text-blue-600 dark:bg-gray-700">
+                                <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Keywords (fast)</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex items-center space-x-4 pt-4">
+                    <button id="start-btn" onclick="startReclassification()" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        Reclassify Now
+                    </button>
+                </div>
+            </div>
+
+            <!-- Progress Section (hidden by default) -->
+            <div id="progress-section" class="hidden space-y-4">
+                <!-- Progress Bar -->
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Progress</span>
+                        <span id="progress-text" class="text-sm text-gray-500 dark:text-gray-400">0 / 0</span>
+                    </div>
+                    <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+                        <div id="progress-bar" class="bg-blue-600 h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <!-- Stats Row -->
+                <div class="grid grid-cols-4 gap-4 text-center">
+                    <div>
+                        <div id="stat-processed" class="text-lg font-semibold text-gray-900 dark:text-white">0</div>
+                        <div class="text-xs text-gray-500 dark:text-gray-400">Processed</div>
+                    </div>
+                    <div>
+                        <div id="stat-changed" class="text-lg font-semibold text-green-600 dark:text-green-400">0</div>
+                        <div class="text-xs text-gray-500 dark:text-gray-400">Changed</div>
+                    </div>
+                    <div>
+                        <div id="stat-errors" class="text-lg font-semibold text-red-600 dark:text-red-400">0</div>
+                        <div class="text-xs text-gray-500 dark:text-gray-400">Errors</div>
+                    </div>
+                    <div>
+                        <div id="stat-elapsed" class="text-lg font-semibold text-gray-900 dark:text-white">0s</div>
+                        <div class="text-xs text-gray-500 dark:text-gray-400">Elapsed</div>
+                    </div>
+                </div>
+
+                <!-- Status Message -->
+                <div id="status-message" class="text-sm text-gray-600 dark:text-gray-400 text-center">
+                    Starting reclassification...
+                </div>
+
+                <!-- Cancel Button -->
+                <div class="flex justify-center">
+                    <button id="cancel-btn" onclick="cancelReclassification()" class="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                        <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                        Cancel
+                    </button>
+                </div>
+            </div>
+
+            <!-- Result Section (hidden by default) -->
+            <div id="result-section" class="hidden">
+                <div id="result-content" class="p-4 rounded-lg">
+                    <!-- Dynamically filled by JS -->
+                </div>
+                <div class="flex justify-center mt-4">
+                    <button onclick="resetForm()" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40">
+                        <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                        Run Another Batch
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Last Run Info -->
+        {% if stats.last_run %}
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-8">
+            <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Last Reclassification Run</h3>
+            <div class="flex items-center space-x-6 text-sm">
+                <div>
+                    <span class="text-gray-400 dark:text-gray-500">Completed:</span>
+                    <span class="ml-1 text-gray-900 dark:text-white">{{ stats.last_run.completed_at }}</span>
+                </div>
+                <div>
+                    <span class="text-gray-400 dark:text-gray-500">Processed:</span>
+                    <span class="ml-1 text-gray-900 dark:text-white">{{ stats.last_run.processed_articles }}</span>
+                </div>
+                <div>
+                    <span class="text-gray-400 dark:text-gray-500">Changed:</span>
+                    <span class="ml-1 text-green-600 dark:text-green-400">{{ stats.last_run.changed_articles }}</span>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Available Topics -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
+                <svg class="h-5 w-5 mr-2 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
+                </svg>
+                Available Topics
+            </h2>
+            <div class="flex flex-wrap gap-2">
+                {% for topic in topics %}
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium
+                    {% if topic.id == 'ai-ml' %}bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200
+                    {% elif topic.id == 'security' %}bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200
+                    {% elif topic.id == 'cloud-k8s' %}bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200
+                    {% elif topic.id == 'devtools' %}bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200
+                    {% elif topic.id == 'chips-hardware' %}bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200
+                    {% else %}bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200{% endif %}">
+                    {{ topic.name }}
+                </span>
+                {% endfor %}
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+let currentJobId = null;
+let pollInterval = null;
+
+// Check for active job on page load
+{% if stats.active_job_id %}
+currentJobId = {{ stats.active_job_id }};
+document.getElementById('config-form').classList.add('hidden');
+document.getElementById('progress-section').classList.remove('hidden');
+startPolling();
+{% endif %}
+
+async function startReclassification() {
+    const batchSize = document.getElementById('batch-size').value;
+    const useLlm = document.querySelector('input[name="use-llm"]:checked').value === 'true';
+
+    const startBtn = document.getElementById('start-btn');
+    startBtn.disabled = true;
+    startBtn.innerHTML = '<svg class="animate-spin h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Starting...';
+
+    try {
+        const response = await fetch(`/api/topics/reclassify?batch_size=${batchSize}&use_llm=${useLlm}`, {
+            method: 'POST'
+        });
+
+        if (response.status === 409) {
+            const data = await response.json();
+            alert(data.detail);
+            startBtn.disabled = false;
+            startBtn.innerHTML = '<svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>Reclassify Now';
+            return;
+        }
+
+        if (!response.ok) {
+            throw new Error('Failed to start reclassification');
+        }
+
+        const data = await response.json();
+        currentJobId = data.job_id;
+
+        // Show progress section
+        document.getElementById('config-form').classList.add('hidden');
+        document.getElementById('progress-section').classList.remove('hidden');
+        document.getElementById('status-message').textContent = 'Starting reclassification...';
+
+        startPolling();
+
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Failed to start reclassification: ' + error.message);
+        startBtn.disabled = false;
+        startBtn.innerHTML = '<svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>Reclassify Now';
+    }
+}
+
+function startPolling() {
+    // Poll every 2 seconds
+    pollInterval = setInterval(pollStatus, 2000);
+    pollStatus(); // Immediate first poll
+}
+
+async function pollStatus() {
+    if (!currentJobId) return;
+
+    try {
+        const response = await fetch(`/api/topics/reclassify/status/${currentJobId}`);
+        if (!response.ok) {
+            throw new Error('Failed to get status');
+        }
+
+        const data = await response.json();
+        updateProgress(data);
+
+        if (['completed', 'cancelled', 'failed'].includes(data.status)) {
+            clearInterval(pollInterval);
+            showResult(data);
+        }
+
+    } catch (error) {
+        console.error('Error polling status:', error);
+    }
+}
+
+function updateProgress(data) {
+    const progressBar = document.getElementById('progress-bar');
+    const progressText = document.getElementById('progress-text');
+    const statusMessage = document.getElementById('status-message');
+
+    // Update progress bar
+    progressBar.style.width = data.progress_percent + '%';
+    progressText.textContent = `${data.processed_articles} / ${data.total_articles}`;
+
+    // Update stats
+    document.getElementById('stat-processed').textContent = data.processed_articles;
+    document.getElementById('stat-changed').textContent = data.changed_articles;
+    document.getElementById('stat-errors').textContent = data.error_count;
+
+    // Format elapsed time
+    if (data.elapsed_seconds) {
+        const mins = Math.floor(data.elapsed_seconds / 60);
+        const secs = Math.round(data.elapsed_seconds % 60);
+        document.getElementById('stat-elapsed').textContent = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+    }
+
+    // Update status message
+    if (data.status === 'running') {
+        const remaining = data.total_articles - data.processed_articles;
+        const rate = data.elapsed_seconds > 0 ? data.processed_articles / data.elapsed_seconds : 0;
+        const eta = rate > 0 ? Math.round(remaining / rate) : 0;
+        const etaMins = Math.floor(eta / 60);
+        const etaSecs = eta % 60;
+        statusMessage.textContent = `Processing... Est. remaining: ${etaMins > 0 ? etaMins + 'm ' : ''}${etaSecs}s`;
+    } else if (data.status === 'pending') {
+        statusMessage.textContent = 'Waiting to start...';
+    }
+}
+
+function showResult(data) {
+    document.getElementById('progress-section').classList.add('hidden');
+    document.getElementById('result-section').classList.remove('hidden');
+
+    const resultContent = document.getElementById('result-content');
+    let bgClass, iconPath, title, message;
+
+    if (data.status === 'completed') {
+        bgClass = 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800';
+        iconPath = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>';
+        title = 'Reclassification Complete';
+        message = `Processed ${data.processed_articles} articles. ${data.changed_articles} topics changed, ${data.error_count} errors.`;
+    } else if (data.status === 'cancelled') {
+        bgClass = 'bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800';
+        iconPath = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>';
+        title = 'Reclassification Cancelled';
+        message = `Cancelled after processing ${data.processed_articles} of ${data.total_articles} articles. ${data.changed_articles} topics changed.`;
+    } else {
+        bgClass = 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800';
+        iconPath = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path>';
+        title = 'Reclassification Failed';
+        message = data.error_message || 'An unexpected error occurred.';
+    }
+
+    resultContent.className = `p-4 rounded-lg ${bgClass}`;
+    resultContent.innerHTML = `
+        <div class="flex items-start">
+            <svg class="h-6 w-6 mr-3 ${data.status === 'completed' ? 'text-green-600 dark:text-green-400' : data.status === 'cancelled' ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                ${iconPath}
+            </svg>
+            <div>
+                <h3 class="text-sm font-medium ${data.status === 'completed' ? 'text-green-800 dark:text-green-200' : data.status === 'cancelled' ? 'text-yellow-800 dark:text-yellow-200' : 'text-red-800 dark:text-red-200'}">${title}</h3>
+                <p class="mt-1 text-sm ${data.status === 'completed' ? 'text-green-700 dark:text-green-300' : data.status === 'cancelled' ? 'text-yellow-700 dark:text-yellow-300' : 'text-red-700 dark:text-red-300'}">${message}</p>
+            </div>
+        </div>
+    `;
+
+    // Refresh stats
+    refreshStats();
+}
+
+async function cancelReclassification() {
+    if (!currentJobId) return;
+
+    const cancelBtn = document.getElementById('cancel-btn');
+    cancelBtn.disabled = true;
+    cancelBtn.textContent = 'Cancelling...';
+
+    try {
+        const response = await fetch(`/api/topics/reclassify/${currentJobId}`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to cancel');
+        }
+
+        document.getElementById('status-message').textContent = 'Cancelling...';
+
+    } catch (error) {
+        console.error('Error cancelling:', error);
+        cancelBtn.disabled = false;
+        cancelBtn.innerHTML = '<svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>Cancel';
+    }
+}
+
+async function refreshStats() {
+    try {
+        const response = await fetch('/api/topics/stats');
+        if (response.ok) {
+            const data = await response.json();
+            document.getElementById('general-count').textContent = data.general_count;
+            document.getElementById('low-confidence-count').textContent = data.low_confidence_count;
+            document.getElementById('needs-reclassification').textContent = data.needs_reclassification;
+        }
+    } catch (error) {
+        console.error('Error refreshing stats:', error);
+    }
+}
+
+function resetForm() {
+    currentJobId = null;
+    document.getElementById('result-section').classList.add('hidden');
+    document.getElementById('config-form').classList.remove('hidden');
+
+    // Reset button
+    const startBtn = document.getElementById('start-btn');
+    startBtn.disabled = false;
+    startBtn.innerHTML = '<svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>Reclassify Now';
+
+    // Reset progress
+    document.getElementById('progress-bar').style.width = '0%';
+    document.getElementById('progress-text').textContent = '0 / 0';
+    document.getElementById('stat-processed').textContent = '0';
+    document.getElementById('stat-changed').textContent = '0';
+    document.getElementById('stat-errors').textContent = '0';
+    document.getElementById('stat-elapsed').textContent = '0s';
+
+    // Reset cancel button
+    const cancelBtn = document.getElementById('cancel-btn');
+    cancelBtn.disabled = false;
+    cancelBtn.innerHTML = '<svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>Cancel';
+}
+</script>
+{% endblock %}

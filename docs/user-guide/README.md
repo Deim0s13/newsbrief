@@ -9,6 +9,7 @@ Get up and running with NewsBrief:
 - Production deployment with Podman/Docker
 - Development setup with local Python
 - First steps: adding feeds, generating stories
+- **Model configuration profiles** (Fast/Balanced/Quality)
 - Health checks and troubleshooting
 
 ### [API.md](API.md)
@@ -16,6 +17,7 @@ Complete API reference including:
 - Story endpoints (`/stories`, `/stories/{id}`, `/stories/generate`)
 - Article endpoints (`/items`, `/items/{id}`)
 - Feed management (`/feeds`, OPML import/export)
+- **Model profiles** (`/api/models/profiles`, `/api/models`)
 - Health probes (`/healthz`, `/readyz`, `/ollamaz`)
 - Scheduler status (`/scheduler/status`)
 
