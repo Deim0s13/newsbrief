@@ -434,6 +434,120 @@ Cancel a running job.
 
 ---
 
+### Model Profile API ⭐ *New in v0.8.1 (Issue #100)*
+
+API for managing LLM model profiles (Fast/Balanced/Quality) for story synthesis.
+
+#### **GET /api/models/profiles**
+
+Get all available model profiles.
+
+**Response (200)**
+```json
+{
+  "profiles": [
+    {
+      "id": "fast",
+      "name": "Fast",
+      "description": "Optimized for speed - use for quick refreshes, testing",
+      "model": "mistral:7b",
+      "expected_speed": "~50 tok/s",
+      "expected_time_per_story": "~30s",
+      "quality_level": "good",
+      "use_cases": ["classification", "tagging", "testing"],
+      "is_active": false
+    },
+    {
+      "id": "balanced",
+      "name": "Balanced",
+      "description": "Best balance of quality and speed - recommended for daily use",
+      "model": "qwen2.5:14b",
+      "expected_speed": "~25-35 tok/s",
+      "expected_time_per_story": "~60-90s",
+      "quality_level": "very_good",
+      "use_cases": ["daily_generation", "standard_synthesis"],
+      "is_active": true
+    },
+    {
+      "id": "quality",
+      "name": "Quality",
+      "description": "Maximum quality - use selectively for important stories",
+      "model": "qwen2.5:32b",
+      "expected_speed": "~15-20 tok/s",
+      "expected_time_per_story": "~2-3min",
+      "quality_level": "excellent",
+      "use_cases": ["important_stories", "weekly_summaries"],
+      "is_active": false
+    }
+  ],
+  "active_profile": "balanced"
+}
+```
+
+#### **GET /api/models/profiles/active**
+
+Get the currently active profile.
+
+**Response (200)**
+```json
+{
+  "profile_id": "balanced",
+  "name": "Balanced",
+  "description": "Best balance of quality and speed",
+  "model": "qwen2.5:14b",
+  "expected_speed": "~25-35 tok/s",
+  "expected_time_per_story": "~60-90s",
+  "quality_level": "very_good",
+  "use_cases": ["daily_generation", "standard_synthesis"]
+}
+```
+
+#### **PUT /api/models/profiles/active?profile_id={id}**
+
+Set the active model profile.
+
+**Query Parameters**:
+- `profile_id` (required): Profile ID to activate (`fast`, `balanced`, `quality`)
+
+**Response (200)**
+```json
+{
+  "status": "success",
+  "profile_id": "quality",
+  "name": "Quality",
+  "model": "qwen2.5:32b",
+  "message": "Active profile changed to 'Quality'. Model: qwen2.5:32b"
+}
+```
+
+**Note**: The model will be automatically downloaded from Ollama if not already available.
+
+#### **GET /api/models**
+
+Get all configured models with specifications.
+
+**Response (200)**
+```json
+{
+  "models": [
+    {
+      "name": "qwen2.5:14b",
+      "description": "Qwen 2.5 14B - balanced quality and speed",
+      "family": "qwen",
+      "parameters": "14B",
+      "context_window": 32768,
+      "vram_required_gb": 10,
+      "is_active": true
+    }
+  ],
+  "active_model": "qwen2.5:14b"
+}
+```
+
+**Admin UI**: Available at `/admin/models` with profile cards, quality indicators, and model reference table.
+
+---
+
 #### **GET /scheduler/status** ⭐ *Updated in v0.6.3*
 
 Get background scheduler status including feed refresh and story generation jobs.

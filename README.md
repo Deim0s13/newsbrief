@@ -74,7 +74,7 @@ Comprehensive improvements to LLM output quality and content intelligence.
 - [x] **Why Grouped Together** (#232): Clustering metadata showing shared entities, keywords, and similarity scores
 - [x] **Topic Reclassification UI** (#248): Admin page at `/admin/topics` for async bulk topic reclassification
 - [x] **LLM Model Evaluation** (#99): Research complete - Qwen 2.5 recommended (see ADR-0025)
-- [ ] **Model Configuration Profiles** (#100): Deploy Qwen 2.5, add Fast/Balanced/Quality profile switching
+- [x] **Model Configuration Profiles** (#100): Fast/Balanced/Quality profiles with Qwen 2.5, admin UI at `/admin/models`
 
 ### **✅ Previous: v0.8.0 - Content Extraction Pipeline Upgrade** (Feb 2026)
 Complete overhaul of content extraction with tiered fallback strategy (ADR-0024).

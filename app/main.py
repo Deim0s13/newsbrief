@@ -47,7 +47,7 @@ from .feeds import (
     update_feed_names,
     validate_feed_url,
 )
-from .llm import DEFAULT_MODEL, OLLAMA_BASE_URL, get_llm_service, is_llm_available
+from .llm import OLLAMA_BASE_URL, get_llm_service, is_llm_available, reload_llm_service
 from .logging_config import configure_logging
 from .models import (
     FeedIn,
@@ -72,6 +72,7 @@ from .ranking import (
     get_available_topics,
     get_topic_display_name,
 )
+from .settings import get_settings_service
 from .stories import generate_stories_simple, get_stories, get_story_by_id
 from .topics import migrate_article_topics_v062
 
@@ -304,7 +305,7 @@ def ollamaz() -> dict:
         return {
             "status": "healthy",
             "url": OLLAMA_BASE_URL,
-            "default_model": DEFAULT_MODEL,
+            "default_model": get_settings_service().get_active_model(),
             "models_available": len(models),
             "models": models[:10],  # Limit to first 10
         }
@@ -1413,7 +1414,7 @@ def llm_status():
         return LLMStatusOut(
             available=available,
             base_url=OLLAMA_BASE_URL,
-            current_model=DEFAULT_MODEL,
+            current_model=get_settings_service().get_active_model(),
             models_available=models,
             error=error,
         )
@@ -1421,7 +1422,7 @@ def llm_status():
         return LLMStatusOut(
             available=False,
             base_url=OLLAMA_BASE_URL,
-            current_model=DEFAULT_MODEL,
+            current_model=get_settings_service().get_active_model(),
             models_available=[],
             error=str(e),
         )
@@ -1474,11 +1475,12 @@ def generate_summaries(request: SummaryRequest):
                 structured_model = row[8]  # structured_summary_model
 
                 # Check for existing structured summary (if not force regenerate)
+                active_model = get_settings_service().get_active_model()
                 if (
                     request.use_structured
                     and structured_json
                     and not request.force_regenerate
-                    and structured_model == (request.model or DEFAULT_MODEL)
+                    and structured_model == (request.model or active_model)
                 ):
 
                     # Return existing structured summary
@@ -1866,6 +1868,160 @@ def cancel_reclassify_api(job_id: int):
         "status": "cancelled",
         "message": "Job cancellation initiated",
     }
+
+
+# ============================================================================
+# Model Profile Endpoints (Issue #100)
+# ============================================================================
+
+
+@app.get("/api/models/profiles")
+def get_model_profiles():
+    """
+    Get all available model profiles.
+
+    Returns list of profiles with their configuration and expected performance.
+    """
+    try:
+        settings = get_settings_service()
+        profiles = settings.get_available_profiles()
+        active_profile = settings.get_active_profile()
+
+        return {
+            "profiles": [
+                {
+                    "id": p.id,
+                    "name": p.name,
+                    "description": p.description,
+                    "model": p.model,
+                    "expected_speed": p.expected_speed,
+                    "expected_time_per_story": p.expected_time_per_story,
+                    "quality_level": p.quality_level,
+                    "use_cases": p.use_cases,
+                    "is_active": p.id == active_profile,
+                }
+                for p in profiles
+            ],
+            "active_profile": active_profile,
+        }
+    except Exception as e:
+        logger.error(f"Failed to get model profiles: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/models/profiles/active")
+def get_active_profile():
+    """
+    Get the currently active model profile.
+
+    Returns the active profile ID and its full configuration.
+    """
+    try:
+        settings = get_settings_service()
+        profile_id = settings.get_active_profile()
+        profile = settings.get_profile_info(profile_id)
+        model = settings.get_active_model()
+
+        if not profile:
+            return {
+                "profile_id": profile_id,
+                "model": model,
+                "error": "Profile not found in configuration",
+            }
+
+        return {
+            "profile_id": profile_id,
+            "name": profile.name,
+            "description": profile.description,
+            "model": model,
+            "expected_speed": profile.expected_speed,
+            "expected_time_per_story": profile.expected_time_per_story,
+            "quality_level": profile.quality_level,
+            "use_cases": profile.use_cases,
+        }
+    except Exception as e:
+        logger.error(f"Failed to get active profile: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/api/models/profiles/active")
+def set_active_profile(
+    profile_id: str = Query(..., description="Profile ID to activate")
+):
+    """
+    Set the active model profile.
+
+    Changes the model used for all LLM operations.
+    Valid profile IDs: fast, balanced, quality
+
+    Note: The model will be pulled automatically if not already available.
+    """
+    try:
+        settings = get_settings_service()
+
+        # Validate profile exists
+        profile = settings.get_profile_info(profile_id)
+        if not profile:
+            available = [p.id for p in settings.get_available_profiles()]
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid profile ID: {profile_id}. Available: {available}",
+            )
+
+        # Set the active profile
+        success = settings.set_active_profile(profile_id)
+        if not success:
+            raise HTTPException(
+                status_code=500, detail="Failed to save profile setting"
+            )
+
+        # Reload LLM service to pick up new model
+        reload_llm_service()
+
+        return {
+            "status": "success",
+            "profile_id": profile_id,
+            "name": profile.name,
+            "model": profile.model,
+            "message": f"Active profile changed to '{profile.name}'. Model: {profile.model}",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to set active profile: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/models")
+def get_available_models():
+    """
+    Get all configured models with their specifications.
+
+    Returns list of models with context window, memory requirements, etc.
+    """
+    try:
+        settings = get_settings_service()
+        models = settings.get_available_models()
+        active_model = settings.get_active_model()
+
+        return {
+            "models": [
+                {
+                    "name": m.name,
+                    "description": m.description,
+                    "family": m.family,
+                    "parameters": m.parameters,
+                    "context_window": m.context_window,
+                    "vram_required_gb": m.vram_required_gb,
+                    "is_active": m.name == active_model,
+                }
+                for m in models
+            ],
+            "active_model": active_model,
+        }
+    except Exception as e:
+        logger.error(f"Failed to get models: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/items/topic/{topic_key}")
@@ -2685,6 +2841,42 @@ def topics_management_page(request: Request):
             "environment": os.environ.get("ENVIRONMENT", "development"),
             "stats": stats,
             "topics": topics,
+        },
+    )
+
+
+@app.get("/admin/models", response_class=HTMLResponse)
+def models_management_page(request: Request):
+    """
+    Model configuration dashboard for LLM profile management.
+
+    Displays:
+    - Current active profile and model
+    - Available profiles (Fast, Balanced, Quality)
+    - Profile switching controls
+    - Available models reference
+
+    Part of Issue #100: Model configuration profiles.
+    """
+    settings = get_settings_service()
+
+    # Get profile information
+    profiles = settings.get_available_profiles()
+    active_profile_id = settings.get_active_profile()
+    active_profile = settings.get_profile_info(active_profile_id)
+
+    # Get model information
+    models = settings.get_available_models()
+
+    return templates.TemplateResponse(
+        "models_management.html",
+        {
+            "request": request,
+            "current_page": "admin",
+            "environment": os.environ.get("ENVIRONMENT", "development"),
+            "profiles": profiles,
+            "active_profile": active_profile,
+            "models": models,
         },
     )
 
