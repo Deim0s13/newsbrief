@@ -76,6 +76,7 @@ Comprehensive improvements to LLM output quality and content intelligence.
 - [x] **LLM Model Evaluation** (#99): Research complete - Qwen 2.5 recommended (see ADR-0025)
 - [x] **Model Configuration Profiles** (#100): Fast/Balanced/Quality profiles with Qwen 2.5, admin UI at `/admin/models`
 - [x] **RAG Integration Research** (#108): Light RAG with pgvector recommended (see ADR-0026)
+- [x] **Fine-Tuning Feasibility** (#109): Deferred - better alternatives first (see ADR-0027)
 
 ### **✅ Previous: v0.8.0 - Content Extraction Pipeline Upgrade** (Feb 2026)
 Complete overhaul of content extraction with tiered fallback strategy (ADR-0024).
