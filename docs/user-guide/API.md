@@ -72,6 +72,30 @@ This allows high-interest topics (e.g., AI/ML) to rank above higher-importance b
       "article_count": 5,
       "importance_score": 0.92,
       "freshness_score": 0.98,
+      "quality_score": 0.93,
+      "title_source": "llm",
+      "parse_strategy": "direct",
+      "quality_breakdown": {
+        "completeness": 0.95,
+        "coverage": 0.88,
+        "entity_consistency": 0.92,
+        "parse_success": 1.0,
+        "title_quality": 0.85,
+        "overall": 0.93
+      },
+      "clustering_metadata": {
+        "shared_entities": ["Google", "Gemini", "AI Studio"],
+        "shared_keywords": ["gemini", "multimodal", "ai"],
+        "avg_similarity": 0.72,
+        "topic_consensus": "ai-ml",
+        "topic_confidence_avg": 0.89,
+        "article_count": 5,
+        "clustering_factors": {
+          "entity_weight": 0.5,
+          "keyword_weight": 0.3,
+          "topic_weight": 0.2
+        }
+      },
       "generated_at": "2024-12-06T08:00:00Z",
       "supporting_articles": [
         {
@@ -222,6 +246,305 @@ Manually trigger story generation. Clusters articles from last 24 hours and gene
 ```bash
 curl -X POST http://localhost:8787/stories/generate | jq .
 ```
+
+**Enhanced Synthesis Pipeline** ⭐ *New in v0.8.1*
+
+Story synthesis now uses a multi-pass pipeline for higher quality output:
+
+1. **Story Type Detection** - Classifies cluster as: breaking, evolving, trend, or comparison
+2. **Chain-of-Thought Analysis** - Extracts timeline, core facts, tensions, key players
+3. **Type-Specific Synthesis** - Generates narrative appropriate to story pattern
+4. **Quality Refinement** - Self-critique and polish pass
+
+This produces more coherent narratives with better "why it matters" sections, at the cost of longer generation time (~2 min per story vs ~20s previously).
+
+**Context Window Handling** ⭐ *New in v0.8.1*
+
+For large article clusters, the pipeline automatically selects the optimal synthesis strategy:
+
+| Cluster Size | Strategy | Description |
+|--------------|----------|-------------|
+| 1-8 articles | `direct` | Single-pass multi-pass pipeline (default) |
+| 9-15 articles | `map_reduce` | Groups articles, summarizes each group, combines results |
+| 16+ articles | `hierarchical` | Multi-tier processing for very large clusters |
+
+**Key Features:**
+- **Article Prioritization**: Articles are sorted by `ranking_score` so the most important articles are always included
+- **Token Budgeting**: Automatic truncation to fit model context windows (default: 6000 tokens)
+- **Context Metrics**: Each synthesis includes metrics about articles used/dropped and token utilization
+
+**Response includes context metrics:**
+```json
+{
+  "stories_generated": 7,
+  "_context_metrics": {
+    "cluster_size": 12,
+    "articles_used": 12,
+    "articles_dropped": 0,
+    "token_utilization_percent": 65.3
+  },
+  "_strategy": "map_reduce"
+}
+```
+
+**Model Configuration** (`data/model_config.json`):
+```json
+{
+  "models": {
+    "llama3.1:8b": {
+      "context_window": 8192,
+      "synthesis_budget": 6000
+    }
+  },
+  "synthesis_strategies": {
+    "direct": { "max_articles": 8 },
+    "map_reduce": { "min_articles": 9, "max_articles": 15, "group_size": 5 },
+    "hierarchical": { "min_articles": 16, "tier1_group_size": 5 }
+  }
+}
+```
+
+**Clustering Metadata** ⭐ *New in v0.8.1 (Issue #232)*
+
+Each story includes metadata explaining why its source articles were grouped together:
+
+```json
+{
+  "clustering_metadata": {
+    "shared_entities": ["Google", "Gemini", "AI Studio"],
+    "shared_keywords": ["gemini", "multimodal", "ai"],
+    "avg_similarity": 0.72,
+    "topic_consensus": "ai-ml",
+    "topic_confidence_avg": 0.89,
+    "article_count": 5,
+    "clustering_factors": {
+      "entity_weight": 0.5,
+      "keyword_weight": 0.3,
+      "topic_weight": 0.2
+    }
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `shared_entities` | Named entities (companies, people, products) appearing in 2+ articles |
+| `shared_keywords` | Keywords appearing in 2+ articles (up to 10) |
+| `avg_similarity` | Average pairwise similarity between all articles in the cluster |
+| `topic_consensus` | Most common topic classification across articles |
+| `topic_confidence_avg` | Average confidence of topic classification |
+| `clustering_factors` | Weights used in similarity calculation (entity 50%, keyword 30%, topic 20%) |
+
+This metadata powers the "Why Grouped Together" panel in the story detail UI, providing transparency into the clustering algorithm's decisions.
+
+---
+
+### Topic Reclassification API ⭐ *New in v0.8.1 (Issue #248)*
+
+Async API for bulk topic reclassification with progress tracking and cancellation.
+
+#### **GET /api/topics/stats**
+
+Get statistics about articles needing topic reclassification.
+
+**Response (200)**
+```json
+{
+  "general_count": 23,
+  "low_confidence_count": 38,
+  "total_articles": 1250,
+  "needs_reclassification": 61,
+  "last_run": {
+    "completed_at": "2026-02-10T11:15:00Z",
+    "processed_articles": 100,
+    "changed_articles": 52
+  },
+  "active_job_id": null
+}
+```
+
+#### **POST /api/topics/reclassify**
+
+Start an async topic reclassification job. Returns immediately with a job ID.
+
+**Query Parameters**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `batch_size` | int | 100 | Articles to process (10-1000) |
+| `use_llm` | bool | true | Use LLM (accurate) or keywords (fast) |
+
+**Response (200)**
+```json
+{
+  "job_id": 42,
+  "status": "started",
+  "message": "Reclassification job started. Poll /api/topics/reclassify/status/{job_id} for progress.",
+  "batch_size": 100,
+  "use_llm": true
+}
+```
+
+**Error (409)** - Job already running
+```json
+{
+  "detail": "Reclassification job 41 is already running"
+}
+```
+
+#### **GET /api/topics/reclassify/status/{job_id}**
+
+Poll for job progress.
+
+**Response (200)**
+```json
+{
+  "job_id": 42,
+  "status": "running",
+  "total_articles": 100,
+  "processed_articles": 45,
+  "changed_articles": 23,
+  "error_count": 0,
+  "progress_percent": 45.0,
+  "elapsed_seconds": 120.5,
+  "batch_size": 100,
+  "use_llm": true,
+  "created_at": "2026-02-10T12:00:00Z",
+  "started_at": "2026-02-10T12:00:01Z",
+  "completed_at": null,
+  "error_message": null
+}
+```
+
+**Status values**: `pending`, `running`, `completed`, `cancelled`, `failed`
+
+#### **DELETE /api/topics/reclassify/{job_id}**
+
+Cancel a running job.
+
+**Response (200)**
+```json
+{
+  "job_id": 42,
+  "status": "cancelled",
+  "message": "Job cancellation initiated"
+}
+```
+
+**Admin UI**: Available at `/admin/topics` with real-time progress bar, batch size configuration, and cancellation support.
+
+---
+
+### Model Profile API ⭐ *New in v0.8.1 (Issue #100)*
+
+API for managing LLM model profiles (Fast/Balanced/Quality) for story synthesis.
+
+#### **GET /api/models/profiles**
+
+Get all available model profiles.
+
+**Response (200)**
+```json
+{
+  "profiles": [
+    {
+      "id": "fast",
+      "name": "Fast",
+      "description": "Optimized for speed - use for quick refreshes, testing",
+      "model": "mistral:7b",
+      "expected_speed": "~50 tok/s",
+      "expected_time_per_story": "~30s",
+      "quality_level": "good",
+      "use_cases": ["classification", "tagging", "testing"],
+      "is_active": false
+    },
+    {
+      "id": "balanced",
+      "name": "Balanced",
+      "description": "Best balance of quality and speed - recommended for daily use",
+      "model": "qwen2.5:14b",
+      "expected_speed": "~25-35 tok/s",
+      "expected_time_per_story": "~60-90s",
+      "quality_level": "very_good",
+      "use_cases": ["daily_generation", "standard_synthesis"],
+      "is_active": true
+    },
+    {
+      "id": "quality",
+      "name": "Quality",
+      "description": "Maximum quality - use selectively for important stories",
+      "model": "qwen2.5:32b",
+      "expected_speed": "~15-20 tok/s",
+      "expected_time_per_story": "~2-3min",
+      "quality_level": "excellent",
+      "use_cases": ["important_stories", "weekly_summaries"],
+      "is_active": false
+    }
+  ],
+  "active_profile": "balanced"
+}
+```
+
+#### **GET /api/models/profiles/active**
+
+Get the currently active profile.
+
+**Response (200)**
+```json
+{
+  "profile_id": "balanced",
+  "name": "Balanced",
+  "description": "Best balance of quality and speed",
+  "model": "qwen2.5:14b",
+  "expected_speed": "~25-35 tok/s",
+  "expected_time_per_story": "~60-90s",
+  "quality_level": "very_good",
+  "use_cases": ["daily_generation", "standard_synthesis"]
+}
+```
+
+#### **PUT /api/models/profiles/active?profile_id={id}**
+
+Set the active model profile.
+
+**Query Parameters**:
+- `profile_id` (required): Profile ID to activate (`fast`, `balanced`, `quality`)
+
+**Response (200)**
+```json
+{
+  "status": "success",
+  "profile_id": "quality",
+  "name": "Quality",
+  "model": "qwen2.5:32b",
+  "message": "Active profile changed to 'Quality'. Model: qwen2.5:32b"
+}
+```
+
+**Note**: The model will be automatically downloaded from Ollama if not already available.
+
+#### **GET /api/models**
+
+Get all configured models with specifications.
+
+**Response (200)**
+```json
+{
+  "models": [
+    {
+      "name": "qwen2.5:14b",
+      "description": "Qwen 2.5 14B - balanced quality and speed",
+      "family": "qwen",
+      "parameters": "14B",
+      "context_window": 32768,
+      "vram_required_gb": 10,
+      "is_active": true
+    }
+  ],
+  "active_model": "qwen2.5:14b"
+}
+```
+
+**Admin UI**: Available at `/admin/models` with profile cards, quality indicators, and model reference table.
 
 ---
 
@@ -1466,6 +1789,346 @@ curl "http://localhost:8787/items" | jq '{
   percentage_fallback: (([.[] | select(.is_fallback_summary == true)] | length) / length * 100 | round)
 }'
 ```
+
+---
+
+## 📊 Quality Metrics Endpoints ⭐ *New in v0.8.1*
+
+Monitor LLM output quality and story synthesis performance.
+
+### **GET /api/quality/summary**
+
+Get overall quality metrics summary for the past 7 days.
+
+#### Response (200)
+```json
+{
+  "period_days": 7,
+  "by_operation": {
+    "synthesis": {
+      "total_operations": 122,
+      "success_rate": 1.0,
+      "avg_quality_score": 0.929,
+      "avg_generation_time_ms": 15793
+    }
+  },
+  "synthesis": {
+    "quality_distribution": {
+      "excellent": 77,
+      "good": 45
+    },
+    "component_averages": {
+      "completeness": 1.0,
+      "coverage": 0.937,
+      "entity_consistency": 0.726,
+      "parse_success": 1.0,
+      "title_quality": 0.999
+    },
+    "trends": [
+      {
+        "date": "2026-02-09",
+        "avg_quality": 0.929,
+        "count": 122,
+        "success_rate": 1.0
+      }
+    ]
+  },
+  "recent_low_quality": []
+}
+```
+
+#### Quality Score Components
+
+| Component | Description | Weight |
+|-----------|-------------|--------|
+| `completeness` | Has title, synthesis, key_points, why_it_matters | 25% |
+| `coverage` | Synthesis length relative to article count | 20% |
+| `entity_consistency` | Entities appear in synthesis text | 15% |
+| `parse_success` | JSON parsed without retries/repairs | 25% |
+| `title_quality` | LLM-generated title (vs fallback) | 15% |
+
+#### Quality Distribution Thresholds
+
+| Rating | Score Range |
+|--------|-------------|
+| `excellent` | ≥ 0.85 |
+| `good` | 0.70 - 0.84 |
+| `fair` | 0.50 - 0.69 |
+| `poor` | < 0.50 |
+
+#### Example
+```bash
+curl http://localhost:8787/api/quality/summary | jq .
+```
+
+---
+
+### **GET /api/llm/stats**
+
+Get LLM operation statistics including success rates and failure analysis.
+
+#### Query Parameters
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `hours` | int | 24 | Time window in hours |
+
+#### Response (200)
+```json
+{
+  "success_rates": {
+    "SynthesisOutput": 1.0
+  },
+  "failure_summary": {
+    "total_failures": 0,
+    "time_window_hours": 24,
+    "by_category": {},
+    "by_model": {},
+    "recent_errors": []
+  },
+  "strategy_distribution": {
+    "direct": 122
+  },
+  "quality_distribution": {
+    "excellent": 77,
+    "good": 45
+  },
+  "by_operation": {
+    "synthesis": {
+      "total_operations": 122,
+      "success_rate": 1.0,
+      "avg_quality_score": 0.929,
+      "avg_generation_time_ms": 15793
+    }
+  }
+}
+```
+
+#### Parse Strategy Types
+
+| Strategy | Description |
+|----------|-------------|
+| `direct` | JSON parsed on first attempt |
+| `markdown_block` | Extracted from markdown code fence |
+| `brace_match` | Found JSON by brace matching |
+| `repair` | Required syntax repairs |
+
+#### Example
+```bash
+# Last 24 hours
+curl "http://localhost:8787/api/llm/stats?hours=24" | jq .
+
+# Last week
+curl "http://localhost:8787/api/llm/stats?hours=168" | jq .
+```
+
+---
+
+### **GET /api/quality/trends**
+
+Get quality score trends over time.
+
+#### Query Parameters
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `days` | int | 7 | Number of days to include |
+
+#### Response (200)
+```json
+{
+  "days": 7,
+  "trends": [
+    {
+      "date": "2026-02-03",
+      "avg_quality": 0.912,
+      "count": 15,
+      "success_rate": 1.0
+    },
+    {
+      "date": "2026-02-04",
+      "avg_quality": 0.935,
+      "count": 18,
+      "success_rate": 1.0
+    }
+  ]
+}
+```
+
+#### Example
+```bash
+curl "http://localhost:8787/api/quality/trends?days=30" | jq .
+```
+
+---
+
+### **GET /admin/quality** (Dashboard)
+
+Web UI dashboard for visualizing quality metrics.
+
+**Features:**
+- Overview cards (avg quality, parse success rate, direct parse rate)
+- Quality distribution chart
+- Parse strategy distribution
+- Quality component averages
+- Recent low-quality stories table
+- Operations by type breakdown
+
+**Access:**
+```
+http://localhost:8787/admin/quality
+```
+
+---
+
+## 🔍 Entity Extraction ⭐ *Enhanced in v0.8.1*
+
+Entity extraction identifies key companies, products, people, technologies, and locations from article content. Enhanced in v0.8.1 (Issue #103) with confidence scores, roles, and disambiguation.
+
+### **Entity Structure (v0.8.1)**
+
+Each entity now includes rich metadata:
+
+```json
+{
+  "name": "OpenAI",
+  "confidence": 0.95,
+  "role": "primary_subject",
+  "disambiguation": "AI research company"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Entity name with proper capitalization |
+| `confidence` | float | 0.0-1.0 extraction confidence score |
+| `role` | string | `primary_subject`, `mentioned`, or `quoted` |
+| `disambiguation` | string | Optional context to avoid confusion |
+
+### **Entity Roles**
+
+| Role | Description | Example |
+|------|-------------|---------|
+| `primary_subject` | Central to the story | Company making an announcement |
+| `mentioned` | Referenced but not focus | Competitor mentioned in passing |
+| `quoted` | Source of statement/quote | CEO providing quotes |
+
+### **Confidence Scoring**
+
+| Range | Meaning |
+|-------|---------|
+| 0.9+ | Explicitly named and central to article |
+| 0.7-0.9 | Clearly mentioned, moderate relevance |
+| 0.5-0.7 | Inferred or tangentially mentioned |
+
+### **Backward Compatibility**
+
+The entity system maintains backward compatibility:
+
+- **Legacy format** (v1): Simple string arrays `["Google", "OpenAI"]`
+- **Enhanced format** (v2): Objects with metadata (shown above)
+
+When deserializing legacy data, strings are automatically converted to `EntityWithMetadata` objects with default values (confidence: 0.8, role: "mentioned").
+
+### **Entity Overlap Scoring**
+
+Entity overlap between articles uses confidence-weighted Jaccard similarity:
+
+- **High-confidence** matches count more than low-confidence
+- **Primary subjects** get 1.5x weight boost
+- **Quoted sources** get 1.2x weight boost
+
+This improved scoring helps with more accurate story clustering.
+
+---
+
+## 🏷️ Topic Classification ⭐ *Enhanced in v0.8.1*
+
+Topic classification automatically categorizes articles and stories. Enhanced in v0.8.1 (Issue #104) with multi-topic support, confidence calibration, and improved accuracy.
+
+### **Classification Methods**
+
+| Method | Description | When Used |
+|--------|-------------|-----------|
+| `llm-enhanced` | Single-pass LLM with multi-topic support | Default (v0.8.1) |
+| `llm` | Legacy two-step LLM classification | Fallback if enhanced fails |
+| `keywords` | Keyword matching with phrase support | When LLM unavailable |
+| `fallback` | Returns "general" topic | When all else fails |
+
+### **Multi-Topic Support (v0.8.1)**
+
+Articles often span multiple domains. The enhanced classifier detects:
+
+- **Primary topic**: The main focus of the article
+- **Secondary topics**: Additional relevant topics (max 2, confidence > 0.5)
+
+```json
+{
+  "topic": "business",
+  "confidence": 0.85,
+  "method": "llm-enhanced",
+  "display_name": "Business",
+  "secondary_topics": [
+    {
+      "topic": "ai-ml",
+      "confidence": 0.65,
+      "display_name": "AI/ML",
+      "reasoning": "OpenAI mentioned"
+    }
+  ],
+  "reasoning": "Focus on investment and stock movement",
+  "edge_case": "overlapping"
+}
+```
+
+### **Confidence Calibration**
+
+| Range | Meaning |
+|-------|---------|
+| 0.90-1.00 | Perfect match, article entirely about this topic |
+| 0.75-0.89 | Strong match, topic is central |
+| 0.60-0.74 | Good match, topic clearly relevant |
+| 0.45-0.59 | Moderate match, somewhat relevant |
+| < 0.45 | Weak match, consider different topic |
+
+### **Edge Case Flags**
+
+| Flag | Description |
+|------|-------------|
+| `overlapping` | Article equally belongs to 2+ topics |
+| `ambiguous` | Hard to categorize definitively |
+| `emerging` | Topic seems new, not well covered by existing categories |
+| `multi-domain` | Spans multiple unrelated domains |
+
+### **Topic Relationships**
+
+Topics have defined relationships that help with multi-topic classification:
+
+```json
+{
+  "ai-ml": ["chips-hardware", "business", "science", "devtools"],
+  "chips-hardware": ["ai-ml", "business", "science"],
+  "security": ["cloud-k8s", "devtools", "business"]
+}
+```
+
+When the primary topic is `chips-hardware` and keywords match `ai-ml`, the classifier recognizes this as a natural overlap and includes AI/ML as a secondary topic.
+
+### **Available Topics**
+
+| ID | Name | Description |
+|----|------|-------------|
+| `ai-ml` | AI/ML | Artificial intelligence, machine learning, LLMs |
+| `security` | Security | Cybersecurity, vulnerabilities, privacy |
+| `cloud-k8s` | Cloud/K8s | Cloud computing, Kubernetes, containers |
+| `devtools` | DevTools | Programming languages, frameworks, tools |
+| `chips-hardware` | Chips/Hardware | Semiconductors, processors, hardware |
+| `politics` | Politics | Government, elections, international relations |
+| `business` | Business | Finance, markets, companies |
+| `science` | Science | Research, discoveries, space, medicine |
+| `sports` | Sports | Athletic events, teams, competitions |
+| `gaming` | Gaming | Video games, esports |
+| `entertainment` | Entertainment | Movies, TV, music, celebrities |
+| `finance` | Finance | Banking, fintech, regulatory |
+| `general` | General | Miscellaneous content |
 
 ---
 

@@ -19,13 +19,26 @@ from .models import (
     create_content_hash,
     extract_first_sentences,
 )
+from .settings import get_settings_service
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
 # Configuration
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-DEFAULT_MODEL = os.getenv("NEWSBRIEF_LLM_MODEL", "llama3.1:8b")
+
+
+def _get_default_model() -> str:
+    """Get the default model from settings service."""
+    try:
+        return get_settings_service().get_active_model()
+    except Exception as e:
+        logger.warning(f"Failed to get model from settings: {e}, using fallback")
+        return os.getenv("NEWSBRIEF_LLM_MODEL", "llama3.1:8b")
+
+
+# For backward compatibility, expose as a property-like access
+DEFAULT_MODEL = _get_default_model()
 MAX_CONTENT_LENGTH = int(os.getenv("NEWSBRIEF_MAX_CONTENT_LENGTH", "8000"))
 SUMMARY_MAX_LENGTH = int(os.getenv("NEWSBRIEF_SUMMARY_MAX_LENGTH", "300"))
 
@@ -64,10 +77,22 @@ class SummaryResult:
 class LLMService:
     """Service for LLM-based content summarization using Ollama."""
 
-    def __init__(self, base_url: str = OLLAMA_BASE_URL, model: str = DEFAULT_MODEL):
+    def __init__(self, base_url: str = OLLAMA_BASE_URL, model: Optional[str] = None):
         self.base_url = base_url
-        self.model = model
+        self._model_override = model  # Explicit model override
         self._client = None
+
+    @property
+    def model(self) -> str:
+        """Get the current model, respecting overrides and settings."""
+        if self._model_override:
+            return self._model_override
+        return _get_default_model()
+
+    @model.setter
+    def model(self, value: str) -> None:
+        """Set an explicit model override."""
+        self._model_override = value
 
     @property
     def client(self):
@@ -1111,12 +1136,26 @@ Summary:"""
 _llm_service = None
 
 
-def get_llm_service() -> LLMService:
-    """Get or create the LLM service singleton."""
+def get_llm_service(force_reload: bool = False) -> LLMService:
+    """
+    Get or create the LLM service singleton.
+
+    Args:
+        force_reload: If True, recreate the service (useful after settings change)
+
+    Returns:
+        LLMService instance
+    """
     global _llm_service
-    if _llm_service is None:
+    if _llm_service is None or force_reload:
         _llm_service = LLMService()
+        logger.info(f"LLM service initialized with model: {_llm_service.model}")
     return _llm_service
+
+
+def reload_llm_service() -> LLMService:
+    """Force reload the LLM service after settings change."""
+    return get_llm_service(force_reload=True)
 
 
 def summarize_article(

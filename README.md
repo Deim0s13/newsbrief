@@ -12,12 +12,14 @@ NewsBrief is a self-hosted, privacy-focused news aggregator that replaces readin
 Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **Time to informed: 30 min → 2 min**
 
 - **Automated Story Generation**: Daily scheduled generation at 6 AM (configurable timezone)
-- **🧠 Entity Extraction (v0.6.1)**: Identifies companies, products, people, technologies, and locations
+- **🧠 Enhanced Entity Extraction (v0.8.1)**: Confidence scores, roles (primary/mentioned/quoted), disambiguation hints
 - **🔗 Semantic Similarity (v0.6.1)**: Enhanced clustering with entity overlap (50%) + keywords (30%) + topic bonus (20%)
-- **⭐ Quality Scoring (v0.6.1)**: Three-dimensional scoring for importance, freshness, and overall quality
+- **⭐ Quality Metrics (v0.8.1)**: LLM output quality tracking with dashboard at `/admin/quality`
+- **🎯 Multi-Topic Classification (v0.8.1)**: Primary + secondary topics with calibrated confidence scores
 - **Intelligent Clustering**: Hybrid topic grouping + keyword similarity for related article detection
-- **Multi-Document Synthesis**: LLM-powered synthesis combining multiple sources into coherent narratives
-- **Entity Extraction**: Automatically identifies companies, products, and people from article clusters
+- **Multi-Pass Synthesis (v0.8.1)**: Story type detection → chain-of-thought analysis → synthesis → refinement
+- **Large Cluster Handling (v0.8.1)**: Map-reduce and hierarchical synthesis for 9+ article clusters
+- **📊 Story Transparency (v0.8.1)**: Quality breakdown panel + "Why Grouped Together" explanation with shared entities/keywords
 - **Topic Auto-Classification**: Stories tagged with Security, AI/ML, DevTools, Cloud/K8s, etc.
 - **Story-First UI**: Landing page shows stories (not articles) with filters, sorting, and pagination
 - **Supporting Articles**: Each story links to source articles with structured summaries
@@ -59,7 +61,24 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 - **Automated Dependency Management**: Weekly security audits, dependency updates, and base image maintenance
 - **Comprehensive Documentation**: Complete CI/CD guides, API documentation, and architecture decision records
 
-### **✅ Current: v0.8.0 - Content Extraction Pipeline Upgrade** (Feb 2026)
+### **🚧 In Progress: v0.8.1 - LLM Quality & Intelligence** (Feb 2026)
+Comprehensive improvements to LLM output quality and content intelligence.
+
+- [x] **Robust LLM Output Validation** (#107): Circuit breakers, retry logic, partial extraction
+- [x] **Quality Metrics & Tracking** (#105): Quality scoring for synthesis output with dashboard at `/admin/quality`
+- [x] **Enhanced Synthesis Pipeline** (#102): Multi-pass generation (detection → analysis → synthesis → refinement)
+- [x] **Enhanced Entity Extraction** (#103): Confidence scores, roles (primary/mentioned/quoted), disambiguation
+- [x] **Enhanced Topic Classification** (#104): Multi-topic support, calibrated confidence, edge case detection
+- [x] **Context Window Handling** (#106): Smart handling for large clusters (map-reduce/hierarchical synthesis)
+- [x] **Quality Breakdown Panel** (#233): Visual breakdown of synthesis quality scores on story pages
+- [x] **Why Grouped Together** (#232): Clustering metadata showing shared entities, keywords, and similarity scores
+- [x] **Topic Reclassification UI** (#248): Admin page at `/admin/topics` for async bulk topic reclassification
+- [x] **LLM Model Evaluation** (#99): Research complete - Qwen 2.5 recommended (see ADR-0025)
+- [x] **Model Configuration Profiles** (#100): Fast/Balanced/Quality profiles with Qwen 2.5, admin UI at `/admin/models`
+- [x] **RAG Integration Research** (#108): Light RAG with pgvector recommended (see ADR-0026)
+- [x] **Fine-Tuning Feasibility** (#109): Deferred - better alternatives first (see ADR-0027)
+
+### **✅ Previous: v0.8.0 - Content Extraction Pipeline Upgrade** (Feb 2026)
 Complete overhaul of content extraction with tiered fallback strategy (ADR-0024).
 
 - [x] **Tiered Extraction**: trafilatura (primary) → readability-lxml (fallback) → RSS summary (salvage)
@@ -617,6 +636,7 @@ Development is organized with GitHub Projects and Milestones for clear visibilit
 - v0.7.7 - Import Progress & Date Fix - ✅ **COMPLETE** (Feb 2026)
 - [v0.7.8 - Dev/Prod Environment Parity](https://github.com/Deim0s13/newsbrief/releases/tag/v0.7.8) - ✅ **COMPLETE** (Feb 2026)
 - [v0.8.0 - Content Extraction Pipeline Upgrade](https://github.com/Deim0s13/newsbrief/releases/tag/v0.8.0) - ✅ **COMPLETE** (Feb 2026)
+- v0.8.1 - LLM Quality & Intelligence - 🚧 **IN PROGRESS** (Feb 2026)
 
 **Epics** (via labels):
 - **epic:stories** - Story-based aggregation and synthesis

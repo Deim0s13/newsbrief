@@ -327,6 +327,73 @@ def parse_cache_key(cache_key: str) -> tuple[str, str]:
         raise ValueError(f"Invalid cache key format: {cache_key}")
 
 
+# Quality breakdown model (v0.8.1 - Issue #233)
+class QualityBreakdownOut(BaseModel):
+    """Quality score breakdown with component scores."""
+
+    completeness: float = Field(
+        0.0,
+        description="Presence of required fields (key points, synthesis, why_it_matters)",
+    )
+    coverage: float = Field(
+        0.0, description="Synthesis depth relative to source article count"
+    )
+    entity_consistency: float = Field(
+        0.0, description="Percentage of entities mentioned in synthesis text"
+    )
+    parse_success: float = Field(
+        0.0, description="Parsing quality (direct parse vs repairs/fallbacks)"
+    )
+    title_quality: float = Field(
+        0.0, description="Title source (LLM vs fallback) and length quality"
+    )
+    overall: float = Field(0.0, description="Weighted composite quality score")
+
+    class Config:
+        """Pydantic config."""
+
+        from_attributes = True
+
+
+# Clustering factors model (v0.8.1 - Issue #232)
+class ClusteringFactorsOut(BaseModel):
+    """Weights used in clustering similarity calculation."""
+
+    entity_weight: float = Field(0.5, description="Weight for entity overlap")
+    keyword_weight: float = Field(0.3, description="Weight for keyword overlap")
+    topic_weight: float = Field(0.2, description="Weight for topic bonus")
+
+
+# Clustering metadata model (v0.8.1 - Issue #232)
+class ClusteringMetadataOut(BaseModel):
+    """Metadata explaining why articles were grouped together."""
+
+    shared_entities: List[str] = Field(
+        default_factory=list, description="Entities appearing in multiple articles"
+    )
+    shared_keywords: List[str] = Field(
+        default_factory=list, description="Keywords appearing in multiple articles"
+    )
+    avg_similarity: float = Field(
+        0.0, description="Average pairwise similarity between articles"
+    )
+    topic_consensus: Optional[str] = Field(
+        None, description="Most common topic in the cluster"
+    )
+    topic_confidence_avg: float = Field(
+        0.0, description="Average topic classification confidence"
+    )
+    article_count: int = Field(0, description="Number of articles in cluster")
+    clustering_factors: Optional[ClusteringFactorsOut] = Field(
+        None, description="Weights used in similarity calculation"
+    )
+
+    class Config:
+        """Pydantic config."""
+
+        from_attributes = True
+
+
 # Story models for aggregated news
 class StoryOut(BaseModel):
     """A synthesized news story aggregating multiple articles."""
@@ -348,6 +415,14 @@ class StoryOut(BaseModel):
     primary_article_id: Optional[int] = None
     model: Optional[str] = None  # LLM model used for synthesis
     status: str = "active"  # Story status: active or archived
+    # Quality metrics (v0.8.1 - Issue #105)
+    quality_score: Optional[float] = None
+    title_source: Optional[str] = None  # "llm" or "fallback"
+    parse_strategy: Optional[str] = None  # "direct", "markdown_block", etc.
+    # Quality breakdown (v0.8.1 - Issue #233)
+    quality_breakdown: Optional["QualityBreakdownOut"] = None
+    # Clustering metadata (v0.8.1 - Issue #232)
+    clustering_metadata: Optional["ClusteringMetadataOut"] = None
 
     @validator("title")
     def validate_title(cls, v):

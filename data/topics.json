@@ -1,10 +1,28 @@
 {
-  "version": "1.0",
-  "description": "Dynamic topic configuration for NewsBrief. Edit this file to add/modify topics without code changes.",
+  "version": "2.0",
+  "description": "Dynamic topic configuration for NewsBrief. Edit this file to add/modify topics without code changes. Enhanced in v0.8.1 with topic relationships.",
   "settings": {
     "auto_add_new_topics": true,
     "min_confidence_for_new_topic": 0.7,
-    "fallback_topic": "general"
+    "fallback_topic": "general",
+    "secondary_topic_threshold": 0.5,
+    "use_enhanced_classification": true
+  },
+  "topic_relationships": {
+    "description": "Defines natural overlaps between topics to help with multi-topic classification",
+    "overlaps": {
+      "ai-ml": ["chips-hardware", "business", "science", "devtools"],
+      "chips-hardware": ["ai-ml", "business", "science"],
+      "security": ["cloud-k8s", "devtools", "business"],
+      "cloud-k8s": ["security", "devtools", "business"],
+      "devtools": ["ai-ml", "cloud-k8s", "security"],
+      "business": ["ai-ml", "chips-hardware", "finance"],
+      "finance": ["business", "politics"],
+      "science": ["ai-ml", "chips-hardware"],
+      "politics": ["business", "finance"],
+      "gaming": ["entertainment", "business"],
+      "entertainment": ["gaming", "business"]
+    }
   },
   "topics": {
     "ai-ml": {

@@ -1,0 +1,409 @@
+{% extends "base.html" %}
+
+{% block title %}LLM Quality Dashboard - NewsBrief{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 dark:bg-gray-900 py-6">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900 dark:text-white">LLM Quality Dashboard</h1>
+            <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                Monitor synthesis quality, parsing success rates, and track LLM output metrics
+            </p>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loading-state" class="flex items-center justify-center py-12">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <span class="ml-3 text-gray-600 dark:text-gray-400">Loading quality data...</span>
+        </div>
+
+        <!-- Main Content -->
+        <div id="dashboard-content" class="hidden space-y-8">
+
+            <!-- Overview Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <!-- Average Quality Score -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <div class="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
+                                <svg class="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Avg Quality Score</div>
+                            <div id="avg-quality" class="text-2xl font-bold text-gray-900 dark:text-white">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Success Rate -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <div class="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
+                                <svg class="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Parse Success Rate</div>
+                            <div id="success-rate" class="text-2xl font-bold text-gray-900 dark:text-white">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Direct Parse Rate -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <div class="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center">
+                                <svg class="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Direct Parse Rate</div>
+                            <div id="direct-parse-rate" class="text-2xl font-bold text-gray-900 dark:text-white">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Total Operations -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <div class="w-12 h-12 bg-yellow-100 dark:bg-yellow-900 rounded-lg flex items-center justify-center">
+                                <svg class="w-6 h-6 text-yellow-600 dark:text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Operations</div>
+                            <div id="total-operations" class="text-2xl font-bold text-gray-900 dark:text-white">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quality Distribution & Strategy Distribution -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- Quality Distribution -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                    <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Quality Distribution</h2>
+                    <div id="quality-distribution" class="space-y-3">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <!-- Strategy Distribution -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                    <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Parse Strategy Distribution</h2>
+                    <div id="strategy-distribution" class="space-y-3">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Component Breakdown -->
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Quality Component Averages</h2>
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-4" id="component-averages">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <!-- Recent Low Quality -->
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Recent Low-Quality Stories</h2>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Stories with quality score below 0.5 for investigation</p>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                        <thead>
+                            <tr>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Story</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Score</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Strategy</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Issue</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Time</th>
+                            </tr>
+                        </thead>
+                        <tbody id="low-quality-table" class="divide-y divide-gray-200 dark:divide-gray-700">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+                <div id="no-low-quality" class="hidden text-center py-8 text-gray-500 dark:text-gray-400">
+                    No low-quality stories found
+                </div>
+            </div>
+
+            <!-- Operations by Type -->
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Operations by Type</h2>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                        <thead>
+                            <tr>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Operation</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Total</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Success Rate</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Avg Quality</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Avg Time</th>
+                            </tr>
+                        </thead>
+                        <tbody id="operations-table" class="divide-y divide-gray-200 dark:divide-gray-700">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadQualityData();
+});
+
+async function loadQualityData() {
+    try {
+        const response = await fetch('/api/quality/summary?days=7');
+        if (!response.ok) throw new Error('Failed to fetch quality data');
+        const data = await response.json();
+
+        // Hide loading, show content
+        document.getElementById('loading-state').classList.add('hidden');
+        document.getElementById('dashboard-content').classList.remove('hidden');
+
+        // Update overview cards
+        updateOverviewCards(data);
+
+        // Update distributions
+        updateQualityDistribution(data.synthesis?.quality_distribution || {});
+        updateStrategyDistribution(data);
+
+        // Update component averages
+        updateComponentAverages(data.synthesis?.component_averages || {});
+
+        // Update low quality table
+        updateLowQualityTable(data.recent_low_quality || []);
+
+        // Update operations table
+        updateOperationsTable(data.by_operation || {});
+
+    } catch (error) {
+        console.error('Error loading quality data:', error);
+        document.getElementById('loading-state').innerHTML = `
+            <div class="text-red-600 dark:text-red-400">
+                Failed to load quality data: ${error.message}
+            </div>
+        `;
+    }
+}
+
+function updateOverviewCards(data) {
+    // Calculate average quality from synthesis data
+    const synthesis = data.by_operation?.synthesis || {};
+    document.getElementById('avg-quality').textContent =
+        synthesis.avg_quality_score ? (synthesis.avg_quality_score * 100).toFixed(0) + '%' : '-';
+
+    document.getElementById('success-rate').textContent =
+        synthesis.success_rate ? (synthesis.success_rate * 100).toFixed(0) + '%' : '-';
+
+    document.getElementById('total-operations').textContent =
+        synthesis.total_operations?.toLocaleString() || '-';
+
+    // Calculate direct parse rate from strategy distribution
+    // Will be updated when we fetch LLM stats
+    fetchLLMStats();
+}
+
+async function fetchLLMStats() {
+    try {
+        const response = await fetch('/api/llm/stats?hours=168');  // 7 days
+        if (!response.ok) return;
+        const data = await response.json();
+
+        // Calculate direct parse rate
+        const strategies = data.strategy_distribution || {};
+        const total = Object.values(strategies).reduce((a, b) => a + b, 0);
+        const direct = strategies.direct || 0;
+        const rate = total > 0 ? (direct / total * 100).toFixed(0) : '-';
+        document.getElementById('direct-parse-rate').textContent = rate + '%';
+
+    } catch (error) {
+        console.error('Error fetching LLM stats:', error);
+    }
+}
+
+function updateQualityDistribution(distribution) {
+    const container = document.getElementById('quality-distribution');
+    const tiers = ['excellent', 'good', 'fair', 'poor', 'unknown'];
+    const colors = {
+        excellent: 'bg-green-500',
+        good: 'bg-blue-500',
+        fair: 'bg-yellow-500',
+        poor: 'bg-red-500',
+        unknown: 'bg-gray-400'
+    };
+
+    const total = Object.values(distribution).reduce((a, b) => a + b, 0) || 1;
+
+    container.innerHTML = tiers.map(tier => {
+        const count = distribution[tier] || 0;
+        const pct = ((count / total) * 100).toFixed(1);
+        return `
+            <div class="flex items-center">
+                <span class="w-20 text-sm text-gray-600 dark:text-gray-400 capitalize">${tier}</span>
+                <div class="flex-1 mx-3">
+                    <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                        <div class="h-full ${colors[tier]} rounded-full" style="width: ${pct}%"></div>
+                    </div>
+                </div>
+                <span class="w-16 text-sm text-gray-600 dark:text-gray-400 text-right">${count} (${pct}%)</span>
+            </div>
+        `;
+    }).join('');
+}
+
+function updateStrategyDistribution(data) {
+    const container = document.getElementById('strategy-distribution');
+
+    // Fetch from LLM stats endpoint
+    fetch('/api/llm/stats?hours=168')
+        .then(res => res.json())
+        .then(llmData => {
+            const strategies = llmData.strategy_distribution || {};
+            const total = Object.values(strategies).reduce((a, b) => a + b, 0) || 1;
+
+            const colors = {
+                direct: 'bg-green-500',
+                markdown_block: 'bg-blue-500',
+                brace_match: 'bg-yellow-500',
+                greedy_regex: 'bg-orange-500',
+                line_by_line: 'bg-red-500'
+            };
+
+            const sorted = Object.entries(strategies).sort((a, b) => b[1] - a[1]);
+
+            container.innerHTML = sorted.map(([strategy, count]) => {
+                const pct = ((count / total) * 100).toFixed(1);
+                return `
+                    <div class="flex items-center">
+                        <span class="w-28 text-sm text-gray-600 dark:text-gray-400">${strategy.replace('_', ' ')}</span>
+                        <div class="flex-1 mx-3">
+                            <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                                <div class="h-full ${colors[strategy] || 'bg-gray-500'} rounded-full" style="width: ${pct}%"></div>
+                            </div>
+                        </div>
+                        <span class="w-16 text-sm text-gray-600 dark:text-gray-400 text-right">${count} (${pct}%)</span>
+                    </div>
+                `;
+            }).join('');
+        })
+        .catch(err => {
+            container.innerHTML = '<div class="text-gray-500 dark:text-gray-400">Failed to load strategy data</div>';
+        });
+}
+
+function updateComponentAverages(components) {
+    const container = document.getElementById('component-averages');
+    const labels = {
+        completeness: 'Completeness',
+        coverage: 'Coverage',
+        entity_consistency: 'Entity Match',
+        parse_success: 'Parse Quality',
+        title_quality: 'Title Quality'
+    };
+
+    const getColor = (score) => {
+        if (score >= 0.8) return 'text-green-600 dark:text-green-400';
+        if (score >= 0.6) return 'text-blue-600 dark:text-blue-400';
+        if (score >= 0.4) return 'text-yellow-600 dark:text-yellow-400';
+        return 'text-red-600 dark:text-red-400';
+    };
+
+    container.innerHTML = Object.entries(labels).map(([key, label]) => {
+        const score = components[key] || 0;
+        return `
+            <div class="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                <div class="text-sm text-gray-500 dark:text-gray-400">${label}</div>
+                <div class="text-2xl font-bold ${getColor(score)}">${(score * 100).toFixed(0)}%</div>
+            </div>
+        `;
+    }).join('');
+}
+
+function updateLowQualityTable(stories) {
+    const tbody = document.getElementById('low-quality-table');
+    const noResults = document.getElementById('no-low-quality');
+
+    if (!stories || stories.length === 0) {
+        tbody.innerHTML = '';
+        noResults.classList.remove('hidden');
+        return;
+    }
+
+    noResults.classList.add('hidden');
+
+    tbody.innerHTML = stories.map(story => {
+        const score = story.quality_score !== null ? (story.quality_score * 100).toFixed(0) + '%' : 'N/A';
+        const title = story.story_title || `Story #${story.story_id || 'N/A'}`;
+        const strategy = story.parse_strategy || '-';
+        const error = story.error || '-';
+        const time = story.created_at ? new Date(story.created_at).toLocaleString() : '-';
+
+        return `
+            <tr>
+                <td class="px-4 py-3 text-sm text-gray-900 dark:text-white">
+                    ${story.story_id ? `<a href="/stories/${story.story_id}" class="text-blue-600 hover:underline">${title.substring(0, 50)}...</a>` : title}
+                </td>
+                <td class="px-4 py-3 text-sm">
+                    <span class="text-red-600 dark:text-red-400 font-medium">${score}</span>
+                </td>
+                <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">${strategy}</td>
+                <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">${error}</td>
+                <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">${time}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function updateOperationsTable(operations) {
+    const tbody = document.getElementById('operations-table');
+
+    const rows = Object.entries(operations).map(([op, stats]) => {
+        return `
+            <tr>
+                <td class="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white capitalize">${op.replace('_', ' ')}</td>
+                <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">${stats.total_operations?.toLocaleString() || '-'}</td>
+                <td class="px-4 py-3 text-sm">
+                    <span class="${stats.success_rate >= 0.9 ? 'text-green-600' : stats.success_rate >= 0.7 ? 'text-yellow-600' : 'text-red-600'} dark:opacity-90">
+                        ${stats.success_rate ? (stats.success_rate * 100).toFixed(1) + '%' : '-'}
+                    </span>
+                </td>
+                <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+                    ${stats.avg_quality_score ? (stats.avg_quality_score * 100).toFixed(0) + '%' : '-'}
+                </td>
+                <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+                    ${stats.avg_generation_time_ms ? stats.avg_generation_time_ms + 'ms' : '-'}
+                </td>
+            </tr>
+        `;
+    });
+
+    tbody.innerHTML = rows.join('') || '<tr><td colspan="5" class="px-4 py-3 text-center text-gray-500 dark:text-gray-400">No operation data available</td></tr>';
+}
+</script>
+{% endblock %}

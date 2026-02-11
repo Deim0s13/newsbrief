@@ -34,6 +34,24 @@
             </div>
             {% endif %}
 
+            <!-- Quality Badge (Issue #233) - Only show if breakdown data exists -->
+            {% if story.quality_breakdown %}
+            {% set q_score = story.quality_breakdown.overall %}
+            <button id="quality-badge" onclick="toggleQualityPanel()" class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium cursor-pointer transition-colors
+                {% if q_score >= 0.8 %}bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 hover:bg-green-200 dark:hover:bg-green-800
+                {% elif q_score >= 0.6 %}bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 hover:bg-blue-200 dark:hover:bg-blue-800
+                {% elif q_score >= 0.4 %}bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-200 dark:hover:bg-yellow-800
+                {% else %}bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 hover:bg-red-200 dark:hover:bg-red-800{% endif %}">
+                <svg class="h-3.5 w-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                Quality: {{ (q_score * 100)|round|int }}%
+                <svg id="quality-chevron" class="h-3.5 w-3.5 ml-1 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+            </button>
+            {% endif %}
+
             <div class="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400 ml-auto">
                 <span class="flex items-center">
                     <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -49,6 +67,301 @@
                 </span>
             </div>
         </div>
+
+        <!-- Quality Breakdown Panel (Issue #233) -->
+        {% if story.quality_breakdown %}
+        <div id="quality-panel" class="hidden mb-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center">
+                    <svg class="h-4 w-4 mr-2 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                    </svg>
+                    Quality Breakdown
+                </h3>
+                {% if story.title_source %}
+                <span class="text-xs px-2 py-0.5 rounded-full
+                    {% if story.title_source == 'llm' %}bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300
+                    {% else %}bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300{% endif %}">
+                    Title: {{ story.title_source|upper }}
+                </span>
+                {% endif %}
+            </div>
+
+            <div class="space-y-3">
+                <!-- Completeness -->
+                <div class="quality-item">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-xs font-medium text-gray-600 dark:text-gray-400 flex items-center">
+                            {% set comp_score = story.quality_breakdown.completeness %}
+                            {% if comp_score >= 0.8 %}
+                            <svg class="h-3.5 w-3.5 mr-1.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                            {% elif comp_score >= 0.6 %}
+                            <svg class="h-3.5 w-3.5 mr-1.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                            {% elif comp_score >= 0.4 %}
+                            <svg class="h-3.5 w-3.5 mr-1.5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                            {% else %}
+                            <svg class="h-3.5 w-3.5 mr-1.5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                            {% endif %}
+                            Completeness
+                        </span>
+                        <span class="text-xs font-semibold text-gray-700 dark:text-gray-300">{{ (comp_score * 100)|round|int }}%</span>
+                    </div>
+                    <div class="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-1.5">
+                        <div class="h-1.5 rounded-full transition-all
+                            {% if comp_score >= 0.8 %}bg-green-500
+                            {% elif comp_score >= 0.6 %}bg-blue-500
+                            {% elif comp_score >= 0.4 %}bg-yellow-500
+                            {% else %}bg-red-500{% endif %}"
+                            style="width: {{ (comp_score * 100)|round|int }}%"></div>
+                    </div>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        {% if comp_score >= 0.8 %}All required fields present with good content
+                        {% elif comp_score >= 0.6 %}Key points and synthesis included
+                        {% elif comp_score >= 0.4 %}Some fields missing or thin
+                        {% else %}Missing critical content{% endif %}
+                    </p>
+                </div>
+
+                <!-- Coverage -->
+                <div class="quality-item">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-xs font-medium text-gray-600 dark:text-gray-400 flex items-center">
+                            {% set cov_score = story.quality_breakdown.coverage %}
+                            {% if cov_score >= 0.8 %}
+                            <svg class="h-3.5 w-3.5 mr-1.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                            {% elif cov_score >= 0.6 %}
+                            <svg class="h-3.5 w-3.5 mr-1.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                            {% elif cov_score >= 0.4 %}
+                            <svg class="h-3.5 w-3.5 mr-1.5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                            {% else %}
+                            <svg class="h-3.5 w-3.5 mr-1.5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                            {% endif %}
+                            Coverage
+                        </span>
+                        <span class="text-xs font-semibold text-gray-700 dark:text-gray-300">{{ (cov_score * 100)|round|int }}%</span>
+                    </div>
+                    <div class="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-1.5">
+                        <div class="h-1.5 rounded-full transition-all
+                            {% if cov_score >= 0.8 %}bg-green-500
+                            {% elif cov_score >= 0.6 %}bg-blue-500
+                            {% elif cov_score >= 0.4 %}bg-yellow-500
+                            {% else %}bg-red-500{% endif %}"
+                            style="width: {{ (cov_score * 100)|round|int }}%"></div>
+                    </div>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        {% if cov_score >= 0.8 %}Good synthesis depth for {{ story.article_count }} sources
+                        {% elif cov_score >= 0.6 %}Adequate coverage of source material
+                        {% elif cov_score >= 0.4 %}Could use more detail from sources
+                        {% else %}Synthesis too brief for source count{% endif %}
+                    </p>
+                </div>
+
+                <!-- Entity Consistency -->
+                <div class="quality-item">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-xs font-medium text-gray-600 dark:text-gray-400 flex items-center">
+                            {% set ent_score = story.quality_breakdown.entity_consistency %}
+                            {% if ent_score >= 0.8 %}
+                            <svg class="h-3.5 w-3.5 mr-1.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                            {% elif ent_score >= 0.6 %}
+                            <svg class="h-3.5 w-3.5 mr-1.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                            {% elif ent_score >= 0.4 %}
+                            <svg class="h-3.5 w-3.5 mr-1.5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                            {% else %}
+                            <svg class="h-3.5 w-3.5 mr-1.5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                            {% endif %}
+                            Entity Consistency
+                        </span>
+                        <span class="text-xs font-semibold text-gray-700 dark:text-gray-300">{{ (ent_score * 100)|round|int }}%</span>
+                    </div>
+                    <div class="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-1.5">
+                        <div class="h-1.5 rounded-full transition-all
+                            {% if ent_score >= 0.8 %}bg-green-500
+                            {% elif ent_score >= 0.6 %}bg-blue-500
+                            {% elif ent_score >= 0.4 %}bg-yellow-500
+                            {% else %}bg-red-500{% endif %}"
+                            style="width: {{ (ent_score * 100)|round|int }}%"></div>
+                    </div>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        {% if ent_score >= 0.8 %}Key entities well-integrated in narrative
+                        {% elif ent_score >= 0.6 %}Most entities mentioned in synthesis
+                        {% elif ent_score >= 0.4 %}Some entities missing from text
+                        {% else %}Poor entity integration{% endif %}
+                    </p>
+                </div>
+
+                <!-- Parse Quality -->
+                <div class="quality-item">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-xs font-medium text-gray-600 dark:text-gray-400 flex items-center">
+                            {% set parse_score = story.quality_breakdown.parse_success %}
+                            {% if parse_score >= 0.8 %}
+                            <svg class="h-3.5 w-3.5 mr-1.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                            {% elif parse_score >= 0.6 %}
+                            <svg class="h-3.5 w-3.5 mr-1.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                            {% elif parse_score >= 0.4 %}
+                            <svg class="h-3.5 w-3.5 mr-1.5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                            {% else %}
+                            <svg class="h-3.5 w-3.5 mr-1.5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                            {% endif %}
+                            Parse Quality
+                        </span>
+                        <span class="text-xs font-semibold text-gray-700 dark:text-gray-300">{{ (parse_score * 100)|round|int }}%</span>
+                    </div>
+                    <div class="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-1.5">
+                        <div class="h-1.5 rounded-full transition-all
+                            {% if parse_score >= 0.8 %}bg-green-500
+                            {% elif parse_score >= 0.6 %}bg-blue-500
+                            {% elif parse_score >= 0.4 %}bg-yellow-500
+                            {% else %}bg-red-500{% endif %}"
+                            style="width: {{ (parse_score * 100)|round|int }}%"></div>
+                    </div>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        {% if story.parse_strategy %}
+                            {% if parse_score >= 0.8 %}Clean parse ({{ story.parse_strategy }})
+                            {% elif parse_score >= 0.6 %}Minor repairs needed ({{ story.parse_strategy }})
+                            {% elif parse_score >= 0.4 %}Multiple repairs required
+                            {% else %}Fallback parsing used{% endif %}
+                        {% else %}
+                            {% if parse_score >= 0.8 %}LLM output parsed cleanly
+                            {% elif parse_score >= 0.6 %}Minor parsing adjustments
+                            {% else %}Parsing issues encountered{% endif %}
+                        {% endif %}
+                    </p>
+                </div>
+
+                <!-- Title Quality -->
+                <div class="quality-item">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-xs font-medium text-gray-600 dark:text-gray-400 flex items-center">
+                            {% set title_score = story.quality_breakdown.title_quality %}
+                            {% if title_score >= 0.8 %}
+                            <svg class="h-3.5 w-3.5 mr-1.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                            {% elif title_score >= 0.6 %}
+                            <svg class="h-3.5 w-3.5 mr-1.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                            {% elif title_score >= 0.4 %}
+                            <svg class="h-3.5 w-3.5 mr-1.5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                            {% else %}
+                            <svg class="h-3.5 w-3.5 mr-1.5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                            {% endif %}
+                            Title Quality
+                        </span>
+                        <span class="text-xs font-semibold text-gray-700 dark:text-gray-300">{{ (title_score * 100)|round|int }}%</span>
+                    </div>
+                    <div class="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-1.5">
+                        <div class="h-1.5 rounded-full transition-all
+                            {% if title_score >= 0.8 %}bg-green-500
+                            {% elif title_score >= 0.6 %}bg-blue-500
+                            {% elif title_score >= 0.4 %}bg-yellow-500
+                            {% else %}bg-red-500{% endif %}"
+                            style="width: {{ (title_score * 100)|round|int }}%"></div>
+                    </div>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        {% set word_count = story.title.split()|length %}
+                        {% if story.title_source == 'llm' %}
+                            {% if title_score >= 0.8 %}LLM-generated, {{ word_count }} words (ideal length)
+                            {% elif title_score >= 0.6 %}LLM-generated, {{ word_count }} words
+                            {% else %}LLM title could be improved{% endif %}
+                        {% else %}
+                            {% if title_score >= 0.6 %}Fallback title, {{ word_count }} words
+                            {% else %}Using fallback title{% endif %}
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Why Grouped Together Panel (Issue #232) -->
+        {% if story.clustering_metadata %}
+        <div id="clustering-panel" class="mb-6 p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-200 dark:border-indigo-700">
+            <button onclick="toggleClusteringPanel()" class="w-full flex items-center justify-between text-left">
+                <h3 class="text-sm font-semibold text-indigo-800 dark:text-indigo-300 flex items-center">
+                    <svg class="h-4 w-4 mr-2 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                    </svg>
+                    Why These {{ story.clustering_metadata.article_count }} Articles Are Grouped Together
+                </h3>
+                <svg id="clustering-chevron" class="h-4 w-4 text-indigo-600 dark:text-indigo-400 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+            </button>
+
+            <div id="clustering-details" class="hidden mt-4 space-y-4">
+                <!-- Shared Entities -->
+                {% if story.clustering_metadata.shared_entities %}
+                <div>
+                    <h4 class="text-xs font-medium text-indigo-700 dark:text-indigo-300 uppercase tracking-wide mb-2 flex items-center">
+                        <svg class="h-3.5 w-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
+                        </svg>
+                        Shared Entities
+                    </h4>
+                    <div class="flex flex-wrap gap-1.5">
+                        {% for entity in story.clustering_metadata.shared_entities %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-800 dark:text-indigo-200">
+                            {{ entity }}
+                        </span>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Shared Keywords -->
+                {% if story.clustering_metadata.shared_keywords %}
+                <div>
+                    <h4 class="text-xs font-medium text-indigo-700 dark:text-indigo-300 uppercase tracking-wide mb-2 flex items-center">
+                        <svg class="h-3.5 w-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"></path>
+                        </svg>
+                        Shared Keywords
+                    </h4>
+                    <div class="flex flex-wrap gap-1.5">
+                        {% for keyword in story.clustering_metadata.shared_keywords %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+                            {{ keyword }}
+                        </span>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Clustering Stats -->
+                <div class="pt-3 border-t border-indigo-200 dark:border-indigo-700">
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                        <div>
+                            <span class="block text-lg font-semibold text-indigo-800 dark:text-indigo-200">{{ (story.clustering_metadata.avg_similarity * 100)|round|int }}%</span>
+                            <span class="text-xs text-indigo-600 dark:text-indigo-400">Avg Similarity</span>
+                        </div>
+                        {% if story.clustering_metadata.topic_consensus %}
+                        <div>
+                            <span class="block text-lg font-semibold text-indigo-800 dark:text-indigo-200">{{ story.clustering_metadata.topic_consensus }}</span>
+                            <span class="text-xs text-indigo-600 dark:text-indigo-400">Topic</span>
+                        </div>
+                        {% endif %}
+                        <div>
+                            <span class="block text-lg font-semibold text-indigo-800 dark:text-indigo-200">{{ (story.clustering_metadata.topic_confidence_avg * 100)|round|int }}%</span>
+                            <span class="text-xs text-indigo-600 dark:text-indigo-400">Topic Confidence</span>
+                        </div>
+                        <div>
+                            <span class="block text-lg font-semibold text-indigo-800 dark:text-indigo-200">{{ story.clustering_metadata.shared_entities|length }}</span>
+                            <span class="text-xs text-indigo-600 dark:text-indigo-400">Common Entities</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Clustering Factors Explanation -->
+                {% if story.clustering_metadata.clustering_factors %}
+                <div class="text-xs text-indigo-600 dark:text-indigo-400 pt-2">
+                    <span class="font-medium">Clustering weights:</span>
+                    Entity {{ (story.clustering_metadata.clustering_factors.entity_weight * 100)|round|int }}%,
+                    Keyword {{ (story.clustering_metadata.clustering_factors.keyword_weight * 100)|round|int }}%,
+                    Topic {{ (story.clustering_metadata.clustering_factors.topic_weight * 100)|round|int }}%
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
 
         <!-- Story Title -->
         <h1 class="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-6">
@@ -214,6 +527,27 @@ document.addEventListener('DOMContentLoaded', function() {
 // Using DateUtils for locale-aware date formatting
 function formatTimeAgo(timestamp) {
     return DateUtils.formatRelative(timestamp);
+}
+
+// Quality panel toggle (Issue #233)
+function toggleQualityPanel() {
+    const panel = document.getElementById('quality-panel');
+    const chevron = document.getElementById('quality-chevron');
+
+    if (panel && chevron) {
+        panel.classList.toggle('hidden');
+        chevron.classList.toggle('rotate-180');
+    }
+}
+
+function toggleClusteringPanel() {
+    const details = document.getElementById('clustering-details');
+    const chevron = document.getElementById('clustering-chevron');
+
+    if (details && chevron) {
+        details.classList.toggle('hidden');
+        chevron.classList.toggle('rotate-180');
+    }
 }
 </script>
 {% endblock %}

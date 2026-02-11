@@ -64,6 +64,20 @@ env-init:  ## Create .env from template with generated secure password
 	@echo "✅ Created .env with secure generated password"
 	@echo "📝 Review .env and adjust OLLAMA_BASE_URL if needed"
 
+# ---------- API Convenience Commands ----------
+refresh:  ## Refresh all feeds (fetches new articles)
+	@echo "🔄 Refreshing feeds..."
+	@curl -s -X POST http://localhost:$(PORT)/refresh | jq . || echo "Error: Is the dev server running? (make dev)"
+
+stories-generate:  ## Generate stories from recent articles
+	@echo "📰 Generating stories..."
+	@curl -s -X POST http://localhost:$(PORT)/stories/generate \
+		-H "Content-Type: application/json" \
+		-d '{"time_window_hours": 24, "min_articles_per_story": 2}' | jq . || echo "Error: Is the dev server running? (make dev)"
+
+api-health:  ## Check API health status
+	@curl -s http://localhost:$(PORT)/healthz | jq . || echo "Error: Is the dev server running? (make dev)"
+
 # ---------- Build / Tag / Push ----------
 build:
 	$(RUNTIME) build \

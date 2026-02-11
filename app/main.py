@@ -47,7 +47,7 @@ from .feeds import (
     update_feed_names,
     validate_feed_url,
 )
-from .llm import DEFAULT_MODEL, OLLAMA_BASE_URL, get_llm_service, is_llm_available
+from .llm import OLLAMA_BASE_URL, get_llm_service, is_llm_available, reload_llm_service
 from .logging_config import configure_logging
 from .models import (
     FeedIn,
@@ -72,6 +72,7 @@ from .ranking import (
     get_available_topics,
     get_topic_display_name,
 )
+from .settings import get_settings_service
 from .stories import generate_stories_simple, get_stories, get_story_by_id
 from .topics import migrate_article_topics_v062
 
@@ -304,7 +305,7 @@ def ollamaz() -> dict:
         return {
             "status": "healthy",
             "url": OLLAMA_BASE_URL,
-            "default_model": DEFAULT_MODEL,
+            "default_model": get_settings_service().get_active_model(),
             "models_available": len(models),
             "models": models[:10],  # Limit to first 10
         }
@@ -1413,7 +1414,7 @@ def llm_status():
         return LLMStatusOut(
             available=available,
             base_url=OLLAMA_BASE_URL,
-            current_model=DEFAULT_MODEL,
+            current_model=get_settings_service().get_active_model(),
             models_available=models,
             error=error,
         )
@@ -1421,7 +1422,7 @@ def llm_status():
         return LLMStatusOut(
             available=False,
             base_url=OLLAMA_BASE_URL,
-            current_model=DEFAULT_MODEL,
+            current_model=get_settings_service().get_active_model(),
             models_available=[],
             error=str(e),
         )
@@ -1474,11 +1475,12 @@ def generate_summaries(request: SummaryRequest):
                 structured_model = row[8]  # structured_summary_model
 
                 # Check for existing structured summary (if not force regenerate)
+                active_model = get_settings_service().get_active_model()
                 if (
                     request.use_structured
                     and structured_json
                     and not request.force_regenerate
-                    and structured_model == (request.model or DEFAULT_MODEL)
+                    and structured_model == (request.model or active_model)
                 ):
 
                     # Return existing structured summary
@@ -1749,44 +1751,277 @@ def get_topics_api():
     }
 
 
+@app.get("/api/topics/stats")
+def get_topics_stats_api():
+    """
+    Get statistics about articles needing topic reclassification.
+
+    Returns counts for:
+    - Articles with 'general' topic (unclassified)
+    - Articles with low confidence (< 0.5)
+    - Last reclassification run info
+    - Active job ID if running
+    """
+    from app.topics import get_reclassification_stats
+
+    return get_reclassification_stats()
+
+
 @app.post("/api/topics/reclassify")
-def reclassify_topics_api(
-    batch_size: int = Query(100, description="Number of articles to process"),
+async def reclassify_topics_api(
+    background_tasks: BackgroundTasks,
+    batch_size: int = Query(
+        100, description="Number of articles to process", ge=10, le=1000
+    ),
     use_llm: bool = Query(
         True, description="Use LLM for classification (more accurate)"
     ),
 ):
     """
-    Trigger topic reclassification for articles with 'general' topic or low confidence.
+    Start async topic reclassification for articles with 'general' topic or low confidence.
 
-    This endpoint allows manual triggering of the topic reclassification job.
-    Articles are processed in batches to avoid long-running requests.
+    This endpoint starts a background job and returns immediately with a job ID.
+    Use GET /api/topics/reclassify/status/{job_id} to poll for progress.
+    Use DELETE /api/topics/reclassify/{job_id} to cancel.
 
     Args:
-        batch_size: Number of articles to process (default: 100)
+        batch_size: Number of articles to process (default: 100, max: 1000)
         use_llm: Whether to use LLM classification (default: True)
 
     Returns:
-        Dict with reclassification statistics
+        Dict with job_id for status polling
     """
-    # Override batch size if provided
-    import app.scheduler as scheduler_module
-    from app.scheduler import TOPIC_RECLASSIFY_MODEL, scheduled_topic_reclassification
+    from app.topics import (
+        create_reclassify_job,
+        get_reclassification_stats,
+        run_reclassify_job_async,
+    )
 
-    original_batch_size = scheduler_module.TOPIC_RECLASSIFY_BATCH_SIZE
-    original_use_llm = scheduler_module.TOPIC_RECLASSIFY_USE_LLM
+    # Check if there's already an active job
+    stats = get_reclassification_stats()
+    if stats.get("active_job_id"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Reclassification job {stats['active_job_id']} is already running",
+        )
 
+    # Create job record
+    job_id = create_reclassify_job(batch_size=batch_size, use_llm=use_llm)
+
+    # Start background task
+    background_tasks.add_task(run_reclassify_job_async, job_id)
+
+    return {
+        "job_id": job_id,
+        "status": "started",
+        "message": "Reclassification job started. Poll /api/topics/reclassify/status/{job_id} for progress.",
+        "batch_size": batch_size,
+        "use_llm": use_llm,
+    }
+
+
+@app.get("/api/topics/reclassify/status/{job_id}")
+def get_reclassify_status_api(job_id: int):
+    """
+    Get the status of a reclassification job.
+
+    Returns progress information including:
+    - Current status (pending, running, completed, cancelled, failed)
+    - Progress percentage
+    - Articles processed/changed/errors
+    - Elapsed time
+    """
+    from app.topics import get_reclassify_job
+
+    job = get_reclassify_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+    return job
+
+
+@app.delete("/api/topics/reclassify/{job_id}")
+def cancel_reclassify_api(job_id: int):
+    """
+    Cancel a running reclassification job.
+
+    Only pending or running jobs can be cancelled.
+    """
+    from app.topics import cancel_reclassify_job, get_reclassify_job
+
+    job = get_reclassify_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+    if job["status"] not in ("pending", "running"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot cancel job with status '{job['status']}'",
+        )
+
+    success = cancel_reclassify_job(job_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to cancel job")
+
+    return {
+        "job_id": job_id,
+        "status": "cancelled",
+        "message": "Job cancellation initiated",
+    }
+
+
+# ============================================================================
+# Model Profile Endpoints (Issue #100)
+# ============================================================================
+
+
+@app.get("/api/models/profiles")
+def get_model_profiles():
+    """
+    Get all available model profiles.
+
+    Returns list of profiles with their configuration and expected performance.
+    """
     try:
-        scheduler_module.TOPIC_RECLASSIFY_BATCH_SIZE = batch_size
-        scheduler_module.TOPIC_RECLASSIFY_USE_LLM = use_llm
+        settings = get_settings_service()
+        profiles = settings.get_available_profiles()
+        active_profile = settings.get_active_profile()
 
-        result = scheduled_topic_reclassification()
-        return result
+        return {
+            "profiles": [
+                {
+                    "id": p.id,
+                    "name": p.name,
+                    "description": p.description,
+                    "model": p.model,
+                    "expected_speed": p.expected_speed,
+                    "expected_time_per_story": p.expected_time_per_story,
+                    "quality_level": p.quality_level,
+                    "use_cases": p.use_cases,
+                    "is_active": p.id == active_profile,
+                }
+                for p in profiles
+            ],
+            "active_profile": active_profile,
+        }
+    except Exception as e:
+        logger.error(f"Failed to get model profiles: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-    finally:
-        # Restore original settings
-        scheduler_module.TOPIC_RECLASSIFY_BATCH_SIZE = original_batch_size
-        scheduler_module.TOPIC_RECLASSIFY_USE_LLM = original_use_llm
+
+@app.get("/api/models/profiles/active")
+def get_active_profile():
+    """
+    Get the currently active model profile.
+
+    Returns the active profile ID and its full configuration.
+    """
+    try:
+        settings = get_settings_service()
+        profile_id = settings.get_active_profile()
+        profile = settings.get_profile_info(profile_id)
+        model = settings.get_active_model()
+
+        if not profile:
+            return {
+                "profile_id": profile_id,
+                "model": model,
+                "error": "Profile not found in configuration",
+            }
+
+        return {
+            "profile_id": profile_id,
+            "name": profile.name,
+            "description": profile.description,
+            "model": model,
+            "expected_speed": profile.expected_speed,
+            "expected_time_per_story": profile.expected_time_per_story,
+            "quality_level": profile.quality_level,
+            "use_cases": profile.use_cases,
+        }
+    except Exception as e:
+        logger.error(f"Failed to get active profile: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/api/models/profiles/active")
+def set_active_profile(
+    profile_id: str = Query(..., description="Profile ID to activate")
+):
+    """
+    Set the active model profile.
+
+    Changes the model used for all LLM operations.
+    Valid profile IDs: fast, balanced, quality
+
+    Note: The model will be pulled automatically if not already available.
+    """
+    try:
+        settings = get_settings_service()
+
+        # Validate profile exists
+        profile = settings.get_profile_info(profile_id)
+        if not profile:
+            available = [p.id for p in settings.get_available_profiles()]
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid profile ID: {profile_id}. Available: {available}",
+            )
+
+        # Set the active profile
+        success = settings.set_active_profile(profile_id)
+        if not success:
+            raise HTTPException(
+                status_code=500, detail="Failed to save profile setting"
+            )
+
+        # Reload LLM service to pick up new model
+        reload_llm_service()
+
+        return {
+            "status": "success",
+            "profile_id": profile_id,
+            "name": profile.name,
+            "model": profile.model,
+            "message": f"Active profile changed to '{profile.name}'. Model: {profile.model}",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to set active profile: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/models")
+def get_available_models():
+    """
+    Get all configured models with their specifications.
+
+    Returns list of models with context window, memory requirements, etc.
+    """
+    try:
+        settings = get_settings_service()
+        models = settings.get_available_models()
+        active_model = settings.get_active_model()
+
+        return {
+            "models": [
+                {
+                    "name": m.name,
+                    "description": m.description,
+                    "family": m.family,
+                    "parameters": m.parameters,
+                    "context_window": m.context_window,
+                    "vram_required_gb": m.vram_required_gb,
+                    "is_active": m.name == active_model,
+                }
+                for m in models
+            ],
+            "active_model": active_model,
+        }
+    except Exception as e:
+        logger.error(f"Failed to get models: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/items/topic/{topic_key}")
@@ -2242,6 +2477,110 @@ def get_synthesis_cache_stats():
         )
 
 
+@app.get("/api/llm/stats")
+def get_llm_quality_stats(
+    hours: int = Query(24, description="Hours of history to include"),
+):
+    """
+    Get LLM output quality statistics.
+
+    Returns success rates, strategy distribution, and quality trends
+    for all LLM operations (synthesis, entity extraction, topic classification).
+
+    Part of Issue #105: Add output quality metrics and tracking.
+    """
+    from .llm_output import get_output_logger
+    from .quality_metrics import (
+        get_quality_distribution,
+        get_quality_summary,
+        get_strategy_distribution,
+    )
+
+    try:
+        with session_scope() as s:
+            days = max(1, hours // 24)
+            return {
+                "success_rates": get_output_logger().get_success_rate(hours),
+                "failure_summary": get_output_logger().get_failure_summary(hours),
+                "strategy_distribution": get_strategy_distribution(s, days),
+                "quality_distribution": get_quality_distribution(s, days),
+                "by_operation": get_quality_summary(s, days),
+            }
+    except Exception as e:
+        logger.error(f"Failed to get LLM stats: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve LLM statistics: {str(e)}"
+        )
+
+
+@app.get("/api/quality/summary")
+def get_quality_summary_endpoint(
+    days: int = Query(7, description="Days of history to include"),
+):
+    """
+    Get overall quality summary across all LLM operations.
+
+    Returns aggregated metrics including:
+    - Quality scores by operation type
+    - Quality distribution (excellent/good/fair/poor)
+    - Component averages (completeness, coverage, etc.)
+    - Recent low-quality stories for investigation
+
+    Part of Issue #105: Add output quality metrics and tracking.
+    """
+    from .quality_metrics import (
+        get_component_averages,
+        get_quality_distribution,
+        get_quality_summary,
+        get_quality_trends,
+        get_recent_low_quality_stories,
+    )
+
+    try:
+        with session_scope() as s:
+            return {
+                "period_days": days,
+                "by_operation": get_quality_summary(s, days),
+                "synthesis": {
+                    "quality_distribution": get_quality_distribution(s, days),
+                    "component_averages": get_component_averages(s, days),
+                    "trends": get_quality_trends(s, days, "synthesis"),
+                },
+                "recent_low_quality": get_recent_low_quality_stories(s, threshold=0.5),
+            }
+    except Exception as e:
+        logger.error(f"Failed to get quality summary: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve quality summary: {str(e)}"
+        )
+
+
+@app.get("/api/quality/trends")
+def get_quality_trends_endpoint(
+    days: int = Query(7, description="Days of history to include"),
+    operation: str = Query("synthesis", description="Operation type to filter"),
+):
+    """
+    Get quality score trends over time.
+
+    Returns daily averages for the specified operation type.
+    """
+    from .quality_metrics import get_quality_trends
+
+    try:
+        with session_scope() as s:
+            return {
+                "operation": operation,
+                "period_days": days,
+                "trends": get_quality_trends(s, days, operation),
+            }
+    except Exception as e:
+        logger.error(f"Failed to get quality trends: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve quality trends: {str(e)}"
+        )
+
+
 @app.post("/stories/cache/clear")
 def clear_synthesis_cache(
     expired_only: bool = Query(
@@ -2452,6 +2791,92 @@ def extraction_dashboard_page(request: Request):
             "request": request,
             "current_page": "admin",
             "environment": os.environ.get("ENVIRONMENT", "development"),
+        },
+    )
+
+
+@app.get("/admin/quality", response_class=HTMLResponse)
+def quality_dashboard_page(request: Request):
+    """
+    LLM output quality monitoring dashboard.
+
+    Displays metrics about synthesis quality, parsing success rates,
+    quality component breakdowns, and low-quality story identification.
+
+    Part of Issue #105: Add output quality metrics and tracking.
+    """
+    return templates.TemplateResponse(
+        "quality_dashboard.html",
+        {
+            "request": request,
+            "current_page": "admin",
+            "environment": os.environ.get("ENVIRONMENT", "development"),
+        },
+    )
+
+
+@app.get("/admin/topics", response_class=HTMLResponse)
+def topics_management_page(request: Request):
+    """
+    Topic management dashboard for article reclassification.
+
+    Displays:
+    - Count of unclassified ('general') articles
+    - Count of low-confidence articles
+    - Controls to trigger reclassification
+    - Real-time progress tracking
+
+    Part of Issue #248: UI for article topic reclassification.
+    """
+    from app.topics import get_available_topics, get_reclassification_stats
+
+    stats = get_reclassification_stats()
+    topics = get_available_topics()
+
+    return templates.TemplateResponse(
+        "topics_management.html",
+        {
+            "request": request,
+            "current_page": "admin",
+            "environment": os.environ.get("ENVIRONMENT", "development"),
+            "stats": stats,
+            "topics": topics,
+        },
+    )
+
+
+@app.get("/admin/models", response_class=HTMLResponse)
+def models_management_page(request: Request):
+    """
+    Model configuration dashboard for LLM profile management.
+
+    Displays:
+    - Current active profile and model
+    - Available profiles (Fast, Balanced, Quality)
+    - Profile switching controls
+    - Available models reference
+
+    Part of Issue #100: Model configuration profiles.
+    """
+    settings = get_settings_service()
+
+    # Get profile information
+    profiles = settings.get_available_profiles()
+    active_profile_id = settings.get_active_profile()
+    active_profile = settings.get_profile_info(active_profile_id)
+
+    # Get model information
+    models = settings.get_available_models()
+
+    return templates.TemplateResponse(
+        "models_management.html",
+        {
+            "request": request,
+            "current_page": "admin",
+            "environment": os.environ.get("ENVIRONMENT", "development"),
+            "profiles": profiles,
+            "active_profile": active_profile,
+            "models": models,
         },
     )
 

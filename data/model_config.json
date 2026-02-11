@@ -1,0 +1,131 @@
+{
+  "version": "2.0",
+  "description": "LLM model configuration with profile support",
+  "defaults": {
+    "max_articles_per_prompt": 8,
+    "summary_chars_per_article": 500,
+    "title_chars_per_article": 80,
+    "token_safety_margin": 0.9
+  },
+  "models": {
+    "qwen2.5:7b": {
+      "context_window": 32768,
+      "synthesis_budget": 24000,
+      "output_reserved": 2000,
+      "description": "Qwen 2.5 7B - fast, good structured output",
+      "family": "qwen",
+      "parameters": "7B",
+      "vram_required_gb": 5
+    },
+    "qwen2.5:14b": {
+      "context_window": 32768,
+      "synthesis_budget": 24000,
+      "output_reserved": 2000,
+      "description": "Qwen 2.5 14B - balanced quality and speed",
+      "family": "qwen",
+      "parameters": "14B",
+      "vram_required_gb": 10
+    },
+    "qwen2.5:32b": {
+      "context_window": 32768,
+      "synthesis_budget": 24000,
+      "output_reserved": 2000,
+      "description": "Qwen 2.5 32B - highest quality, slower",
+      "family": "qwen",
+      "parameters": "32B",
+      "vram_required_gb": 20
+    },
+    "llama3.1:8b": {
+      "context_window": 8192,
+      "synthesis_budget": 6000,
+      "output_reserved": 1000,
+      "description": "Llama 3.1 8B - previous default",
+      "family": "llama",
+      "parameters": "8B",
+      "vram_required_gb": 5
+    },
+    "llama3.2:3b": {
+      "context_window": 8192,
+      "synthesis_budget": 6000,
+      "output_reserved": 1000,
+      "description": "Llama 3.2 3B - faster, slightly lower quality",
+      "family": "llama",
+      "parameters": "3B",
+      "vram_required_gb": 2
+    },
+    "llama3.2:11b": {
+      "context_window": 8192,
+      "synthesis_budget": 6000,
+      "output_reserved": 1000,
+      "description": "Llama 3.2 11B - newer architecture",
+      "family": "llama",
+      "parameters": "11B",
+      "vram_required_gb": 7
+    },
+    "mistral:7b": {
+      "context_window": 8192,
+      "synthesis_budget": 6000,
+      "output_reserved": 1000,
+      "description": "Mistral 7B - efficient, good summarization",
+      "family": "mistral",
+      "parameters": "7B",
+      "vram_required_gb": 5
+    },
+    "gemma2:9b": {
+      "context_window": 8192,
+      "synthesis_budget": 6000,
+      "output_reserved": 1000,
+      "description": "Gemma 2 9B - Google's model",
+      "family": "gemma",
+      "parameters": "9B",
+      "vram_required_gb": 6
+    }
+  },
+  "profiles": {
+    "fast": {
+      "name": "Fast",
+      "description": "Optimized for speed - use for quick refreshes, testing, or ingestion tasks",
+      "model": "mistral:7b",
+      "expected_speed": "~50 tok/s",
+      "expected_time_per_story": "~30s",
+      "quality_level": "good",
+      "use_cases": ["classification", "tagging", "quick_summaries", "testing"]
+    },
+    "balanced": {
+      "name": "Balanced",
+      "description": "Best balance of quality and speed - recommended for daily generation",
+      "model": "qwen2.5:14b",
+      "expected_speed": "~25-35 tok/s",
+      "expected_time_per_story": "~60-90s",
+      "quality_level": "very_good",
+      "use_cases": ["daily_generation", "standard_synthesis", "entity_extraction"]
+    },
+    "quality": {
+      "name": "Quality",
+      "description": "Maximum quality - use selectively for important stories or deep analysis",
+      "model": "qwen2.5:32b",
+      "expected_speed": "~15-20 tok/s",
+      "expected_time_per_story": "~2-3min",
+      "quality_level": "excellent",
+      "use_cases": ["important_stories", "weekly_summaries", "deep_analysis"]
+    }
+  },
+  "synthesis_strategies": {
+    "direct": {
+      "max_articles": 8,
+      "description": "Single-pass synthesis for small clusters"
+    },
+    "map_reduce": {
+      "min_articles": 9,
+      "max_articles": 15,
+      "group_size": 5,
+      "description": "Two-pass synthesis for medium clusters"
+    },
+    "hierarchical": {
+      "min_articles": 16,
+      "tier1_group_size": 5,
+      "tier2_max_summaries": 4,
+      "description": "Multi-tier synthesis for large clusters"
+    }
+  }
+}
