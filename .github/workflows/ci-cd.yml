@@ -24,6 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CI: true  # Explicit CI marker for test detection
+      DATABASE_URL: postgresql://test:test@localhost:5432/test  # Dummy URL for test imports
     steps:
       - name: Checkout code
         uses: actions/checkout@v4.2.2
