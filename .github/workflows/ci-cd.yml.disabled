@@ -22,9 +22,23 @@ jobs:
   test:
     name: 🧪 Test & Quality
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: newsbrief
+          POSTGRES_PASSWORD: newsbrief
+          POSTGRES_DB: newsbrief_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       CI: true  # Explicit CI marker for test detection
-      DATABASE_URL: postgresql://test:test@localhost:5432/test  # Dummy URL for test imports
+      DATABASE_URL: postgresql://newsbrief:newsbrief@localhost:5432/newsbrief_test
     steps:
       - name: Checkout code
         uses: actions/checkout@v4.2.2
