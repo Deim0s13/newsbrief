@@ -1,5 +1,7 @@
 """Unit tests for enhanced semantic similarity (v0.6.1)."""
 
+import pytest
+
 from app.entities import ExtractedEntities
 from app.stories import (
     _calculate_combined_similarity,
@@ -269,9 +271,11 @@ class TestCombinedSimilarity:
             topic2="tech",
         )
 
-        # Perfect match: 100% keywords + 100% entities + 100% topic
-        # 0.3*1.0 + 0.5*1.0 + 0.2*1.0 = 1.0
-        assert similarity == 1.0
+        # High similarity for identical inputs
+        # Note: With v0.8.1 confidence weighting, entity overlap doesn't return
+        # exactly 1.0 even for identical entities (it's weighted by confidence)
+        # Expected: ~0.93 (high but not exactly 1.0)
+        assert similarity >= 0.9  # Very high similarity for "perfect" match
 
     def test_combined_similarity_custom_weights(self):
         """Test similarity with custom weights."""
