@@ -1,7 +1,7 @@
 # NewsBrief Architecture Document
 
-> **Version**: 1.1
-> **Last Updated**: February 2026
+> **Version**: 1.2
+> **Last Updated**: February 2026 (v0.8.1)
 > **Status**: Living Document
 
 ---
@@ -288,7 +288,7 @@ C4Context
     System(newsbrief, "NewsBrief", "AI-powered news aggregator that synthesizes RSS feeds into story briefs")
 
     System_Ext(rss_feeds, "RSS/Atom Feeds", "External news sources (tech blogs, news sites)")
-    System_Ext(ollama, "Ollama", "Local LLM server running llama3.1:8b")
+    System_Ext(ollama, "Ollama", "Local LLM server running Qwen 2.5 (configurable profiles)")
 
     Rel(user, newsbrief, "Browses stories, manages feeds", "HTTPS")
     Rel(newsbrief, rss_feeds, "Fetches articles", "HTTP/HTTPS")
@@ -346,7 +346,7 @@ flowchart TB
 
     subgraph AI["AI Layer"]
         Ollama["Ollama Server"]
-        LLM["llama3.1:8b"]
+        LLM["Qwen 2.5 (Fast/Balanced/Quality)"]
     end
 
     subgraph Data["Data Layer"]
@@ -415,7 +415,7 @@ sequenceDiagram
 | **Database (Prod)** | PostgreSQL 16 | ACID, concurrent writes |
 | **ORM** | SQLAlchemy 2.0 | Database abstraction |
 | **Migrations** | Alembic | Schema versioning |
-| **LLM** | Ollama (llama3.1:8b) | Local, private, free |
+| **LLM** | Ollama (Qwen 2.5 14B default) | Local, private, configurable profiles (see ADR-0025) |
 | **Scheduler** | APScheduler | Python-native background jobs |
 | **Content Extraction** | Trafilatura + Readability | Tiered extraction with fallback (see ADR-0024) |
 | **Reverse Proxy** | Caddy | Auto TLS, simple config |
@@ -467,6 +467,10 @@ flowchart TB
         ExtractSvc["Content Extraction (extraction.py)"]
         CacheSvc["Synthesis Cache"]
         SchedSvc["Scheduler (scheduler.py)"]
+        QualityMet["Quality Metrics (quality_metrics.py)"]
+        CtxMgr["Context Manager (context_manager.py)"]
+        Settings["Settings Service (settings.py)"]
+        Prompts["Prompt Templates (prompts/)"]
     end
 
     subgraph Data["Data Access"]
@@ -485,6 +489,10 @@ flowchart TB
     FeedSvc --> ExtractSvc
     LLMSvc --> CacheSvc
     LLMSvc --> LLMOutput
+    LLMSvc --> Settings
+    LLMSvc --> Prompts
+    StorySvc --> QualityMet
+    StorySvc --> CtxMgr
     SchedSvc --> FeedSvc
     SchedSvc --> StorySvc
 
@@ -506,6 +514,10 @@ flowchart TB
 | **Content Extraction** | Tiered article extraction with quality scoring | `extraction.py` |
 | **Scheduler** | Background job orchestration | `scheduler.py` |
 | **Synthesis Cache** | LLM response caching | `synthesis_cache.py` |
+| **Quality Metrics** | Output quality tracking and scoring (v0.8.1) | `quality_metrics.py` |
+| **Context Manager** | Large article cluster handling with chunking (v0.8.1) | `context_manager.py` |
+| **Settings Service** | Model profiles and runtime configuration (v0.8.1) | `settings.py` |
+| **Prompt Templates** | Multi-pass synthesis prompts (v0.8.1) | `prompts/` |
 
 ---
 
@@ -923,6 +935,12 @@ All significant architectural decisions are documented as ADRs (Architecture Dec
 | [ADR-0019](adr/0019-cicd-pipeline-design.md) | CI/CD Pipeline Design | Accepted |
 | [ADR-0020](adr/0020-kind-local-registry.md) | Kind Local Registry | Accepted |
 | [ADR-0021](adr/0021-pipeline-notifications.md) | Pipeline Notifications | Accepted |
+| [ADR-0022](adr/0022-dev-prod-database-parity.md) | Dev/Prod Database Parity | Accepted |
+| [ADR-0023](adr/0023-intelligence-platform-strategy.md) | Intelligence Platform Strategy | Accepted |
+| [ADR-0024](adr/0024-content-extraction-libraries.md) | Content Extraction Libraries | Accepted |
+| [ADR-0025](adr/0025-llm-model-selection.md) | LLM Model Selection (Qwen 2.5) | Accepted |
+| [ADR-0026](adr/0026-rag-integration-strategy.md) | RAG Integration Strategy | Accepted |
+| [ADR-0027](adr/0027-fine-tuning-deferral.md) | Fine-Tuning Deferral | Accepted |
 
 ---
 
