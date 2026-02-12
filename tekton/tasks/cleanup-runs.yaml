@@ -89,15 +89,21 @@ spec:
         echo ""
         echo "=== TaskRuns ==="
         # Cleanup orphaned TaskRuns (not part of a PipelineRun)
-        for tr in $(kubectl get taskruns -n $NAMESPACE -o jsonpath='{.items[*].metadata.name}'); do
+        # Re-fetch list after PipelineRun cleanup to avoid race conditions
+        for tr in $(kubectl get taskruns -n $NAMESPACE -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+          # Skip if TaskRun no longer exists (may have been cascade-deleted)
+          if ! kubectl get taskrun $tr -n $NAMESPACE >/dev/null 2>&1; then
+            continue
+          fi
+
           # Check if owned by a PipelineRun (those get cleaned up automatically)
           OWNER=$(kubectl get taskrun $tr -n $NAMESPACE -o jsonpath='{.metadata.ownerReferences[0].kind}' 2>/dev/null || echo "")
           if [ "$OWNER" = "PipelineRun" ]; then
             continue
           fi
 
-          STATUS=$(kubectl get taskrun $tr -n $NAMESPACE -o jsonpath='{.status.conditions[0].reason}')
-          COMPLETED=$(kubectl get taskrun $tr -n $NAMESPACE -o jsonpath='{.status.completionTime}')
+          STATUS=$(kubectl get taskrun $tr -n $NAMESPACE -o jsonpath='{.status.conditions[0].reason}' 2>/dev/null || echo "Unknown")
+          COMPLETED=$(kubectl get taskrun $tr -n $NAMESPACE -o jsonpath='{.status.completionTime}' 2>/dev/null || echo "")
 
           if [ -z "$COMPLETED" ]; then
             continue
@@ -115,7 +121,7 @@ spec:
               echo "🔍 Would delete: $tr ($STATUS, completed $COMPLETED)"
             else
               echo "🗑️  Deleting: $tr ($STATUS)"
-              kubectl delete taskrun $tr -n $NAMESPACE
+              kubectl delete taskrun $tr -n $NAMESPACE 2>/dev/null || echo "   (already deleted)"
             fi
             TR_COUNT=$((TR_COUNT + 1))
           fi
