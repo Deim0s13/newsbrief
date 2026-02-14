@@ -89,6 +89,43 @@ def test_synthesis_too_short():
         return False, f"Wrong error message: {e}"
 
 
+def test_synthesis_long_quality_output():
+    """Test that long synthesis from quality models (up to 5000 chars) is accepted."""
+    try:
+        # Simulate quality model output (~2000 chars)
+        long_synthesis = "A comprehensive analysis. " * 80  # ~2080 chars
+        story = StoryOut(
+            id=1,
+            title="Quality Model Generated Story",
+            synthesis=long_synthesis,
+            key_points=["Point 1", "Point 2", "Point 3"],
+            article_count=3,
+            generated_at=datetime.now(),
+        )
+        assert len(story.synthesis) > 1000, "Long synthesis should be accepted"
+        return True, "Long synthesis (quality model) validation"
+    except Exception as e:
+        return False, f"Long synthesis rejected: {e}"
+
+
+def test_synthesis_too_long():
+    """Test that synthesis > 5000 chars fails."""
+    try:
+        StoryOut(
+            id=1,
+            title="Valid Title Here",
+            synthesis="A" * 5500,  # Exceeds 5000 limit
+            key_points=["A", "B", "C"],
+            article_count=1,
+            generated_at=datetime.now(),
+        )
+        return False, "Synthesis too long - should have raised ValueError"
+    except ValueError as e:
+        if "must not exceed 5000" in str(e):
+            return True, "Synthesis too long validation"
+        return False, f"Wrong error message: {e}"
+
+
 def test_key_points_too_few():
     """Test that < 3 key points gets auto-padded (lenient for LLM inconsistency)."""
     try:
@@ -272,6 +309,8 @@ def main():
         test_title_too_short,
         test_title_too_long,
         test_synthesis_too_short,
+        test_synthesis_long_quality_output,
+        test_synthesis_too_long,
         test_key_points_too_few,
         test_key_points_too_many,
         test_importance_score_out_of_range,

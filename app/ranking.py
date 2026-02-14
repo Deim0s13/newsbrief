@@ -22,6 +22,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple, cast
 
+from .topics import get_topic_definitions
+
 # Configure logging
 logger = logging.getLogger(__name__)
 
@@ -381,7 +383,10 @@ class TopicClassifier:
         topic_scores = {}
         all_matches = {}
 
-        for topic_key, topic_config in TOPICS.items():
+        # Use dynamic topics from topics.json (with fallback to hardcoded for safety)
+        topics = get_topic_definitions() or TOPICS
+
+        for topic_key, topic_config in topics.items():
             matches: List[str] = []
             keywords = cast(List[str], topic_config.get("keywords", []))
             for keyword in keywords:
@@ -444,7 +449,9 @@ def classify_article_topic(
 
 def get_topic_display_name(topic_key: str) -> str:
     """Get human-readable name for a topic."""
-    topic_config = TOPICS.get(topic_key, {})
+    # Use dynamic topics from topics.json (with fallback to hardcoded for safety)
+    topics = get_topic_definitions() or TOPICS
+    topic_config = topics.get(topic_key, {})
     if isinstance(topic_config, dict):
         return cast(str, topic_config.get("name", topic_key))
     return topic_key

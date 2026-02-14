@@ -205,7 +205,11 @@ def get_topic_display_name(topic_id: str) -> str:
 def get_available_topics() -> List[Dict[str, str]]:
     """Get list of available topics with their display names."""
     return [
-        {"id": topic_id, "name": config["name"], "description": config["description"]}
+        {
+            "key": topic_id,
+            "name": config["name"],
+            "description": config.get("description", ""),
+        }
         for topic_id, config in get_topic_definitions().items()
     ]
 

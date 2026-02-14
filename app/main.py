@@ -69,12 +69,11 @@ from .models import (
 from .ranking import (
     calculate_ranking_score,
     classify_article_topic,
-    get_available_topics,
     get_topic_display_name,
 )
 from .settings import get_settings_service
 from .stories import generate_stories_simple, get_stories, get_story_by_id
-from .topics import migrate_article_topics_v062
+from .topics import get_available_topics, migrate_article_topics_v062
 
 # Configure structured logging (must be after imports, before app initialization)
 configure_logging()

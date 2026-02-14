@@ -76,8 +76,11 @@ COPY --chown=newsbrief:newsbrief alembic /app/alembic
 COPY --chown=newsbrief:newsbrief alembic.ini /app/alembic.ini
 COPY --chown=newsbrief:newsbrief pyproject.toml /app/pyproject.toml
 
-# Create data directory with correct permissions
+# Create data directory and copy default config files
+# These provide default configuration; can be overridden by volume mounts
 RUN mkdir -p /app/data && chown newsbrief:newsbrief /app/data
+COPY --chown=newsbrief:newsbrief data/topics.json /app/data/topics.json
+COPY --chown=newsbrief:newsbrief data/model_config.json /app/data/model_config.json
 
 # Switch to non-root user
 USER newsbrief

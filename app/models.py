@@ -436,8 +436,8 @@ class StoryOut(BaseModel):
     def validate_synthesis(cls, v):
         if not v or len(v.strip()) < 50:
             raise ValueError("synthesis must be at least 50 characters")
-        if len(v) > 1000:
-            raise ValueError("synthesis must not exceed 1000 characters")
+        if len(v) > 5000:
+            raise ValueError("synthesis must not exceed 5000 characters")
         return v.strip()
 
     @validator("key_points")

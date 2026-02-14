@@ -52,6 +52,8 @@ package-lock.json
 
 # Local data (mounted as volume in production)
 data/
+!data/topics.json
+!data/model_config.json
 *.sqlite3
 *.db
 

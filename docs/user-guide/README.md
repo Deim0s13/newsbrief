@@ -21,6 +21,14 @@ Complete API reference including:
 - Health probes (`/healthz`, `/readyz`, `/ollamaz`)
 - Scheduler status (`/scheduler/status`)
 
+### [MODEL-PROFILES.md](MODEL-PROFILES.md)
+LLM model configuration guide:
+- **Fast** (mistral:7b) - Quick testing, batch processing
+- **Balanced** (qwen2.5:14b) - Daily use, recommended default
+- **Quality** (qwen2.5:32b) - Deep analysis, important stories
+- Output characteristics and hardware requirements
+- Switching profiles via UI and API
+
 ## 🚀 Quick Start
 
 **Production** (recommended):
