@@ -27,7 +27,7 @@ patches:
 
 images:
   - name: localhost:5000/newsbrief
-    newTag: dev-latest
+    newTag: v0.8.1
 
 # Dev-specific configuration overrides
 configMapGenerator:
