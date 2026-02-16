@@ -383,6 +383,63 @@ class LLMMetrics(Base):
     )
 
 
+class SourceCredibility(Base):
+    """
+    Source credibility ratings from external providers.
+
+    Stores factual accuracy and bias metadata for news sources.
+    Credibility score is based ONLY on factual_reporting, not political bias.
+
+    Added in v0.8.2 - Issue #196: Create source_credibility database schema
+    See ADR-0028: Source Credibility Architecture
+    """
+
+    __tablename__ = "source_credibility"
+
+    id = Column(Integer, primary_key=True)
+
+    # Core identification
+    domain = Column(String(255), unique=True, nullable=False)
+    name = Column(String(255))
+    homepage_url = Column(Text)
+
+    # Source classification (NOT a score penalty - ADR-0028)
+    source_type = Column(String(20), nullable=False, default="news")
+    # Values: news, satire, conspiracy, fake_news, pro_science, state_media, advocacy
+
+    # Factual reporting - the ONLY input to credibility_score
+    factual_reporting = Column(String(20))
+    # Values: very_high, high, mostly_factual, mixed, low, very_low
+
+    # Political bias - metadata only, NOT used in scoring (ADR-0028)
+    bias = Column(String(20))
+    # Values: left, left_center, center, right_center, right
+
+    # Computed credibility score (0.0-1.0, based on factual_reporting only)
+    credibility_score = Column(Float)
+
+    # Synthesis eligibility (satire/fake excluded by default)
+    is_eligible_for_synthesis = Column(Boolean, default=True, nullable=False)
+
+    # Provenance & versioning (ADR-0028)
+    provider = Column(String(50), nullable=False, default="mbfc_community")
+    provider_url = Column(Text)
+    dataset_version = Column(String(100))
+    raw_payload = Column(Text)  # JSON
+
+    # Timestamps
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
+    last_updated = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
+
+    __table_args__ = (
+        Index("idx_source_credibility_domain", "domain"),
+        Index("idx_source_credibility_type", "source_type"),
+        Index("idx_source_credibility_score", "credibility_score"),
+        Index("idx_source_credibility_provider", "provider"),
+        Index("idx_source_credibility_eligible", "is_eligible_for_synthesis"),
+    )
+
+
 class ReclassifyJob(Base):
     """Track async topic reclassification jobs (v0.8.1 - Issue #248)."""
 

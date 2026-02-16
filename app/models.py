@@ -577,5 +577,106 @@ def deserialize_story_json_field(json_str: Optional[str]) -> List[str]:
         return []
 
 
+# -----------------------------------------------------------------------------
+# Source Credibility Models (v0.8.2 - Issue #196)
+# See ADR-0028: Source Credibility Architecture
+# -----------------------------------------------------------------------------
+
+
+class SourceCredibilityOut(BaseModel):
+    """Source credibility data for API responses."""
+
+    id: int
+    domain: str
+    name: Optional[str] = None
+    source_type: str = Field(
+        "news", description="Type: news, satire, conspiracy, fake_news, pro_science"
+    )
+    factual_reporting: Optional[str] = Field(
+        None,
+        description="Factual accuracy: very_high, high, mostly_factual, mixed, low, very_low",
+    )
+    bias: Optional[str] = Field(
+        None,
+        description="Political bias (metadata only): left, left_center, center, right_center, right",
+    )
+    credibility_score: Optional[float] = Field(
+        None,
+        description="Computed score 0.0-1.0 based on factual_reporting only",
+        ge=0.0,
+        le=1.0,
+    )
+    is_eligible_for_synthesis: bool = Field(
+        True, description="Whether source can be used in story synthesis"
+    )
+    provider: str = Field("mbfc_community", description="Data provider source")
+    provider_url: Optional[str] = Field(
+        None, description="URL to provider's review page"
+    )
+    last_updated: Optional[datetime] = None
+
+
+class SourceCredibilityBrief(BaseModel):
+    """Compact credibility data for article display."""
+
+    domain: str
+    credibility_score: Optional[float] = None
+    source_type: str = "news"
+    is_eligible_for_synthesis: bool = True
+
+    @property
+    def score_label(self) -> str:
+        """Human-readable score label."""
+        if self.credibility_score is None:
+            return "Unknown"
+        if self.credibility_score >= 0.85:
+            return "Very High"
+        if self.credibility_score >= 0.70:
+            return "High"
+        if self.credibility_score >= 0.50:
+            return "Mostly Factual"
+        if self.credibility_score >= 0.30:
+            return "Mixed"
+        return "Low"
+
+
+class SourceCredibilityImportRequest(BaseModel):
+    """Request to import credibility data from external source."""
+
+    provider: str = Field("mbfc_community", description="Data provider")
+    data_url: Optional[str] = Field(None, description="URL to fetch data from")
+    data: Optional[List[dict]] = Field(None, description="Inline data records")
+    dataset_version: Optional[str] = Field(None, description="Version identifier")
+    replace_existing: bool = Field(
+        False, description="If true, replace existing records for this provider"
+    )
+
+
+class SourceCredibilityImportResponse(BaseModel):
+    """Response from credibility data import."""
+
+    success: bool
+    provider: str
+    records_imported: int
+    records_updated: int
+    records_skipped: int
+    records_failed: int
+    dataset_version: Optional[str] = None
+    import_time_ms: int
+    errors: List[str] = Field(default_factory=list)
+
+
+class SourceCredibilityStatsOut(BaseModel):
+    """Statistics about source credibility data."""
+
+    total_sources: int
+    by_source_type: dict[str, int]
+    by_factual_reporting: dict[str, int]
+    eligible_for_synthesis: int
+    ineligible_for_synthesis: int
+    providers: List[str]
+    last_updated: Optional[datetime] = None
+
+
 # Update forward references
 SummaryResponse.model_rebuild()
