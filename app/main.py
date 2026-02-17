@@ -2859,6 +2859,62 @@ def get_credibility_stats():
         }
 
 
+@app.get("/api/credibility/lookup")
+def lookup_credibility(
+    domains: str = Query(..., description="Comma-separated domains")
+):
+    """
+    Look up credibility data for one or more domains.
+
+    Args:
+        domains: Comma-separated list of domains (e.g., "nytimes.com,bbc.com")
+
+    Returns:
+        Dictionary mapping domain -> credibility data (or null if not found)
+    """
+    from app.credibility import canonicalize_domain
+    from app.orm_models import SourceCredibility
+
+    # Parse and canonicalize domains
+    domain_list = [d.strip() for d in domains.split(",") if d.strip()]
+    if not domain_list:
+        return {}
+
+    # Canonicalize all domains for lookup
+    canonical_map = {}  # canonical -> original
+    for d in domain_list:
+        canonical = canonicalize_domain(d)
+        if canonical:
+            canonical_map[canonical] = d
+
+    if not canonical_map:
+        return {}
+
+    with session_scope() as db:
+        # Query all matching domains at once
+        results = (
+            db.query(SourceCredibility)
+            .filter(SourceCredibility.domain.in_(canonical_map.keys()))
+            .all()
+        )
+
+        # Build response map
+        response = {}
+        for record in results:
+            response[record.domain] = {
+                "domain": record.domain,
+                "name": record.name,
+                "source_type": record.source_type,
+                "factual_reporting": record.factual_reporting,
+                "bias": record.bias,
+                "credibility_score": record.credibility_score,
+                "is_eligible_for_synthesis": record.is_eligible_for_synthesis,
+                "provider_url": record.provider_url,
+            }
+
+        return response
+
+
 # =============================================================================
 # Admin: Credibility Dashboard (v0.8.2 - Issue #271)
 # =============================================================================

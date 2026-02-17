@@ -436,16 +436,21 @@
 
             <div class="space-y-4">
                 {% for article in story.supporting_articles %}
-                <div class="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600 hover:border-blue-300 dark:hover:border-blue-600 transition-colors">
+                <div class="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600 hover:border-blue-300 dark:hover:border-blue-600 transition-colors"
+                     data-article-url="{{ article.url }}">
                     <div class="flex items-start justify-between mb-2">
                         <h3 class="text-base font-medium text-gray-900 dark:text-white flex-1">
                             {{ article.title }}
                         </h3>
-                        {% if article.topic %}
-                        <span class="ml-3 px-2 py-0.5 text-xs rounded-full bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300">
-                            {{ article.topic|replace('ai-ml', 'AI/ML')|replace('cloud-k8s', 'Cloud/K8s')|replace('devtools', 'DevTools')|replace('chips-hardware', 'Chips/Hardware')|replace('politics', 'Politics')|replace('business', 'Business')|replace('science', 'Science')|replace('general', 'General')|title }}
-                        </span>
-                        {% endif %}
+                        <div class="flex items-center space-x-2 ml-3">
+                            <!-- Credibility badge placeholder -->
+                            <span class="credibility-badge" data-url="{{ article.url }}"></span>
+                            {% if article.topic %}
+                            <span class="px-2 py-0.5 text-xs rounded-full bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300">
+                                {{ article.topic|replace('ai-ml', 'AI/ML')|replace('cloud-k8s', 'Cloud/K8s')|replace('devtools', 'DevTools')|replace('chips-hardware', 'Chips/Hardware')|replace('politics', 'Politics')|replace('business', 'Business')|replace('science', 'Science')|replace('general', 'General')|title }}
+                            </span>
+                            {% endif %}
+                        </div>
                     </div>
 
                     {% if article.summary %}
@@ -505,6 +510,7 @@
     </article>
 </div>
 
+<script src="{{ url_for('static', path='js/credibility.js') }}"></script>
 <script>
 // Format story time on load
 document.addEventListener('DOMContentLoaded', function() {
@@ -522,6 +528,9 @@ document.addEventListener('DOMContentLoaded', function() {
             el.title = DateUtils.formatDateTime(timestamp);
         }
     });
+
+    // Load credibility badges for supporting articles (Issue #197)
+    loadCredibilityBadges();
 });
 
 // Using DateUtils for locale-aware date formatting
@@ -548,6 +557,42 @@ function toggleClusteringPanel() {
         details.classList.toggle('hidden');
         chevron.classList.toggle('rotate-180');
     }
+}
+
+// Load credibility badges for all articles (Issue #197)
+async function loadCredibilityBadges() {
+    const badges = document.querySelectorAll('.credibility-badge[data-url]');
+    if (badges.length === 0) return;
+
+    // Show loading state
+    badges.forEach(badge => {
+        badge.innerHTML = CredibilityUtils.renderLoading();
+    });
+
+    // Extract unique domains
+    const domains = new Set();
+    badges.forEach(badge => {
+        const url = badge.getAttribute('data-url');
+        if (url) {
+            const domain = CredibilityUtils.extractDomain(url);
+            if (domain) domains.add(domain);
+        }
+    });
+
+    if (domains.size === 0) return;
+
+    // Fetch credibility data
+    const credData = await CredibilityUtils.fetchCredibility([...domains]);
+
+    // Render badges (shows "Not Rated" for unknown sources)
+    badges.forEach(badge => {
+        const url = badge.getAttribute('data-url');
+        if (url) {
+            const domain = CredibilityUtils.extractDomain(url);
+            const cred = credData[domain];
+            badge.innerHTML = CredibilityUtils.renderBadge(cred);
+        }
+    });
 }
 </script>
 {% endblock %}

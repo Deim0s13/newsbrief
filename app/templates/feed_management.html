@@ -203,6 +203,9 @@
                             Category
                         </th>
                         <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap">
+                            Credibility
+                        </th>
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap">
                             Priority
                         </th>
                         <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap">
@@ -516,6 +519,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', path='js/credibility.js') }}"></script>
 <script>
 let feeds = [];
 let currentEditingFeed = null;
@@ -581,6 +585,9 @@ async function loadFeeds() {
         renderStats();
         await populateFilters();
         loading.classList.add('hidden');
+
+        // Load credibility badges (Issue #197)
+        loadFeedCredibilityBadges();
     } catch (error) {
         console.error('Error loading feeds:', error);
         showNotification('Error loading feeds', 'error');
@@ -645,6 +652,9 @@ function createFeedRow(feed) {
         </td>
         <td class="px-3 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
             ${feed.category || '-'}
+        </td>
+        <td class="px-3 py-3 whitespace-nowrap">
+            <span class="credibility-badge" data-url="${feed.url}"></span>
         </td>
         <td class="px-3 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
             <span class="priority-${feed.priority}">★ ${feed.priority}</span>
@@ -1065,6 +1075,42 @@ function renderStats() {
             </div>
         </div>
     `;
+}
+
+// Load credibility badges for all feeds (Issue #197)
+async function loadFeedCredibilityBadges() {
+    const badges = document.querySelectorAll('.credibility-badge[data-url]');
+    if (badges.length === 0) return;
+
+    // Show loading state
+    badges.forEach(badge => {
+        badge.innerHTML = CredibilityUtils.renderLoading();
+    });
+
+    // Extract unique domains from feed URLs
+    const domains = new Set();
+    badges.forEach(badge => {
+        const url = badge.getAttribute('data-url');
+        if (url) {
+            const domain = CredibilityUtils.extractDomain(url);
+            if (domain) domains.add(domain);
+        }
+    });
+
+    if (domains.size === 0) return;
+
+    // Fetch credibility data
+    const credData = await CredibilityUtils.fetchCredibility([...domains]);
+
+    // Render badges (shows "Not Rated" for unknown sources)
+    badges.forEach(badge => {
+        const url = badge.getAttribute('data-url');
+        if (url) {
+            const domain = CredibilityUtils.extractDomain(url);
+            const cred = credData[domain];
+            badge.innerHTML = CredibilityUtils.renderBadge(cred);
+        }
+    });
 }
 
 async function populateFilters() {

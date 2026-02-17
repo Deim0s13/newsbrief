@@ -111,7 +111,7 @@
         </h1>
 
         <!-- Article Metadata -->
-        <div class="flex items-center space-x-6 text-sm text-gray-500 dark:text-gray-400 mb-6">
+        <div class="flex flex-wrap items-center gap-4 text-sm text-gray-500 dark:text-gray-400 mb-6">
             {% if article.published %}
             <div class="flex items-center">
                 <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -139,6 +139,11 @@
                 <a href="{{ article.url }}" target="_blank" class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
                     Read Original
                 </a>
+            </div>
+
+            <!-- Source Credibility Badge (Issue #197) -->
+            <div class="flex items-center">
+                <span id="source-credibility-badge" class="credibility-badge" data-url="{{ article.url }}"></span>
             </div>
         </div>
     </header>
@@ -277,6 +282,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', path='js/credibility.js') }}"></script>
 <script>
 let currentViewMode = 'detail';
 
@@ -356,7 +362,35 @@ document.addEventListener('DOMContentLoaded', function() {
             el.title = DateUtils.formatDateTime(timestamp);
         }
     });
+
+    // Load source credibility badge (Issue #197)
+    loadSourceCredibility();
 });
+
+// Load credibility badge for article source
+async function loadSourceCredibility() {
+    const badge = document.getElementById('source-credibility-badge');
+    if (!badge) return;
+
+    const url = badge.getAttribute('data-url');
+    if (!url) return;
+
+    // Show loading state
+    badge.innerHTML = CredibilityUtils.renderLoading();
+
+    const domain = CredibilityUtils.extractDomain(url);
+    if (!domain) return;
+
+    const credData = await CredibilityUtils.fetchCredibility([domain]);
+    const cred = credData[domain];
+
+    // Use detailed badge for article view (shows "Not Rated" if not found)
+    if (cred) {
+        badge.innerHTML = CredibilityUtils.renderDetailedBadge(cred);
+    } else {
+        badge.innerHTML = CredibilityUtils.renderNotRated();
+    }
+}
 </script>
 
 <style>
