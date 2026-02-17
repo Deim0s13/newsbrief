@@ -36,7 +36,8 @@ class TestCanonicalizeDomain:
 
     def test_full_url_http(self):
         """Extract domain from HTTP URL."""
-        assert canonicalize_domain("http://bbc.co.uk/news") == "bbc.co.uk"
+        # bbc.co.uk is aliased to bbc.com (the canonical MBFC domain)
+        assert canonicalize_domain("http://bbc.co.uk/news") == "bbc.com"
 
     def test_strips_www(self):
         """Strip www. prefix."""
@@ -44,7 +45,8 @@ class TestCanonicalizeDomain:
 
     def test_strips_mobile_m(self):
         """Strip m. mobile prefix."""
-        assert canonicalize_domain("m.bbc.co.uk") == "bbc.co.uk"
+        # bbc.co.uk is aliased to bbc.com (the canonical MBFC domain)
+        assert canonicalize_domain("m.bbc.co.uk") == "bbc.com"
 
     def test_strips_mobile_full(self):
         """Strip mobile. prefix."""
@@ -77,7 +79,8 @@ class TestCanonicalizeDomain:
     def test_lowercase(self):
         """Convert to lowercase."""
         assert canonicalize_domain("NYTimes.COM") == "nytimes.com"
-        assert canonicalize_domain("https://BBC.CO.UK/News") == "bbc.co.uk"
+        # bbc.co.uk is aliased to bbc.com (the canonical MBFC domain)
+        assert canonicalize_domain("https://BBC.CO.UK/News") == "bbc.com"
 
     def test_empty_input(self):
         """Handle empty input."""
@@ -288,7 +291,8 @@ class TestMapMbfcRecord:
         result = map_mbfc_record(record)
 
         assert result is not None
-        assert result.domain == "bbc.co.uk"
+        # bbc.co.uk is aliased to bbc.com (the canonical MBFC domain)
+        assert result.domain == "bbc.com"
         assert result.credibility_score == 1.0
 
     def test_least_biased_maps_to_center(self):
