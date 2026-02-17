@@ -2,15 +2,16 @@
 # Triggered on merge to main branch
 #
 # Stages:
-#   1. fetch-source  - Clone repository
-#   2. lint + test   - Run in parallel (quality gates)
-#   3. build-image   - Build container with semantic version tag
-#   4. security-scan - Trivy vulnerability scan (blocks on CRITICAL)
+#   1. fetch-source    - Clone repository
+#   2. lint + test     - Run in parallel (quality gates)
+#   3. build-image     - Build container with :latest tag
+#   4. security-scan   - Trivy vulnerability scan (blocks on CRITICAL)
 #   5. sign-image      - Cosign signature (required for prod)
 #   6. generate-sbom   - Software Bill of Materials
 #   7. create-release  - Create Git tag and GitHub release
-#   8. update-manifest - Update Kustomize overlay and push to Git (triggers ArgoCD)
-#   9. cleanup         - Prune old images, branches, and runs (keeps last N)
+#   8. tag-image       - Tag image with release version (e.g., v0.8.2)
+#   9. update-manifest - Update Kustomize overlay and push to Git (triggers ArgoCD)
+#  10. cleanup         - Prune old images, branches, and runs (keeps last N)
 #
 # Per ADR-0019: CI/CD Pipeline Design
 # Per ADR-0018: Secure Supply Chain
@@ -176,13 +177,27 @@ spec:
           value: "$(params.revision)"
 
     # ══════════════════════════════════════════════════════════════
-    # Stage 8: Update Manifest for GitOps (triggers ArgoCD deployment)
+    # Stage 8: Tag Image with Release Version
+    # ══════════════════════════════════════════════════════════════
+    - name: tag-image-version
+      taskRef:
+        name: tag-image
+      runAfter:
+        - create-release
+      params:
+        - name: SOURCE_IMAGE
+          value: "$(params.image-registry)/$(params.image-name):latest"
+        - name: TARGET_TAG
+          value: "$(tasks.create-release.results.version)"
+
+    # ══════════════════════════════════════════════════════════════
+    # Stage 9: Update Manifest for GitOps (triggers ArgoCD deployment)
     # ══════════════════════════════════════════════════════════════
     - name: update-manifest
       taskRef:
         name: update-manifest
       runAfter:
-        - create-release
+        - tag-image-version
       workspaces:
         - name: source
           workspace: source
@@ -193,7 +208,7 @@ spec:
           value: "prod"
 
     # ══════════════════════════════════════════════════════════════
-    # Stage 9: Cleanup (prune old images, branches, and runs)
+    # Stage 10: Cleanup (prune old images, branches, and runs)
     # ══════════════════════════════════════════════════════════════
     - name: cleanup-images
       taskRef:

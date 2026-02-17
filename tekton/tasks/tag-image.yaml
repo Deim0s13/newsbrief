@@ -1,0 +1,49 @@
+# Tekton Task: Tag container image with release version
+#
+# Uses skopeo to copy/tag an image in the registry without
+# pulling and pushing the entire image.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: tag-image
+  labels:
+    app.kubernetes.io/part-of: newsbrief
+spec:
+  description: Tag a container image with a new version tag
+  params:
+    - name: SOURCE_IMAGE
+      type: string
+      description: Source image reference (e.g., registry/name:latest)
+    - name: TARGET_TAG
+      type: string
+      description: Target tag to apply (e.g., v0.8.2)
+    - name: REGISTRY
+      type: string
+      description: Registry hostname
+      default: "kind-registry:5000"
+    - name: IMAGE_NAME
+      type: string
+      description: Image name
+      default: "newsbrief"
+  results:
+    - name: TAGGED_IMAGE
+      description: Full reference of the tagged image
+  steps:
+    - name: tag
+      image: quay.io/skopeo/stable:latest
+      script: |
+        #!/usr/bin/env sh
+        set -e
+
+        SOURCE="docker://$(params.REGISTRY)/$(params.IMAGE_NAME):latest"
+        TARGET="docker://$(params.REGISTRY)/$(params.IMAGE_NAME):$(params.TARGET_TAG)"
+
+        echo "🏷️  Tagging image..."
+        echo "   Source: $SOURCE"
+        echo "   Target: $TARGET"
+
+        skopeo copy --src-tls-verify=false --dest-tls-verify=false \
+          "$SOURCE" "$TARGET"
+
+        echo "✅ Image tagged successfully"
+        echo -n "$(params.REGISTRY)/$(params.IMAGE_NAME):$(params.TARGET_TAG)" > $(results.TAGGED_IMAGE.path)
