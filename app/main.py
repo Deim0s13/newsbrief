@@ -2860,6 +2860,30 @@ def get_credibility_stats():
 
 
 # =============================================================================
+# Admin: Credibility Dashboard (v0.8.2 - Issue #271)
+# =============================================================================
+
+
+@app.get("/admin/credibility", response_class=HTMLResponse)
+def credibility_dashboard_page(request: Request):
+    """
+    Source credibility data dashboard.
+
+    Displays MBFC source credibility statistics including source type
+    distribution, factual reporting breakdown, and synthesis eligibility.
+    Provides manual refresh capability.
+    """
+    return templates.TemplateResponse(
+        "credibility_dashboard.html",
+        {
+            "request": request,
+            "current_page": "admin",
+            "environment": os.environ.get("ENVIRONMENT", "development"),
+        },
+    )
+
+
+# =============================================================================
 # Admin: Extraction Dashboard (v0.8.0)
 # =============================================================================
 

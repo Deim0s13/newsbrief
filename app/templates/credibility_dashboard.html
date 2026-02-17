@@ -1,0 +1,321 @@
+{% extends "base.html" %}
+
+{% block title %}Source Credibility - NewsBrief{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 dark:bg-gray-900 py-6">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+
+        <!-- Header -->
+        <div class="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Source Credibility</h1>
+                <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                    MBFC source credibility data for news synthesis quality
+                </p>
+            </div>
+            <div class="mt-4 sm:mt-0">
+                <button id="refresh-btn" onclick="refreshData()"
+                    class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">
+                    <svg id="refresh-icon" class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    <span id="refresh-text">Refresh Data</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loading-state" class="flex items-center justify-center py-12">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <span class="ml-3 text-gray-600 dark:text-gray-400">Loading credibility data...</span>
+        </div>
+
+        <!-- Error State -->
+        <div id="error-state" class="hidden">
+            <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                <div class="flex">
+                    <svg class="h-5 w-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <div class="ml-3">
+                        <h3 class="text-sm font-medium text-red-800 dark:text-red-200">Error loading data</h3>
+                        <p id="error-message" class="mt-1 text-sm text-red-700 dark:text-red-300"></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div id="dashboard-content" class="hidden space-y-8">
+
+            <!-- Overview Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <!-- Total Sources -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <div class="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
+                                <svg class="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Sources</div>
+                            <div id="total-sources" class="text-2xl font-bold text-gray-900 dark:text-white">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Eligible for Synthesis -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <div class="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
+                                <svg class="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Eligible for Synthesis</div>
+                            <div id="eligible-count" class="text-2xl font-bold text-green-600 dark:text-green-400">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Ineligible -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <div class="w-12 h-12 bg-red-100 dark:bg-red-900 rounded-lg flex items-center justify-center">
+                                <svg class="w-6 h-6 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Ineligible</div>
+                            <div id="ineligible-count" class="text-2xl font-bold text-red-600 dark:text-red-400">-</div>
+                            <div class="text-xs text-gray-500 dark:text-gray-400">satire, conspiracy, fake news</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Data Provider -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <div class="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center">
+                                <svg class="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Data Provider</div>
+                            <div class="text-lg font-bold text-gray-900 dark:text-white">MBFC</div>
+                            <a href="https://mediabiasfactcheck.com/" target="_blank" class="text-xs text-blue-600 hover:underline">mediabiasfactcheck.com</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Row -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- Source Type Distribution -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Source Type Distribution</h3>
+                    <div id="source-type-chart" class="space-y-3">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                </div>
+
+                <!-- Factual Reporting Distribution -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Factual Reporting Distribution</h3>
+                    <div id="factual-chart" class="space-y-3">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Info Box -->
+            <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                <div class="flex">
+                    <svg class="h-5 w-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <div class="ml-3">
+                        <h3 class="text-sm font-medium text-blue-800 dark:text-blue-200">About Credibility Scoring</h3>
+                        <p class="mt-1 text-sm text-blue-700 dark:text-blue-300">
+                            Credibility scores are based <strong>only on factual reporting accuracy</strong>, not political bias.
+                            Sources marked as satire, conspiracy, or fake news are excluded from story synthesis.
+                            <a href="https://mediabiasfactcheck.com/methodology/" target="_blank" class="underline">Learn more about MBFC methodology</a>.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- Refresh Status Toast -->
+<div id="toast" class="fixed bottom-4 right-4 hidden">
+    <div id="toast-content" class="rounded-lg shadow-lg p-4 max-w-sm">
+        <div class="flex items-center">
+            <div id="toast-icon"></div>
+            <div class="ml-3">
+                <p id="toast-message" class="text-sm font-medium"></p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Color mapping for source types
+    const sourceTypeColors = {
+        'news': { bg: 'bg-blue-500', text: 'News' },
+        'pro_science': { bg: 'bg-green-500', text: 'Pro-Science' },
+        'satire': { bg: 'bg-yellow-500', text: 'Satire' },
+        'conspiracy': { bg: 'bg-orange-500', text: 'Conspiracy' },
+        'fake_news': { bg: 'bg-red-500', text: 'Fake News' },
+    };
+
+    // Color mapping for factual ratings
+    const factualColors = {
+        'very_high': { bg: 'bg-green-600', text: 'Very High' },
+        'high': { bg: 'bg-green-400', text: 'High' },
+        'mostly_factual': { bg: 'bg-blue-400', text: 'Mostly Factual' },
+        'mixed': { bg: 'bg-yellow-500', text: 'Mixed' },
+        'low': { bg: 'bg-orange-500', text: 'Low' },
+        'very_low': { bg: 'bg-red-500', text: 'Very Low' },
+        'unknown': { bg: 'bg-gray-400', text: 'Unknown' },
+    };
+
+    async function loadStats() {
+        const loadingState = document.getElementById('loading-state');
+        const errorState = document.getElementById('error-state');
+        const dashboardContent = document.getElementById('dashboard-content');
+
+        try {
+            const response = await fetch('/api/credibility/stats');
+            if (!response.ok) throw new Error('Failed to fetch stats');
+
+            const data = await response.json();
+
+            // Update overview cards
+            document.getElementById('total-sources').textContent = data.total_sources.toLocaleString();
+            document.getElementById('eligible-count').textContent = data.eligible_for_synthesis.toLocaleString();
+            document.getElementById('ineligible-count').textContent = data.ineligible_for_synthesis.toLocaleString();
+
+            // Render source type chart
+            renderBarChart('source-type-chart', data.by_source_type, sourceTypeColors, data.total_sources);
+
+            // Render factual rating chart
+            renderBarChart('factual-chart', data.by_factual_reporting, factualColors, data.total_sources);
+
+            // Show content
+            loadingState.classList.add('hidden');
+            errorState.classList.add('hidden');
+            dashboardContent.classList.remove('hidden');
+
+        } catch (error) {
+            console.error('Error loading stats:', error);
+            document.getElementById('error-message').textContent = error.message;
+            loadingState.classList.add('hidden');
+            errorState.classList.remove('hidden');
+            dashboardContent.classList.add('hidden');
+        }
+    }
+
+    function renderBarChart(containerId, data, colorMap, total) {
+        const container = document.getElementById(containerId);
+        container.innerHTML = '';
+
+        // Sort by count descending
+        const sorted = Object.entries(data).sort((a, b) => b[1] - a[1]);
+
+        for (const [key, count] of sorted) {
+            const config = colorMap[key] || { bg: 'bg-gray-400', text: key };
+            const percentage = total > 0 ? ((count / total) * 100).toFixed(1) : 0;
+
+            const row = document.createElement('div');
+            row.className = 'flex items-center';
+            row.innerHTML = `
+                <div class="w-28 text-sm text-gray-600 dark:text-gray-400">${config.text}</div>
+                <div class="flex-1 mx-3">
+                    <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                        <div class="${config.bg} h-full rounded-full transition-all duration-500" style="width: ${percentage}%"></div>
+                    </div>
+                </div>
+                <div class="w-20 text-right text-sm font-medium text-gray-900 dark:text-white">
+                    ${count.toLocaleString()} <span class="text-gray-500">(${percentage}%)</span>
+                </div>
+            `;
+            container.appendChild(row);
+        }
+    }
+
+    async function refreshData() {
+        const btn = document.getElementById('refresh-btn');
+        const icon = document.getElementById('refresh-icon');
+        const text = document.getElementById('refresh-text');
+
+        // Disable button and show loading
+        btn.disabled = true;
+        icon.classList.add('animate-spin');
+        text.textContent = 'Refreshing...';
+
+        try {
+            const response = await fetch('/api/credibility/refresh', { method: 'POST' });
+            const data = await response.json();
+
+            if (data.success) {
+                showToast('success', `Refreshed: ${data.inserted} added, ${data.updated} updated`);
+                // Reload stats
+                await loadStats();
+            } else {
+                showToast('error', 'Refresh failed');
+            }
+        } catch (error) {
+            console.error('Refresh error:', error);
+            showToast('error', error.message);
+        } finally {
+            btn.disabled = false;
+            icon.classList.remove('animate-spin');
+            text.textContent = 'Refresh Data';
+        }
+    }
+
+    function showToast(type, message) {
+        const toast = document.getElementById('toast');
+        const content = document.getElementById('toast-content');
+        const icon = document.getElementById('toast-icon');
+        const msg = document.getElementById('toast-message');
+
+        if (type === 'success') {
+            content.className = 'rounded-lg shadow-lg p-4 max-w-sm bg-green-100 dark:bg-green-900';
+            icon.innerHTML = '<svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>';
+            msg.className = 'text-sm font-medium text-green-800 dark:text-green-200';
+        } else {
+            content.className = 'rounded-lg shadow-lg p-4 max-w-sm bg-red-100 dark:bg-red-900';
+            icon.innerHTML = '<svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>';
+            msg.className = 'text-sm font-medium text-red-800 dark:text-red-200';
+        }
+
+        msg.textContent = message;
+        toast.classList.remove('hidden');
+
+        // Auto-hide after 5 seconds
+        setTimeout(() => {
+            toast.classList.add('hidden');
+        }, 5000);
+    }
+
+    // Load stats on page load
+    document.addEventListener('DOMContentLoaded', loadStats);
+</script>
+{% endblock %}
