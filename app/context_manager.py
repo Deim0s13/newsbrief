@@ -76,6 +76,9 @@ class ArticleForSynthesis:
     published: Optional[str] = None
     topic: Optional[str] = None
     feed_id: Optional[int] = None
+    # Source credibility fields (v0.8.2 - Issue #198)
+    credibility_score: Optional[float] = None  # 0.0-1.0, None if unknown
+    is_eligible_for_synthesis: bool = True  # False for satire/conspiracy/fake_news
 
     @property
     def estimated_tokens(self) -> int:
@@ -83,6 +86,18 @@ class ArticleForSynthesis:
         # Title + summary + formatting overhead
         text = f"ARTICLE:\nTitle: {self.title}\n{self.summary}"
         return count_tokens(text)
+
+    @property
+    def effective_priority(self) -> float:
+        """
+        Calculate effective priority combining ranking and credibility.
+
+        Formula: (ranking_score * 0.7) + (credibility_score * 0.3)
+        If credibility is unknown, use ranking_score alone.
+        """
+        if self.credibility_score is not None:
+            return (self.ranking_score * 0.7) + (self.credibility_score * 0.3)
+        return self.ranking_score
 
 
 @dataclass
@@ -220,8 +235,8 @@ def prioritize_articles(
     """
     Sort articles by importance for synthesis.
 
-    Priority order:
-    1. Higher ranking_score first
+    Priority order (v0.8.2 - Issue #198):
+    1. Higher effective_priority first (ranking * 0.7 + credibility * 0.3)
     2. More recent published date (tie-breaker)
 
     Args:
@@ -232,9 +247,71 @@ def prioritize_articles(
     """
     return sorted(
         articles,
-        key=lambda a: (a.ranking_score, a.published or ""),
+        key=lambda a: (a.effective_priority, a.published or ""),
         reverse=True,
     )
+
+
+def filter_eligible_articles(
+    articles: List[ArticleForSynthesis],
+) -> Tuple[List[ArticleForSynthesis], int]:
+    """
+    Filter out articles from ineligible sources (satire, conspiracy, fake_news).
+
+    Args:
+        articles: List of articles to filter
+
+    Returns:
+        Tuple of (eligible_articles, excluded_count)
+    """
+    eligible = [a for a in articles if a.is_eligible_for_synthesis]
+    excluded_count = len(articles) - len(eligible)
+
+    if excluded_count > 0:
+        logger.info(
+            f"Filtered {excluded_count} articles from ineligible sources "
+            f"(satire/conspiracy/fake_news)"
+        )
+
+    return eligible, excluded_count
+
+
+def calculate_aggregate_credibility(
+    articles: List[ArticleForSynthesis],
+) -> Tuple[Optional[float], bool]:
+    """
+    Calculate aggregate credibility score for a set of articles.
+
+    Uses weighted average based on ranking_score as weight.
+    Also determines if a low-credibility warning is needed.
+
+    Args:
+        articles: List of articles used in synthesis
+
+    Returns:
+        Tuple of (aggregate_score, low_credibility_warning)
+        - aggregate_score: Weighted average credibility (None if no data)
+        - low_credibility_warning: True if all sources have credibility < 0.5
+    """
+    # Filter to articles with credibility data
+    with_cred = [
+        (a.credibility_score, a.ranking_score)
+        for a in articles
+        if a.credibility_score is not None
+    ]
+
+    if not with_cred:
+        return None, False
+
+    # Calculate weighted average
+    total_weight = sum(score for _, score in with_cred) or 1.0
+    weighted_sum = sum(cred * weight for cred, weight in with_cred)
+    aggregate = weighted_sum / total_weight
+
+    # Check for low credibility warning (all sources < 0.5)
+    low_cred_warning = all(cred < 0.5 for cred, _ in with_cred)
+
+    return round(aggregate, 3), low_cred_warning
 
 
 def select_articles_for_budget(

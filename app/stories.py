@@ -20,6 +20,7 @@ import re
 import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, cast
 
@@ -30,9 +31,11 @@ from .context_manager import (
     ArticleForSynthesis,
     ContextMetrics,
     SelectionResult,
+    calculate_aggregate_credibility,
     calculate_context_metrics,
     create_article_groups,
     determine_strategy,
+    filter_eligible_articles,
     get_context_summary,
 )
 from .context_manager import load_config as load_context_config
@@ -41,6 +44,7 @@ from .context_manager import (
     prioritize_articles,
     select_articles_for_synthesis,
 )
+from .credibility import canonicalize_domain
 from .entities import ExtractedEntities, extract_and_cache_entities, get_entity_overlap
 from .llm import get_llm_service
 from .llm_output import SynthesisOutput, get_circuit_breaker, parse_and_validate
@@ -93,7 +97,7 @@ SIMILARITY_TOPIC_WEIGHT = float(
 )  # Weight for same-topic bonus
 
 # Import ORM models from central location
-from .orm_models import Base, Story, StoryArticle
+from .orm_models import Base, SourceCredibility, Story, StoryArticle
 
 
 def _parse_datetime(value: Any) -> Optional[datetime]:
@@ -111,6 +115,109 @@ def _parse_datetime(value: Any) -> Optional[datetime]:
     if isinstance(value, str):
         return datetime.fromisoformat(value)
     return None
+
+
+# =============================================================================
+# Credibility Integration (v0.8.2 - Issue #198)
+# =============================================================================
+
+
+@dataclass
+class ArticleCredibility:
+    """Credibility data for an article's source."""
+
+    article_id: int
+    credibility_score: Optional[float]
+    is_eligible_for_synthesis: bool
+
+
+def get_article_credibility(
+    session: Session,
+    article_ids: List[int],
+) -> Dict[int, ArticleCredibility]:
+    """
+    Look up credibility data for articles based on their feed's domain.
+
+    Joins: items -> feeds -> extract domain -> source_credibility
+
+    Args:
+        session: Database session
+        article_ids: List of article IDs to look up
+
+    Returns:
+        Dict mapping article_id -> ArticleCredibility
+    """
+    if not article_ids:
+        return {}
+
+    # Get article -> feed URL mapping
+    placeholders = ", ".join([f":id_{i}" for i in range(len(article_ids))])
+    params = {f"id_{i}": aid for i, aid in enumerate(article_ids)}
+
+    article_feeds = session.execute(
+        text(
+            f"""
+            SELECT i.id as article_id, f.url as feed_url
+            FROM items i
+            JOIN feeds f ON i.feed_id = f.id
+            WHERE i.id IN ({placeholders})
+            """
+        ),
+        params,
+    ).fetchall()
+
+    # Extract domains from feed URLs
+    article_domains: Dict[int, str] = {}
+    for row in article_feeds:
+        domain = canonicalize_domain(row.feed_url)
+        if domain:
+            article_domains[row.article_id] = domain
+
+    if not article_domains:
+        return {}
+
+    # Look up credibility for unique domains
+    unique_domains = list(set(article_domains.values()))
+    domain_cred: Dict[str, tuple] = {}
+
+    # Query credibility table
+    cred_records = (
+        session.query(
+            SourceCredibility.domain,
+            SourceCredibility.credibility_score,
+            SourceCredibility.is_eligible_for_synthesis,
+        )
+        .filter(SourceCredibility.domain.in_(unique_domains))
+        .all()
+    )
+
+    for domain, score, eligible in cred_records:
+        domain_cred[domain] = (score, eligible)
+
+    # Build result mapping article -> credibility
+    result: Dict[int, ArticleCredibility] = {}
+    for article_id, domain in article_domains.items():
+        if domain in domain_cred:
+            score, eligible = domain_cred[domain]
+            result[article_id] = ArticleCredibility(
+                article_id=article_id,
+                credibility_score=score,
+                is_eligible_for_synthesis=eligible,
+            )
+        else:
+            # Unknown source - default to eligible with no score
+            result[article_id] = ArticleCredibility(
+                article_id=article_id,
+                credibility_score=None,
+                is_eligible_for_synthesis=True,
+            )
+
+    logger.debug(
+        f"Credibility lookup: {len(result)} articles, "
+        f"{sum(1 for c in result.values() if c.credibility_score is not None)} with scores"
+    )
+
+    return result
 
 
 # CRUD Operations
@@ -652,6 +759,9 @@ def update_story_with_new_articles(
     existing_story.status = "superseded"  # type: ignore[assignment]
     existing_story.last_updated = datetime.now(UTC)  # type: ignore[assignment]
 
+    # Extract credibility metadata from synthesis (v0.8.2 - Issue #198)
+    cred_meta = synthesis_data.get("_credibility", {})
+
     # Create new version
     new_story = Story(
         title=synthesis_data.get("title")
@@ -686,6 +796,10 @@ def update_story_with_new_articles(
             if cluster_data.get("clustering_metadata")
             else None
         ),
+        # Source credibility (v0.8.2 - Issue #198)
+        source_credibility_score=cred_meta.get("aggregate_score"),
+        low_credibility_warning=cred_meta.get("low_credibility_warning", False),
+        sources_excluded=cred_meta.get("sources_excluded", 0),
         cluster_method="incremental_update",
         story_hash=cluster_data.get("cluster_hash"),
         generated_at=datetime.now(UTC),
@@ -843,6 +957,10 @@ def _story_db_to_model(  # type: ignore[misc]
         quality_breakdown=quality_breakdown,
         # Clustering metadata (v0.8.1 - Issue #232)
         clustering_metadata=clustering_metadata,
+        # Source credibility (v0.8.2 - Issue #198)
+        source_credibility_score=story.source_credibility_score,  # type: ignore[arg-type]
+        low_credibility_warning=story.low_credibility_warning or False,  # type: ignore[arg-type]
+        sources_excluded=story.sources_excluded or 0,  # type: ignore[arg-type]
     )
     # fmt: on
 
@@ -1916,6 +2034,35 @@ def _enhanced_synthesis_pipeline(
                 )
             )
 
+    # === CREDIBILITY INTEGRATION (v0.8.2 - Issue #198) ===
+    # Look up credibility for all articles
+    article_ids_list = [a.id for a in articles_for_synthesis]
+    credibility_map = get_article_credibility(session, article_ids_list)
+
+    # Enrich articles with credibility data
+    for article in articles_for_synthesis:
+        if article.id in credibility_map:
+            cred = credibility_map[article.id]
+            article.credibility_score = cred.credibility_score
+            article.is_eligible_for_synthesis = cred.is_eligible_for_synthesis
+
+    # Filter out ineligible sources (satire, conspiracy, fake_news)
+    original_count = len(articles_for_synthesis)
+    articles_for_synthesis, sources_excluded = filter_eligible_articles(
+        articles_for_synthesis
+    )
+
+    if not articles_for_synthesis:
+        raise ValueError(
+            f"No eligible articles for synthesis after filtering "
+            f"({sources_excluded} sources excluded as ineligible)"
+        )
+
+    # Calculate aggregate credibility for the story
+    aggregate_credibility, low_cred_warning = calculate_aggregate_credibility(
+        articles_for_synthesis
+    )
+
     # Determine synthesis strategy and select articles
     cluster_size = len(articles_for_synthesis)
     selection_result = select_articles_for_synthesis(articles_for_synthesis, model)
@@ -2033,10 +2180,19 @@ def _enhanced_synthesis_pipeline(
         "token_utilization_percent": round(context_metrics.utilization_percent, 1),
     }
 
+    # Add credibility metadata (v0.8.2 - Issue #198)
+    result["_credibility"] = {
+        "aggregate_score": aggregate_credibility,
+        "low_credibility_warning": low_cred_warning,
+        "sources_excluded": sources_excluded,
+        "original_article_count": original_count,
+    }
+
     logger.info(
         f"Enhanced pipeline completed in {pipeline_time_ms}ms "
         f"(strategy: {strategy}, type: {story_type_result.story_type.value}, "
-        f"articles: {context_metrics.articles_used}/{cluster_size})"
+        f"articles: {context_metrics.articles_used}/{cluster_size}, "
+        f"credibility: {aggregate_credibility or 'N/A'})"
     )
 
     return result
@@ -2826,6 +2982,9 @@ def generate_stories_simple(
         try:
             # Create story WITHOUT commit (will batch commit at end)
             # Use synthesis quality metrics if available (Issue #105)
+            # Extract credibility metadata from synthesis (v0.8.2 - Issue #198)
+            cred_meta = synthesis_data.get("_credibility", {})
+
             story = Story(
                 title=synthesis_data.get("title")
                 or _generate_fallback_title(
@@ -2859,6 +3018,10 @@ def generate_stories_simple(
                     if cluster_data.get("clustering_metadata")
                     else None
                 ),
+                # Source credibility (v0.8.2 - Issue #198)
+                source_credibility_score=cred_meta.get("aggregate_score"),
+                low_credibility_warning=cred_meta.get("low_credibility_warning", False),
+                sources_excluded=cred_meta.get("sources_excluded", 0),
                 cluster_method="hybrid_topic_keywords_optimized",
                 story_hash=cluster_data["cluster_hash"],
                 generated_at=datetime.now(UTC),

@@ -423,6 +423,25 @@ class StoryOut(BaseModel):
     quality_breakdown: Optional["QualityBreakdownOut"] = None
     # Clustering metadata (v0.8.1 - Issue #232)
     clustering_metadata: Optional["ClusteringMetadataOut"] = None
+    # Source credibility (v0.8.2 - Issue #198)
+    source_credibility_score: Optional[float] = None  # Weighted average 0.0-1.0
+    low_credibility_warning: bool = False  # True if all sources < 0.5 credibility
+    sources_excluded: int = 0  # Ineligible sources filtered from synthesis
+
+    @property
+    def credibility_label(self) -> str:
+        """Human-readable credibility label."""
+        if self.source_credibility_score is None:
+            return "Unknown"
+        if self.source_credibility_score >= 0.8:
+            return "High"
+        if self.source_credibility_score >= 0.6:
+            return "Medium-High"
+        if self.source_credibility_score >= 0.4:
+            return "Medium"
+        if self.source_credibility_score >= 0.2:
+            return "Low"
+        return "Very Low"
 
     @validator("title")
     def validate_title(cls, v):

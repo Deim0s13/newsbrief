@@ -178,6 +178,10 @@ class Story(Base):
     time_window_end = Column(DateTime)
     model = Column(String(50))
     status = Column(String(20), default="active")
+    # Source credibility (v0.8.2 - Issue #198)
+    source_credibility_score = Column(Float)  # Weighted average 0.0-1.0
+    low_credibility_warning = Column(Boolean, default=False)  # All sources < 0.5
+    sources_excluded = Column(Integer, default=0)  # Ineligible sources filtered
     # Versioning (v0.6.3 - ADR 0004)
     version = Column(Integer, default=1)
     previous_version_id = Column(Integer, ForeignKey("stories.id"))
@@ -192,6 +196,8 @@ class Story(Base):
         Index("idx_stories_importance", "importance_score"),
         Index("idx_stories_status", "status"),
         Index("idx_stories_previous_version", "previous_version_id"),
+        Index("idx_stories_credibility", "source_credibility_score"),
+        Index("idx_stories_low_cred_warning", "low_credibility_warning"),
     )
 
 
