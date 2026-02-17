@@ -1,7 +1,7 @@
 # NewsBrief Architecture Document
 
-> **Version**: 1.2
-> **Last Updated**: February 2026 (v0.8.1)
+> **Version**: 1.3
+> **Last Updated**: February 2026 (v0.8.2)
 > **Status**: Living Document
 
 ---
@@ -71,6 +71,7 @@ NewsBrief is a **self-hosted, privacy-focused** application designed to:
 | **FR-10** | Support OPML import/export for feed management | Should | ✅ Complete |
 | **FR-11** | Rank stories by user interests | Should | ✅ Complete |
 | **FR-12** | Weight sources by quality/reliability | Should | ✅ Complete |
+| **FR-12a** | Integrate external source credibility ratings (MBFC) | Should | ✅ Complete |
 | **FR-13** | Archive old stories automatically | Should | ✅ Complete |
 | **FR-14** | Full-text search across articles | Could | 🔜 Planned |
 | **FR-15** | Semantic search using embeddings | Could | 🔜 Planned |
@@ -509,6 +510,7 @@ flowchart TB
 | **Entity Extractor** | NER for companies, people, products | `entities.py` |
 | **Topic Classifier** | Categorization (Security, AI/ML, etc.) | `topics.py` |
 | **Ranking Engine** | Interest matching, source weighting | `ranking.py` |
+| **Credibility Service** | Source credibility lookup, MBFC data import | `credibility.py`, `credibility_import.py` |
 | **LLM Service** | Ollama integration, prompt management | `llm.py` |
 | **LLM Output Validation** | JSON parsing, repair, schema validation, circuit breaker | `llm_output.py` |
 | **Content Extraction** | Tiered article extraction with quality scoring | `extraction.py` |
@@ -564,6 +566,9 @@ erDiagram
         float importance_score
         float freshness_score
         float quality_score
+        float source_credibility_score
+        boolean low_credibility_warning
+        int sources_excluded
         datetime generated
         boolean is_archived
     }
@@ -581,6 +586,19 @@ erDiagram
         string name
         string type
         int mention_count
+    }
+
+    SourceCredibility {
+        int id PK
+        string domain UK
+        string name
+        string source_type
+        string factual_reporting
+        string bias
+        float credibility_score
+        boolean is_eligible_for_synthesis
+        string provider
+        datetime last_updated
     }
 ```
 
@@ -941,6 +959,7 @@ All significant architectural decisions are documented as ADRs (Architecture Dec
 | [ADR-0025](adr/0025-llm-model-selection.md) | LLM Model Selection (Qwen 2.5) | Accepted |
 | [ADR-0026](adr/0026-rag-integration-strategy.md) | RAG Integration Strategy | Accepted |
 | [ADR-0027](adr/0027-fine-tuning-deferral.md) | Fine-Tuning Deferral | Accepted |
+| [ADR-0028](adr/0028-source-credibility-architecture.md) | Source Credibility Architecture | Accepted |
 
 ---
 
@@ -954,6 +973,7 @@ All significant architectural decisions are documented as ADRs (Architecture Dec
 | **Synthesis** | The LLM-generated narrative for a story |
 | **Cluster** | A group of related articles identified by similarity |
 | **Feed Health** | A score indicating feed reliability and freshness |
+| **Source Credibility** | External rating of a news source's factual accuracy (from MBFC) |
 
 ## Appendix B: References
 

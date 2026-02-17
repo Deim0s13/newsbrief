@@ -2132,6 +2132,175 @@ When the primary topic is `chips-hardware` and keywords match `ai-ml`, the class
 
 ---
 
+## 🛡️ Source Credibility API ⭐ *New in v0.8.2*
+
+Source credibility integration powered by Media Bias/Fact Check (MBFC) data. See [ADR-0028](../adr/0028-source-credibility-architecture.md) for architecture details.
+
+### **GET /api/credibility/lookup**
+
+Look up credibility data for one or more domains.
+
+#### Query Parameters
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `domains` | string | Yes | Comma-separated list of domains |
+
+#### Response (200)
+```json
+{
+  "results": {
+    "nytimes.com": {
+      "domain": "nytimes.com",
+      "name": "New York Times",
+      "source_type": "news",
+      "factual_reporting": "high",
+      "bias": "left_center",
+      "credibility_score": 0.85,
+      "is_eligible_for_synthesis": true,
+      "provider": "mbfc_community",
+      "provider_url": "https://mediabiasfactcheck.com/new-york-times/"
+    }
+  },
+  "not_found": ["unknown-site.com"]
+}
+```
+
+#### Example
+```bash
+# Single domain lookup
+curl "http://localhost:8787/api/credibility/lookup?domains=bbc.co.uk" | jq .
+
+# Multiple domains
+curl "http://localhost:8787/api/credibility/lookup?domains=nytimes.com,bbc.co.uk,reuters.com" | jq .
+```
+
+---
+
+### **GET /api/credibility/stats**
+
+Get statistics about source credibility data.
+
+#### Response (200)
+```json
+{
+  "total_sources": 2068,
+  "by_source_type": {
+    "news": 1856,
+    "satire": 45,
+    "conspiracy": 32,
+    "fake_news": 28,
+    "pro_science": 107
+  },
+  "by_factual_rating": {
+    "very_high": 312,
+    "high": 845,
+    "mostly_factual": 423,
+    "mixed": 289,
+    "low": 134,
+    "very_low": 65
+  },
+  "eligible_for_synthesis": 1963,
+  "last_updated": "2026-02-17T04:15:00Z",
+  "provider": "mbfc_community"
+}
+```
+
+#### Example
+```bash
+curl http://localhost:8787/api/credibility/stats | jq .
+```
+
+---
+
+### **POST /api/credibility/refresh**
+
+Manually trigger a refresh of MBFC credibility data.
+
+#### Response (200)
+```json
+{
+  "success": true,
+  "sources_processed": 2068,
+  "sources_added": 15,
+  "sources_updated": 42,
+  "errors": 0,
+  "duration_seconds": 12.5
+}
+```
+
+#### Example
+```bash
+curl -X POST http://localhost:8787/api/credibility/refresh | jq .
+```
+
+---
+
+### **GET /admin/credibility** (Dashboard)
+
+Web UI dashboard for managing source credibility data.
+
+**Features:**
+- Overview statistics (total sources, eligible/ineligible counts)
+- Distribution charts by source type and factual rating
+- Last update timestamp
+- Manual refresh button
+
+**Access:**
+```
+http://localhost:8787/admin/credibility
+```
+
+---
+
+### **Credibility in Story Responses**
+
+Stories now include credibility metadata:
+
+```json
+{
+  "id": 1,
+  "title": "Breaking News Story",
+  "synthesis": "...",
+  "source_credibility_score": 0.82,
+  "low_credibility_warning": false,
+  "sources_excluded": 1,
+  ...
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `source_credibility_score` | float | Weighted average credibility (0.0-1.0), null if no data |
+| `low_credibility_warning` | bool | True if all sources have credibility < 0.5 |
+| `sources_excluded` | int | Count of ineligible sources filtered from synthesis |
+
+### **Credibility Scoring**
+
+Credibility scores are based solely on **factual reporting accuracy**, not political bias:
+
+| Factual Rating | Score |
+|----------------|-------|
+| Very High | 1.0 |
+| High | 0.85 |
+| Mostly Factual | 0.70 |
+| Mixed | 0.50 |
+| Low | 0.30 |
+| Very Low | 0.15 |
+
+### **Source Eligibility**
+
+Sources are filtered from synthesis based on type:
+
+| Source Type | Eligible | Notes |
+|-------------|----------|-------|
+| `news` | ✅ Yes | Standard news sources |
+| `pro_science` | ✅ Yes | Science-focused outlets |
+| `satire` | ❌ No | Excluded from synthesis |
+| `conspiracy` | ❌ No | Excluded from synthesis |
+| `fake_news` | ❌ No | Excluded from synthesis |
+
+---
+
 ## 🛡️ Error Handling
 
 ### **Standard Error Response**
