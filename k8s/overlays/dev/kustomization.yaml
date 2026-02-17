@@ -27,7 +27,8 @@ patches:
 
 images:
   - name: localhost:5000/newsbrief
-    newTag: v0.8.1
+    newName: kind-registry:5000/newsbrief
+    newTag: dev-v0.8.2
 
 # Dev-specific configuration overrides
 configMapGenerator:
