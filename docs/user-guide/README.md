@@ -18,6 +18,7 @@ Complete API reference including:
 - Article endpoints (`/items`, `/items/{id}`)
 - Feed management (`/feeds`, OPML import/export)
 - **Model profiles** (`/api/models/profiles`, `/api/models`)
+- **Source credibility** (`/api/credibility/lookup`, `/api/credibility/stats`)
 - Health probes (`/healthz`, `/readyz`, `/ollamaz`)
 - Scheduler status (`/scheduler/status`)
 
