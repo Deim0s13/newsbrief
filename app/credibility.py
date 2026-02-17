@@ -120,6 +120,23 @@ def calculate_credibility_score(factual_reporting: Optional[str]) -> Optional[fl
 # Domain Canonicalization (ADR-0028)
 # -----------------------------------------------------------------------------
 
+# Known domain aliases - maps alternate domains to canonical MBFC domains
+# Only include mappings where the target domain exists in MBFC
+DOMAIN_ALIASES: dict[str, str] = {
+    # BBC variants -> bbc.com (verified in MBFC)
+    "bbci.co.uk": "bbc.com",
+    "bbc.co.uk": "bbc.com",
+    "feeds.bbci.co.uk": "bbc.com",
+    "support.bbc.co.uk": "bbc.com",
+    # Feed subdomains -> main domain
+    "feeds.arstechnica.com": "arstechnica.com",
+    "rss.nytimes.com": "nytimes.com",
+    "feeds.washingtonpost.com": "washingtonpost.com",
+    "feeds.reuters.com": "reuters.com",
+    "rss.cnn.com": "cnn.com",
+    "feeds.theguardian.com": "theguardian.com",
+}
+
 
 def canonicalize_domain(url_or_domain: str) -> Optional[str]:
     """
@@ -182,6 +199,9 @@ def canonicalize_domain(url_or_domain: str) -> Optional[str]:
     # Validate result
     if not domain or "." not in domain:
         return None
+
+    # Apply domain aliases for known alternate domains
+    domain = DOMAIN_ALIASES.get(domain, domain)
 
     return domain
 
