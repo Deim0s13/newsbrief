@@ -397,10 +397,10 @@ def calculate_composite_credibility(
 ## Next Steps
 
 1. ✅ Research complete - MBFC selected as bootstrap signal
-2. ⏳ Create database migration (#196)
-3. ⏳ Implement import script with domain canonicalization
-4. ⏳ Build UI indicators (#197)
-5. ⏳ Integrate into synthesis weighting (#198)
+2. ✅ Create database migration (#196) - Completed Feb 2026
+3. ✅ Implement import script with domain canonicalization (#271) - Completed Feb 2026
+4. ✅ Build UI indicators (#197) - Completed Feb 2026
+5. ✅ Integrate into synthesis weighting (#198) - Completed Feb 2026
 6. 📋 Future: Add observed quality tracking (post-v0.8.2)
 
 ## References

@@ -16,6 +16,7 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 - **🔗 Semantic Similarity (v0.6.1)**: Enhanced clustering with entity overlap (50%) + keywords (30%) + topic bonus (20%)
 - **⭐ Quality Metrics (v0.8.1)**: LLM output quality tracking with dashboard at `/admin/quality`
 - **🎯 Multi-Topic Classification (v0.8.1)**: Primary + secondary topics with calibrated confidence scores
+- **🛡️ Source Credibility (v0.8.2)**: MBFC-powered credibility ratings with visual indicators and synthesis weighting
 - **Intelligent Clustering**: Hybrid topic grouping + keyword similarity for related article detection
 - **Multi-Pass Synthesis (v0.8.1)**: Story type detection → chain-of-thought analysis → synthesis → refinement
 - **Large Cluster Handling (v0.8.1)**: Map-reduce and hierarchical synthesis for 9+ article clusters
@@ -61,7 +62,17 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 - **Automated Dependency Management**: Weekly security audits, dependency updates, and base image maintenance
 - **Comprehensive Documentation**: Complete CI/CD guides, API documentation, and architecture decision records
 
-### **🚧 In Progress: v0.8.1 - LLM Quality & Intelligence** (Feb 2026)
+### **✅ Previous: v0.8.2 - Source Credibility Integration** (Feb 2026)
+Integrate external credibility ratings to improve synthesis quality and transparency (ADR-0028).
+
+- [x] **Source Credibility Schema** (#196): Database schema for credibility data with domain canonicalization
+- [x] **MBFC Data Import** (#271): Auto-import and weekly refresh from Media Bias/Fact Check dataset
+- [x] **Credibility Admin Dashboard**: Monitor credibility data at `/admin/credibility` with refresh controls
+- [x] **UI Credibility Indicators** (#197): Visual badges on stories, articles, and feed management pages
+- [x] **Synthesis Integration** (#198): Credibility-weighted article prioritization, ineligible source filtering
+- [x] **Story Credibility Tracking**: Aggregate credibility scores stored on synthesized stories
+
+### **✅ Previous: v0.8.1 - LLM Quality & Intelligence** (Feb 2026)
 Comprehensive improvements to LLM output quality and content intelligence.
 
 - [x] **Robust LLM Output Validation** (#107): Circuit breakers, retry logic, partial extraction
@@ -636,12 +647,14 @@ Development is organized with GitHub Projects and Milestones for clear visibilit
 - v0.7.7 - Import Progress & Date Fix - ✅ **COMPLETE** (Feb 2026)
 - [v0.7.8 - Dev/Prod Environment Parity](https://github.com/Deim0s13/newsbrief/releases/tag/v0.7.8) - ✅ **COMPLETE** (Feb 2026)
 - [v0.8.0 - Content Extraction Pipeline Upgrade](https://github.com/Deim0s13/newsbrief/releases/tag/v0.8.0) - ✅ **COMPLETE** (Feb 2026)
-- v0.8.1 - LLM Quality & Intelligence - 🚧 **IN PROGRESS** (Feb 2026)
+- v0.8.1 - LLM Quality & Intelligence - ✅ **COMPLETE** (Feb 2026)
+- v0.8.2 - Source Credibility Integration - ✅ **COMPLETE** (Feb 2026)
 
 **Epics** (via labels):
 - **epic:stories** - Story-based aggregation and synthesis
 - **epic:ui** - Web interface and user experience
 - **epic:database** - Data layer and migrations
+- **epic:credibility** - Source credibility ratings and synthesis weighting
 - **epic:security** - Authentication, encryption, hardening
 - **epic:ops** - CI/CD, deployment, monitoring
 - **Epic: Operations** - DevOps, monitoring, and deployment tooling
