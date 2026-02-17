@@ -97,7 +97,7 @@ class TestTopicDisplayNames:
         assert len(topics) > 0
 
         for topic in topics:
-            assert "id" in topic
+            assert "key" in topic  # Uses 'key' not 'id'
             assert "name" in topic
             assert "description" in topic
 
