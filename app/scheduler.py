@@ -65,6 +65,14 @@ TOPIC_RECLASSIFY_MODEL = os.getenv(
     "TOPIC_RECLASSIFY_MODEL", "llama3.1:8b"
 )  # LLM model for classification
 
+# Credibility data refresh configuration (v0.8.2 - Issue #271)
+CREDIBILITY_REFRESH_ENABLED = (
+    os.getenv("CREDIBILITY_REFRESH_ENABLED", "true").lower() == "true"
+)
+CREDIBILITY_REFRESH_SCHEDULE = os.getenv(
+    "CREDIBILITY_REFRESH_SCHEDULE", "0 3 * * 0"
+)  # Default: 3 AM every Sunday (weekly)
+
 # =============================================================================
 # Global state
 # =============================================================================
@@ -404,11 +412,55 @@ def scheduled_topic_reclassification() -> dict:
         }
 
 
+def scheduled_credibility_refresh() -> dict:
+    """
+    Scheduled job to refresh source credibility data from MBFC.
+
+    Runs weekly to pick up any new sources or rating changes.
+
+    Returns:
+        Dict with refresh statistics
+    """
+    from app.credibility_import import import_mbfc_sources
+
+    logger.info("Starting scheduled credibility data refresh")
+    start_time = datetime.now(UTC)
+
+    try:
+        stats = import_mbfc_sources()
+        elapsed = (datetime.now(UTC) - start_time).total_seconds()
+
+        logger.info(
+            f"Credibility refresh complete: "
+            f"{stats.inserted} inserted, {stats.updated} updated, "
+            f"{stats.skipped} skipped, took {elapsed:.1f}s"
+        )
+
+        return {
+            "success": True,
+            **stats.to_dict(),
+            "elapsed_seconds": elapsed,
+        }
+
+    except Exception as e:
+        elapsed = (datetime.now(UTC) - start_time).total_seconds()
+        logger.error(
+            f"Credibility refresh failed after {elapsed:.1f}s: {e}",
+            exc_info=True,
+        )
+        return {
+            "success": False,
+            "error": str(e),
+            "elapsed_seconds": elapsed,
+        }
+
+
 def start_scheduler():
     """
     Start the background scheduler.
 
     Initializes APScheduler and schedules:
+    - Credibility data refresh (if enabled)
     - Topic reclassification (if enabled)
     - Feed refresh (if enabled)
     - Story generation
@@ -443,6 +495,27 @@ def start_scheduler():
         else:
             logger.info(
                 "Topic reclassification disabled (TOPIC_RECLASSIFY_ENABLED=false)"
+            )
+
+        # Add scheduled credibility refresh job (v0.8.2 - Issue #271)
+        if CREDIBILITY_REFRESH_ENABLED:
+            credibility_trigger = CronTrigger.from_crontab(
+                CREDIBILITY_REFRESH_SCHEDULE, timezone=STORY_GENERATION_TIMEZONE
+            )
+            scheduler.add_job(
+                scheduled_credibility_refresh,
+                trigger=credibility_trigger,
+                id="credibility_refresh",
+                name="Scheduled Credibility Data Refresh",
+                replace_existing=True,
+                max_instances=1,
+            )
+            logger.info(
+                f"Credibility refresh scheduled: {CREDIBILITY_REFRESH_SCHEDULE} {STORY_GENERATION_TIMEZONE}"
+            )
+        else:
+            logger.info(
+                "Credibility refresh disabled (CREDIBILITY_REFRESH_ENABLED=false)"
             )
 
         # Add scheduled feed refresh job (v0.6.3)

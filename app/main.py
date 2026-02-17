@@ -23,6 +23,7 @@ from slowapi.util import get_remote_address
 from sqlalchemy import text
 
 from . import scheduler
+from .credibility_import import ensure_credibility_data, import_mbfc_sources
 from .db import init_db, session_scope
 from .feeds import (
     MAX_ITEMS_PER_FEED,
@@ -146,6 +147,17 @@ def _startup() -> None:
         migrate_article_topics_v062()
     except Exception as e:
         logger.warning(f"Topic migration v0.6.2 failed: {e}")
+    # Ensure source credibility data exists (auto-import if empty)
+    try:
+        result = ensure_credibility_data()
+        if result:
+            logger.info(
+                f"Credibility data imported: {result.inserted} sources "
+                f"({result.duration_ms}ms)"
+            )
+    except Exception as e:
+        logger.warning(f"Credibility data import failed: {e}")
+
     # Start background scheduler for automated story generation
     try:
         scheduler.start_scheduler()
@@ -2769,6 +2781,82 @@ def get_story_articles(story_id: int):
             )
 
         return items
+
+
+# =============================================================================
+# Source Credibility API (v0.8.2 - Issue #271)
+# =============================================================================
+
+
+@app.post("/api/credibility/refresh")
+def refresh_credibility_data(background_tasks: BackgroundTasks):
+    """
+    Trigger a refresh of source credibility data from MBFC.
+
+    This fetches the latest data from the MBFC community dataset and
+    updates the source_credibility table.
+
+    Returns:
+        Import statistics (inserted, updated, skipped, failed)
+    """
+    try:
+        stats = import_mbfc_sources()
+        return {
+            "success": True,
+            "message": "Credibility data refreshed",
+            **stats.to_dict(),
+        }
+    except Exception as e:
+        logger.error(f"Credibility refresh failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Refresh failed: {e}")
+
+
+@app.get("/api/credibility/stats")
+def get_credibility_stats():
+    """
+    Get statistics about source credibility data.
+
+    Returns counts by source type, factual rating, and eligibility.
+    """
+    from app.orm_models import SourceCredibility
+
+    with session_scope() as db:
+        total = db.query(SourceCredibility).count()
+
+        # Count by source type
+        by_type = {}
+        type_counts = (
+            db.query(SourceCredibility.source_type, text("COUNT(*)"))
+            .group_by(SourceCredibility.source_type)
+            .all()
+        )
+        for source_type, count in type_counts:
+            by_type[source_type or "unknown"] = count
+
+        # Count by factual reporting
+        by_factual = {}
+        factual_counts = (
+            db.query(SourceCredibility.factual_reporting, text("COUNT(*)"))
+            .group_by(SourceCredibility.factual_reporting)
+            .all()
+        )
+        for factual, count in factual_counts:
+            by_factual[factual or "unknown"] = count
+
+        # Count eligible/ineligible
+        eligible = (
+            db.query(SourceCredibility)
+            .filter(SourceCredibility.is_eligible_for_synthesis == True)
+            .count()
+        )
+
+        return {
+            "total_sources": total,
+            "by_source_type": by_type,
+            "by_factual_reporting": by_factual,
+            "eligible_for_synthesis": eligible,
+            "ineligible_for_synthesis": total - eligible,
+        }
 
 
 # =============================================================================
