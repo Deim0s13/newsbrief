@@ -431,8 +431,8 @@ sequenceDiagram
 
 ```mermaid
 flowchart TB
-    subgraph API["API Layer (main.py)"]
-        Routes["Routes<br/>/stories, /feeds, /items"]
+    subgraph API["API Layer (main.py + app/routers/)"]
+        Routes["Routes<br/>/stories, /feeds, /items, /admin, etc."]
         Health["Health Endpoints<br/>/healthz, /readyz"]
         RateLimit["Rate Limiter<br/>slowapi"]
     end

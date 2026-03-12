@@ -117,6 +117,28 @@ def _parse_datetime(value: Any) -> Optional[datetime]:
     return None
 
 
+def _build_in_clause_params(
+    values: Sequence[Any], prefix: str = "id"
+) -> Tuple[str, Dict[str, Any]]:
+    """
+    Build SQL IN-clause placeholders and params dict for a list of values.
+
+    Use for parameterized queries like: WHERE col IN (:prefix_0, :prefix_1, ...)
+
+    Args:
+        values: Sequence of values (ids, hashes, etc.)
+        prefix: Name prefix for placeholders (default "id" -> :id_0, :id_1, ...)
+
+    Returns:
+        (placeholders_str, params_dict) e.g. (":id_0, :id_1", {"id_0": 1, "id_1": 2})
+    """
+    if not values:
+        return "", {}
+    placeholders = ", ".join([f":{prefix}_{i}" for i in range(len(values))])
+    params = {f"{prefix}_{i}": v for i, v in enumerate(values)}
+    return placeholders, params
+
+
 # =============================================================================
 # Credibility Integration (v0.8.2 - Issue #198)
 # =============================================================================
@@ -151,8 +173,7 @@ def get_article_credibility(
         return {}
 
     # Get article -> feed URL mapping
-    placeholders = ", ".join([f":id_{i}" for i in range(len(article_ids))])
-    params = {f"id_{i}": aid for i, aid in enumerate(article_ids)}
+    placeholders, params = _build_in_clause_params(article_ids, "id")
 
     article_feeds = session.execute(
         text(
@@ -363,8 +384,7 @@ def get_story_by_id(session: Session, story_id: int) -> Optional[StoryOut]:
         from app.models import StructuredSummary, extract_first_sentences
 
         # Build IN clause with proper placeholders (SQLite requirement)
-        placeholders = ", ".join([f":id_{i}" for i in range(len(article_ids))])
-        params = {f"id_{i}": aid for i, aid in enumerate(article_ids)}
+        placeholders, params = _build_in_clause_params(article_ids, "id")
 
         rows = session.execute(
             text(
@@ -499,8 +519,7 @@ def get_stories(
         if use_source_weighting and stories:
             story_ids = [s.id for s in stories]
             # Get feed names and URLs for each story's articles
-            # Build placeholders dynamically for IN clause
-            placeholders = ", ".join([f":id_{i}" for i in range(len(story_ids))])
+            placeholders, params = _build_in_clause_params(story_ids, "id")
             feed_query = text(
                 f"""
                 SELECT sa.story_id, f.name, f.url
@@ -510,7 +529,6 @@ def get_stories(
                 WHERE sa.story_id IN ({placeholders})
             """
             )
-            params = {f"id_{i}": sid for i, sid in enumerate(story_ids)}
             feed_results = session.execute(feed_query, params).fetchall()
 
             for story_id, feed_name, feed_url in feed_results:
@@ -1942,11 +1960,98 @@ def _run_hierarchical_synthesis(
     }
 
 
+def _prepare_articles_for_synthesis(
+    session: Session,
+    article_ids: list[int],
+    articles_cache: Optional[Dict[int, Any]] = None,
+) -> List[ArticleForSynthesis]:
+    """
+    Fetch and normalize articles for synthesis into a single representation.
+
+    Uses cache when provided, otherwise runs one SELECT. Always returns
+    List[ArticleForSynthesis] so pipeline and fallback share the same type.
+
+    Args:
+        session: Database session (used when articles_cache is None)
+        article_ids: Article IDs to include (order preserved)
+        articles_cache: Optional pre-fetched dict id -> raw article data
+
+    Returns:
+        List of ArticleForSynthesis (same order as article_ids, only existing)
+    """
+    if articles_cache:
+        raw_list = [articles_cache[aid] for aid in article_ids if aid in articles_cache]
+        # Normalize cache entries to common dict shape (cache may lack ranking_score)
+        normalized = []
+        for raw in raw_list:
+            if isinstance(raw, dict):
+                pub = raw.get("published")
+                normalized.append(
+                    {
+                        "id": raw.get("id", 0),
+                        "title": raw.get("title") or "Untitled",
+                        "summary": raw.get("summary") or "",
+                        "ai_summary": raw.get("ai_summary") or raw.get("summary") or "",
+                        "topic": raw.get("topic"),
+                        "ranking_score": raw.get("ranking_score", 0.0) or 0.0,
+                        "published": str(pub) if pub else None,
+                    }
+                )
+            else:
+                # Tuple from cache (id, title, topic, published, summary, ai_summary)
+                t = raw
+                normalized.append(
+                    {
+                        "id": t[0] if len(t) > 0 else 0,
+                        "title": (t[1] or "Untitled") if len(t) > 1 else "Untitled",
+                        "summary": t[4] if len(t) > 4 else "",
+                        "ai_summary": (
+                            t[5] if len(t) > 5 else (t[4] if len(t) > 4 else "")
+                        ),
+                        "topic": t[2] if len(t) > 2 else None,
+                        "ranking_score": 0.0,
+                        "published": str(t[3]) if len(t) > 3 and t[3] else None,
+                    }
+                )
+        return prepare_articles_from_data(normalized)
+
+    placeholders, params = _build_in_clause_params(article_ids, "id")
+    rows = list(
+        session.execute(
+            text(
+                f"""
+                SELECT id, title, summary, ai_summary, topic, ranking_score, published
+                FROM items
+                WHERE id IN ({placeholders})
+                ORDER BY COALESCE(ranking_score, 0) DESC, published DESC
+                """
+            ),
+            params,
+        ).fetchall()
+    )
+    # Rows are Row-like; convert to dicts for prepare_articles_from_data
+    normalized = []
+    for row in rows:
+        m = row._mapping
+        normalized.append(
+            {
+                "id": m.get("id", 0),
+                "title": m.get("title") or "Untitled",
+                "summary": m.get("summary") or "",
+                "ai_summary": m.get("ai_summary") or m.get("summary") or "",
+                "topic": m.get("topic"),
+                "ranking_score": m.get("ranking_score", 0.0) or 0.0,
+                "published": str(m["published"]) if m.get("published") else None,
+            }
+        )
+    return prepare_articles_from_data(normalized)
+
+
 def _enhanced_synthesis_pipeline(
     session: Session,
     article_ids: list[int],
     model: str,
-    articles_cache: Optional[dict] = None,
+    prepared_articles: List[ArticleForSynthesis],
 ) -> dict[str, Any]:
     """
     Run the enhanced multi-pass synthesis pipeline.
@@ -1962,9 +2067,9 @@ def _enhanced_synthesis_pipeline(
 
     Args:
         session: Database session
-        article_ids: List of article IDs to synthesize
+        article_ids: List of article IDs (for logging/credibility)
         model: LLM model to use
-        articles_cache: Optional pre-fetched article data
+        prepared_articles: Pre-fetched ArticleForSynthesis from _prepare_articles_for_synthesis
 
     Returns:
         Synthesis result dict with title, synthesis, key_points, etc.
@@ -1974,65 +2079,9 @@ def _enhanced_synthesis_pipeline(
     """
     pipeline_start = time.time()
 
-    # Fetch articles if not cached (include ranking_score for prioritization)
-    if articles_cache:
-        raw_articles = [
-            articles_cache[aid] for aid in article_ids if aid in articles_cache
-        ]
-    else:
-        placeholders = ", ".join([f":id_{i}" for i in range(len(article_ids))])
-        params = {f"id_{i}": aid for i, aid in enumerate(article_ids)}
-        raw_articles = list(
-            session.execute(
-                text(
-                    f"""
-                    SELECT id, title, summary, ai_summary, topic, ranking_score, published
-                    FROM items
-                    WHERE id IN ({placeholders})
-                    ORDER BY COALESCE(ranking_score, 0) DESC, published DESC
-                    """
-                ),
-                params,
-            ).fetchall()
-        )
-
-    if not raw_articles:
+    articles_for_synthesis = prepared_articles
+    if not articles_for_synthesis:
         raise ValueError("No articles found for synthesis")
-
-    # Convert to ArticleForSynthesis objects for prioritization
-    articles_for_synthesis: List[ArticleForSynthesis] = []
-    for article in raw_articles:
-        if articles_cache:
-            articles_for_synthesis.append(
-                ArticleForSynthesis(
-                    id=article.get("id", 0),
-                    title=article.get("title") or "Untitled",
-                    summary=article.get("ai_summary") or article.get("summary") or "",
-                    ranking_score=article.get("ranking_score", 0.0) or 0.0,
-                    published=(
-                        str(article.get("published", ""))
-                        if article.get("published")
-                        else None
-                    ),
-                    topic=article.get("topic"),
-                )
-            )
-        else:
-            # Tuple format: (id, title, summary, ai_summary, topic, ranking_score, published)
-            articles_for_synthesis.append(
-                ArticleForSynthesis(
-                    id=article[0],
-                    title=article[1] or "Untitled",
-                    summary=article[3] or article[2] or "",  # ai_summary or summary
-                    ranking_score=(
-                        article[5] if len(article) > 5 and article[5] else 0.0
-                    ),
-                    published=(
-                        str(article[6]) if len(article) > 6 and article[6] else None
-                    ),
-                    topic=article[4] if len(article) > 4 else None,
-                )
-            )
 
     # === CREDIBILITY INTEGRATION (v0.8.2 - Issue #198) ===
     # Look up credibility for all articles
@@ -2240,45 +2289,19 @@ def _generate_story_synthesis(
     # Track generation time for cache storage
     generation_start = time.time()
 
-    # Use cached article data if available, otherwise fetch
-    if articles_cache:
-        articles = [articles_cache[aid] for aid in article_ids if aid in articles_cache]
-    else:
-        # Fetch article details
-        # Build IN clause with proper placeholders
-        placeholders = ", ".join([f":id_{i}" for i in range(len(article_ids))])
-        params = {f"id_{i}": aid for i, aid in enumerate(article_ids)}
-
-        articles = list(
-            session.execute(
-                text(
-                    f"""
-            SELECT id, title, summary, ai_summary, topic
-            FROM items
-            WHERE id IN ({placeholders})
-            ORDER BY published DESC
-        """
-                ),
-                params,
-            ).fetchall()
-        )
-
-    if not articles:
+    prepared_articles = _prepare_articles_for_synthesis(
+        session, article_ids, articles_cache
+    )
+    if not prepared_articles:
         raise ValueError("No articles found for synthesis")
 
     try:
         # === Enhanced Multi-Pass Synthesis Pipeline (Issue #102) ===
-        # This pipeline produces higher quality syntheses through:
-        # 1. Story type detection (breaking, evolving, trend, comparison)
-        # 2. Chain-of-thought analysis to extract structure
-        # 3. Type-specific synthesis generation
-        # 4. Quality refinement self-check
-
         pipeline_result = _enhanced_synthesis_pipeline(
             session=session,
             article_ids=article_ids,
             model=model,
-            articles_cache=articles_cache,
+            prepared_articles=prepared_articles,
         )
 
         # Process pipeline result
@@ -2289,17 +2312,18 @@ def _generate_story_synthesis(
             logger.warning(
                 f"Pipeline returned only {len(key_points)} key points, padding to 3"
             )
+            n_articles = len(prepared_articles)
             if len(key_points) == 0:
                 key_points = [
                     "Multiple related articles aggregated",
-                    f"Based on {len(articles)} sources",
+                    f"Based on {n_articles} sources",
                     "See supporting articles for details",
                 ]
             elif len(key_points) == 1:
-                key_points.append(f"Based on {len(articles)} sources")
+                key_points.append(f"Based on {n_articles} sources")
                 key_points.append("See supporting articles for details")
             elif len(key_points) == 2:
-                key_points.append(f"Based on {len(articles)} sources")
+                key_points.append(f"Based on {n_articles} sources")
 
         # Generate title with fallback and track source
         llm_title = pipeline_result.get("title")
@@ -2343,7 +2367,7 @@ def _generate_story_synthesis(
         quality_breakdown = calculate_quality_score(
             synthesis=synthesis_result,
             parse_metrics=parse_metrics,
-            article_count=len(articles),
+            article_count=len(prepared_articles),
             title_source=title_source,
         )
 
@@ -2367,7 +2391,7 @@ def _generate_story_synthesis(
                 model=model,
                 parse_metrics=parse_metrics,
                 quality_breakdown=quality_breakdown,
-                article_count=len(articles),
+                article_count=len(prepared_articles),
                 generation_time_ms=generation_time_ms,
             )
         except Exception as metrics_error:
@@ -2392,7 +2416,7 @@ def _generate_story_synthesis(
 
     except Exception as e:
         logger.error(f"Failed to generate synthesis with LLM: {e}")
-        return _fallback_synthesis(articles)
+        return _fallback_synthesis(prepared_articles)
 
 
 def _generate_fallback_title(
@@ -2456,20 +2480,23 @@ def _generate_fallback_title(
     return "News Story"
 
 
-def _fallback_synthesis(articles: Sequence[Any]) -> Dict[str, Any]:
+def _fallback_synthesis(
+    articles: Sequence[ArticleForSynthesis],
+) -> Dict[str, Any]:
     """
     Generate fallback synthesis when LLM is unavailable.
 
     Args:
-        articles: List of article tuples (id, title, summary, ai_summary, topic)
+        articles: List of ArticleForSynthesis (same type as pipeline uses)
 
     Returns:
         Dict with synthesis fields
     """
-    titles = [article[1] for article in articles]
-    topics = list({article[4] for article in articles if article[4]})
+    titles = [a.title for a in articles]
+    topics = list({a.topic for a in articles if a.topic})
 
-    if len(articles) == 1:
+    n = len(articles)
+    if n == 1:
         synthesis = f"{titles[0]}"
         key_points = [
             "Single article - see details below",
@@ -2490,7 +2517,7 @@ def _fallback_synthesis(articles: Sequence[Any]) -> Dict[str, Any]:
         # Pad with generic points if needed
         while len(key_points) < 3:
             if len(key_points) == 1:
-                key_points.append(f"• {len(articles)} related articles")
+                key_points.append(f"• {n} related articles")
             elif len(key_points) == 2:
                 key_points.append(
                     f"• Topics: {', '.join(topics) if topics else 'Various'}"
@@ -2780,10 +2807,9 @@ def generate_stories_simple(
         feed_health_scores = []
         if feed_ids:
             feed_id_list = list(feed_ids)
-            placeholders_health = ", ".join(
-                [f":fid_{i}" for i in range(len(feed_id_list))]
+            placeholders_health, health_params = _build_in_clause_params(
+                feed_id_list, "fid"
             )
-            health_params = {f"fid_{i}": fid for i, fid in enumerate(feed_id_list)}
             health_results = session.execute(
                 text(
                     f"SELECT health_score FROM feeds WHERE id IN ({placeholders_health})"
@@ -2892,8 +2918,7 @@ def generate_stories_simple(
     ]
 
     if cluster_hashes:
-        placeholders = ", ".join([f":hash_{i}" for i in range(len(cluster_hashes))])
-        hash_params = {f"hash_{i}": h for i, h in enumerate(cluster_hashes)}
+        placeholders, hash_params = _build_in_clause_params(cluster_hashes, "hash")
 
         existing_hashes = session.execute(
             text(

@@ -455,12 +455,3 @@ def get_topic_display_name(topic_key: str) -> str:
     if isinstance(topic_config, dict):
         return cast(str, topic_config.get("name", topic_key))
     return topic_key
-
-
-def get_available_topics() -> List[Dict[str, str]]:
-    """Get list of available topics with their display names."""
-    return [
-        {"key": key, "name": cast(str, config.get("name", key))}
-        for key, config in TOPICS.items()
-        if isinstance(config, dict)
-    ]

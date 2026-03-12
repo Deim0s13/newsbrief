@@ -495,7 +495,9 @@ safety check -r requirements.txt    # Security audit
 ```
 newsbrief/
 ├── app/                    # Application code
-│   ├── main.py            # FastAPI app and routes
+│   ├── main.py            # FastAPI app factory (mounts routers, startup/shutdown)
+│   ├── routers/           # Route modules (health, feeds, stories, items, admin, config, pages)
+│   ├── deps.py            # Shared dependencies (session_scope, templates, limiter)
 │   ├── db.py              # Database connection (PostgreSQL)
 │   ├── orm_models.py      # SQLAlchemy ORM models
 │   ├── models.py          # Pydantic schemas
@@ -565,7 +567,7 @@ See [`ansible/README.md`](ansible/README.md) for detailed operational procedures
 ## 🎯 Roadmap
 
 > **📋 Live Project Board**: Track detailed progress and epic breakdowns at
-> **[GitHub Project Board](https://github.com/users/Deim0s13/projects/7/views/1?layout=board)**
+> **[GitHub Project Board](https://github.com/users/Deim0s13/projects/8)**
 
 ### **v0.5.5 - Story Architecture** ✅ **COMPLETE** (Nov 2025)
 Transform from article-centric to story-based aggregation
@@ -689,7 +691,7 @@ git push origin feature/amazing-feature
 ```
 
 ### **Find Work to Do**
-1. **Check the [GitHub Project Board](https://github.com/users/Deim0s13/projects/7/views/1?layout=board)** for current epics
+1. **Check the [GitHub Project Board](https://github.com/users/Deim0s13/projects/8)** for current epics
 2. **Look for issues labeled** `good first issue` or `help wanted`
 3. **Comment on issues** you'd like to work on
 

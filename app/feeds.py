@@ -159,24 +159,42 @@ def _get_robots_txt(domain: str) -> str | None:
     return None
 
 
+def _check_url_allowed(url: str, user_agent: str = "*") -> bool:
+    """
+    Check if URL is allowed by robots.txt for the given user agent.
+
+    Parses URL to get domain and path, fetches robots.txt (cached), and checks
+    path against allow/disallow rules for the user agent.
+
+    Args:
+        url: Full URL (feed or article) to check
+        user_agent: User agent to match in robots.txt (default '*' for generic;
+            use 'newsbrief' for article fetches to match stricter rules if present)
+
+    Returns:
+        True if allowed or on error (fail-safe), False if disallowed
+    """
+    try:
+        from urllib.parse import urlparse
+
+        parts = urlparse(url)
+        domain = parts.netloc
+        robots_txt = _get_robots_txt(domain)
+        if robots_txt is None:
+            return True  # No robots.txt = allowed
+        return _check_robots_txt_path(
+            robots_txt, parts.path or "/", user_agent=user_agent
+        )
+    except Exception:
+        return True  # Error = allow (fail-safe)
+
+
 def is_robot_allowed(feed_url: str) -> bool:
     """
     Check if feed URL is allowed by robots.txt.
     Uses simple robots.txt parsing for common patterns.
     """
-    try:
-        from urllib.parse import urlparse
-
-        parts = urlparse(feed_url)
-        domain = parts.netloc
-
-        robots_txt = _get_robots_txt(domain)
-        if robots_txt is None:
-            return True  # No robots.txt = allowed
-
-        return _check_robots_txt_path(robots_txt, parts.path or "/", user_agent="*")
-    except Exception:
-        return True  # Error = allow (fail-safe)
+    return _check_url_allowed(feed_url, user_agent="*")
 
 
 def _check_robots_txt_path(robots_txt: str, path: str, user_agent: str = "*") -> bool:
@@ -244,21 +262,7 @@ def is_article_url_allowed(article_url: str) -> bool:
     Check if individual article URL is allowed by robots.txt.
     Used before fetching article content for readability extraction.
     """
-    try:
-        from urllib.parse import urlparse
-
-        parts = urlparse(article_url)
-        domain = parts.netloc
-
-        robots_txt = _get_robots_txt(domain)
-        if robots_txt is None:
-            return True  # No robots.txt = allowed
-
-        return _check_robots_txt_path(
-            robots_txt, parts.path or "/", user_agent="newsbrief"
-        )
-    except Exception:
-        return True  # Error = allow (fail-safe)
+    return _check_url_allowed(article_url, user_agent="newsbrief")
 
 
 @dataclass
@@ -1473,52 +1477,19 @@ def fetch_and_store() -> RefreshStats:
             # Parse feed
             parsed = feedparser.parse(resp.content)
 
-            # Store headers and update feed statistics
-            # Calculate rolling average response time: new_avg = (old_avg * count + new_value) / (count + 1)
+            # Store cache headers only (metrics already updated by update_feed_health_metrics)
             with session_scope() as s:
-                # Get current average for rolling calculation
-                current_data = s.execute(
-                    text(
-                        "SELECT success_count, avg_response_time_ms FROM feeds WHERE id = :id"
-                    ),
-                    {"id": fid},
-                ).first()
-
-                if current_data:
-                    prev_success_count = current_data[0] or 0
-                    prev_avg = current_data[1] or 0
-                    # Calculate new rolling average
-                    new_avg = int(
-                        (prev_avg * prev_success_count + response_time_ms)
-                        / (prev_success_count + 1)
-                    )
-                else:
-                    new_avg = int(response_time_ms)
-
                 s.execute(
                     text(
                         """
                     UPDATE feeds SET
                         etag=:e,
                         last_modified=:lm,
-                        updated_at=CURRENT_TIMESTAMP,
-                        last_fetch_at=CURRENT_TIMESTAMP,
-                        fetch_count=fetch_count + 1,
-                        success_count=success_count + 1,
-                        last_success_at=CURRENT_TIMESTAMP,
-                        consecutive_failures=0,
-                        last_response_time_ms=:response_time,
-                        avg_response_time_ms=:avg_response_time
+                        updated_at=CURRENT_TIMESTAMP
                     WHERE id=:id
                 """
                     ),
-                    {
-                        "e": new_etag,
-                        "lm": new_last_mod,
-                        "id": fid,
-                        "response_time": response_time_ms,
-                        "avg_response_time": new_avg,
-                    },
+                    {"e": new_etag, "lm": new_last_mod, "id": fid},
                 )
 
             # Process feed entries with per-feed limit for fairness
@@ -1641,24 +1612,8 @@ def fetch_and_store() -> RefreshStats:
                     topic=topic_result.topic,
                 )
 
-                # Insert item with ranking data
+                # Insert item with ranking data (from ranking module)
                 with session_scope() as s:
-                    # Calculate ranking and topic classification
-                    article_data = {
-                        "title": title,
-                        "content": content_text,
-                        "summary": summary,
-                        "published": published.isoformat() if published else None,
-                        "url": link,
-                    }
-
-                    ranking_score = _calculate_ranking_score_legacy(
-                        article_data, source_weight=1.0
-                    )
-                    topic, topic_confidence = classify_topic(
-                        article_data, feed_category=feed_category
-                    )
-
                     s.execute(
                         text(
                             """
@@ -1676,10 +1631,10 @@ def fetch_and_store() -> RefreshStats:
                             "summary": summary,
                             "content": content_text,
                             "content_hash": content_hash,
-                            # Ranking fields (v0.4.0)
-                            "ranking_score": ranking_score,
-                            "topic": topic,
-                            "topic_confidence": topic_confidence,
+                            # Ranking fields from ranking module
+                            "ranking_score": ranking_result.score,
+                            "topic": topic_result.topic,
+                            "topic_confidence": topic_result.confidence,
                             "source_weight": 1.0,
                             # Extraction metadata (v0.8.0)
                             "extraction_method": extraction_method,
@@ -1862,7 +1817,7 @@ def map_category_to_topic(category: Optional[str]) -> Optional[str]:
     return CATEGORY_TO_TOPIC_MAP.get(category.lower().strip())
 
 
-def classify_topic(
+def classify_article_for_feed(
     article_data: dict, feed_category: Optional[str] = None
 ) -> tuple[str, float]:
     """
@@ -1967,7 +1922,7 @@ def recalculate_rankings_and_topics() -> dict:
             new_ranking = _calculate_ranking_score_legacy(
                 article_data, source_weight=1.0
             )
-            new_topic, new_confidence = classify_topic(article_data)
+            new_topic, new_confidence = classify_article_for_feed(article_data)
 
             # Update the article
             s.execute(

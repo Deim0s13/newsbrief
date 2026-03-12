@@ -229,7 +229,7 @@ Modern RSS readers are often cloud-based services that compromise privacy, requi
 ## Future Considerations
 
 > **📋 Implementation Tracking**: Detailed epic breakdowns and current development status available at
-> **[GitHub Project Board](https://github.com/users/Deim0s13/projects/7/views/1?layout=board)**
+> **[GitHub Project Board](https://github.com/users/Deim0s13/projects/8)**
 
 ### Planned Enhancements (v0.3.x - v0.5.x)
 

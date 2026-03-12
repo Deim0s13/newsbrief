@@ -1149,9 +1149,9 @@ This ensures service reliability while respecting robots.txt when available.
        limit: int = Field(10, le=100)
    ```
 
-2. **Add endpoint in `main.py`**
+2. **Add route** in the appropriate router under `app/routers/` (e.g. `items.py` for article/search endpoints), or in `main.py` only if it is a one-off. Example for a new search endpoint in `app/routers/items.py`:
    ```python
-   @app.post("/search", response_model=List[ItemOut])
+   @router.post("/search", response_model=List[ItemOut])
    def search_items(query: SearchQuery):
        # Implementation
        pass
@@ -1231,7 +1231,7 @@ podman run --rm newsbrief-api:v0.3.0 --version
 
 ### **Project Planning & Issues**
 
-Before starting development, check the **[GitHub Project Board](https://github.com/users/Deim0s13/projects/7/views/1?layout=board)** for:
+Before starting development, check the **[GitHub Project Board](https://github.com/users/Deim0s13/projects/8)** for:
 
 - **Current epics** and their progress status
 - **Open issues** ready for development
