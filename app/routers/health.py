@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException
 from sqlalchemy import text
 
 from .. import scheduler
-from ..deps import session_scope
+from ..deps import get_version, session_scope
 from ..llm import OLLAMA_BASE_URL, get_llm_service, is_llm_available
 from ..settings import get_settings_service
 
@@ -31,6 +31,7 @@ def health_check() -> dict:
     """
     health_status: Dict[str, Any] = {
         "status": "healthy",
+        "version": get_version(),
         "timestamp": datetime.utcnow().isoformat(),
         "components": {},
     }

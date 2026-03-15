@@ -175,6 +175,8 @@ spec:
           value: "$(params.repo-url)"
         - name: revision
           value: "$(params.revision)"
+        - name: version-override
+          value: "$(params.image-tag)"
 
     # ══════════════════════════════════════════════════════════════
     # Stage 8: Tag Image with Release Version

@@ -564,6 +564,52 @@ See [`ansible/README.md`](ansible/README.md) for detailed operational procedures
 | Prod | https://newsbrief.local |
 | Tekton Dashboard | http://localhost:9097 |
 
+### Troubleshooting
+
+**Prod: Browser shows "certificate not trusted" for https://newsbrief.local**
+
+Caddy uses a local root CA. Trust it once on macOS:
+
+```bash
+make hostname-trust-cert
+# Then run the sudo command it prints (adds CA to system keychain)
+# Reload https://newsbrief.local
+```
+
+If the export fails, open https://newsbrief.local once (dismiss the warning), then run `make hostname-trust-cert` again.
+
+**Prod: `net::ERR_CERT_DATE_INVALID` (cert expired or wrong date)**
+
+Caddy’s local cert has invalid dates. Regenerate certs and re-trust:
+
+```bash
+make hostname-regen-certs
+# Then open https://newsbrief.local once, then:
+make hostname-trust-cert
+# Run the sudo command it prints, then reload. Clear HSTS if needed (see below).
+```
+
+**Prod: "You cannot visit newsbrief.local right now because the website uses HSTS"**
+
+After trusting the Caddy cert, the browser may still block the site because it cached HSTS for newsbrief.local from an earlier visit. Clear that cache:
+
+- **Chrome / Edge**: Open `chrome://net-internals/#hsts`. Under **Delete domain security policies**, type `newsbrief.local` and click **Delete**. Then reload https://newsbrief.local.
+- **Firefox**: Open `about:config`, search for `security.cert_pinning.enforcement_level`, set to `0` temporarily and reload; or clear site data for newsbrief.local in Settings → Privacy.
+- **Safari**: Develop → Empty Caches; or clear website data for newsbrief.local in Settings → Privacy → Manage Website Data (search for newsbrief).
+
+**Dev: Internal server error (500) when using the app**
+
+1. Check the terminal where `make dev` is running for the Python traceback, or `curl -s http://localhost:8787/STORY_URL` and look at the `detail` field in the JSON.
+2. Ensure PostgreSQL is up: `make db-status` (if not, run `make db-up`).
+3. **If the error mentions a missing column** (e.g. `source_credibility_score does not exist`), the dev DB is behind the schema. Run:
+   ```bash
+   make migrate-dev
+   ```
+   Then restart `make dev`.
+4. Quick health check: `curl -s http://localhost:8787/health | head -20`
+
+Common causes: database not running, migrations not applied (`make migrate-dev`), missing env (e.g. `DATABASE_URL`), or an unhandled exception in a route.
+
 ## 🎯 Roadmap
 
 > **📋 Live Project Board**: Track detailed progress and epic breakdowns at

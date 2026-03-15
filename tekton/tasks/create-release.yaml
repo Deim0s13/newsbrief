@@ -23,6 +23,10 @@ spec:
       type: string
       description: GitHub repository name
       default: "newsbrief"
+    - name: version-override
+      type: string
+      default: ""
+      description: If set, use this version and skip GitHub release creation (short-term bypass)
   workspaces:
     - name: source
       description: Workspace containing the cloned repository
@@ -34,22 +38,32 @@ spec:
   steps:
     - name: extract-version
       image: python:3.11-slim
+      env:
+        - name: VERSION_OVERRIDE
+          value: "$(params.version-override)"
       script: |
         #!/usr/bin/env python3
+        import os
         import re
 
-        with open("$(workspaces.source.path)/pyproject.toml", "r") as f:
-            content = f.read()
-
-        match = re.search(r'version\s*=\s*"([^"]+)"', content)
-        if match:
-            version = f"v{match.group(1)}"
-            print(f"Extracted version: {version}")
+        override = os.environ.get("VERSION_OVERRIDE", "").strip()
+        if override:
+            version = override if override.startswith("v") else f"v{override}"
+            print(f"Using version override: {version}")
             with open("$(results.version.path)", "w") as f:
                 f.write(version)
         else:
-            print("ERROR: Could not extract version from pyproject.toml")
-            exit(1)
+            with open("$(workspaces.source.path)/pyproject.toml", "r") as f:
+                content = f.read()
+            match = re.search(r'version\s*=\s*"([^"]+)"', content)
+            if match:
+                version = f"v{match.group(1)}"
+                print(f"Extracted version: {version}")
+                with open("$(results.version.path)", "w") as f:
+                    f.write(version)
+            else:
+                print("ERROR: Could not extract version from pyproject.toml")
+                exit(1)
 
     - name: create-tag-and-release
       image: curlimages/curl:latest
@@ -65,12 +79,22 @@ spec:
           value: "$(params.repo-name)"
         - name: REVISION
           value: "$(params.revision)"
+        - name: VERSION_OVERRIDE
+          value: "$(params.version-override)"
       script: |
         #!/bin/sh
         set -e
 
         VERSION=$(cat $(results.version.path))
         echo "🚀 Creating release for version: $VERSION"
+
+        # Short-term bypass: skip GitHub API when version-override is set
+        if [ -n "$VERSION_OVERRIDE" ]; then
+          echo "Skipping GitHub release (version-override set); using placeholder URL"
+          echo "https://github.com/$REPO_OWNER/$REPO_NAME/releases" > $(results.release-url.path)
+          echo "✅ Version $VERSION will be used for image tag and manifest"
+          exit 0
+        fi
 
         API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME"
 

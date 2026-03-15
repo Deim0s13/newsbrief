@@ -7,9 +7,10 @@
 # 2. Kind cluster with local registry
 # 3. Tekton pipelines and triggers (+ cosign secret from Bitwarden)
 # 4. ArgoCD
-# 5. Port forwards
-# 6. Caddy reverse proxy
-# 7. Smee webhook relay
+# 5. Production PostgreSQL (host:5432 for prod in Kind)
+# 6. Port forwards + wait for prod deployment
+# 7. Caddy reverse proxy
+# 8. Smee webhook relay
 
 - name: Recover NewsBrief Development Environment
   hosts: localhost
@@ -34,6 +35,25 @@
     - name: Install/verify ArgoCD
       include_role:
         name: argocd
+
+    - name: Start production PostgreSQL (host:5432 for prod in Kind)
+      command: podman-compose -f compose.yaml up -d db
+      args:
+        chdir: "{{ project_root }}"
+      changed_when: true
+
+    - name: Wait for PostgreSQL to accept connections
+      command: podman exec newsbrief-db pg_isready -U newsbrief -d newsbrief
+      register: pg_ready
+      until: pg_ready.rc == 0
+      retries: 15
+      delay: 2
+      failed_when: false
+
+    - name: Fail if PostgreSQL did not become ready
+      fail:
+        msg: "PostgreSQL (newsbrief-db) did not become ready. Check with: podman logs newsbrief-db"
+      when: pg_ready.rc != 0
 
     - name: Setup NewsBrief application
       include_role:

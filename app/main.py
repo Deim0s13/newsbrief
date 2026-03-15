@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import logging
 import os
+import traceback
 from datetime import datetime
 from typing import Any, List, Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import scheduler
@@ -44,6 +46,25 @@ app.include_router(items.router)
 app.include_router(admin.router)
 app.include_router(config.router)
 app.include_router(pages.router)
+
+
+@app.exception_handler(Exception)
+async def dev_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """In development, return 500 with traceback in response so the error is visible in the browser."""
+    tb = traceback.format_exc()
+    logger.error("Unhandled exception: %s\n%s", exc, tb)
+    if os.environ.get("ENVIRONMENT") != "development":
+        return JSONResponse(
+            status_code=500, content={"detail": "Internal server error"}
+        )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": str(exc),
+            "type": type(exc).__name__,
+            "traceback": tb.split("\n"),
+        },
+    )
 
 
 @app.on_event("startup")

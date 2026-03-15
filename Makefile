@@ -258,8 +258,15 @@ secrets-delete:  ## Delete database password secret
 	@echo "✅ Secret deleted: db_password"
 
 # ---------- Database Migrations ----------
+DEV_DATABASE_URL = postgresql://newsbrief:newsbrief_dev@localhost:5433/newsbrief
+
 migrate:                            ## Run database migrations to latest
 	.venv/bin/alembic upgrade head
+
+migrate-dev:                        ## Run migrations on dev database (requires make db-up)
+	@echo "Running migrations on dev DB (localhost:5433)..."
+	DATABASE_URL=$(DEV_DATABASE_URL) .venv/bin/alembic upgrade head
+	@echo "✅ Dev database up to date"
 
 migrate-new:                        ## Create a new migration: make migrate-new MSG="add xyz column"
 	@test -n "$(MSG)" || (echo "Set MSG=\"description\"" && exit 1)
@@ -307,6 +314,40 @@ hostname-remove:                  ## Remove newsbrief.local from /etc/hosts (req
 	else \
 		echo "$(HOSTNAME) not found in /etc/hosts"; \
 	fi
+
+CADDY_CONTAINER ?= newsbrief-proxy
+
+hostname-trust-cert:              ## Export Caddy root CA and show command to trust it (fix browser cert error)
+	@mkdir -p caddy-data
+	@if ! podman cp $(CADDY_CONTAINER):/data/caddy/pki/authorities/local/root.crt caddy-data/caddy-root-ca.crt 2>/dev/null; then \
+		echo "⚠️  Caddy has not generated a cert yet."; \
+		echo "   Open https://$(HOSTNAME) in the browser once (accept the warning), then run:"; \
+		echo "   make hostname-trust-cert"; \
+		exit 1; \
+	fi
+	@echo "✅ Exported Caddy root CA to caddy-data/caddy-root-ca.crt"
+	@echo ""
+	@echo "Trust it in macOS Keychain (run from project root; use the full path below):"
+	@echo "  sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain $(abspath caddy-data/caddy-root-ca.crt)"
+	@echo ""
+
+hostname-regen-certs:             ## Fix ERR_CERT_DATE_INVALID: regenerate Caddy certs (then trust again)
+	@echo "Stopping Caddy and clearing old certificates..."
+	@podman rm -f $(CADDY_CONTAINER) 2>/dev/null || true
+	@rm -rf caddy-data/data/caddy
+	@mkdir -p caddy-data/data caddy-data/config
+	@echo "Starting Caddy (will generate new certs on first request)..."
+	@podman run -d --name $(CADDY_CONTAINER) \
+		-p 80:80 -p 443:443 \
+		-v $(PWD)/Caddyfile:/etc/caddy/Caddyfile:ro \
+		-v $(PWD)/caddy-data/data:/data \
+		-v $(PWD)/caddy-data/config:/config \
+		caddy:2-alpine
+	@echo "✅ Caddy restarted. Next:"
+	@echo "  1. Open https://$(HOSTNAME) once (browser may show warning — that triggers cert generation)"
+	@echo "  2. make hostname-trust-cert"
+	@echo "  3. Run the sudo command it prints, then reload https://$(HOSTNAME)"
+	@echo "  If you see HSTS blocking, clear HSTS for $(HOSTNAME) (see README Troubleshooting)."
 
 # ---------- Autostart (launchd) ----------
 autostart-install:                ## Install launchd plist for auto-start on login
@@ -372,4 +413,4 @@ smee:                             ## Start smee webhook bridge
 
 # ---------- Defaults ----------
 .DEFAULT_GOAL := run
-.PHONY: venv run-local dev dev-full build tag push release local-release clean-release cleanup-old-images run deploy deploy-stop deploy-status deploy-init up down logs db-up db-down db-status db-logs db-psql db-reset db-backup db-restore db-backup-list migrate migrate-new migrate-stamp migrate-history migrate-current hostname-setup hostname-check hostname-remove autostart-install autostart-uninstall autostart-status autostart-start autostart-stop recover status port-forwards smee
+.PHONY: venv run-local dev dev-full build tag push release local-release clean-release cleanup-old-images run deploy deploy-stop deploy-status deploy-init up down logs db-up db-down db-status db-logs db-psql db-reset db-backup db-restore db-backup-list migrate migrate-dev migrate-new migrate-stamp migrate-history migrate-current hostname-setup hostname-check hostname-remove hostname-trust-cert hostname-regen-certs autostart-install autostart-uninstall autostart-status autostart-start autostart-stop recover status port-forwards smee
