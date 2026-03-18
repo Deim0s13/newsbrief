@@ -1,12 +1,12 @@
 # NewsBrief Architecture Document
 
-> **Version**: 1.3
-> **Last Updated**: February 2026 (v0.8.2)
+> **Version**: 1.4
+> **Last Updated**: February 2026 (v0.8.3)
 > **Status**: Living Document
 
 ---
 
-> **Future Direction**: NewsBrief is evolving from a news aggregator into an intelligence platform. See [ADR-0023: Intelligence Platform Strategy](adr/0023-intelligence-platform-strategy.md) for the strategic vision covering entity intelligence, multi-perspective synthesis, and premium features.
+> **Future Direction**: NewsBrief is evolving from a news aggregator into an intelligence platform. See [ADR-0023: Intelligence Platform Strategy](adr/0023-intelligence-platform-strategy.md) for the strategic vision covering entity intelligence, multi-perspective synthesis, and premium features. **Operating model**: Story processing is moving toward pipeline-oriented orchestration with explicit state, stages, retries, and stage-aware observability—see [ADR-0029: Pipeline-oriented orchestration](adr/0029-pipeline-oriented-orchestration.md).
 
 ---
 
@@ -423,6 +423,10 @@ sequenceDiagram
 | **Container Runtime** | Podman/Docker | OCI-compliant |
 | **Orchestration** | Podman Compose | Multi-container |
 
+### 6.4 Story processing: toward pipeline orchestration
+
+Story processing is moving from a set of partly manual steps (scheduled refresh, on-demand generation) to an **orchestrated pipeline** with explicit article and story states, defined stages (ingest → extract → enrich → cluster → retrieval → synthesize → quality-check → publish), retries and dead-letter handling, and stage-aware observability. This improves reliability, testability, and extension points (retrieval, synthesis routing, context, confidence gating). See [Section 7.5](#75-story-processing-pipeline-orchestration) and [ADR-0029](adr/0029-pipeline-oriented-orchestration.md).
+
 ---
 
 ## 7. Component Architecture
@@ -520,6 +524,58 @@ flowchart TB
 | **Context Manager** | Large article cluster handling with chunking (v0.8.1) | `context_manager.py` |
 | **Settings Service** | Model profiles and runtime configuration (v0.8.1) | `settings.py` |
 | **Prompt Templates** | Multi-pass synthesis prompts (v0.8.1) | `prompts/` |
+
+### 7.5 Story Processing Pipeline (orchestration)
+
+NewsBrief is evolving from loosely connected processing steps toward an **orchestrated pipeline** with explicit article and story states, stage-based flow, retries, and stage-aware observability (see [ADR-0029](adr/0029-pipeline-oriented-orchestration.md)). The following describes the target model; implementation is tracked in the pipeline-orchestration workstream (GitHub issues #273–#291).
+
+#### End-to-end pipeline stages
+
+Items move through a default sequence of stages. Order and insertion points are stable so that retrieval, routing, and gating have clear places in the flow.
+
+| Stage | Purpose | Article/Story |
+|-------|---------|---------------|
+| **Ingest** | Discover and fetch feed items | Article |
+| **Extract** | Extract clean content from raw HTML | Article |
+| **Enrich** | Summarize, embed, entities, topics | Article |
+| **Cluster** | Group related articles into candidates | Article → Story candidate |
+| **Retrieval** | Fetch relevant prior stories/anchors for context (optional) | Cluster / Story candidate |
+| **Synthesize** | Generate narrative; may route standard vs deep path by complexity | Story |
+| **Quality / context** | Quality check; optional post-synthesis context generation | Story |
+| **Publish gate** | Confidence-based decision: publish, publish-with-warning, or hold | Story |
+| **Publish** | Story visible in default views; optional archiving after age | Story |
+
+#### Article and story state model
+
+- **Article states** (e.g. discovered, fetched, extracted, enriched, embedded, clustered, failed) are persisted and updated by each stage. Invalid transitions are prevented or logged.
+- **Story states** (e.g. candidate, synthesizing, context_enriched, quality_checked, published, archived, failed) drive visibility and which operator actions are valid. Failed items are queryable and can be retried, inspected, or discarded.
+
+State is stored in the database and exposed in admin/API where appropriate so that monitoring and manual actions are consistent with the pipeline.
+
+#### Where retrieval sits
+
+**Retrieval** is a bounded stage after **clustering** and before **synthesis**. It fetches relevant historical anchors, related stories, and semantically similar content for each cluster. Output is limited in size and marked as supporting context, not canonical source facts. It can be disabled or configured per environment.
+
+#### Synthesis routing
+
+**Synthesis routing** chooses between a fast **standard** path and a **deep** path (e.g. with selective reasoning) based on **cluster complexity** (article count, semantic spread, source divergence, etc.). The path that produced each story is recorded. Both paths keep a common output schema so that rendering and downstream stages stay consistent.
+
+#### Confidence and publish gating
+
+**Confidence scoring** becomes a **publish gate** before a story is visible. Outcomes: **published** (normal visibility), **published with warning** (visible but clearly marked), or **held** (not in default views until an operator promotes or discards). The decision and metadata are stored and inspectable.
+
+#### Manual operator actions
+
+Manual control is preserved as **targeted, stage-aware actions**: e.g. re-fetch article, re-extract, re-enrich, re-cluster day, re-synthesize story. These are logged (who/what/when) and respect state validation so that re-running a stage does not corrupt downstream state. The pipeline remains the primary flow; operator actions are explicit overrides or repairs.
+
+#### Observability hooks
+
+- **Per-stage metrics**: throughput, latency, failure rate, retry count, queue depth.
+- **Stuck-item detection**: items exceeding a configurable age per stage are surfaced (e.g. in admin or API).
+- **Dashboards**: end-to-end freshness, publish success, and error grouping by stage.
+- **Alerts**: thresholds and conditions documented and wired where needed.
+
+This model improves reliability, observability, and testability while providing a clear foundation for RAG, multi-perspective synthesis, context generation, and confidence-based publishing.
 
 ---
 

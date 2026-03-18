@@ -32,6 +32,7 @@ Architectural decisions with context and rationale:
 - **[0002-story-based-aggregation.md](adr/0002-story-based-aggregation.md)** - Story-based approach
 - **[0022-dev-prod-database-parity.md](adr/0022-dev-prod-database-parity.md)** - PostgreSQL-only (v0.7.8)
 - **[0023-intelligence-platform-strategy.md](adr/0023-intelligence-platform-strategy.md)** - Future vision
+- **[0029-pipeline-oriented-orchestration.md](adr/0029-pipeline-oriented-orchestration.md)** - Pipeline orchestration for story processing
 - **[ARCHITECTURAL_ROADMAP.md](adr/ARCHITECTURAL_ROADMAP.md)** - Complete roadmap
 - *...and more*
 
@@ -53,11 +54,11 @@ Historical documentation (no longer actively maintained):
 |----------|------|
 | **Quick Start** | [user-guide/QUICK-START.md](user-guide/QUICK-START.md) |
 | **API Reference** | [user-guide/API.md](user-guide/API.md) |
-| **Latest Release** | [v0.8.0](https://github.com/Deim0s13/newsbrief/releases/tag/v0.8.0) |
+| **Latest Release** | [v0.8.3](https://github.com/Deim0s13/newsbrief/releases) |
 | **Project Board** | [GitHub Projects](https://github.com/users/Deim0s13/projects/2) |
 | **Issues** | [GitHub Issues](https://github.com/Deim0s13/newsbrief/issues) |
 | **Milestones** | [GitHub Milestones](https://github.com/Deim0s13/newsbrief/milestones) |
 
 ---
 
-**Last Updated**: February 2026 · **Current Version**: v0.8.0
+**Last Updated**: February 2026 · **Current Version**: v0.8.3

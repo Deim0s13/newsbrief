@@ -10,6 +10,7 @@ NewsBrief is a self-hosted, privacy-focused news aggregator that replaces readin
 
 ### **🎯 Story-Based Aggregation (v0.8.0)** - *Current Release*
 Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **Time to informed: 30 min → 2 min**
+Story generation is evolving toward an **orchestrated pipeline** with explicit processing stages, clearer reliability (retries, dead-letter handling), and stage-aware observability—see [ADR-0029](docs/adr/0029-pipeline-oriented-orchestration.md).
 
 - **Automated Story Generation**: Daily scheduled generation at 6 AM (configurable timezone)
 - **🧠 Enhanced Entity Extraction (v0.8.1)**: Confidence scores, roles (primary/mentioned/quoted), disambiguation hints

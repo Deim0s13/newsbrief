@@ -6,6 +6,8 @@ This document outlines the architectural evolution of NewsBrief, from its curren
 
 > **Strategic Vision**: See [ADR-0023: Intelligence Platform Strategy](0023-intelligence-platform-strategy.md) for the comprehensive plan to transform NewsBrief from a news aggregator into a premium intelligence platform.
 
+**Pipeline orchestration workstream**: Story processing is evolving toward pipeline-oriented orchestration (explicit state, stages, retries, retrieval hooks, confidence gates, stage-aware observability). This is a **cross-cutting workstream** delivered through **existing milestones** (Infrastructure Reliability, Semantic Foundation/RAG, Multi-Perspective Synthesis, Story Evolution, Context Engine, Confidence & Transparency, Testing & Quality, Observability Stack)—not a separate milestone or product direction. It provides the foundation for later work in RAG, multi-perspective synthesis, context generation, confidence-based publishing, and observability. See [ADR-0029: Pipeline-oriented orchestration](0029-pipeline-oriented-orchestration.md) and the [pipeline-orchestration issues](https://github.com/Deim0s13/newsbrief/issues?q=is%3Aissue+label%3Apipeline-orchestration) (#273–#291, tracker #292).
+
 ---
 
 ## 1. Current Architecture (v0.7.x)
