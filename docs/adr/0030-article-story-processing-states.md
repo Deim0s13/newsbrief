@@ -50,6 +50,10 @@ This ADR is the **specification** for that state model. It **does not restate** 
 
 Canonical string values and transition helpers live in **`app/processing_states.py`** (`ArticleProcessingState`, `StoryProcessingState`, `article_transition_allowed`, `story_transition_allowed`, `log_invalid_*`, `coerce_*`). **Normative enum values** match the tables below.
 
+### Database migration (Phase 2)
+
+- Alembic revision **`010_processing_state`** (`alembic/versions/010_processing_state.py`): adds **`processing_state`** to **`items`** and **`stories`**, heuristic backfill, **`NOT NULL`** with server defaults (`fetched` / `candidate`), indexes **`idx_items_processing_state`** and **`idx_stories_processing_state`**.
+
 ### Article processing states (`items.processing_state`)
 
 | Value | Meaning |

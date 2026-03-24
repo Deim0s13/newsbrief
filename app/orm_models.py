@@ -117,6 +117,13 @@ class Item(Base):
     extraction_error = Column(Text)
     extracted_at = Column(DateTime)
     extraction_time_ms = Column(Integer)
+    # Pipeline processing state (ADR-0030 / #273); separate from feed/item lifecycle
+    processing_state = Column(
+        String(32),
+        nullable=False,
+        default="fetched",
+        server_default="fetched",
+    )
     # Timestamps
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
 
@@ -178,6 +185,13 @@ class Story(Base):
     time_window_end = Column(DateTime)
     model = Column(String(50))
     status = Column(String(20), default="active")
+    # Pipeline processing state (ADR-0030 / #273); separate from status (active/archived)
+    processing_state = Column(
+        String(32),
+        nullable=False,
+        default="candidate",
+        server_default="candidate",
+    )
     # Source credibility (v0.8.2 - Issue #198)
     source_credibility_score = Column(Float)  # Weighted average 0.0-1.0
     low_credibility_warning = Column(Boolean, default=False)  # All sources < 0.5

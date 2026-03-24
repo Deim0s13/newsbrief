@@ -93,6 +93,12 @@ def test_synthesis_with_llm():
     session = setup_test_db()
 
     try:
+        # Remove stale rows from interrupted runs (shared dev DB has unique url_hash)
+        session.execute(
+            text("DELETE FROM items WHERE url LIKE 'https://example.com/llm-test-%'")
+        )
+        session.commit()
+
         # Insert test articles about the same story (GPT-5 release)
         now = datetime.now(UTC)
 
@@ -220,6 +226,14 @@ def test_full_pipeline_with_llm():
     session = setup_test_db()
 
     try:
+        # Remove stale rows from interrupted runs (shared dev DB has unique url_hash)
+        session.execute(
+            text(
+                "DELETE FROM items WHERE url LIKE 'https://example.com/llm-pipeline-test-%'"
+            )
+        )
+        session.commit()
+
         # Insert diverse test articles
         now = datetime.now(UTC)
 

@@ -102,7 +102,8 @@ def list_items(
                i.structured_summary_json, i.structured_summary_model,
                i.structured_summary_content_hash, i.structured_summary_generated_at,
                i.ranking_score, i.topic, i.topic_confidence, i.source_weight,
-               i.created_at, i.feed_id, COALESCE(i.published, i.created_at) AS sort_date
+               i.processing_state, i.created_at, i.feed_id,
+               COALESCE(i.published, i.created_at) AS sort_date
         FROM items i
         """
         joins: list[str] = []
@@ -161,7 +162,7 @@ def list_items(
                     url=r[2],
                     published=r[3],
                     summary=r[4],
-                    feed_id=r[19],
+                    feed_id=r[20],
                     ai_summary=r[7],
                     ai_model=r[8],
                     ai_generated_at=r[9],
@@ -172,6 +173,7 @@ def list_items(
                     topic=r[15],
                     topic_confidence=float(r[16]) if r[16] is not None else 0.0,
                     source_weight=float(r[17]) if r[17] is not None else 1.0,
+                    processing_state=r[18] or "fetched",
                 )
             )
         return items
@@ -406,7 +408,7 @@ def get_item(item_id: int):
                    ai_summary, ai_model, ai_generated_at,
                    structured_summary_json, structured_summary_model,
                    structured_summary_content_hash, structured_summary_generated_at,
-                   ranking_score, topic, topic_confidence, source_weight
+                   ranking_score, topic, topic_confidence, source_weight, processing_state
             FROM items
             WHERE id = :item_id
         """
@@ -441,6 +443,7 @@ def get_item(item_id: int):
             topic=row[15],
             topic_confidence=float(row[16]) if row[16] is not None else 0.0,
             source_weight=float(row[17]) if row[17] is not None else 1.0,
+            processing_state=row[18] or "fetched",
         )
 
 
@@ -455,7 +458,7 @@ def get_items_by_topic(topic_key: str, limit: int = Query(50, le=200)):
                ai_summary, ai_model, ai_generated_at,
                structured_summary_json, structured_summary_model,
                structured_summary_content_hash, structured_summary_generated_at,
-               ranking_score, topic, topic_confidence, source_weight
+               ranking_score, topic, topic_confidence, source_weight, processing_state
         FROM items
         WHERE topic = :topic_key
         ORDER BY COALESCE(published, created_at) DESC, ranking_score DESC
@@ -491,6 +494,7 @@ def get_items_by_topic(topic_key: str, limit: int = Query(50, le=200)):
                     topic=r[15],
                     topic_confidence=float(r[16]) if r[16] is not None else 0.0,
                     source_weight=float(r[17]) if r[17] is not None else 1.0,
+                    processing_state=r[18] or "fetched",
                 )
             )
         return {

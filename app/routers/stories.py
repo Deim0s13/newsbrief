@@ -296,7 +296,8 @@ def get_story_articles(story_id: int):
                        i.ai_summary, i.ai_model, i.ai_generated_at,
                        i.structured_summary_json, i.structured_summary_model,
                        i.structured_summary_content_hash, i.structured_summary_generated_at,
-                       i.ranking_score, i.topic, i.topic_confidence, i.source_weight
+                       i.ranking_score, i.topic, i.topic_confidence, i.source_weight,
+                       i.processing_state
                 FROM items i
                 JOIN story_articles sa ON i.id = sa.article_id
                 WHERE sa.story_id = :story_id
@@ -343,6 +344,7 @@ def get_story_articles(story_id: int):
                     topic=r[15],
                     topic_confidence=float(r[16]) if r[16] is not None else 0.0,
                     source_weight=float(r[17]) if r[17] is not None else 1.0,
+                    processing_state=r[18] or "fetched",
                 )
             )
         return items

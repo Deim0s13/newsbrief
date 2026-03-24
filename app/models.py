@@ -9,6 +9,8 @@ from typing import List, Optional, Union
 
 from pydantic import BaseModel, Field, HttpUrl, validator
 
+from app.processing_states import ArticleProcessingState, StoryProcessingState
+
 
 class FeedIn(BaseModel):
     url: HttpUrl
@@ -209,6 +211,10 @@ class ItemOut(BaseModel):
     )
     source_weight: float = Field(
         1.0, description="Importance weight of the source feed"
+    )
+    processing_state: str = Field(
+        ArticleProcessingState.FETCHED.value,
+        description="Pipeline processing state (ADR-0030); separate from story membership",
     )
 
 
@@ -415,6 +421,10 @@ class StoryOut(BaseModel):
     primary_article_id: Optional[int] = None
     model: Optional[str] = None  # LLM model used for synthesis
     status: str = "active"  # Story status: active or archived
+    processing_state: str = Field(
+        StoryProcessingState.PUBLISHED.value,
+        description="Pipeline processing state (ADR-0030); separate from status",
+    )
     # Quality metrics (v0.8.1 - Issue #105)
     quality_score: Optional[float] = None
     title_source: Optional[str] = None  # "llm" or "fallback"

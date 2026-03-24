@@ -105,7 +105,9 @@ def archive_old_stories() -> int:
                 text(
                     """
                     UPDATE stories
-                    SET status = 'archived', last_updated = :now
+                    SET status = 'archived',
+                        processing_state = 'archived',
+                        last_updated = :now
                     WHERE status = 'active'
                     AND generated_at < :cutoff
                     """

@@ -53,6 +53,7 @@ This ADR does **not** adopt a full agentic or autonomous-agent architecture. The
 
 ## References
 
+- **Canonical processing state model:** [ADR-0030: Article and story processing states](0030-article-story-processing-states.md) (subordinate specification; does not duplicate this ADR)
 - Pipeline orchestration workstream: GitHub issues [#273](https://github.com/Deim0s13/newsbrief/issues/273)–[#291](https://github.com/Deim0s13/newsbrief/issues/291) (label: `pipeline-orchestration`), tracked in [#292](https://github.com/Deim0s13/newsbrief/issues/292)
 - [ARCHITECTURE.md](../ARCHITECTURE.md): Story Processing Pipeline (Section 7.5)
 - [ARCHITECTURAL_ROADMAP.md](ARCHITECTURAL_ROADMAP.md): Pipeline orchestration workstream

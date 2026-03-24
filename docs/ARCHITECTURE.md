@@ -550,6 +550,8 @@ Items move through a default sequence of stages. Order and insertion points are 
 - **Article states** (e.g. discovered, fetched, extracted, enriched, embedded, clustered, failed) are persisted and updated by each stage. Invalid transitions are prevented or logged.
 - **Story states** (e.g. candidate, synthesizing, context_enriched, quality_checked, published, archived, failed) drive visibility and which operator actions are valid. Failed items are queryable and can be retried, inspected, or discarded.
 
+**Canonical enums, transition rules, and mapping to existing `Story.status` (`active` / `archived`)** are specified in [ADR-0030: Article and story processing states](adr/0030-article-story-processing-states.md) (subordinate to [ADR-0029](adr/0029-pipeline-oriented-orchestration.md)).
+
 State is stored in the database and exposed in admin/API where appropriate so that monitoring and manual actions are consistent with the pipeline.
 
 #### Where retrieval sits

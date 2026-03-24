@@ -56,6 +56,7 @@ from .models import (
     deserialize_story_json_field,
     serialize_story_json_field,
 )
+from .processing_states import StoryProcessingState
 from .prompts import (
     AnalysisResult,
     StoryType,
@@ -307,6 +308,7 @@ def create_story(
         time_window_end=time_window_end,
         model=model,
         status="active",
+        processing_state=StoryProcessingState.PUBLISHED.value,
         version=version,
         previous_version_id=previous_version_id,
     )
@@ -393,7 +395,8 @@ def get_story_by_id(session: Session, story_id: int) -> Optional[StoryOut]:
                        ai_summary, ai_model, ai_generated_at,
                        structured_summary_json, structured_summary_model,
                        structured_summary_content_hash, structured_summary_generated_at,
-                       ranking_score, topic, topic_confidence, source_weight, feed_id
+                       ranking_score, topic, topic_confidence, source_weight, feed_id,
+                       processing_state
                 FROM items
                 WHERE id IN ({placeholders})
                 ORDER BY ranking_score DESC
@@ -447,6 +450,7 @@ def get_story_by_id(session: Session, story_id: int) -> Optional[StoryOut]:
                     topic_confidence=r[16] or 0.0,
                     source_weight=r[17] or 1.0,
                     feed_id=r[18],
+                    processing_state=r[19] or "fetched",
                 )
             )
 
@@ -665,6 +669,7 @@ def archive_story(session: Session, story_id: int) -> bool:
         return False
 
     story.status = "archived"  # type: ignore[assignment]
+    story.processing_state = StoryProcessingState.ARCHIVED.value  # type: ignore[assignment]
     story.last_updated = datetime.now(UTC)  # type: ignore[assignment]
     session.commit()
 
@@ -827,6 +832,7 @@ def update_story_with_new_articles(
         time_window_end=cluster_data.get("time_window_end"),
         model=model,
         status="active",
+        processing_state=StoryProcessingState.PUBLISHED.value,
         version=new_version,
         previous_version_id=old_story_id,
     )
@@ -967,6 +973,7 @@ def _story_db_to_model(  # type: ignore[misc]
         primary_article_id=primary_article_id,
         model=story.model,  # type: ignore[arg-type]
         status=story.status or "active",  # type: ignore[arg-type]
+        processing_state=story.processing_state or StoryProcessingState.PUBLISHED.value,  # type: ignore[arg-type]
         # Quality metrics (v0.8.1 - Issue #105)
         quality_score=story.quality_score,  # type: ignore[arg-type]
         title_source=story.title_source,  # type: ignore[arg-type]
@@ -3056,6 +3063,7 @@ def generate_stories_simple(
                 time_window_end=cluster_data["time_window_end"],
                 model=model,
                 status="active",
+                processing_state=StoryProcessingState.PUBLISHED.value,
                 version=1,
             )
             session.add(story)

@@ -33,6 +33,7 @@ Architectural decisions with context and rationale:
 - **[0022-dev-prod-database-parity.md](adr/0022-dev-prod-database-parity.md)** - PostgreSQL-only (v0.7.8)
 - **[0023-intelligence-platform-strategy.md](adr/0023-intelligence-platform-strategy.md)** - Future vision
 - **[0029-pipeline-oriented-orchestration.md](adr/0029-pipeline-oriented-orchestration.md)** - Pipeline orchestration for story processing
+- **[0030-article-story-processing-states.md](adr/0030-article-story-processing-states.md)** - Canonical article/story processing states (see ADR-0029)
 - **[ARCHITECTURAL_ROADMAP.md](adr/ARCHITECTURAL_ROADMAP.md)** - Complete roadmap
 - *...and more*
 
