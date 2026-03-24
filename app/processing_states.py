@@ -8,8 +8,12 @@ Invalid transitions are logged; callers decide whether to enforce strictly.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from enum import Enum
-from typing import Optional, Set, Tuple
+from typing import Optional, Sequence, Set, Tuple
+
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +208,69 @@ def coerce_story_state(value: Optional[str]) -> Optional[StoryProcessingState]:
         return None
 
 
+def article_state_after_ingest(
+    extraction_method: str,
+    extracted_at: Optional[datetime],
+    content_text: Optional[str],
+) -> ArticleProcessingState:
+    """
+    Compute ``items.processing_state`` after RSS ingest and optional body extraction.
+
+    Entity enrichment (``enriched``) is applied separately when entities are stored.
+    """
+    if extraction_method == "failed":
+        return ArticleProcessingState.FAILED
+    if extraction_method == "blocked":
+        return ArticleProcessingState.FETCHED
+    has_body = bool(content_text and str(content_text).strip())
+    if extracted_at and has_body and extraction_method not in ("none", "failed"):
+        return ArticleProcessingState.EXTRACTED
+    return ArticleProcessingState.FETCHED
+
+
+def apply_article_processing_state(
+    session: Session,
+    item_id: int,
+    to_state: ArticleProcessingState,
+    *,
+    context: str = "",
+) -> bool:
+    """
+    Set ``items.processing_state`` when the transition is allowed; log otherwise.
+
+    Returns True if the row was updated.
+    """
+    row = session.execute(
+        text("SELECT processing_state FROM items WHERE id = :id"), {"id": item_id}
+    ).first()
+    if not row:
+        return False
+    from_s = coerce_article_state(row[0]) or ArticleProcessingState.FETCHED
+    log_invalid_article_transition(from_s, to_state, item_id=item_id, context=context)
+    if not article_transition_allowed(from_s, to_state):
+        return False
+    session.execute(
+        text("UPDATE items SET processing_state = :ps WHERE id = :id"),
+        {"ps": to_state.value, "id": item_id},
+    )
+    return True
+
+
+def apply_article_processing_state_batch(
+    session: Session,
+    item_ids: Sequence[int],
+    to_state: ArticleProcessingState,
+    *,
+    context: str = "",
+) -> int:
+    """Apply ``to_state`` for each item id; return how many rows were updated."""
+    n = 0
+    for item_id in item_ids:
+        if apply_article_processing_state(session, item_id, to_state, context=context):
+            n += 1
+    return n
+
+
 __all__ = [
     "ArticleProcessingState",
     "StoryProcessingState",
@@ -213,4 +280,7 @@ __all__ = [
     "log_invalid_story_transition",
     "coerce_article_state",
     "coerce_story_state",
+    "article_state_after_ingest",
+    "apply_article_processing_state",
+    "apply_article_processing_state_batch",
 ]

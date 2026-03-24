@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 from .db import session_scope
 from .extraction import extract_content
 from .models import create_content_hash
+from .processing_states import article_state_after_ingest
 from .ranking import calculate_ranking_score, classify_article_topic
 from .topics import classify_topic as classify_topic_unified
 
@@ -1612,13 +1613,19 @@ def fetch_and_store() -> RefreshStats:
                     topic=topic_result.topic,
                 )
 
+                ingest_processing_state = article_state_after_ingest(
+                    extraction_method,
+                    extracted_at,
+                    content_text,
+                )
+
                 # Insert item with ranking data (from ranking module)
                 with session_scope() as s:
                     s.execute(
                         text(
                             """
-                    INSERT INTO items(feed_id, title, url, url_hash, published, author, summary, content, content_hash, ranking_score, topic, topic_confidence, source_weight, extraction_method, extraction_quality, extraction_error, extracted_at, extraction_time_ms)
-                    VALUES(:feed_id, :title, :url, :url_hash, :published, :author, :summary, :content, :content_hash, :ranking_score, :topic, :topic_confidence, :source_weight, :extraction_method, :extraction_quality, :extraction_error, :extracted_at, :extraction_time_ms)
+                    INSERT INTO items(feed_id, title, url, url_hash, published, author, summary, content, content_hash, ranking_score, topic, topic_confidence, source_weight, extraction_method, extraction_quality, extraction_error, extracted_at, extraction_time_ms, processing_state)
+                    VALUES(:feed_id, :title, :url, :url_hash, :published, :author, :summary, :content, :content_hash, :ranking_score, :topic, :topic_confidence, :source_weight, :extraction_method, :extraction_quality, :extraction_error, :extracted_at, :extraction_time_ms, :processing_state)
                     """
                         ),
                         {
@@ -1644,6 +1651,7 @@ def fetch_and_store() -> RefreshStats:
                                 extracted_at.isoformat() if extracted_at else None
                             ),
                             "extraction_time_ms": extraction_time_ms,
+                            "processing_state": ingest_processing_state.value,
                         },
                     )
 

@@ -56,7 +56,11 @@ from .models import (
     deserialize_story_json_field,
     serialize_story_json_field,
 )
-from .processing_states import StoryProcessingState
+from .processing_states import (
+    ArticleProcessingState,
+    StoryProcessingState,
+    apply_article_processing_state_batch,
+)
 from .prompts import (
     AnalysisResult,
     StoryType,
@@ -346,6 +350,13 @@ def link_articles_to_story(
             added_at=datetime.now(UTC),
         )
         session.add(story_article)
+
+    apply_article_processing_state_batch(
+        session,
+        article_ids,
+        ArticleProcessingState.CLUSTERED,
+        context="link_articles_to_story",
+    )
 
     # Update article count on story
     story = session.query(Story).filter(Story.id == story_id).first()
@@ -851,6 +862,13 @@ def update_story_with_new_articles(
             is_primary=(article_id == merged_article_ids[0]),
         )
         session.add(story_article)
+
+    apply_article_processing_state_batch(
+        session,
+        merged_article_ids,
+        ArticleProcessingState.CLUSTERED,
+        context="update_story_with_new_articles",
+    )
 
     logger.info(
         f"Created story #{new_story_id} v{new_version} "
@@ -3093,6 +3111,13 @@ def generate_stories_simple(
                     added_at=datetime.now(UTC),
                 )
                 session.add(story_article)
+
+            apply_article_processing_state_batch(
+                session,
+                article_ids,
+                ArticleProcessingState.CLUSTERED,
+                context="generate_stories_simple",
+            )
 
             story_ids.append(story.id)  # type: ignore[arg-type]
 

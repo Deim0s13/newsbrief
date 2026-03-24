@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from .llm import get_llm_service
 from .llm_output import EnhancedEntityOutput, EntityOutput, parse_and_validate
+from .processing_states import ArticleProcessingState, apply_article_processing_state
 
 logger = logging.getLogger(__name__)
 
@@ -664,6 +665,12 @@ def store_entity_cache(
                 "model": model,
                 "article_id": article_id,
             },
+        )
+        apply_article_processing_state(
+            session,
+            article_id,
+            ArticleProcessingState.ENRICHED,
+            context="store_entity_cache",
         )
         session.commit()
         logger.debug(f"Stored entity cache for article {article_id}")

@@ -1,8 +1,11 @@
 """Tests for ADR-0030 processing state transitions."""
 
+from datetime import UTC, datetime
+
 from app.processing_states import (
     ArticleProcessingState,
     StoryProcessingState,
+    article_state_after_ingest,
     article_transition_allowed,
     coerce_article_state,
     coerce_story_state,
@@ -82,6 +85,40 @@ class TestStoryTransitions:
     def test_failed_retry(self) -> None:
         assert story_transition_allowed(
             StoryProcessingState.FAILED, StoryProcessingState.SYNTHESIZING
+        )
+
+
+class TestArticleStateAfterIngest:
+    def test_failed(self) -> None:
+        assert (
+            article_state_after_ingest("failed", None, None)
+            == ArticleProcessingState.FAILED
+        )
+
+    def test_blocked(self) -> None:
+        assert (
+            article_state_after_ingest("blocked", None, None)
+            == ArticleProcessingState.FETCHED
+        )
+
+    def test_extracted_with_body(self) -> None:
+        now = datetime.now(UTC)
+        assert (
+            article_state_after_ingest("readability", now, "paragraph")
+            == ArticleProcessingState.EXTRACTED
+        )
+
+    def test_none_method_is_fetched(self) -> None:
+        assert (
+            article_state_after_ingest("none", None, None)
+            == ArticleProcessingState.FETCHED
+        )
+
+    def test_whitespace_body_not_extracted(self) -> None:
+        now = datetime.now(UTC)
+        assert (
+            article_state_after_ingest("readability", now, "  \n  ")
+            == ArticleProcessingState.FETCHED
         )
 
 
