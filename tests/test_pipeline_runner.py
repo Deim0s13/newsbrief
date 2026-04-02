@@ -2,7 +2,9 @@
 
 from unittest.mock import patch
 
-from app.pipeline_runner import run_pipeline
+import pytest
+
+from app.pipeline_runner import run_pipeline, run_targeted_replay
 
 
 class TestRunPipelineBranching:
@@ -64,3 +66,57 @@ class TestRunPipelineBranching:
         assert out["success"] is False
         assert len(out["stages"]) == 1
         mock_story.assert_not_called()
+
+
+class TestRunTargetedReplay:
+    def test_item_wrong_stage_raises(self) -> None:
+        with pytest.raises(ValueError, match="item requires"):
+            run_targeted_replay(
+                target_type="item",
+                target_id=1,
+                from_stage="story_generation",
+                model="llama3.1:8b",
+            )
+
+    def test_story_wrong_stage_raises(self) -> None:
+        with pytest.raises(ValueError, match="story requires"):
+            run_targeted_replay(
+                target_type="story",
+                target_id=1,
+                from_stage="enrich",
+                model="llama3.1:8b",
+            )
+
+    @patch("app.pipeline_runner.execute_enrich_item_stage")
+    def test_item_enrich_delegates(self, mock_enrich) -> None:
+        from app.pipeline_runner import StageResult
+
+        mock_enrich.return_value = StageResult("enrich", True, {"item_id": 1}, None)
+        out = run_targeted_replay(
+            target_type="item",
+            target_id=1,
+            from_stage="enrich",
+            model="llama3.1:8b",
+        )
+        assert out["success"] is True
+        assert len(out["stages"]) == 1
+        mock_enrich.assert_called_once()
+
+    @patch("app.pipeline_runner.execute_story_targeted_regeneration_stage")
+    def test_story_regen_delegates(self, mock_st) -> None:
+        from app.pipeline_runner import StageResult
+
+        mock_st.return_value = StageResult(
+            "story_generation",
+            True,
+            {"new_story_id": 2, "previous_story_id": 1},
+            None,
+        )
+        out = run_targeted_replay(
+            target_type="story",
+            target_id=5,
+            from_stage="story_generation",
+            model="llama3.1:8b",
+        )
+        assert out["success"] is True
+        mock_st.assert_called_once()

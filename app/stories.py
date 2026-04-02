@@ -878,6 +878,73 @@ def update_story_with_new_articles(
     return new_story_id  # type: ignore[return-value]
 
 
+def regenerate_story_synthesis(
+    session: Session,
+    story_id: int,
+    model: str = "llama3.1:8b",
+) -> Dict[str, Any]:
+    """
+    Re-run LLM synthesis for an existing story's linked articles (#274 targeted replay).
+
+    Creates a new story version (ADR 0004); the previous row is marked ``superseded``.
+    Bypasses synthesis cache (``skip_cache=True``).
+    """
+    story = session.query(Story).filter(Story.id == story_id).first()
+    if not story:
+        raise ValueError(f"Story {story_id} not found")
+
+    links = session.query(StoryArticle).filter(StoryArticle.story_id == story_id).all()
+    if not links:
+        raise ValueError(f"Story {story_id} has no linked articles")
+
+    primary_ids = [sa.article_id for sa in links if sa.is_primary]
+    all_ids = sorted({sa.article_id for sa in links})
+    if primary_ids:
+        primary = primary_ids[0]
+        article_ids: List[int] = [primary] + [i for i in all_ids if i != primary]
+    else:
+        article_ids = all_ids
+
+    synthesis_data = _generate_story_synthesis(
+        session, article_ids, model, skip_cache=True
+    )
+
+    cluster_data: Dict[str, Any] = {
+        "importance_score": story.importance_score or 0.5,
+        "freshness_score": story.freshness_score or 0.5,
+        "quality_score": story.quality_score or 0.5,
+        "time_window_start": story.time_window_start,
+        "time_window_end": story.time_window_end,
+        "cluster_hash": hashlib.md5(
+            json.dumps(sorted(article_ids)).encode()
+        ).hexdigest(),
+    }
+    if story.clustering_metadata_json:
+        try:
+            cluster_data["clustering_metadata"] = json.loads(
+                story.clustering_metadata_json
+            )
+        except json.JSONDecodeError:
+            cluster_data["clustering_metadata"] = None
+
+    existing_ids = set(article_ids)
+    new_story_id = update_story_with_new_articles(
+        session=session,
+        existing_story=story,
+        existing_article_ids=existing_ids,
+        merged_article_ids=article_ids,
+        synthesis_data=synthesis_data,
+        model=model,
+        cluster_data=cluster_data,
+    )
+
+    return {
+        "previous_story_id": story_id,
+        "new_story_id": new_story_id,
+        "article_ids": article_ids,
+    }
+
+
 def delete_story(session: Session, story_id: int) -> bool:
     """
     Hard delete story (CASCADE deletes story_articles).

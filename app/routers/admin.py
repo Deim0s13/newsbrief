@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
@@ -29,6 +29,18 @@ class PipelineRunBody(BaseModel):
     from_stage: str = Field(
         default="full",
         description="full (ingest then stories), ingest, or story_generation",
+    )
+
+
+class PipelineReplayBody(BaseModel):
+    """Targeted pipeline replay (#274 phase 2)."""
+
+    target_type: Literal["item", "story"]
+    target_id: int = Field(..., ge=1)
+    from_stage: Literal["enrich", "story_generation"]
+    model: Optional[str] = Field(
+        default=None,
+        description="LLM model (defaults to STORY_MODEL from scheduler settings)",
     )
 
 
@@ -67,6 +79,28 @@ def admin_pipeline_run(body: Optional[PipelineRunBody] = None):
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         logger.error("Manual pipeline run failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.post("/api/admin/pipeline/replay")
+def admin_pipeline_replay(body: PipelineReplayBody):
+    """Re-run one stage for a single item (enrich) or story (regenerate synthesis)."""
+    from .. import scheduler as scheduler_mod
+    from ..pipeline_runner import run_targeted_replay
+
+    model = body.model or scheduler_mod.STORY_MODEL
+    try:
+        return run_targeted_replay(
+            trigger="manual",
+            target_type=body.target_type,
+            target_id=body.target_id,
+            from_stage=body.from_stage,
+            model=model,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        logger.error("Pipeline replay failed: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 

@@ -478,6 +478,8 @@ class PipelineStageRun(Base):
     success = Column(Boolean, nullable=True)
     error_message = Column(Text, nullable=True)
     stats_json = Column(Text, nullable=True)
+    target_type = Column(String(32), nullable=True)
+    target_id = Column(Integer, nullable=True)
 
     __table_args__ = (
         Index("idx_pipeline_stage_runs_run_group", "run_group_id"),
