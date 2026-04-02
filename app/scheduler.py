@@ -10,13 +10,13 @@ Default schedules:
 import logging
 import os
 import threading
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from app.db import session_scope
-from app.stories import generate_stories_simple
 
 logger = logging.getLogger(__name__)
 
@@ -173,22 +173,14 @@ def scheduled_feed_refresh() -> dict:
         logger.info("Starting scheduled feed refresh")
         start_time = datetime.now(UTC)
 
-        # Import here to avoid circular imports
-        from app.feeds import fetch_and_store
+        from app.pipeline_runner import execute_ingest_stage
 
-        # Run the feed refresh (no session needed - function manages its own)
-        result = fetch_and_store()
+        run_group_id = str(uuid.uuid4())
+        res = execute_ingest_stage(trigger="scheduled", run_group_id=run_group_id)
 
         elapsed = (datetime.now(UTC) - start_time).total_seconds()
-
-        # Extract stats from RefreshStats dataclass
-        ingested = result.total_items
-        stats = {
-            "feeds_processed": result.total_feeds_processed,
-            "feeds_skipped_disabled": result.feeds_skipped_disabled,
-            "feeds_cached_304": result.feeds_cached_304,
-            "feeds_error": result.feeds_error,
-        }
+        ingested = res.stats.get("articles_ingested", 0)
+        stats = dict(res.stats)
 
         logger.info(
             f"Scheduled feed refresh complete: "
@@ -197,11 +189,13 @@ def scheduled_feed_refresh() -> dict:
         )
 
         return {
-            "success": True,
+            "success": res.success,
             "skipped": False,
             "articles_ingested": ingested,
             "elapsed_seconds": elapsed,
             "stats": stats,
+            "run_group_id": run_group_id,
+            "error": res.error,
         }
 
     except Exception as e:
@@ -232,35 +226,37 @@ def scheduled_story_generation():
     start_time = datetime.now(UTC)
 
     try:
-        # Step 1: Archive old stories
-        archived_count = archive_old_stories()
+        from app.pipeline_runner import execute_story_generation_stage
 
-        # Step 2: Generate new stories
-        with session_scope() as session:
-            story_ids = generate_stories_simple(
-                session=session,
-                time_window_hours=STORY_TIME_WINDOW_HOURS,
-                min_articles_per_story=STORY_MIN_ARTICLES,
-                similarity_threshold=0.25,  # Lowered from 0.3 for v0.6.1 entity-based clustering
-                model=STORY_MODEL,
-                max_workers=3,  # Parallel LLM synthesis
-            )
+        run_group_id = str(uuid.uuid4())
+        res = execute_story_generation_stage(
+            trigger="scheduled",
+            run_group_id=run_group_id,
+            time_window_hours=STORY_TIME_WINDOW_HOURS,
+            min_articles_per_story=STORY_MIN_ARTICLES,
+            model=STORY_MODEL,
+            max_workers=3,
+        )
 
-            elapsed = (datetime.now(UTC) - start_time).total_seconds()
+        elapsed = (datetime.now(UTC) - start_time).total_seconds()
+        n_stories = res.stats.get("stories_created", 0)
+        archived_count = res.stats.get("stories_archived", 0)
 
-            logger.info(
-                f"Scheduled story generation complete: "
-                f"{len(story_ids)} stories generated, "
-                f"{archived_count} archived, "
-                f"took {elapsed:.1f}s"
-            )
+        logger.info(
+            f"Scheduled story generation complete: "
+            f"{n_stories} stories generated, "
+            f"{archived_count} archived, "
+            f"took {elapsed:.1f}s"
+        )
 
-            return {
-                "success": True,
-                "stories_generated": len(story_ids),
-                "stories_archived": archived_count,
-                "elapsed_seconds": elapsed,
-            }
+        return {
+            "success": res.success,
+            "stories_generated": n_stories,
+            "stories_archived": archived_count,
+            "elapsed_seconds": elapsed,
+            "run_group_id": run_group_id,
+            "error": res.error,
+        }
 
     except Exception as e:
         elapsed = (datetime.now(UTC) - start_time).total_seconds()

@@ -107,22 +107,26 @@ class TestScheduledFeedRefresh:
         assert result["skipped"] is True
         assert "Manual refresh in progress" in result["reason"]
 
-    @patch("app.feeds.fetch_and_store")
+    @patch("app.pipeline_runner.execute_ingest_stage")
     @patch("app.scheduler._feed_refresh_lock")
-    def test_scheduled_feed_refresh_success(self, mock_lock, mock_fetch):
+    def test_scheduled_feed_refresh_success(self, mock_lock, mock_exec):
         """Test successful scheduled feed refresh."""
+        from app.pipeline_runner import StageResult
         from app.scheduler import scheduled_feed_refresh
 
         mock_lock.acquire.return_value = True
 
-        # Mock RefreshStats
-        mock_stats = MagicMock()
-        mock_stats.total_items = 50
-        mock_stats.total_feeds_processed = 10
-        mock_stats.feeds_skipped_disabled = 2
-        mock_stats.feeds_cached_304 = 3
-        mock_stats.feeds_error = 1
-        mock_fetch.return_value = mock_stats
+        mock_exec.return_value = StageResult(
+            stage="ingest",
+            success=True,
+            stats={
+                "articles_ingested": 50,
+                "feeds_processed": 10,
+                "feeds_error": 1,
+                "feeds_cached_304": 3,
+            },
+            error=None,
+        )
 
         result = scheduled_feed_refresh()
 
@@ -131,15 +135,16 @@ class TestScheduledFeedRefresh:
         assert result["articles_ingested"] == 50
         assert "elapsed_seconds" in result
         mock_lock.release.assert_called_once()
+        mock_exec.assert_called_once()
 
-    @patch("app.feeds.fetch_and_store")
+    @patch("app.pipeline_runner.execute_ingest_stage")
     @patch("app.scheduler._feed_refresh_lock")
-    def test_scheduled_feed_refresh_exception(self, mock_lock, mock_fetch):
+    def test_scheduled_feed_refresh_exception(self, mock_lock, mock_exec):
         """Test exception handling in scheduled feed refresh."""
         from app.scheduler import scheduled_feed_refresh
 
         mock_lock.acquire.return_value = True
-        mock_fetch.side_effect = Exception("Network error")
+        mock_exec.side_effect = Exception("Network error")
 
         result = scheduled_feed_refresh()
 
@@ -151,34 +156,36 @@ class TestScheduledFeedRefresh:
 class TestScheduledStoryGeneration:
     """Tests for scheduled_story_generation function."""
 
-    @patch("app.scheduler.generate_stories_simple")
-    @patch("app.scheduler.archive_old_stories")
-    @patch("app.scheduler.session_scope")
-    def test_scheduled_story_generation_success(
-        self, mock_session_scope, mock_archive, mock_generate
-    ):
+    @patch("app.pipeline_runner.execute_story_generation_stage")
+    def test_scheduled_story_generation_success(self, mock_exec):
         """Test successful scheduled story generation."""
+        from app.pipeline_runner import StageResult
         from app.scheduler import scheduled_story_generation
 
-        mock_archive.return_value = 5  # Archived 5 stories
-        mock_generate.return_value = {"story_ids": [1, 2, 3], "articles_found": 10}
-        mock_session_scope.return_value.__enter__.return_value = MagicMock()
+        mock_exec.return_value = StageResult(
+            stage="story_generation",
+            success=True,
+            stats={
+                "stories_created": 3,
+                "stories_archived": 5,
+                "articles_found": 10,
+            },
+            error=None,
+        )
 
         result = scheduled_story_generation()
 
         assert result["success"] is True
-        mock_archive.assert_called_once()
-        mock_generate.assert_called_once()
+        assert result["stories_generated"] == 3
+        assert result["stories_archived"] == 5
+        mock_exec.assert_called_once()
 
-    @patch("app.scheduler.archive_old_stories")
-    @patch("app.scheduler.session_scope")
-    def test_scheduled_story_generation_exception(
-        self, mock_session_scope, mock_archive
-    ):
+    @patch("app.pipeline_runner.execute_story_generation_stage")
+    def test_scheduled_story_generation_exception(self, mock_exec):
         """Test exception handling in scheduled story generation."""
         from app.scheduler import scheduled_story_generation
 
-        mock_archive.side_effect = Exception("Database error")
+        mock_exec.side_effect = Exception("Database error")
 
         result = scheduled_story_generation()
 

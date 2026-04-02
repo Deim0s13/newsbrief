@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import logging
 import os
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 
 from ..credibility import canonicalize_domain
@@ -19,6 +21,63 @@ from ..topics import get_available_topics, get_reclassification_stats
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="", tags=["admin"])
+
+
+class PipelineRunBody(BaseModel):
+    """Request body for manual pipeline execution (#274)."""
+
+    from_stage: str = Field(
+        default="full",
+        description="full (ingest then stories), ingest, or story_generation",
+    )
+
+
+# -----------------------------------------------------------------------------
+# Pipeline runner (ADR-0029 / #274)
+# -----------------------------------------------------------------------------
+
+
+@router.post("/api/admin/pipeline/run")
+def admin_pipeline_run(body: Optional[PipelineRunBody] = None):
+    """Run pipeline stages manually (operator action)."""
+    from .. import scheduler as scheduler_mod
+    from ..pipeline_runner import run_pipeline
+
+    payload = body or PipelineRunBody()
+    fs = (payload.from_stage or "full").strip().lower()
+    if fs == "full":
+        mapped = None
+    elif fs in ("ingest", "story_generation"):
+        mapped = fs
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="from_stage must be one of: full, ingest, story_generation",
+        )
+    try:
+        return run_pipeline(
+            trigger="manual",
+            from_stage=mapped,
+            time_window_hours=scheduler_mod.STORY_TIME_WINDOW_HOURS,
+            min_articles_per_story=scheduler_mod.STORY_MIN_ARTICLES,
+            model=scheduler_mod.STORY_MODEL,
+            max_workers=3,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        logger.error("Manual pipeline run failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/api/admin/pipeline/runs")
+def admin_pipeline_runs(
+    limit: int = Query(50, ge=1, le=200, description="Max rows to return"),
+):
+    """Recent pipeline stage executions (metadata)."""
+    from ..pipeline_runner import list_recent_stage_runs
+
+    return {"runs": list_recent_stage_runs(limit=limit)}
 
 
 # -----------------------------------------------------------------------------

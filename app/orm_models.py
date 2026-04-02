@@ -460,6 +460,31 @@ class SourceCredibility(Base):
     )
 
 
+class PipelineStageRun(Base):
+    """
+    One row per pipeline stage execution (ADR-0029 / #274).
+
+    ``run_group_id`` ties stages from a single operator or scheduled invocation.
+    """
+
+    __tablename__ = "pipeline_stage_runs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_group_id = Column(String(36), nullable=False)
+    stage = Column(String(64), nullable=False)
+    trigger = Column(String(32), nullable=False)
+    started_at = Column(DateTime(timezone=True), nullable=False)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    success = Column(Boolean, nullable=True)
+    error_message = Column(Text, nullable=True)
+    stats_json = Column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("idx_pipeline_stage_runs_run_group", "run_group_id"),
+        Index("idx_pipeline_stage_runs_stage_started", "stage", "started_at"),
+    )
+
+
 class ReclassifyJob(Base):
     """Track async topic reclassification jobs (v0.8.1 - Issue #248)."""
 
