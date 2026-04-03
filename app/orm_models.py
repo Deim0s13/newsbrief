@@ -124,6 +124,11 @@ class Item(Base):
         default="fetched",
         server_default="fetched",
     )
+    # Per-entity pipeline failure detail (#293, ADR-0030); distinct from extraction_error
+    processing_error = Column(Text, nullable=True)
+    processing_failed_at = Column(DateTime(timezone=True), nullable=True)
+    failure_stage = Column(String(64), nullable=True)
+    last_failed_run_group_id = Column(String(36), nullable=True)
     # Timestamps
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
 
@@ -192,6 +197,10 @@ class Story(Base):
         default="candidate",
         server_default="candidate",
     )
+    processing_error = Column(Text, nullable=True)
+    processing_failed_at = Column(DateTime(timezone=True), nullable=True)
+    failure_stage = Column(String(64), nullable=True)
+    last_failed_run_group_id = Column(String(36), nullable=True)
     # Source credibility (v0.8.2 - Issue #198)
     source_credibility_score = Column(Float)  # Weighted average 0.0-1.0
     low_credibility_warning = Column(Boolean, default=False)  # All sources < 0.5

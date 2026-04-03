@@ -8,7 +8,7 @@ Invalid transitions are logged; callers decide whether to enforce strictly.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Optional, Sequence, Set, Tuple
 
@@ -249,10 +249,30 @@ def apply_article_processing_state(
     log_invalid_article_transition(from_s, to_state, item_id=item_id, context=context)
     if not article_transition_allowed(from_s, to_state):
         return False
-    session.execute(
-        text("UPDATE items SET processing_state = :ps WHERE id = :id"),
-        {"ps": to_state.value, "id": item_id},
+    leaving_failed = (
+        from_s == ArticleProcessingState.FAILED
+        and to_state != ArticleProcessingState.FAILED
     )
+    if leaving_failed:
+        session.execute(
+            text(
+                """
+                UPDATE items SET
+                    processing_state = :ps,
+                    processing_error = NULL,
+                    processing_failed_at = NULL,
+                    failure_stage = NULL,
+                    last_failed_run_group_id = NULL
+                WHERE id = :id
+                """
+            ),
+            {"ps": to_state.value, "id": item_id},
+        )
+    else:
+        session.execute(
+            text("UPDATE items SET processing_state = :ps WHERE id = :id"),
+            {"ps": to_state.value, "id": item_id},
+        )
     return True
 
 
@@ -271,6 +291,241 @@ def apply_article_processing_state_batch(
     return n
 
 
+def mark_article_failed(
+    session: Session,
+    item_id: int,
+    message: str,
+    *,
+    failure_stage: Optional[str] = None,
+    run_group_id: Optional[str] = None,
+    context: str = "",
+) -> bool:
+    """
+    Set article to ``failed`` with optional diagnostic fields (#293).
+
+    Updating error detail while already ``failed`` is allowed (idempotent state).
+    """
+    row = session.execute(
+        text("SELECT processing_state FROM items WHERE id = :id"), {"id": item_id}
+    ).first()
+    if not row:
+        return False
+    from_s = coerce_article_state(row[0]) or ArticleProcessingState.FETCHED
+    log_invalid_article_transition(
+        from_s, ArticleProcessingState.FAILED, item_id=item_id, context=context
+    )
+    if not article_transition_allowed(from_s, ArticleProcessingState.FAILED):
+        return False
+    msg = (message or "").strip() or "unknown error"
+    fst = failure_stage[:64] if failure_stage else None
+    rgid = run_group_id[:36] if run_group_id else None
+    session.execute(
+        text(
+            """
+            UPDATE items SET
+                processing_state = 'failed',
+                processing_error = :msg,
+                processing_failed_at = :ts,
+                failure_stage = :fst,
+                last_failed_run_group_id = :rgid
+            WHERE id = :id
+            """
+        ),
+        {
+            "id": item_id,
+            "msg": msg[:50000],
+            "ts": datetime.now(UTC),
+            "fst": fst,
+            "rgid": rgid,
+        },
+    )
+    return True
+
+
+def discard_article_failure(
+    session: Session,
+    item_id: int,
+    *,
+    to_state: ArticleProcessingState = ArticleProcessingState.ENRICHED,
+    context: str = "",
+) -> bool:
+    """
+    Operator dismiss: leave ``failed`` for an allowed retry target and clear error columns.
+
+    Default ``to_state`` is ``enriched`` (typical re-entry before clustering). Does nothing
+    if the row is not currently ``failed`` or the transition is invalid.
+    """
+    row = session.execute(
+        text("SELECT processing_state FROM items WHERE id = :id"), {"id": item_id}
+    ).first()
+    if not row:
+        return False
+    from_s = coerce_article_state(row[0]) or ArticleProcessingState.FETCHED
+    if from_s != ArticleProcessingState.FAILED:
+        log_invalid_article_transition(
+            from_s,
+            to_state,
+            item_id=item_id,
+            context=context or "discard_article_not_failed",
+        )
+        return False
+    log_invalid_article_transition(from_s, to_state, item_id=item_id, context=context)
+    if not article_transition_allowed(from_s, to_state):
+        return False
+    session.execute(
+        text(
+            """
+            UPDATE items SET
+                processing_state = :ps,
+                processing_error = NULL,
+                processing_failed_at = NULL,
+                failure_stage = NULL,
+                last_failed_run_group_id = NULL
+            WHERE id = :id
+            """
+        ),
+        {"ps": to_state.value, "id": item_id},
+    )
+    return True
+
+
+def apply_story_processing_state(
+    session: Session,
+    story_id: int,
+    to_state: StoryProcessingState,
+    *,
+    context: str = "",
+) -> bool:
+    """Set ``stories.processing_state`` when allowed; clear failure fields when leaving ``failed``."""
+    row = session.execute(
+        text("SELECT processing_state FROM stories WHERE id = :id"), {"id": story_id}
+    ).first()
+    if not row:
+        return False
+    from_s = coerce_story_state(row[0]) or StoryProcessingState.CANDIDATE
+    log_invalid_story_transition(from_s, to_state, story_id=story_id, context=context)
+    if not story_transition_allowed(from_s, to_state):
+        return False
+    leaving_failed = (
+        from_s == StoryProcessingState.FAILED
+        and to_state != StoryProcessingState.FAILED
+    )
+    if leaving_failed:
+        session.execute(
+            text(
+                """
+                UPDATE stories SET
+                    processing_state = :ps,
+                    processing_error = NULL,
+                    processing_failed_at = NULL,
+                    failure_stage = NULL,
+                    last_failed_run_group_id = NULL
+                WHERE id = :id
+                """
+            ),
+            {"ps": to_state.value, "id": story_id},
+        )
+    else:
+        session.execute(
+            text("UPDATE stories SET processing_state = :ps WHERE id = :id"),
+            {"ps": to_state.value, "id": story_id},
+        )
+    return True
+
+
+def mark_story_failed(
+    session: Session,
+    story_id: int,
+    message: str,
+    *,
+    failure_stage: Optional[str] = None,
+    run_group_id: Optional[str] = None,
+    context: str = "",
+) -> bool:
+    """Set story to ``failed`` with optional diagnostic fields (#293)."""
+    row = session.execute(
+        text("SELECT processing_state FROM stories WHERE id = :id"), {"id": story_id}
+    ).first()
+    if not row:
+        return False
+    from_s = coerce_story_state(row[0]) or StoryProcessingState.CANDIDATE
+    log_invalid_story_transition(
+        from_s, StoryProcessingState.FAILED, story_id=story_id, context=context
+    )
+    if not story_transition_allowed(from_s, StoryProcessingState.FAILED):
+        return False
+    msg = (message or "").strip() or "unknown error"
+    fst = failure_stage[:64] if failure_stage else None
+    rgid = run_group_id[:36] if run_group_id else None
+    session.execute(
+        text(
+            """
+            UPDATE stories SET
+                processing_state = 'failed',
+                processing_error = :msg,
+                processing_failed_at = :ts,
+                failure_stage = :fst,
+                last_failed_run_group_id = :rgid
+            WHERE id = :id
+            """
+        ),
+        {
+            "id": story_id,
+            "msg": msg[:50000],
+            "ts": datetime.now(UTC),
+            "fst": fst,
+            "rgid": rgid,
+        },
+    )
+    return True
+
+
+def discard_story_failure(
+    session: Session,
+    story_id: int,
+    *,
+    to_state: StoryProcessingState = StoryProcessingState.CANDIDATE,
+    context: str = "",
+) -> bool:
+    """
+    Operator dismiss: leave ``failed`` for an allowed retry target and clear error columns.
+
+    Default ``to_state`` is ``candidate``.
+    """
+    row = session.execute(
+        text("SELECT processing_state FROM stories WHERE id = :id"), {"id": story_id}
+    ).first()
+    if not row:
+        return False
+    from_s = coerce_story_state(row[0]) or StoryProcessingState.CANDIDATE
+    if from_s != StoryProcessingState.FAILED:
+        log_invalid_story_transition(
+            from_s,
+            to_state,
+            story_id=story_id,
+            context=context or "discard_story_not_failed",
+        )
+        return False
+    log_invalid_story_transition(from_s, to_state, story_id=story_id, context=context)
+    if not story_transition_allowed(from_s, to_state):
+        return False
+    session.execute(
+        text(
+            """
+            UPDATE stories SET
+                processing_state = :ps,
+                processing_error = NULL,
+                processing_failed_at = NULL,
+                failure_stage = NULL,
+                last_failed_run_group_id = NULL
+            WHERE id = :id
+            """
+        ),
+        {"ps": to_state.value, "id": story_id},
+    )
+    return True
+
+
 __all__ = [
     "ArticleProcessingState",
     "StoryProcessingState",
@@ -283,4 +538,9 @@ __all__ = [
     "article_state_after_ingest",
     "apply_article_processing_state",
     "apply_article_processing_state_batch",
+    "apply_story_processing_state",
+    "discard_article_failure",
+    "discard_story_failure",
+    "mark_article_failed",
+    "mark_story_failed",
 ]

@@ -115,7 +115,8 @@ Canonical string values and transition helpers live in **`app/processing_states.
 ### Failure and error detail (Phase 2+)
 
 - **Query by failure:** filter `processing_state = 'failed'` on `items` / `stories`.
-- Optional later columns (not required for Phase 1 enums): e.g. nullable **`processing_error`** text on `items` / `stories`, or reuse existing fields where appropriate (`extraction_error` on items for extract failures). Tracked under #273 follow-up.
+- **Persistence (#293 M1):** nullable columns on both tables — **`processing_error`** (pipeline failure message; separate from **`extraction_error`** on items for the extract path), **`processing_failed_at`**, optional **`failure_stage`** (short string, e.g. `story_generation`), optional **`last_failed_run_group_id`** (ties to `pipeline_stage_runs.run_group_id`). Partial indexes support listing recent failures.
+- **Helpers:** `app/processing_states.py` — **`mark_article_failed`**, **`mark_story_failed`**, **`discard_article_failure`**, **`discard_story_failure`**, and **`apply_story_processing_state`** (mirrors article apply). **`apply_article_processing_state`** / **`apply_story_processing_state`** clear failure columns when transitioning **out of** `failed` to an allowed non-failed state. **`discard_*`** requires the row to be **`failed`**, then moves to a **retry target** (article default `enriched`, story default `candidate`) and clears metadata — operator “dismiss without re-run.”
 
 ### Heuristic backfill (migration)
 
