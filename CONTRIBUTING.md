@@ -140,6 +140,13 @@ Create new revisions with `make migrate-new MSG="describe change"` and commit th
 
 For cluster deploys, **do not rely on `make migrate` on the node**. Argo CD applies a **`Job`** named **`newsbrief-db-migrate`** that runs **`alembic upgrade head`** using the same image and config as the API, **before** the `Deployment` rolls (sync waves). See [docs/development/KUBERNETES.md](docs/development/KUBERNETES.md#sync-waves).
 
+### After merge: don’t skip migrations
+
+When a PR **adds or changes** files under `alembic/versions/`, every environment that receives the new app version must have **`alembic upgrade head`** applied against its database **before** that code serves traffic (or the first request that needs the new columns will fail).
+
+- **GitOps / Argo:** Confirm the migrate `Job` succeeds on each sync (see [CI-CD.md](docs/development/CI-CD.md#database-migrations-alembic)).
+- **Any manual or scripted deploy:** Run `make migrate` (or `alembic upgrade head` with the same `DATABASE_URL` and image) **per environment** as part of the promote checklist — the same way you verify config and health checks.
+
 ## Branching Strategy
 
 | Branch | Purpose |
@@ -165,6 +172,7 @@ Before submitting a PR:
 - [ ] Tests pass (`pytest tests/ -v`)
 - [ ] New code has tests (if applicable)
 - [ ] **Schema changes:** new Alembic revision under `alembic/versions/` in the same PR (`make migrate-new MSG="…"`), or N/A
+- [ ] **If schema changed:** rollout plan confirms **`alembic upgrade head`** (or Argo migrate Job) for **dev → staging → prod** (or your pipeline); see [Database → After merge](#after-merge-dont-skip-migrations)
 - [ ] Documentation updated (if applicable)
 - [ ] Commit messages are clear and descriptive
 
