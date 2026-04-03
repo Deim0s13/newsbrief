@@ -107,11 +107,40 @@ def admin_pipeline_replay(body: PipelineReplayBody):
 @router.get("/api/admin/pipeline/runs")
 def admin_pipeline_runs(
     limit: int = Query(50, ge=1, le=200, description="Max rows to return"),
+    outcome: str = Query(
+        "all",
+        description="Filter: all | failed | dead_letter (failed, not discarded) | succeeded",
+    ),
 ):
-    """Recent pipeline stage executions (metadata)."""
+    """Recent pipeline stage executions (metadata; #275 dead-letter filters)."""
     from ..pipeline_runner import list_recent_stage_runs
 
-    return {"runs": list_recent_stage_runs(limit=limit)}
+    try:
+        return {"runs": list_recent_stage_runs(limit=limit, outcome=outcome)}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.post("/api/admin/pipeline/runs/{run_id}/discard")
+def admin_pipeline_discard_run(run_id: int):
+    """Dismiss a failed run from the dead-letter queue (#275)."""
+    from ..pipeline_runner import discard_pipeline_stage_run
+
+    try:
+        return discard_pipeline_stage_run(run_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.post("/api/admin/pipeline/runs/{run_id}/retry")
+def admin_pipeline_retry_run(run_id: int):
+    """Re-run the same stage as a new pipeline run (#275)."""
+    from ..pipeline_runner import retry_pipeline_stage_run
+
+    try:
+        return retry_pipeline_stage_run(run_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 # -----------------------------------------------------------------------------

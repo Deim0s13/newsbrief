@@ -1,6 +1,8 @@
-"""Tests for pipeline runner (#274)."""
+"""Tests for pipeline runner (#274, #275)."""
 
-from unittest.mock import patch
+from contextlib import nullcontext
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -120,3 +122,53 @@ class TestRunTargetedReplay:
         )
         assert out["success"] is True
         mock_st.assert_called_once()
+
+
+class TestPipelineRetryHelpers:
+    def test_backoff_sequence(self) -> None:
+        from app.pipeline_runner import pipeline_retry_backoff_seconds
+
+        assert pipeline_retry_backoff_seconds(3, 2.0, 60.0) == [2.0, 4.0, 8.0]
+        assert pipeline_retry_backoff_seconds(2, 2.0, 3.0) == [2.0, 3.0]
+
+    def test_list_recent_bad_outcome(self) -> None:
+        from app.pipeline_runner import list_recent_stage_runs
+
+        with pytest.raises(ValueError, match="outcome must be"):
+            list_recent_stage_runs(outcome="not-a-filter")
+
+
+class TestIngestRetries:
+    @patch("app.pipeline_runner.session_scope")
+    @patch("app.pipeline_runner._stage_retry_settings", return_value=(2, 1.0, 60.0))
+    @patch("app.feeds.fetch_and_store")
+    @patch("app.pipeline_runner._sleep_before_retry")
+    @patch("app.pipeline_runner._insert_stage_start", return_value=1)
+    @patch("app.pipeline_runner._finalize_stage_row")
+    def test_retries_then_success(
+        self,
+        mock_finalize,
+        mock_insert,
+        mock_sleep,
+        mock_fetch,
+        mock_settings,
+        mock_scope,
+    ) -> None:
+        from app.pipeline_runner import execute_ingest_stage
+
+        ok = SimpleNamespace(
+            total_items=0,
+            total_feeds_processed=1,
+            feeds_error=0,
+            feeds_cached_304=0,
+        )
+        mock_fetch.side_effect = [RuntimeError("fail1"), RuntimeError("fail2"), ok]
+        mock_scope.side_effect = lambda: nullcontext(MagicMock())
+
+        execute_ingest_stage(trigger="manual", run_group_id="test-group")
+
+        assert mock_fetch.call_count == 3
+        assert mock_sleep.call_count == 2
+        mock_finalize.assert_called_once()
+        assert mock_finalize.call_args.kwargs["attempts"] == 3
+        assert mock_finalize.call_args.kwargs["success"] is True

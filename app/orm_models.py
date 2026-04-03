@@ -480,10 +480,18 @@ class PipelineStageRun(Base):
     stats_json = Column(Text, nullable=True)
     target_type = Column(String(32), nullable=True)
     target_id = Column(Integer, nullable=True)
+    attempts = Column(Integer, nullable=False, default=1)
+    discarded_at = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         Index("idx_pipeline_stage_runs_run_group", "run_group_id"),
         Index("idx_pipeline_stage_runs_stage_started", "stage", "started_at"),
+        Index(
+            "idx_pipeline_stage_runs_dead_letter",
+            "finished_at",
+            "success",
+            "discarded_at",
+        ),
     )
 
 

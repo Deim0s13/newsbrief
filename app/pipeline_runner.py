@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -79,6 +81,7 @@ def _finalize_stage_row(
     success: bool,
     error_message: Optional[str],
     stats: Dict[str, Any],
+    attempts: int = 1,
 ) -> None:
     row = session.get(PipelineStageRun, row_id)
     if row is None:
@@ -88,6 +91,29 @@ def _finalize_stage_row(
     row.success = success
     row.error_message = error_message
     row.stats_json = json.dumps(stats) if stats else None
+    row.attempts = max(1, attempts)
+
+
+def _stage_retry_settings() -> tuple[int, float, float]:
+    """Max automatic retries after first failure, base seconds, backoff cap (#275)."""
+    max_auto = int(os.environ.get("PIPELINE_STAGE_MAX_AUTO_RETRIES", "3"))
+    base = float(os.environ.get("PIPELINE_STAGE_BACKOFF_BASE_SECONDS", "2"))
+    cap = float(os.environ.get("PIPELINE_STAGE_BACKOFF_MAX_SECONDS", "60"))
+    return max(0, max_auto), max(0.0, base), max(0.0, cap)
+
+
+def _sleep_before_retry(failed_attempt_index: int, base: float, cap: float) -> None:
+    """Sleep after failure ``failed_attempt_index`` (0 = after first failure)."""
+    delay = min(cap, base * (2**failed_attempt_index))
+    if delay > 0:
+        time.sleep(delay)
+
+
+def pipeline_retry_backoff_seconds(
+    max_auto_retries: int, base_seconds: float, cap_seconds: float
+) -> List[float]:
+    """Pure helper: delays after each failure before the next attempt (for tests)."""
+    return [min(cap_seconds, base_seconds * (2**i)) for i in range(max_auto_retries)]
 
 
 def execute_ingest_stage(*, trigger: TriggerKind, run_group_id: str) -> StageResult:
@@ -99,25 +125,48 @@ def execute_ingest_stage(*, trigger: TriggerKind, run_group_id: str) -> StageRes
             session, run_group_id, PipelineStage.INGEST.value, trigger
         )
 
+    max_auto, base, cap = _stage_retry_settings()
     stats: Dict[str, Any] = {}
-    ok = True
+    ok = False
     err: Optional[str] = None
-    try:
-        result = fetch_and_store()
-        stats = {
-            "articles_ingested": result.total_items,
-            "feeds_processed": result.total_feeds_processed,
-            "feeds_error": result.feeds_error,
-            "feeds_cached_304": result.feeds_cached_304,
-        }
-    except Exception as e:
-        ok = False
-        err = str(e)
-        logger.error("Pipeline ingest stage failed: %s", e, exc_info=True)
+    attempts = 0
+    for attempt in range(max_auto + 1):
+        attempts = attempt + 1
+        try:
+            result = fetch_and_store()
+            stats = {
+                "articles_ingested": result.total_items,
+                "feeds_processed": result.total_feeds_processed,
+                "feeds_error": result.feeds_error,
+                "feeds_cached_304": result.feeds_cached_304,
+            }
+            ok = True
+            err = None
+            break
+        except Exception as e:
+            err = str(e)
+            logger.error(
+                "Pipeline ingest stage failed (attempt %s/%s): %s",
+                attempts,
+                max_auto + 1,
+                e,
+                exc_info=True,
+            )
+            if attempt < max_auto:
+                _sleep_before_retry(attempt, base, cap)
+            else:
+                ok = False
 
     with session_scope() as session:
         assert row_id is not None
-        _finalize_stage_row(session, row_id, success=ok, error_message=err, stats=stats)
+        _finalize_stage_row(
+            session,
+            row_id,
+            success=ok,
+            error_message=err,
+            stats=stats,
+            attempts=attempts,
+        )
 
     return StageResult(
         stage=PipelineStage.INGEST.value, success=ok, stats=stats, error=err
@@ -142,45 +191,74 @@ def execute_story_generation_stage(
             session, run_group_id, PipelineStage.STORY_GENERATION.value, trigger
         )
 
+    max_auto, base, cap = _stage_retry_settings()
     stats: Dict[str, Any] = {}
-    ok = True
+    ok = False
     err: Optional[str] = None
-    try:
-        archived = archive_old_stories()
-        with session_scope() as session:
-            gen_out = generate_stories_simple(
-                session=session,
-                time_window_hours=time_window_hours,
-                min_articles_per_story=min_articles_per_story,
-                similarity_threshold=0.25,
-                model=model,
-                max_workers=max_workers,
+    attempts = 0
+    for attempt in range(max_auto + 1):
+        attempts = attempt + 1
+        try:
+            archived = archive_old_stories()
+            with session_scope() as session:
+                gen_out = generate_stories_simple(
+                    session=session,
+                    time_window_hours=time_window_hours,
+                    min_articles_per_story=min_articles_per_story,
+                    similarity_threshold=0.25,
+                    model=model,
+                    max_workers=max_workers,
+                )
+            ids = gen_out.get("story_ids", []) if isinstance(gen_out, dict) else []
+            stats = {
+                "stories_created": len(ids),
+                "stories_archived": archived,
+                "articles_found": (
+                    gen_out.get("articles_found") if isinstance(gen_out, dict) else None
+                ),
+                "clusters_created": (
+                    gen_out.get("clusters_created")
+                    if isinstance(gen_out, dict)
+                    else None
+                ),
+                "duplicates_skipped": (
+                    gen_out.get("duplicates_skipped")
+                    if isinstance(gen_out, dict)
+                    else None
+                ),
+                "stories_updated": (
+                    gen_out.get("stories_updated")
+                    if isinstance(gen_out, dict)
+                    else None
+                ),
+            }
+            ok = True
+            err = None
+            break
+        except Exception as e:
+            err = str(e)
+            logger.error(
+                "Pipeline story_generation stage failed (attempt %s/%s): %s",
+                attempts,
+                max_auto + 1,
+                e,
+                exc_info=True,
             )
-        ids = gen_out.get("story_ids", []) if isinstance(gen_out, dict) else []
-        stats = {
-            "stories_created": len(ids),
-            "stories_archived": archived,
-            "articles_found": (
-                gen_out.get("articles_found") if isinstance(gen_out, dict) else None
-            ),
-            "clusters_created": (
-                gen_out.get("clusters_created") if isinstance(gen_out, dict) else None
-            ),
-            "duplicates_skipped": (
-                gen_out.get("duplicates_skipped") if isinstance(gen_out, dict) else None
-            ),
-            "stories_updated": (
-                gen_out.get("stories_updated") if isinstance(gen_out, dict) else None
-            ),
-        }
-    except Exception as e:
-        ok = False
-        err = str(e)
-        logger.error("Pipeline story_generation stage failed: %s", e, exc_info=True)
+            if attempt < max_auto:
+                _sleep_before_retry(attempt, base, cap)
+            else:
+                ok = False
 
     with session_scope() as session:
         assert row_id is not None
-        _finalize_stage_row(session, row_id, success=ok, error_message=err, stats=stats)
+        _finalize_stage_row(
+            session,
+            row_id,
+            success=ok,
+            error_message=err,
+            stats=stats,
+            attempts=attempts,
+        )
 
     return StageResult(
         stage=PipelineStage.STORY_GENERATION.value,
@@ -213,44 +291,66 @@ def execute_enrich_item_stage(
             target_id=item_id,
         )
 
+    max_auto, base, cap = _stage_retry_settings()
     stats: Dict[str, Any] = {"item_id": item_id}
-    ok = True
+    ok = False
     err: Optional[str] = None
-    try:
-        with session_scope() as session:
-            row = session.execute(
-                text(
-                    """
-                    SELECT id, title, summary, content
-                    FROM items WHERE id = :id
-                    """
-                ),
-                {"id": item_id},
-            ).fetchone()
-            if not row:
-                raise ValueError(f"Item {item_id} not found")
-            title = row[1] or ""
-            body = (row[2] or row[3] or "").strip()
-            summary = body[:8000] if body else ""
-            extract_and_cache_entities(
-                article_id=item_id,
-                title=title,
-                summary=summary,
-                session=session,
-                model=model,
-                use_cache=False,
+    attempts = 0
+    for attempt in range(max_auto + 1):
+        attempts = attempt + 1
+        try:
+            with session_scope() as session:
+                row = session.execute(
+                    text(
+                        """
+                        SELECT id, title, summary, content
+                        FROM items WHERE id = :id
+                        """
+                    ),
+                    {"id": item_id},
+                ).fetchone()
+                if not row:
+                    raise ValueError(f"Item {item_id} not found")
+                title = row[1] or ""
+                body = (row[2] or row[3] or "").strip()
+                summary = body[:8000] if body else ""
+                extract_and_cache_entities(
+                    article_id=item_id,
+                    title=title,
+                    summary=summary,
+                    session=session,
+                    model=model,
+                    use_cache=False,
+                )
+            stats["model"] = model
+            ok = True
+            err = None
+            break
+        except Exception as e:
+            err = str(e)
+            logger.error(
+                "Pipeline enrich stage failed for item %s (attempt %s/%s): %s",
+                item_id,
+                attempts,
+                max_auto + 1,
+                e,
+                exc_info=True,
             )
-        stats["model"] = model
-    except Exception as e:
-        ok = False
-        err = str(e)
-        logger.error(
-            "Pipeline enrich stage failed for item %s: %s", item_id, e, exc_info=True
-        )
+            if attempt < max_auto:
+                _sleep_before_retry(attempt, base, cap)
+            else:
+                ok = False
 
     with session_scope() as session:
         assert row_id is not None
-        _finalize_stage_row(session, row_id, success=ok, error_message=err, stats=stats)
+        _finalize_stage_row(
+            session,
+            row_id,
+            success=ok,
+            error_message=err,
+            stats=stats,
+            attempts=attempts,
+        )
 
     return StageResult(
         stage=PipelineStage.ENRICH.value, success=ok, stats=stats, error=err
@@ -278,26 +378,46 @@ def execute_story_targeted_regeneration_stage(
             target_id=story_id,
         )
 
+    max_auto, base, cap = _stage_retry_settings()
     stats: Dict[str, Any] = {"story_id": story_id}
-    ok = True
+    ok = False
     err: Optional[str] = None
-    try:
-        with session_scope() as session:
-            out = regenerate_story_synthesis(session, story_id, model=model)
-            stats.update(out)
-    except Exception as e:
-        ok = False
-        err = str(e)
-        logger.error(
-            "Pipeline targeted story_generation failed for story %s: %s",
-            story_id,
-            e,
-            exc_info=True,
-        )
+    attempts = 0
+    for attempt in range(max_auto + 1):
+        attempts = attempt + 1
+        try:
+            with session_scope() as session:
+                out = regenerate_story_synthesis(session, story_id, model=model)
+                stats.update(out)
+            ok = True
+            err = None
+            break
+        except Exception as e:
+            err = str(e)
+            logger.error(
+                "Pipeline targeted story_generation failed for story %s "
+                "(attempt %s/%s): %s",
+                story_id,
+                attempts,
+                max_auto + 1,
+                e,
+                exc_info=True,
+            )
+            if attempt < max_auto:
+                _sleep_before_retry(attempt, base, cap)
+            else:
+                ok = False
 
     with session_scope() as session:
         assert row_id is not None
-        _finalize_stage_row(session, row_id, success=ok, error_message=err, stats=stats)
+        _finalize_stage_row(
+            session,
+            row_id,
+            success=ok,
+            error_message=err,
+            stats=stats,
+            attempts=attempts,
+        )
 
     return StageResult(
         stage=PipelineStage.STORY_GENERATION.value,
@@ -422,16 +542,34 @@ def run_pipeline(
     }
 
 
-def list_recent_stage_runs(limit: int = 50) -> List[Dict[str, Any]]:
+def list_recent_stage_runs(
+    limit: int = 50,
+    *,
+    outcome: str = "all",
+) -> List[Dict[str, Any]]:
+    """List recent stage runs. ``outcome``: all | failed | dead_letter | succeeded (#275)."""
     from sqlalchemy import desc
 
+    outcome = outcome.strip().lower()
+    if outcome not in ("all", "failed", "dead_letter", "succeeded"):
+        raise ValueError("outcome must be one of: all, failed, dead_letter, succeeded")
+
     with session_scope() as session:
-        rows = (
-            session.query(PipelineStageRun)
-            .order_by(desc(PipelineStageRun.started_at))
-            .limit(limit)
-            .all()
-        )
+        q = session.query(PipelineStageRun).order_by(desc(PipelineStageRun.started_at))
+        if outcome == "dead_letter":
+            q = q.filter(
+                PipelineStageRun.success.is_(False),
+                PipelineStageRun.discarded_at.is_(None),
+                PipelineStageRun.finished_at.isnot(None),
+            )
+        elif outcome == "failed":
+            q = q.filter(
+                PipelineStageRun.success.is_(False),
+                PipelineStageRun.finished_at.isnot(None),
+            )
+        elif outcome == "succeeded":
+            q = q.filter(PipelineStageRun.success.is_(True))
+        rows = q.limit(limit).all()
         out = []
         for r in rows:
             out.append(
@@ -447,6 +585,105 @@ def list_recent_stage_runs(limit: int = 50) -> List[Dict[str, Any]]:
                     "stats_json": r.stats_json,
                     "target_type": r.target_type,
                     "target_id": r.target_id,
+                    "attempts": r.attempts,
+                    "discarded_at": (
+                        r.discarded_at.isoformat() if r.discarded_at else None
+                    ),
                 }
             )
         return out
+
+
+def discard_pipeline_stage_run(run_id: int) -> Dict[str, Any]:
+    """Mark a failed finished run as discarded (dead-letter dismiss, #275)."""
+    with session_scope() as session:
+        row = session.get(PipelineStageRun, run_id)
+        if row is None:
+            raise ValueError("pipeline stage run not found")
+        if row.finished_at is None:
+            raise ValueError("run has not finished")
+        if row.success is True:
+            raise ValueError("cannot discard a successful run")
+        if row.discarded_at is not None:
+            raise ValueError("run is already discarded")
+        row.discarded_at = datetime.now(UTC)
+        discarded_at = row.discarded_at
+    return {
+        "id": run_id,
+        "discarded_at": discarded_at.isoformat() if discarded_at else None,
+    }
+
+
+def retry_pipeline_stage_run(run_id: int) -> Dict[str, Any]:
+    """
+    Re-execute the same stage type as a new run group (manual trigger, #275).
+
+    Coarse ``story_generation`` without target replays full cluster/synthesize path.
+    """
+    from app import scheduler as scheduler_mod
+
+    with session_scope() as session:
+        row = session.get(PipelineStageRun, run_id)
+        if row is None:
+            raise ValueError("pipeline stage run not found")
+        if row.finished_at is None:
+            raise ValueError("run has not finished")
+        if row.success is True:
+            raise ValueError("cannot retry a successful run")
+        if row.discarded_at is not None:
+            raise ValueError("cannot retry a discarded run")
+        stage = row.stage
+        tgt_type = row.target_type
+        tgt_id = row.target_id
+
+    trigger: TriggerKind = "manual"
+    new_group = str(uuid.uuid4())
+
+    if stage == PipelineStage.INGEST.value:
+        r = execute_ingest_stage(trigger=trigger, run_group_id=new_group)
+    elif stage == PipelineStage.STORY_GENERATION.value:
+        if tgt_type == "story" and tgt_id:
+            r = execute_story_targeted_regeneration_stage(
+                trigger=trigger,
+                run_group_id=new_group,
+                story_id=int(tgt_id),
+                model=scheduler_mod.STORY_MODEL,
+            )
+        elif tgt_type is None:
+            r = execute_story_generation_stage(
+                trigger=trigger,
+                run_group_id=new_group,
+                time_window_hours=scheduler_mod.STORY_TIME_WINDOW_HOURS,
+                min_articles_per_story=scheduler_mod.STORY_MIN_ARTICLES,
+                model=scheduler_mod.STORY_MODEL,
+                max_workers=3,
+            )
+        else:
+            raise ValueError(
+                f"cannot retry story_generation with target_type={tgt_type!r}"
+            )
+    elif stage == PipelineStage.ENRICH.value:
+        if tgt_type != "item" or not tgt_id:
+            raise ValueError("enrich stage requires item target_id")
+        r = execute_enrich_item_stage(
+            trigger=trigger,
+            run_group_id=new_group,
+            item_id=int(tgt_id),
+            model=scheduler_mod.STORY_MODEL,
+        )
+    else:
+        raise ValueError(f"unknown stage: {stage!r}")
+
+    return {
+        "original_run_id": run_id,
+        "new_run_group_id": new_group,
+        "success": r.success,
+        "stages": [
+            {
+                "stage": r.stage,
+                "success": r.success,
+                "stats": r.stats,
+                "error": r.error,
+            }
+        ],
+    }
