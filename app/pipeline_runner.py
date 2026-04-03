@@ -208,6 +208,7 @@ def execute_story_generation_stage(
                     similarity_threshold=0.25,
                     model=model,
                     max_workers=max_workers,
+                    pipeline_run_group_id=run_group_id,
                 )
             ids = gen_out.get("story_ids", []) if isinstance(gen_out, dict) else []
             stats = {
@@ -341,6 +342,26 @@ def execute_enrich_item_stage(
             else:
                 ok = False
 
+    if not ok and err:
+        try:
+            from app.processing_states import mark_article_failed
+
+            with session_scope() as session:
+                mark_article_failed(
+                    session,
+                    item_id,
+                    err,
+                    failure_stage="enrich",
+                    run_group_id=run_group_id,
+                    context="execute_enrich_item_stage",
+                )
+        except Exception as mark_exc:
+            logger.warning(
+                "Could not mark item %s failed after enrich: %s",
+                item_id,
+                mark_exc,
+            )
+
     with session_scope() as session:
         assert row_id is not None
         _finalize_stage_row(
@@ -407,6 +428,26 @@ def execute_story_targeted_regeneration_stage(
                 _sleep_before_retry(attempt, base, cap)
             else:
                 ok = False
+
+    if not ok and err:
+        try:
+            from app.processing_states import mark_story_failed
+
+            with session_scope() as session:
+                mark_story_failed(
+                    session,
+                    story_id,
+                    err,
+                    failure_stage="story_generation",
+                    run_group_id=run_group_id,
+                    context="execute_story_targeted_regeneration_stage",
+                )
+        except Exception as mark_exc:
+            logger.warning(
+                "Could not mark story %s failed after targeted regen: %s",
+                story_id,
+                mark_exc,
+            )
 
     with session_scope() as session:
         assert row_id is not None

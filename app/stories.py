@@ -60,6 +60,8 @@ from .processing_states import (
     ArticleProcessingState,
     StoryProcessingState,
     apply_article_processing_state_batch,
+    mark_article_failed,
+    mark_story_failed,
 )
 from .prompts import (
     AnalysisResult,
@@ -2639,6 +2641,7 @@ def generate_stories_simple(
     similarity_threshold: float = 0.25,  # Lowered from 0.3 for v0.6.1 entity-based clustering
     model: str = "llama3.1:8b",
     max_workers: int = 3,  # Parallel LLM calls
+    pipeline_run_group_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Generate stories from recent articles using hybrid clustering (OPTIMIZED + ENTITIES v0.6.1).
@@ -2669,6 +2672,8 @@ def generate_stories_simple(
         similarity_threshold: Minimum combined similarity to cluster articles (0.0-1.0)
         model: LLM model for synthesis and entity extraction
         max_workers: Maximum parallel LLM synthesis calls (default: 3)
+        pipeline_run_group_id: Optional ``pipeline_stage_runs.run_group_id`` for #293
+            entity failure metadata (manual/scheduled generation may omit).
 
     Returns:
         List of created story IDs
@@ -2989,6 +2994,13 @@ def generate_stories_simple(
                     )
             except Exception as e:
                 logger.error(f"Failed to get synthesis result: {e}")
+                synthesis_results.append(
+                    {
+                        "success": False,
+                        "cluster_data": cluster_data_list[cluster_idx],
+                        "error": str(e),
+                    }
+                )
 
     synthesis_time = time.time() - synthesis_start
     successful_syntheses = sum(1 for r in synthesis_results if r["success"])
@@ -2996,6 +3008,20 @@ def generate_stories_simple(
         f"Parallel LLM synthesis complete: {successful_syntheses}/{len(clusters)} succeeded "
         f"({synthesis_time:.2f}s, avg {synthesis_time/len(clusters):.2f}s per story)"
     )
+
+    for syn_result in synthesis_results:
+        if syn_result.get("success"):
+            continue
+        err_msg = syn_result.get("error") or "synthesis failed"
+        for aid in syn_result["cluster_data"]["article_ids"]:
+            mark_article_failed(
+                session,
+                aid,
+                err_msg,
+                failure_stage="story_generation",
+                run_group_id=pipeline_run_group_id,
+                context="generate_stories_simple:synthesis",
+            )
 
     # Step 4: Create stories in database (batched commits)
     logger.info("Creating stories in database...")
@@ -3087,6 +3113,16 @@ def generate_stories_simple(
                     )
                 except Exception as e:
                     logger.error(f"Failed to update story: {e}", exc_info=True)
+                    err_msg = str(e)
+                    for aid in merged_article_ids:
+                        mark_article_failed(
+                            session,
+                            aid,
+                            err_msg,
+                            failure_stage="story_generation",
+                            run_group_id=pipeline_run_group_id,
+                            context="generate_stories_simple:overlap_update",
+                        )
             else:
                 # No new articles, skip
                 skipped_duplicates += 1
@@ -3156,6 +3192,16 @@ def generate_stories_simple(
 
         except Exception as e:
             logger.error(f"Failed to prepare story: {e}", exc_info=True)
+            err_msg = str(e)
+            for aid in cluster_data["article_ids"]:
+                mark_article_failed(
+                    session,
+                    aid,
+                    err_msg,
+                    failure_stage="story_generation",
+                    run_group_id=pipeline_run_group_id,
+                    context="generate_stories_simple:prepare_story",
+                )
             continue
 
     if skipped_duplicates > 0:
@@ -3190,6 +3236,15 @@ def generate_stories_simple(
 
         except Exception as e:
             logger.error(f"Failed to link articles for story: {e}", exc_info=True)
+            if getattr(story, "id", None):
+                mark_story_failed(
+                    session,
+                    int(story.id),
+                    str(e),
+                    failure_stage="story_generation",
+                    run_group_id=pipeline_run_group_id,
+                    context="generate_stories_simple:link_articles",
+                )
             continue
 
     # Single commit for ALL stories
