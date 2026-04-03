@@ -51,10 +51,47 @@ This is **pipeline-oriented orchestration**, not a shift to an agentic or autono
 
 This ADR does **not** adopt a full agentic or autonomous-agent architecture. The pipeline remains a predetermined sequence of stages with well-defined inputs and outputs. Autonomy, tool use, and open-ended reasoning are out of scope for this decision.
 
+## Implementation notes: reliability, retries, and operator controls (#275 / #277)
+
+The bullets above on **retry, backoff, dead-letter**, **operator actions**, and **observability** are intentionally high level. The following notes constrain and sequence implementation work without replacing issue acceptance criteria or a future short supplement ADR if the team splits “reliability” from “orchestration.”
+
+### Scope of “failure” and granularity
+
+| Grain | What fails visibly | Pros | Cons |
+|-------|-------------------|------|------|
+| **Coarse (stage run)** | Whole **`ingest`** or **`story_generation`** attempt (already logged in **`pipeline_stage_runs`**) | Small schema change; fast to ship; matches current runner boundaries | One bad cluster/article does not surface as its own row; operators may only see aggregate errors |
+| **Fine (entity / job row)** | One **article** or **story** (or inner job) with stage + reason | Matches ADR-0030 **FAILED** semantics; clearer dead-letter queue | Touches **`generate_stories_simple`** / clustering paths; more migration and tests |
+
+**Incremental path:** deliver **stage-run-level** retries, backoff metadata, and terminal flags first, then add **targeted** failure rows (or tighter links to `items` / `stories`) where inner failures are already identifiable, without blocking on a full refactor of story generation.
+
+### Persistence and policy
+
+- **Retry counts**, **next retry time** (or exponential backoff schedule), and **terminal / discarded** disposition should be **persisted** so restarts and multiple replicas do not lose intent.
+- **Configuration** (e.g. max attempts, base and max delay) should be **environment- or settings-driven**, not hard-coded, so behaviour is testable and deterministic for a given config.
+- **Transient vs permanent** classification can start **conservative** (retry only to a capped `N`, then terminal) and grow smarter (e.g. skip retry on validation errors) without changing the overall model.
+
+### Coupling with [#277](https://github.com/Deim0s13/newsbrief/issues/277) (operator controls)
+
+- **Inspect** and **retry** should reuse **`/api/admin/pipeline/*`** patterns (`replay`, `runs`, and extensions) so operators have one mental model.
+- **Discard** (or “dismiss” / **dead-letter** without delete) should be explicit in API and, where applicable, align with **`processing_states`** rules (ADR-0030) so story/article state is not lying.
+- Avoid duplicating a second ad hoc “re-run” UX in the admin UI per stage; extend the standardized controls **#277** calls for.
+
+### Observability
+
+- **#275** gives **data** (who failed, when, how many retries); **#276** / **#291** give **telemetry** (metrics/alerts). The runner should emit structured logs and persist enough fields that stage-aware dashboards can be added later without another migration.
+
+### Ordering suggestion (not mandatory)
+
+1. Persist retry / terminal fields and policy for **existing** stage runs (or a sibling **failure** table if cleaner).
+2. Implement automatic retries with backoff where safe, plus admin **list/filter** for failed or terminal items.
+3. Add **discard** and tighten **retry** paths with **#277**.
+4. Deepen **per-entity** failure tracking as story generation internals expose stable targets (tracked in [#293](https://github.com/Deim0s13/newsbrief/issues/293)).
+
 ## References
 
 - **Canonical processing state model:** [ADR-0030: Article and story processing states](0030-article-story-processing-states.md) (subordinate specification; does not duplicate this ADR)
 - **Ingest idempotency and re-ingest upsert:** [ADR-0031: Pipeline idempotency and article re-ingest](0031-pipeline-idempotency-and-reingest.md), GitHub [#235](https://github.com/Deim0s13/newsbrief/issues/235)
+- **Retries, backoff, dead-letter (Phase 1):** GitHub [#275](https://github.com/Deim0s13/newsbrief/issues/275); **standardize operator controls:** [#277](https://github.com/Deim0s13/newsbrief/issues/277); **per-entity failures (Phase 2, after #275):** [#293](https://github.com/Deim0s13/newsbrief/issues/293)
 - Pipeline orchestration workstream: GitHub issues [#273](https://github.com/Deim0s13/newsbrief/issues/273)–[#291](https://github.com/Deim0s13/newsbrief/issues/291) (label: `pipeline-orchestration`), tracked in [#292](https://github.com/Deim0s13/newsbrief/issues/292)
 - [ARCHITECTURE.md](../ARCHITECTURE.md): Story Processing Pipeline (Section 7.5)
 - [ARCHITECTURAL_ROADMAP.md](ARCHITECTURAL_ROADMAP.md): Pipeline orchestration workstream
