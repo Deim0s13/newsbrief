@@ -14,6 +14,7 @@ from sqlalchemy import text
 from ..credibility import canonicalize_domain
 from ..credibility_import import import_mbfc_sources
 from ..deps import session_scope, templates
+from ..operator_audit import list_recent_operator_actions, record_operator_action
 from ..orm_models import SourceCredibility
 from ..settings import get_settings_service
 from ..topics import get_available_topics, get_reclassification_stats
@@ -50,7 +51,7 @@ class PipelineReplayBody(BaseModel):
 
 
 @router.post("/api/admin/pipeline/run")
-def admin_pipeline_run(body: Optional[PipelineRunBody] = None):
+def admin_pipeline_run(request: Request, body: Optional[PipelineRunBody] = None):
     """Run pipeline stages manually (operator action)."""
     from .. import scheduler as scheduler_mod
     from ..pipeline_runner import run_pipeline
@@ -67,7 +68,7 @@ def admin_pipeline_run(body: Optional[PipelineRunBody] = None):
             detail="from_stage must be one of: full, ingest, story_generation",
         )
     try:
-        return run_pipeline(
+        result = run_pipeline(
             trigger="manual",
             from_stage=mapped,
             time_window_hours=scheduler_mod.STORY_TIME_WINDOW_HOURS,
@@ -75,33 +76,96 @@ def admin_pipeline_run(body: Optional[PipelineRunBody] = None):
             model=scheduler_mod.STORY_MODEL,
             max_workers=3,
         )
+        record_operator_action(
+            request=request,
+            action_type="pipeline_run",
+            details={
+                "from_stage": fs,
+                "success": result.get("success"),
+                "run_group_id": result.get("run_group_id"),
+            },
+        )
+        return result
     except ValueError as e:
+        record_operator_action(
+            request=request,
+            action_type="pipeline_run",
+            details={"from_stage": fs, "success": False, "error": str(e)},
+        )
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
+        record_operator_action(
+            request=request,
+            action_type="pipeline_run",
+            details={"from_stage": fs, "success": False, "error": str(e)},
+        )
         logger.error("Manual pipeline run failed: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/api/admin/pipeline/replay")
-def admin_pipeline_replay(body: PipelineReplayBody):
+def admin_pipeline_replay(request: Request, body: PipelineReplayBody):
     """Re-run one stage for a single item (enrich) or story (regenerate synthesis)."""
     from .. import scheduler as scheduler_mod
     from ..pipeline_runner import run_targeted_replay
 
     model = body.model or scheduler_mod.STORY_MODEL
     try:
-        return run_targeted_replay(
+        result = run_targeted_replay(
             trigger="manual",
             target_type=body.target_type,
             target_id=body.target_id,
             from_stage=body.from_stage,
             model=model,
         )
+        record_operator_action(
+            request=request,
+            action_type="pipeline_replay",
+            details={
+                "target_type": body.target_type,
+                "target_id": body.target_id,
+                "from_stage": body.from_stage,
+                "model": model,
+                "success": result.get("success"),
+                "run_group_id": result.get("run_group_id"),
+            },
+        )
+        return result
     except ValueError as e:
+        record_operator_action(
+            request=request,
+            action_type="pipeline_replay",
+            details={
+                "target_type": body.target_type,
+                "target_id": body.target_id,
+                "from_stage": body.from_stage,
+                "success": False,
+                "error": str(e),
+            },
+        )
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
+        record_operator_action(
+            request=request,
+            action_type="pipeline_replay",
+            details={
+                "target_type": body.target_type,
+                "target_id": body.target_id,
+                "from_stage": body.from_stage,
+                "success": False,
+                "error": str(e),
+            },
+        )
         logger.error("Pipeline replay failed: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/api/admin/pipeline/audit")
+def admin_pipeline_audit(
+    limit: int = Query(50, ge=1, le=200, description="Max audit rows"),
+):
+    """Recent operator actions (pipeline admin API, #277)."""
+    return {"actions": list_recent_operator_actions(limit=limit)}
 
 
 @router.get("/api/admin/pipeline/runs")
@@ -122,25 +186,67 @@ def admin_pipeline_runs(
 
 
 @router.post("/api/admin/pipeline/runs/{run_id}/discard")
-def admin_pipeline_discard_run(run_id: int):
+def admin_pipeline_discard_run(request: Request, run_id: int):
     """Dismiss a failed run from the dead-letter queue (#275)."""
     from ..pipeline_runner import discard_pipeline_stage_run
 
     try:
-        return discard_pipeline_stage_run(run_id)
+        result = discard_pipeline_stage_run(run_id)
+        record_operator_action(
+            request=request,
+            action_type="pipeline_discard_run",
+            details={"run_id": run_id, **result},
+        )
+        return result
     except ValueError as e:
+        record_operator_action(
+            request=request,
+            action_type="pipeline_discard_run",
+            details={"run_id": run_id, "success": False, "error": str(e)},
+        )
         raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        record_operator_action(
+            request=request,
+            action_type="pipeline_discard_run",
+            details={"run_id": run_id, "success": False, "error": str(e)},
+        )
+        logger.error("Pipeline discard failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/api/admin/pipeline/runs/{run_id}/retry")
-def admin_pipeline_retry_run(run_id: int):
+def admin_pipeline_retry_run(request: Request, run_id: int):
     """Re-run the same stage as a new pipeline run (#275)."""
     from ..pipeline_runner import retry_pipeline_stage_run
 
     try:
-        return retry_pipeline_stage_run(run_id)
+        result = retry_pipeline_stage_run(run_id)
+        record_operator_action(
+            request=request,
+            action_type="pipeline_retry_run",
+            details={
+                "original_run_id": run_id,
+                "success": result.get("success"),
+                "new_run_group_id": result.get("new_run_group_id"),
+            },
+        )
+        return result
     except ValueError as e:
+        record_operator_action(
+            request=request,
+            action_type="pipeline_retry_run",
+            details={"original_run_id": run_id, "success": False, "error": str(e)},
+        )
         raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        record_operator_action(
+            request=request,
+            action_type="pipeline_retry_run",
+            details={"original_run_id": run_id, "success": False, "error": str(e)},
+        )
+        logger.error("Pipeline retry failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # -----------------------------------------------------------------------------
@@ -312,6 +418,19 @@ def models_management_page(request: Request):
             "profiles": profiles,
             "active_profile": active_profile,
             "models": models,
+        },
+    )
+
+
+@router.get("/admin/pipeline", response_class=HTMLResponse)
+def pipeline_operator_page(request: Request):
+    """Pipeline operator: runs, replay, dead-letter, audit (#277)."""
+    return templates.TemplateResponse(
+        "pipeline_operator.html",
+        {
+            "request": request,
+            "current_page": "admin",
+            "environment": os.environ.get("ENVIRONMENT", "development"),
         },
     )
 

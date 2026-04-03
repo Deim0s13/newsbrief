@@ -1,0 +1,337 @@
+{% extends "base.html" %}
+
+{% block title %}Pipeline Operator - NewsBrief{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 dark:bg-gray-900 py-6">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Pipeline operator</h1>
+            <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                Targeted pipeline runs, replay, dead-letter retry/discard, and audit log (#277).
+            </p>
+        </div>
+
+        <div id="toast" class="hidden mb-4 rounded-lg px-4 py-3 text-sm font-medium"></div>
+
+        <!-- Operator label (optional audit attribution) -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">Operator label</h2>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                Stored in this browser only. Sent as <code class="text-xs bg-gray-100 dark:bg-gray-700 px-1 rounded">X-Operator-Label</code> on admin API calls for the audit log.
+            </p>
+            <div class="flex flex-wrap gap-3 items-end">
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Label</label>
+                    <input type="text" id="operator-label" maxlength="256" placeholder="e.g. patrick"
+                           class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm w-64">
+                </div>
+                <button type="button" onclick="saveOperatorLabel()"
+                        class="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white rounded-lg text-sm hover:bg-gray-300 dark:hover:bg-gray-500">
+                    Save in browser
+                </button>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <!-- Coarse run -->
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Coarse pipeline run</h2>
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Manual trigger; same as <code class="text-xs">POST /api/admin/pipeline/run</code>.</p>
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">from_stage</label>
+                        <select id="run-from-stage" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm">
+                            <option value="full">full (ingest + story_generation)</option>
+                            <option value="ingest">ingest only</option>
+                            <option value="story_generation">story_generation only</option>
+                        </select>
+                    </div>
+                    <button type="button" onclick="runPipelineCoarse()"
+                            class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium">
+                        Run
+                    </button>
+                </div>
+            </div>
+
+            <!-- Targeted replay -->
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Targeted replay</h2>
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Item + enrich, or story + regenerate synthesis.</p>
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">target_type</label>
+                        <select id="replay-target-type" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm">
+                            <option value="item">item</option>
+                            <option value="story">story</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">target_id</label>
+                        <input type="number" id="replay-target-id" min="1" value="1"
+                               class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">from_stage</label>
+                        <select id="replay-from-stage" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm">
+                            <option value="enrich">enrich (item only)</option>
+                            <option value="story_generation">story_generation (story only)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">model (optional)</label>
+                        <input type="text" id="replay-model" placeholder="default from server"
+                               class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm">
+                    </div>
+                    <button type="button" onclick="runReplay()"
+                            class="w-full px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium">
+                        Replay
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent runs -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Recent stage runs</h2>
+                <div class="flex flex-wrap gap-2 items-center">
+                    <select id="runs-outcome" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm">
+                        <option value="all">all</option>
+                        <option value="failed">failed</option>
+                        <option value="dead_letter">dead_letter</option>
+                        <option value="succeeded">succeeded</option>
+                    </select>
+                    <button type="button" onclick="loadRuns()"
+                            class="px-3 py-2 bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white rounded-lg text-sm">
+                        Refresh
+                    </button>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-sm">
+                    <thead>
+                        <tr class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-600">
+                            <th class="pb-2 pr-3">id</th>
+                            <th class="pb-2 pr-3">stage</th>
+                            <th class="pb-2 pr-3">success</th>
+                            <th class="pb-2 pr-3">attempts</th>
+                            <th class="pb-2 pr-3">target</th>
+                            <th class="pb-2 pr-3">finished</th>
+                            <th class="pb-2">actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="runs-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Audit -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Operator audit log</h2>
+                <button type="button" onclick="loadAudit()"
+                        class="px-3 py-2 bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white rounded-lg text-sm">
+                    Refresh
+                </button>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-sm">
+                    <thead>
+                        <tr class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-600">
+                            <th class="pb-2 pr-3">time</th>
+                            <th class="pb-2 pr-3">action</th>
+                            <th class="pb-2 pr-3">label</th>
+                            <th class="pb-2 pr-3">ip</th>
+                            <th class="pb-2">details</th>
+                        </tr>
+                    </thead>
+                    <tbody id="audit-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function operatorLabelOnlyHeaders() {
+    const h = {};
+    const label = (localStorage.getItem('operatorLabel') || '').trim();
+    if (label) h['X-Operator-Label'] = label;
+    return h;
+}
+
+function operatorHeaders() {
+    return {'Content-Type': 'application/json', ...operatorLabelOnlyHeaders()};
+}
+
+function showToast(msg, isError) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.remove('hidden', 'bg-red-100', 'text-red-800', 'dark:bg-red-900/40', 'dark:text-red-200', 'bg-green-100', 'text-green-800', 'dark:bg-green-900/40', 'dark:text-green-200');
+    if (isError) {
+        el.classList.add('bg-red-100', 'text-red-800', 'dark:bg-red-900/40', 'dark:text-red-200');
+    } else {
+        el.classList.add('bg-green-100', 'text-green-800', 'dark:bg-green-900/40', 'dark:text-green-200');
+    }
+}
+
+function saveOperatorLabel() {
+    const v = document.getElementById('operator-label').value.trim();
+    localStorage.setItem('operatorLabel', v);
+    showToast('Saved operator label in this browser.', false);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('operator-label').value = localStorage.getItem('operatorLabel') || '';
+    loadRuns();
+    loadAudit();
+});
+
+async function runPipelineCoarse() {
+    const fromStage = document.getElementById('run-from-stage').value;
+    if (fromStage === 'full' && !confirm('Run full pipeline (ingest + story generation)? This can take a while.')) return;
+    if (fromStage === 'story_generation' && !confirm('Run story generation for the configured time window?')) return;
+    try {
+        const res = await fetch('/api/admin/pipeline/run', {
+            method: 'POST',
+            headers: operatorHeaders(),
+            body: JSON.stringify({ from_stage: fromStage }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || res.statusText);
+        showToast('Pipeline run finished. success=' + data.success + ' run_group_id=' + (data.run_group_id || ''), false);
+        loadRuns();
+        loadAudit();
+    } catch (e) {
+        showToast('Run failed: ' + e.message, true);
+    }
+}
+
+async function runReplay() {
+    const target_type = document.getElementById('replay-target-type').value;
+    const target_id = parseInt(document.getElementById('replay-target-id').value, 10);
+    const from_stage = document.getElementById('replay-from-stage').value;
+    const modelRaw = document.getElementById('replay-model').value.trim();
+    if (!target_id || target_id < 1) {
+        showToast('Invalid target_id', true);
+        return;
+    }
+    if (!confirm(`Replay ${from_stage} for ${target_type} ${target_id}?`)) return;
+    const body = { target_type, target_id, from_stage };
+    if (modelRaw) body.model = modelRaw;
+    try {
+        const res = await fetch('/api/admin/pipeline/replay', {
+            method: 'POST',
+            headers: operatorHeaders(),
+            body: JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || res.statusText);
+        showToast('Replay finished. success=' + data.success, false);
+        loadRuns();
+        loadAudit();
+    } catch (e) {
+        showToast('Replay failed: ' + e.message, true);
+    }
+}
+
+function renderRuns(runs) {
+    const tb = document.getElementById('runs-body');
+    tb.innerHTML = '';
+    for (const r of runs) {
+        const tr = document.createElement('tr');
+        tr.className = 'border-b border-gray-100 dark:border-gray-700';
+        const tgt = (r.target_type != null) ? `${r.target_type}:${r.target_id}` : '—';
+        const fin = r.finished_at || '—';
+        const disc = r.discarded_at ? ' (discarded)' : '';
+        const btns = (r.success === false && r.finished_at && !r.discarded_at)
+            ? `<button class="text-blue-600 dark:text-blue-400 mr-2" onclick="retryRun(${r.id})">Retry</button>
+               <button class="text-gray-600 dark:text-gray-300" onclick="discardRun(${r.id})">Discard</button>`
+            : '—';
+        tr.innerHTML = `<td class="py-2 pr-3 font-mono">${r.id}</td>
+            <td class="py-2 pr-3">${r.stage}</td>
+            <td class="py-2 pr-3">${r.success}${disc}</td>
+            <td class="py-2 pr-3">${r.attempts ?? '—'}</td>
+            <td class="py-2 pr-3">${tgt}</td>
+            <td class="py-2 pr-3 text-xs">${fin}</td>
+            <td class="py-2">${btns}</td>`;
+        tb.appendChild(tr);
+    }
+}
+
+async function loadRuns() {
+    const outcome = document.getElementById('runs-outcome').value;
+    try {
+        const res = await fetch('/api/admin/pipeline/runs?limit=75&outcome=' + encodeURIComponent(outcome));
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || res.statusText);
+        renderRuns(data.runs || []);
+    } catch (e) {
+        showToast('Failed to load runs: ' + e.message, true);
+    }
+}
+
+async function discardRun(id) {
+    if (!confirm('Discard (dead-letter dismiss) run ' + id + '?')) return;
+    try {
+        const res = await fetch('/api/admin/pipeline/runs/' + id + '/discard', {
+            method: 'POST',
+            headers: operatorLabelOnlyHeaders(),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || res.statusText);
+        showToast('Discarded run ' + id, false);
+        loadRuns();
+        loadAudit();
+    } catch (e) {
+        showToast('Discard failed: ' + e.message, true);
+    }
+}
+
+async function retryRun(id) {
+    if (!confirm('Retry run ' + id + ' as a new pipeline execution?')) return;
+    try {
+        const res = await fetch('/api/admin/pipeline/runs/' + id + '/retry', {
+            method: 'POST',
+            headers: operatorLabelOnlyHeaders(),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || res.statusText);
+        showToast('Retry submitted. new_run_group_id=' + (data.new_run_group_id || ''), false);
+        loadRuns();
+        loadAudit();
+    } catch (e) {
+        showToast('Retry failed: ' + e.message, true);
+    }
+}
+
+function renderAudit(actions) {
+    const tb = document.getElementById('audit-body');
+    tb.innerHTML = '';
+    for (const a of actions) {
+        const tr = document.createElement('tr');
+        tr.className = 'border-b border-gray-100 dark:border-gray-700';
+        const det = a.details ? JSON.stringify(a.details) : '—';
+        tr.innerHTML = `<td class="py-2 pr-3 text-xs whitespace-nowrap">${a.created_at || '—'}</td>
+            <td class="py-2 pr-3">${a.action_type}</td>
+            <td class="py-2 pr-3">${a.operator_label || '—'}</td>
+            <td class="py-2 pr-3 font-mono text-xs">${a.client_ip || '—'}</td>
+            <td class="py-2 text-xs break-all max-w-md">${det}</td>`;
+        tb.appendChild(tr);
+    }
+}
+
+async function loadAudit() {
+    try {
+        const res = await fetch('/api/admin/pipeline/audit?limit=50');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || res.statusText);
+        renderAudit(data.actions || []);
+    } catch (e) {
+        showToast('Failed to load audit: ' + e.message, true);
+    }
+}
+</script>
+{% endblock %}

@@ -495,6 +495,29 @@ class PipelineStageRun(Base):
     )
 
 
+class OperatorAction(Base):
+    """
+    Audit row for admin pipeline / operator mutations (#277).
+
+    Optional ``operator_label`` comes from ``X-Operator-Label`` (or ``X-Operator-Id``).
+    """
+
+    __tablename__ = "operator_actions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    action_type = Column(String(64), nullable=False)
+    details_json = Column(Text, nullable=True)
+    operator_label = Column(String(256), nullable=True)
+    client_ip = Column(String(64), nullable=True)
+
+    __table_args__ = (Index("idx_operator_actions_created", "created_at"),)
+
+
 class ReclassifyJob(Base):
     """Track async topic reclassification jobs (v0.8.1 - Issue #248)."""
 

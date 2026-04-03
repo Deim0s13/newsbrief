@@ -87,6 +87,7 @@ Comprehensive improvements to LLM output quality and content intelligence.
 - [x] **Topic Reclassification UI** (#248): Admin page at `/admin/topics` for async bulk topic reclassification
 - [x] **LLM Model Evaluation** (#99): Research complete - Qwen 2.5 recommended (see ADR-0025)
 - [x] **Model Configuration Profiles** (#100): Fast/Balanced/Quality profiles with Qwen 2.5, admin UI at `/admin/models`
+- [x] **Pipeline operator** (#277): Admin UI at `/admin/pipeline` for manual runs, targeted replay, dead-letter retry/discard, and audit log (`GET /api/admin/pipeline/audit`)
 - [x] **RAG Integration Research** (#108): Light RAG with pgvector recommended (see ADR-0026)
 - [x] **Fine-Tuning Feasibility** (#109): Deferred - better alternatives first (see ADR-0027)
 
