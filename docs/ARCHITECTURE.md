@@ -552,6 +552,8 @@ Items move through a default sequence of stages. Order and insertion points are 
 
 **Canonical enums, transition rules, and mapping to existing `Story.status` (`active` / `archived`)** are specified in [ADR-0030: Article and story processing states](adr/0030-article-story-processing-states.md) (subordinate to [ADR-0029](adr/0029-pipeline-oriented-orchestration.md)).
 
+**Feed ingest idempotency** (stable article identity via `url_hash`, bounded re-ingest, and `content_hash`-gated row updates) is specified in [ADR-0031: Pipeline idempotency and article re-ingest](adr/0031-pipeline-idempotency-and-reingest.md).
+
 State is stored in the database and exposed in admin/API where appropriate so that monitoring and manual actions are consistent with the pipeline.
 
 #### Where retrieval sits
@@ -811,6 +813,8 @@ flowchart TB
     ProdApp -->|"pull"| Registry
 ```
 
+Each Argo CD sync applies a **`Job` (`newsbrief-db-migrate`)** that runs **`alembic upgrade head`** using the same container image and `DATABASE_URL` as the API **before** the `Deployment` rolls (sync waves; failures block the rollout). Details and caveats for plain `kubectl apply` are in [Kubernetes setup](development/KUBERNETES.md#sync-waves).
+
 ---
 
 ## 10. CI/CD Architecture
@@ -1018,6 +1022,9 @@ All significant architectural decisions are documented as ADRs (Architecture Dec
 | [ADR-0026](adr/0026-rag-integration-strategy.md) | RAG Integration Strategy | Accepted |
 | [ADR-0027](adr/0027-fine-tuning-deferral.md) | Fine-Tuning Deferral | Accepted |
 | [ADR-0028](adr/0028-source-credibility-architecture.md) | Source Credibility Architecture | Accepted |
+| [ADR-0029](adr/0029-pipeline-oriented-orchestration.md) | Pipeline-oriented orchestration | Accepted |
+| [ADR-0030](adr/0030-article-story-processing-states.md) | Article and story processing states | Accepted |
+| [ADR-0031](adr/0031-pipeline-idempotency-and-reingest.md) | Pipeline idempotency and article re-ingest | Accepted |
 
 ---
 

@@ -247,6 +247,19 @@ gh workflow run gitops-deploy.yml \
   -f version=v0.3.4
 ```
 
+### Database migrations (Alembic)
+
+Schema changes live in `alembic/versions/` and are applied with **`alembic upgrade head`**.
+
+| Context | How migrations run |
+|---------|---------------------|
+| **Local / Makefile** | `make migrate` or `make migrate-dev` (requires PostgreSQL and `DATABASE_URL` where applicable). See the [README](../../README.md#database-configuration) and [DEVELOPMENT.md](DEVELOPMENT.md). |
+| **Tekton CI** | The test task runs `alembic upgrade head` so the revision chain is validated against a database before merge. |
+| **Kubernetes / Argo CD** | Each sync applies the **`newsbrief-db-migrate` Job** (same container image as the API) **before** the API `Deployment` updates, using [Argo CD sync waves](KUBERNETES.md#sync-waves). A failed migration blocks the rollout. |
+| **Plain `kubectl apply -k`** | Kubernetes does not enforce sync-wave ordering; prefer Argo CD, or apply the ConfigMap and Job first and `kubectl wait` for Job completion before applying the Deployment. See [KUBERNETES.md](KUBERNETES.md#sync-waves). |
+
+**Authors:** create revisions with `make migrate-new MSG="short description"` and ship the new file in the same PR as the code that needs the schema.
+
 ## Monitoring & Observability
 
 ### Health Checks

@@ -118,25 +118,27 @@ LLM-dependent tests automatically skip when Ollama is not available.
 
 ## Database
 
-### SQLite (Development)
+NewsBrief uses **PostgreSQL only** for application data (dev/prod parity — [ADR-0022](docs/adr/0022-dev-prod-database-parity.md)).
+
+### Local PostgreSQL
 
 ```bash
-# Initialize database
-make init-db
-```
-
-### PostgreSQL (Container)
-
-```bash
-# Start PostgreSQL container
+# Start PostgreSQL (e.g. Podman; default port often 5433 — see Makefile)
 make db-up
 
-# Run migrations
-make migrate
+# Apply migrations (set DATABASE_URL if not using defaults from docs)
+make migrate-dev
+# Or: make migrate   # uses .venv and DATABASE_URL from your environment
 
-# Connect to psql
+# Connect with psql
 make db-psql
 ```
+
+Create new revisions with `make migrate-new MSG="describe change"` and commit the file under `alembic/versions/` with the code that depends on it.
+
+### Kubernetes (Argo CD)
+
+For cluster deploys, **do not rely on `make migrate` on the node**. Argo CD applies a **`Job`** named **`newsbrief-db-migrate`** that runs **`alembic upgrade head`** using the same image and config as the API, **before** the `Deployment` rolls (sync waves). See [docs/development/KUBERNETES.md](docs/development/KUBERNETES.md#sync-waves).
 
 ## Branching Strategy
 
@@ -162,6 +164,7 @@ Before submitting a PR:
 - [ ] Pre-commit hooks pass (`pre-commit run --all-files`)
 - [ ] Tests pass (`pytest tests/ -v`)
 - [ ] New code has tests (if applicable)
+- [ ] **Schema changes:** new Alembic revision under `alembic/versions/` in the same PR (`make migrate-new MSG="…"`), or N/A
 - [ ] Documentation updated (if applicable)
 - [ ] Commit messages are clear and descriptive
 

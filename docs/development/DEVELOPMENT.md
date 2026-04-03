@@ -84,17 +84,24 @@ NewsBrief supports separate development and production environments:
 **Development mode** shows a visible DEV banner and "DEV -" prefix in the browser tab to clearly distinguish from production.
 
 ```bash
-# Development (local Python, SQLite)
-make dev
-# → Shows DEV banner at http://localhost:8787
+# Development (local Python + PostgreSQL — e.g. dev stack or db-up + migrate)
+make dev-full
+# Or: make db-up && make migrate-dev && make dev
+# → DEV banner at http://localhost:8787 when using the dev configuration
 
-# Production (containers, PostgreSQL)
+# Production-style stack (containers + PostgreSQL + Caddy)
 make deploy
-make deploy-init  # First time only
-# → Clean UI at https://newsbrief.local
+make deploy-init  # First time only — see Makefile / README
+# → https://newsbrief.local
 ```
 
-See [ADR-0007](../adr/0007-postgresql-database-migration.md) for database architecture details.
+See [ADR-0022](../adr/0022-dev-prod-database-parity.md) for PostgreSQL parity. Historical note: [ADR-0007](../adr/0007-postgresql-database-migration.md).
+
+### **Database migrations (Alembic)**
+
+- **Local:** `make migrate` / `make migrate-dev`; new revisions: `make migrate-new MSG="description"`.
+- **Tekton:** CI runs `alembic upgrade head` during the test task.
+- **Argo CD:** **`newsbrief-db-migrate` Job** runs before the API `Deployment` (sync waves). See [KUBERNETES.md](KUBERNETES.md#sync-waves) and [CI-CD.md](CI-CD.md#database-migrations-alembic).
 
 ### **API Convenience Commands** ⭐ *New in v0.8.1*
 
@@ -938,24 +945,14 @@ def fetch_feed(url: str, timeout: float = 20.0) -> tuple[bool, str]:
 
 #### **Database Changes**
 
-When modifying database schema:
+Use **Alembic** only (no ad-hoc DDL in `db.py`):
 
-```python
-# In db.py, add migration logic
-def init_db() -> None:
-    with engine.begin() as conn:
-        # Check current schema version
-        try:
-            version = conn.execute("SELECT version FROM schema_info").scalar()
-        except:
-            version = None
+1. Edit SQLAlchemy models / schema as needed.
+2. Generate a revision: `make migrate-new MSG="short description"` (review the script under `alembic/versions/`).
+3. Apply locally: `make migrate` or `make migrate-dev`.
+4. Commit the new revision with the code that depends on the schema.
 
-        if version is None:
-            # Create initial schema
-            conn.exec_driver_sql("CREATE TABLE schema_info (version INTEGER)")
-            # ... existing table creation
-            conn.exec_driver_sql("INSERT INTO schema_info (version) VALUES (1)")
-```
+See [CI-CD.md](CI-CD.md#database-migrations-alembic) for how migrations run in Tekton and Argo CD.
 
 ## 📦 Container Development
 

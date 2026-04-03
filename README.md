@@ -10,7 +10,7 @@ NewsBrief is a self-hosted, privacy-focused news aggregator that replaces readin
 
 ### **🎯 Story-Based Aggregation (v0.8.0)** - *Current Release*
 Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **Time to informed: 30 min → 2 min**
-Story generation is evolving toward an **orchestrated pipeline** with explicit processing stages, clearer reliability (retries, dead-letter handling), and stage-aware observability—see [ADR-0029](docs/adr/0029-pipeline-oriented-orchestration.md).
+Story generation is evolving toward an **orchestrated pipeline** with explicit processing stages, clearer reliability (retries, dead-letter handling), and stage-aware observability—see [ADR-0029](docs/adr/0029-pipeline-oriented-orchestration.md). Feed ingest idempotency and re-ingest rules are in [ADR-0031](docs/adr/0031-pipeline-idempotency-and-reingest.md).
 
 - **Automated Story Generation**: Daily scheduled generation at 6 AM (configurable timezone)
 - **🧠 Enhanced Entity Extraction (v0.8.1)**: Confidence scores, roles (primary/mentioned/quoted), disambiguation hints
@@ -452,6 +452,8 @@ make migrate-stamp  # Mark existing DB as current
 make migrate-new MSG="description"  # Create new migration
 ```
 
+**Kubernetes (Argo CD):** GitOps sync applies a migrate `Job` (`newsbrief-db-migrate`) that runs `alembic upgrade head` before the API `Deployment` updates. See [docs/development/KUBERNETES.md](docs/development/KUBERNETES.md) (sync waves).
+
 #### Environment Variables
 
 | Variable | Description | Default |
@@ -503,6 +505,7 @@ newsbrief/
 │   ├── orm_models.py      # SQLAlchemy ORM models
 │   ├── models.py          # Pydantic schemas
 │   ├── feeds.py           # RSS fetching and processing
+│   ├── ingest_idempotency.py  # Feed re-ingest gating (ADR-0031)
 │   ├── stories.py         # Story generation and CRUD
 │   ├── readability.py     # Content extraction
 │   └── llm.py             # LLM integration with Ollama

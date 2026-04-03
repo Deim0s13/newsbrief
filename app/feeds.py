@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import calendar
 import hashlib
 import logging
 import os
@@ -19,6 +18,11 @@ logger = logging.getLogger(__name__)
 
 from .db import session_scope
 from .extraction import extract_content
+from .ingest_idempotency import (
+    entry_published_for_item,
+    entry_updated_instant,
+    should_reingest_existing_item,
+)
 from .models import create_content_hash
 from .processing_states import article_state_after_ingest
 from .ranking import calculate_ranking_score, classify_article_topic
@@ -119,6 +123,8 @@ class RefreshStats:
     hit_global_limit: bool
     hit_time_limit: bool
     robots_txt_blocked_articles: int
+    items_inserted: int = 0
+    items_updated: int = 0
 
 
 # Configurable limits (can be overridden by environment variables)
@@ -1388,6 +1394,8 @@ def fetch_and_store() -> RefreshStats:
         hit_global_limit=False,
         hit_time_limit=False,
         robots_txt_blocked_articles=0,
+        items_inserted=0,
+        items_updated=0,
     )
 
     with httpx.Client(
@@ -1516,30 +1524,33 @@ def fetch_and_store() -> RefreshStats:
 
                 h = url_hash(link)
 
-                # Skip if exists
                 with session_scope() as s:
-                    exists = s.execute(
-                        text("SELECT 1 FROM items WHERE url_hash=:h"), {"h": h}
-                    ).first()
-                    if exists:
+                    row = s.execute(
+                        text(
+                            """
+                        SELECT id, content_hash, published, content
+                        FROM items WHERE url_hash=:h LIMIT 1
+                        """
+                        ),
+                        {"h": h},
+                    ).fetchone()
+
+                existing_id = int(row[0]) if row else None
+                existing_hash = row[1] if row else None
+                existing_pub = row[2] if row else None
+                existing_content = row[3] if row else None
+
+                entry_updated = entry_updated_instant(entry)
+                published = entry_published_for_item(entry)
+
+                if existing_id is not None:
+                    if not should_reingest_existing_item(
+                        existing_pub, existing_content, entry_updated
+                    ):
                         continue
 
                 title = entry.get("title") or ""
                 author = None
-                published = None
-                for key in ("published_parsed", "updated_parsed"):
-                    if entry.get(key):
-                        try:
-                            # feedparser returns struct_time in UTC
-                            # Use calendar.timegm to convert UTC struct_time to timestamp
-                            # Then create a timezone-aware UTC datetime
-                            utc_timestamp = calendar.timegm(entry[key])
-                            published = datetime.fromtimestamp(
-                                utc_timestamp, tz=timezone.utc
-                            )
-                            break
-                        except Exception:
-                            pass
 
                 # Initial summary (feed-provided, sanitized for safety)
                 summary = sanitize_html(entry.get("summary") or "")
@@ -1597,6 +1608,17 @@ def fetch_and_store() -> RefreshStats:
                 # Calculate content hash for AI caching
                 content_hash = create_content_hash(title, content_text or summary or "")
 
+                if (
+                    existing_id is not None
+                    and existing_hash is not None
+                    and content_hash == existing_hash
+                ):
+                    logger.debug(
+                        "Skipping item update (content_hash unchanged): url_hash=%s",
+                        h[:16],
+                    )
+                    continue
+
                 # Classify article topic (v0.4.0)
                 topic_result = classify_article_topic(
                     title=title or "",
@@ -1619,41 +1641,71 @@ def fetch_and_store() -> RefreshStats:
                     content_text,
                 )
 
-                # Insert item with ranking data (from ranking module)
+                row_params = {
+                    "feed_id": fid,
+                    "title": title,
+                    "url": link,
+                    "url_hash": h,
+                    "published": published.isoformat() if published else None,
+                    "author": author,
+                    "summary": summary,
+                    "content": content_text,
+                    "content_hash": content_hash,
+                    "ranking_score": ranking_result.score,
+                    "topic": topic_result.topic,
+                    "topic_confidence": topic_result.confidence,
+                    "source_weight": 1.0,
+                    "extraction_method": extraction_method,
+                    "extraction_quality": extraction_quality,
+                    "extraction_error": extraction_error,
+                    "extracted_at": (
+                        extracted_at.isoformat() if extracted_at else None
+                    ),
+                    "extraction_time_ms": extraction_time_ms,
+                    "processing_state": ingest_processing_state.value,
+                }
+
                 with session_scope() as s:
-                    s.execute(
-                        text(
-                            """
-                    INSERT INTO items(feed_id, title, url, url_hash, published, author, summary, content, content_hash, ranking_score, topic, topic_confidence, source_weight, extraction_method, extraction_quality, extraction_error, extracted_at, extraction_time_ms, processing_state)
-                    VALUES(:feed_id, :title, :url, :url_hash, :published, :author, :summary, :content, :content_hash, :ranking_score, :topic, :topic_confidence, :source_weight, :extraction_method, :extraction_quality, :extraction_error, :extracted_at, :extraction_time_ms, :processing_state)
-                    """
-                        ),
-                        {
-                            "feed_id": fid,
-                            "title": title,
-                            "url": link,
-                            "url_hash": h,
-                            "published": published.isoformat() if published else None,
-                            "author": author,
-                            "summary": summary,
-                            "content": content_text,
-                            "content_hash": content_hash,
-                            # Ranking fields from ranking module
-                            "ranking_score": ranking_result.score,
-                            "topic": topic_result.topic,
-                            "topic_confidence": topic_result.confidence,
-                            "source_weight": 1.0,
-                            # Extraction metadata (v0.8.0)
-                            "extraction_method": extraction_method,
-                            "extraction_quality": extraction_quality,
-                            "extraction_error": extraction_error,
-                            "extracted_at": (
-                                extracted_at.isoformat() if extracted_at else None
+                    if existing_id is None:
+                        s.execute(
+                            text(
+                                """
+                        INSERT INTO items(feed_id, title, url, url_hash, published, author, summary, content, content_hash, ranking_score, topic, topic_confidence, source_weight, extraction_method, extraction_quality, extraction_error, extracted_at, extraction_time_ms, processing_state)
+                        VALUES(:feed_id, :title, :url, :url_hash, :published, :author, :summary, :content, :content_hash, :ranking_score, :topic, :topic_confidence, :source_weight, :extraction_method, :extraction_quality, :extraction_error, :extracted_at, :extraction_time_ms, :processing_state)
+                        """
                             ),
-                            "extraction_time_ms": extraction_time_ms,
-                            "processing_state": ingest_processing_state.value,
-                        },
-                    )
+                            row_params,
+                        )
+                        stats.items_inserted += 1
+                    else:
+                        s.execute(
+                            text(
+                                """
+                        UPDATE items SET
+                            feed_id=:feed_id,
+                            title=:title,
+                            url=:url,
+                            published=:published,
+                            author=:author,
+                            summary=:summary,
+                            content=:content,
+                            content_hash=:content_hash,
+                            ranking_score=:ranking_score,
+                            topic=:topic,
+                            topic_confidence=:topic_confidence,
+                            source_weight=:source_weight,
+                            extraction_method=:extraction_method,
+                            extraction_quality=:extraction_quality,
+                            extraction_error=:extraction_error,
+                            extracted_at=:extracted_at,
+                            extraction_time_ms=:extraction_time_ms,
+                            processing_state=:processing_state
+                        WHERE id=:item_id
+                        """
+                            ),
+                            {**row_params, "item_id": existing_id},
+                        )
+                        stats.items_updated += 1
 
                 stats.total_items += 1
                 stats.items_per_feed[fid] += 1
@@ -1679,6 +1731,8 @@ def fetch_and_store() -> RefreshStats:
             "duration_ms": round(stats.refresh_time_seconds * 1000, 2),
             "feeds_processed": stats.total_feeds_processed,
             "articles_ingested": stats.total_items,
+            "articles_inserted": stats.items_inserted,
+            "articles_updated": stats.items_updated,
             "feeds_cached": stats.feeds_cached_304,
             "feeds_error": stats.feeds_error,
             "feeds_disabled": stats.feeds_skipped_disabled,

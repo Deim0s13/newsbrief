@@ -132,6 +132,7 @@ We need to choose a GitOps tool to manage NewsBrief deployments on our Kubernete
 │  │ k8s/                                                 │    │
 │  │ ├── base/           # Base manifests                │    │
 │  │ │   ├── deployment.yaml                             │    │
+│  │ │   ├── migrate-job.yaml   # Alembic Job (sync wave 1) │ │
 │  │ │   ├── service.yaml                                │    │
 │  │ │   └── kustomization.yaml                          │    │
 │  │ └── overlays/                                       │    │
@@ -159,12 +160,18 @@ We need to choose a GitOps tool to manage NewsBrief deployments on our Kubernete
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                 Kubernetes Namespace                         │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │
-│  │   newsbrief │  │  postgres   │  │   caddy     │          │
-│  │     pod     │  │     pod     │  │     pod     │          │
-│  └─────────────┘  └─────────────┘  └─────────────┘          │
+│  ┌──────────────┐  ┌─────────────┐  ┌─────────────┐         │
+│  │ newsbrief-   │  │  newsbrief  │  │   (other    │         │
+│  │ db-migrate   │  │  API pods   │  │  infra…)   │         │
+│  │  (Job)       │  │             │  │            │         │
+│  └──────────────┘  └─────────────┘  └─────────────┘         │
+│       ▲                    ▲                                 │
+│       │ Alembic runs     │ Rolls after Job succeeds        │
+│       │ first (wave 1)   │ (wave 2)                        │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+**Database migrations:** The `newsbrief-db-migrate` Job runs `alembic upgrade head` with the same image and `DATABASE_URL` source as the API. Argo CD applies it in **sync wave 1** and waits for success before **wave 2** (Deployment). See [KUBERNETES.md](../development/KUBERNETES.md#sync-waves).
 
 ### Directory Structure
 
@@ -173,11 +180,10 @@ k8s/
 ├── base/
 │   ├── kustomization.yaml
 │   ├── namespace.yaml
-│   ├── deployment.yaml
-│   ├── service.yaml
 │   ├── configmap.yaml
-│   ├── secret.yaml          # Sealed/encrypted
-│   └── ingress.yaml
+│   ├── migrate-job.yaml     # Alembic Job (Argo sync wave 1)
+│   ├── deployment.yaml
+│   └── service.yaml
 └── overlays/
     ├── dev/
     │   ├── kustomization.yaml
@@ -194,10 +200,11 @@ k8s/
         ├── patch-resources.yaml   # higher limits
         └── patch-image.yaml       # :v0.7.5 tag
 
-argocd/
-├── dev-app.yaml          # ArgoCD Application for dev
-├── staging-app.yaml      # ArgoCD Application for staging
-└── prod-app.yaml         # ArgoCD Application for prod
+k8s/argocd/            # Argo CD Applications (see repo)
+├── app-dev.yaml
+├── app-prod.yaml
+├── project.yaml
+└── ...
 ```
 
 ### ArgoCD Application Definition
@@ -240,11 +247,11 @@ argocd-status:    # Show application status
 ### Sync Workflow
 
 1. Developer pushes to `dev` branch
-2. Tekton pipeline builds and pushes image with new tag
-3. Tekton updates image tag in `k8s/overlays/dev/patch-image.yaml`
-4. ArgoCD detects Git change (polls every 3 minutes)
-5. ArgoCD syncs: applies updated manifests
-6. New pod rolls out with new image
+2. Tekton pipeline builds and pushes image with new tag (tests include `alembic upgrade head`)
+3. Git manifest image tag updated (e.g. `k8s/overlays/*/kustomization.yaml` `images.newTag`)
+4. Argo CD detects Git change (polls every 3 minutes by default)
+5. Argo CD syncs: **wave 0** ConfigMap, then **wave 1** **`newsbrief-db-migrate` Job** (`alembic upgrade head`); sync waits for Job success
+6. **Wave 2:** API `Deployment` and `Service` roll to the new image
 
 ## Consequences
 

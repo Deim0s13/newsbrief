@@ -441,9 +441,10 @@ k8s/
 ├── base/                    # Base manifests
 │   ├── kustomization.yaml
 │   ├── namespace.yaml
+│   ├── configmap.yaml
+│   ├── migrate-job.yaml     # Alembic `upgrade head` (Argo CD sync wave 1)
 │   ├── deployment.yaml
-│   ├── service.yaml
-│   └── configmap.yaml
+│   └── service.yaml
 ├── overlays/
 │   ├── dev/                 # Dev overrides
 │   │   └── kustomization.yaml
@@ -619,10 +620,14 @@ main branch ──► Tekton builds ──► kind-registry:5000/newsbrief:v0.7.
 
 ### Sync Waves
 
-Resources deploy in order using ArgoCD sync waves:
-1. **Wave -1**: Namespace
-2. **Wave 0**: ConfigMaps, Secrets
-3. **Wave 1**: Deployments, Services
+Resources deploy in order using Argo CD sync waves (lower numbers first; Argo CD waits for a resource to be **healthy** before moving to the next wave—so the migrate `Job` must finish successfully before the `Deployment` rolls):
+
+1. **Wave -1**: Namespace (and prod-only resources such as PVC that use wave -1)
+2. **Wave 0**: ConfigMaps (e.g. `newsbrief-config` including `DATABASE_URL`)
+3. **Wave 1**: **`Job` `newsbrief-db-migrate`** — runs `alembic upgrade head` using the same image and `envFrom` as the API pod. The Job is annotated with `argocd.argoproj.io/sync-options: Replace=true` so Kubernetes can recreate it when the Job template changes (Job `spec.template` is otherwise immutable).
+4. **Wave 2**: Deployment, Service
+
+**Plain `kubectl apply -k`**: Kubernetes does not interpret Argo sync waves; resources may be applied in an arbitrary order and nothing waits for the Job before starting pods. Prefer Argo CD for cluster deploys, or run migrations explicitly first (apply ConfigMap and Job, `kubectl wait --for=condition=complete job/newsbrief-db-migrate -n <namespace>`, then apply the rest).
 
 ## 🚀 Advanced GitOps (Phase 6)
 

@@ -6,7 +6,7 @@ metadata:
     app.kubernetes.io/name: newsbrief
     app.kubernetes.io/component: api
   annotations:
-    argocd.argoproj.io/sync-wave: "1"  # Create with deployment
+    argocd.argoproj.io/sync-wave: "2"  # With deployment (after migrate Job)
 spec:
   type: ClusterIP
   selector:
