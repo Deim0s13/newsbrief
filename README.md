@@ -186,6 +186,9 @@ make dev-full
 make db-up      # Start PostgreSQL container (requires Docker/Podman)
 make dev        # Run development server
 
+# With kind/Tekton set up: push `dev` and run CI (lint + pytest in cluster)
+# make push-dev
+
 # Access at http://localhost:8787
 # Orange "DEVELOPMENT MODE" banner distinguishes from production
 ```

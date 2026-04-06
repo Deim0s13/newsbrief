@@ -53,6 +53,14 @@ dev-full:  ## Start PostgreSQL + development server (single command)
 	@echo ""
 	@$(MAKE) dev
 
+# ---------- Tekton dev CI (local cluster) ----------
+# Push dev then run ci-dev in one step (no GitHub→Smee relay required).
+ci-dev:  ## Run Tekton pipeline ci-dev (lint + pytest); needs kubectl, tkn, cluster up
+	@scripts/trigger-ci-dev.sh
+
+push-dev:  ## git push origin dev && ci-dev (SKIP_CI_DEV=1 to push without pipeline)
+	@scripts/push-dev.sh
+
 env-init:  ## Create .env from template with generated secure password
 	@if [ -f .env ]; then \
 		echo "⚠️  .env already exists. Delete it first or edit manually."; \

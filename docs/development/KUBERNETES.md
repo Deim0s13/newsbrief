@@ -175,6 +175,20 @@ kubectl apply -f k8s/infrastructure/tekton-rbac.yaml
 
 ## 🏃 Running Pipelines
 
+### Development pipeline from the host (reliable)
+
+Webhooks depend on Smee + port-forward. To run the same **`ci-dev`** workload after you push without that chain:
+
+```bash
+# From repo root: push dev to GitHub, then start ci-dev on the cluster
+make push-dev
+
+# Only start ci-dev (e.g. re-run after fixing cluster)
+make ci-dev
+```
+
+`SKIP_CI_DEV=1 make push-dev` pushes without starting the pipeline.
+
 ### Development Pipeline
 
 ```bash

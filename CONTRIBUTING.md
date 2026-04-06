@@ -158,9 +158,19 @@ Single-maintainer workflow: **work on `dev`**, **cut releases from `main`**.
 
 Long-lived `feature/*` / `fix/*` branches are optional; avoid them unless you truly need isolation, since they add merge overhead for a solo setup.
 
-### GitHub webhook (push → Tekton)
+### Tekton `ci-dev` after you push (recommended)
 
-GitHub should have a **`push`** webhook pointing at your Smee URL (see `tekton/triggers/smee-config.yaml`). **“Delivery: OK” in GitHub only means Smee accepted the payload** — you still need **`kubectl port-forward svc/el-newsbrief-listener 8080:8080`** and **`./scripts/smee-client.sh`** running so events reach the cluster EventListener. The webhook **secret** in GitHub must match **`github-webhook-secret`** in the cluster (`token` key). Details: [KUBERNETES.md — Webhooks](docs/development/KUBERNETES.md).
+Git has **no post-push hook**, and the **GitHub → Smee → laptop** path only runs `ci-dev` when **port-forward + smee-client** are up. For reliable checks before you later merge to `main`, use:
+
+```bash
+make push-dev
+```
+
+That **`git push origin dev`** and then starts **`ci-dev`** on your cluster (same workload as the webhook: clone `dev`, lint, pytest). Push only without the pipeline: `SKIP_CI_DEV=1 make push-dev`. To re-run CI without pushing: `make ci-dev`.
+
+### GitHub webhook (optional automation)
+
+If you keep **Smee + port-forward** running, pushes to `dev` can still trigger `ci-dev` via GitHub. See `tekton/triggers/smee-config.yaml`. **“Delivery: OK” in GitHub only means Smee accepted the payload** — the EventListener still needs the relay and matching **`github-webhook-secret`**. Details: [KUBERNETES.md — Webhooks](docs/development/KUBERNETES.md).
 
 ## Pull Request Checklist
 
