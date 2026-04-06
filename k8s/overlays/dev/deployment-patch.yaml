@@ -1,0 +1,11 @@
+# Dev uses floating tag dev-latest; always resolve from registry after push-kind-dev-image.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: newsbrief
+spec:
+  template:
+    spec:
+      containers:
+        - name: newsbrief
+          imagePullPolicy: Always
