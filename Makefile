@@ -61,6 +61,9 @@ ci-dev:  ## Run Tekton pipeline ci-dev (lint + pytest); needs kubectl, tkn, clus
 push-dev:  ## git push origin dev && ci-dev (SKIP_CI_DEV=1 to push without pipeline)
 	@scripts/push-dev.sh
 
+push-kind-dev-image:  ## Build + push localhost:5000/newsbrief:dev-latest for Argo newsbrief-dev
+	@chmod +x scripts/push-kind-dev-image.sh 2>/dev/null; RUNTIME=$(RUNTIME) KIND_REGISTRY_HOST=localhost:5000 scripts/push-kind-dev-image.sh
+
 webhook-relay-start:  ## Background: EventListener port-forward + smee (GitHub webhooks → Tekton)
 	@chmod +x scripts/start-webhook-relay.sh 2>/dev/null; scripts/start-webhook-relay.sh
 
@@ -434,4 +437,4 @@ smee:                             ## Start smee webhook bridge
 
 # ---------- Defaults ----------
 .DEFAULT_GOAL := run
-.PHONY: venv run-local dev dev-full build tag push release local-release clean-release cleanup-old-images run deploy deploy-stop deploy-status deploy-init up down logs db-up db-down db-status db-logs db-psql db-reset db-backup db-restore db-backup-list migrate migrate-dev migrate-new migrate-stamp migrate-history migrate-current hostname-setup hostname-check hostname-remove hostname-trust-cert hostname-regen-certs autostart-install autostart-uninstall autostart-status autostart-start autostart-stop recover status port-forwards smee
+.PHONY: venv run-local dev dev-full push-kind-dev-image build tag push release local-release clean-release cleanup-old-images run deploy deploy-stop deploy-status deploy-init up down logs db-up db-down db-status db-logs db-psql db-reset db-backup db-restore db-backup-list migrate migrate-dev migrate-new migrate-stamp migrate-history migrate-current hostname-setup hostname-check hostname-remove hostname-trust-cert hostname-regen-certs autostart-install autostart-uninstall autostart-status autostart-start autostart-stop recover status port-forwards smee

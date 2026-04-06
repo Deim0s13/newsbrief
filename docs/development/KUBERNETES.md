@@ -632,8 +632,10 @@ spec:
 
 ### Image Promotion Workflow
 
+**Dev (`newsbrief-dev`):** Tekton **`ci-dev`** only runs **lint + test** (no image build). To refresh the image Argo deploys, from repo root run **`make push-kind-dev-image`** (builds current tree, pushes **`localhost:5000/newsbrief:dev-latest`** → Kind registry; Git overlay expects **`dev-latest`**).
+
 ```
-dev branch ──► Tekton builds ──► kind-registry:5000/newsbrief:dev-latest
+dev branch + make push-kind-dev-image ──► kind-registry:5000/newsbrief:dev-latest
                                         │
                                         ▼
                               ArgoCD syncs to newsbrief-dev
@@ -653,7 +655,7 @@ Resources deploy in order using Argo CD sync waves (lower numbers first; Argo CD
 
 1. **Wave -1**: Namespace (and prod-only resources such as PVC that use wave -1)
 2. **Wave 0**: ConfigMaps (e.g. `newsbrief-config` including `DATABASE_URL`)
-3. **Wave 1**: **`Job` `newsbrief-db-migrate`** — runs `alembic upgrade head` using the same image and `envFrom` as the API pod. The Job is annotated with `argocd.argoproj.io/sync-options: Replace=true` so Kubernetes can recreate it when the Job template changes (Job `spec.template` is otherwise immutable).
+3. **Wave 1**: **`Job` `newsbrief-db-migrate`** — runs `alembic upgrade head` using the same image and `envFrom` as the API pod. The Job uses Argo **Sync** hook + **`hook-delete-policy: BeforeHookCreation`** so a new Job can replace the old one (plain `Replace=true` breaks Job validation on many clusters).
 4. **Wave 2**: Deployment, Service
 
 **Plain `kubectl apply -k`**: Kubernetes does not interpret Argo sync waves; resources may be applied in an arbitrary order and nothing waits for the Job before starting pods. Prefer Argo CD for cluster deploys, or run migrations explicitly first (apply ConfigMap and Job, `kubectl wait --for=condition=complete job/newsbrief-db-migrate -n <namespace>`, then apply the rest).
