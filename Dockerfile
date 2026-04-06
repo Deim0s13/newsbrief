@@ -83,6 +83,9 @@ RUN mkdir -p /app/data && chown newsbrief:newsbrief /app/data
 COPY --chown=newsbrief:newsbrief data/topics.json /app/data/topics.json
 COPY --chown=newsbrief:newsbrief data/model_config.json /app/data/model_config.json
 
+# Never ship host-built __pycache__ (wrong Python tag / broken Alembic revision discovery).
+RUN find /app -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
+
 # Switch to non-root user
 USER newsbrief
 

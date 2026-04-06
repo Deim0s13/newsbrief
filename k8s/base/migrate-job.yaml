@@ -27,6 +27,7 @@ spec:
       containers:
         - name: alembic
           image: localhost:5000/newsbrief:dev-latest
+          imagePullPolicy: Always
           workingDir: /app
           command: ["/opt/venv/bin/alembic"]
           args: ["upgrade", "head"]

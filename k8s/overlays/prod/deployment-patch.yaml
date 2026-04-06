@@ -27,6 +27,8 @@ spec:
                 topologyKey: kubernetes.io/hostname
       containers:
         - name: newsbrief
+          # Mutable semver tags on Kind local registry: always resolve the digest Argo just synced.
+          imagePullPolicy: Always
           resources:
             requests:
               memory: "512Mi"
