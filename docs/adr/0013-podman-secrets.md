@@ -128,7 +128,7 @@ env-init:
 # Or manually: cp .env.example .env
 
 # =============================================================================
-# DATABASE (Required for production, optional for dev - defaults to SQLite)
+# DATABASE (PostgreSQL required — set DATABASE_URL; see ADR-0022)
 # =============================================================================
 POSTGRES_PASSWORD=CHANGE_ME_GENERATE_SECURE_PASSWORD
 

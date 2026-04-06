@@ -187,7 +187,7 @@ Network availability should not gate access to already-fetched information. User
 
 | Behavior | Constraint |
 |----------|------------|
-| All data stored locally (SQLite/PostgreSQL) | Must manage database lifecycle, backups, and migrations locally |
+| All data stored locally (PostgreSQL) | Must manage database lifecycle, backups, and migrations locally |
 | Full functionality without internet | Cannot rely on remote services for core features |
 | Graceful degradation when services unavailable | Must handle Ollama/network failures without crashing |
 | Optimistic UI updates | Must design for eventual consistency with feed sources |
@@ -302,7 +302,7 @@ C4Context
 |--------|---------|----------|-------|
 | **RSS/Atom Feeds** | News sources | Yes | No (external) |
 | **Ollama** | LLM inference | No (graceful fallback) | Yes |
-| **PostgreSQL** | Production database | No (SQLite fallback) | Yes |
+| **PostgreSQL** | Application database (all environments) | Yes | Yes |
 | **Caddy** | Reverse proxy, TLS | No (direct access fallback) | Yes |
 
 ### 5.3 Actors
@@ -352,8 +352,7 @@ flowchart TB
 
     subgraph Data["Data Layer"]
         direction LR
-        SQLite["SQLite<br/>(Development)"]
-        PostgreSQL["PostgreSQL<br/>(Production)"]
+        PostgreSQL["PostgreSQL<br/>(all environments)"]
     end
 
     Browser --> Caddy
@@ -362,7 +361,6 @@ flowchart TB
     FastAPI --> Background
     Services --> Ollama
     Ollama --> LLM
-    Services --> SQLite
     Services --> PostgreSQL
     Scheduler --> Services
 ```
@@ -412,8 +410,7 @@ sequenceDiagram
 | **Web Framework** | FastAPI | Async, auto OpenAPI, Pydantic validation |
 | **Templates** | Jinja2 | Server-rendered, no build step |
 | **Styling** | Tailwind CSS | Utility-first, locally built |
-| **Database (Dev)** | SQLite | Zero-config, single-file |
-| **Database (Prod)** | PostgreSQL 16 | ACID, concurrent writes |
+| **Database** | PostgreSQL 16 (+ pgvector in app images) | ACID, dev/prod parity (ADR-0022) |
 | **ORM** | SQLAlchemy 2.0 | Database abstraction |
 | **Migrations** | Alembic | Schema versioning |
 | **LLM** | Ollama (Qwen 2.5 14B default) | Local, private, configurable profiles (see ADR-0025) |
@@ -753,7 +750,7 @@ flowchart TB
 | Aspect | Development | Production |
 |--------|-------------|------------|
 | **URL** | `http://localhost:8787` | `https://newsbrief.local` |
-| **Database** | SQLite | PostgreSQL |
+| **Database** | PostgreSQL (local compose / `make db-up`) | PostgreSQL (compose + persistent volume) |
 | **TLS** | None | Caddy auto-certs |
 | **Secrets** | `.env` file | Podman Secrets |
 | **Logging** | Human-readable | JSON structured |

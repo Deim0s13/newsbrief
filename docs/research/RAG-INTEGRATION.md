@@ -168,7 +168,7 @@ Do not inject large retrieved text into synthesis prompts initially.
 
 **Best fit**: Vector search becomes a primary product capability
 
-### C) SQLite + sqlite-vec (Local-First, Simple)
+### C) SQLite + sqlite-vec (Local-First; not used — PostgreSQL-only per ADR-0022)
 
 | Pros | Cons |
 |------|------|

@@ -9,16 +9,19 @@ Tests cache operations including:
 - Invalidation
 - Token counting
 - Statistics
+
+Uses PostgreSQL via DATABASE_URL (ADR-0022).
 """
 import json
+import os
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
 
-from app.stories import Base
+if not os.environ.get("DATABASE_URL"):
+    pytest.skip("PostgreSQL required (set DATABASE_URL)", allow_module_level=True)
+
 from app.synthesis_cache import (
     SYNTHESIS_CACHE_TTL_HOURS,
     SynthesisCache,
@@ -30,42 +33,12 @@ from app.synthesis_cache import (
     invalidate_cache_for_articles,
     store_synthesis_in_cache,
 )
+from tests.pg_testutil import pg_session_truncate_synthesis_cache
 
 
 def setup_test_db():
-    """Create a temporary test database with synthesis_cache table."""
-    engine = create_engine("sqlite:///:memory:", echo=False)
-    Base.metadata.create_all(engine)
-
-    # Create synthesis_cache table
-    with engine.connect() as conn:
-        conn.execute(
-            text(
-                """
-            CREATE TABLE IF NOT EXISTS synthesis_cache (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                cache_key TEXT UNIQUE NOT NULL,
-                article_ids_json TEXT NOT NULL,
-                model TEXT NOT NULL,
-                synthesis TEXT NOT NULL,
-                key_points_json TEXT,
-                why_it_matters TEXT,
-                topics_json TEXT,
-                entities_json TEXT,
-                token_count_input INTEGER,
-                token_count_output INTEGER,
-                generation_time_ms INTEGER,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                expires_at DATETIME,
-                invalidated_at DATETIME
-            )
-        """
-            )
-        )
-        conn.commit()
-
-    SessionLocal = sessionmaker(bind=engine)
-    return SessionLocal()
+    """Reset synthesis_cache only for isolation."""
+    return pg_session_truncate_synthesis_cache()
 
 
 class TestCacheKeyGeneration:

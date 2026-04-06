@@ -299,16 +299,17 @@ migrate-dev:                        ## Run migrations on dev database (requires 
 
 migrate-new:                        ## Create a new migration: make migrate-new MSG="add xyz column"
 	@test -n "$(MSG)" || (echo "Set MSG=\"description\"" && exit 1)
-	.venv/bin/alembic revision --autogenerate -m "$(MSG)"
+	DATABASE_URL=$${DATABASE_URL:-$(DEV_DATABASE_URL)} .venv/bin/alembic revision --autogenerate -m "$(MSG)"
 
 migrate-stamp:                      ## Mark existing DB as current (no migration run)
-	.venv/bin/alembic stamp head
+	DATABASE_URL=$${DATABASE_URL:-$(DEV_DATABASE_URL)} .venv/bin/alembic stamp head
 
 migrate-history:                    ## Show migration history
 	.venv/bin/alembic history
 
+# Uses DATABASE_URL if set; otherwise dev DB (localhost:5433) — same as migrate-dev
 migrate-current:                    ## Show current migration version
-	.venv/bin/alembic current
+	DATABASE_URL=$${DATABASE_URL:-$(DEV_DATABASE_URL)} .venv/bin/alembic current
 
 # ---------- Hostname & Autostart ----------
 HOSTNAME         ?= newsbrief.local

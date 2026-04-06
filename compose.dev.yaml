@@ -10,7 +10,7 @@
 
 services:
   db:
-    image: postgres:16
+    image: pgvector/pgvector:pg16
     container_name: newsbrief-db-dev
     environment:
       POSTGRES_DB: newsbrief

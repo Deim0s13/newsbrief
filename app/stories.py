@@ -111,9 +111,7 @@ def _parse_datetime(value: Any) -> Optional[datetime]:
     """
     Parse datetime from database value.
 
-    Handles both:
-    - String (SQLite returns ISO format strings)
-    - datetime object (PostgreSQL returns native datetime)
+    Handles both ISO strings (e.g. from raw SQL) and ``datetime`` objects (ORM).
     """
     if value is None:
         return None
@@ -398,7 +396,7 @@ def get_story_by_id(session: Session, story_id: int) -> Optional[StoryOut]:
 
         from app.models import StructuredSummary, extract_first_sentences
 
-        # Build IN clause with proper placeholders (SQLite requirement)
+        # Build IN clause with bound parameters (no string interpolation of ids)
         placeholders, params = _build_in_clause_params(article_ids, "id")
 
         rows = session.execute(
@@ -2687,9 +2685,7 @@ def generate_stories_simple(
 
     # Get articles from time window (fetch ALL data once to cache it)
     cutoff_time = datetime.now(UTC) - timedelta(hours=time_window_hours)
-    # Convert to ISO format without timezone for SQLite TEXT comparison compatibility
-    # SQLite stores as 'YYYY-MM-DDTHH:MM:SS', Python passes 'YYYY-MM-DD HH:MM:SS+00:00'
-    # Without this, string comparison fails (space < 'T' in ASCII)
+    # Legacy query path: naive ISO string param for ``published`` comparison in this SELECT.
     cutoff_time_str = cutoff_time.replace(tzinfo=None).isoformat()
 
     data_fetch_start = time.time()
@@ -2870,7 +2866,7 @@ def generate_stories_simple(
         time_window_start = min(published_times) if published_times else cutoff_time
         time_window_end = max(published_times) if published_times else datetime.now(UTC)
 
-        # Convert string to datetime if needed (SQLite returns strings)
+        # Convert string to datetime if needed (driver may return ``str`` for timestamps)
         if isinstance(time_window_start, str):
             time_window_start = datetime.fromisoformat(
                 time_window_start.replace("Z", "+00:00")

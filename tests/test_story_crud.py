@@ -2,16 +2,19 @@
 """
 Test script for story CRUD operations.
 Validates that all database operations work correctly with SQLAlchemy ORM.
-"""
-import tempfile
-from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+Uses PostgreSQL via DATABASE_URL (ADR-0022).
+"""
+import os
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from sqlalchemy import text
+
+if not os.environ.get("DATABASE_URL"):
+    pytest.skip("PostgreSQL required (set DATABASE_URL)", allow_module_level=True)
 
 from app.stories import (
-    Base,
     Story,
     StoryArticle,
     archive_story,
@@ -23,105 +26,42 @@ from app.stories import (
     link_articles_to_story,
     update_story,
 )
+from tests.pg_testutil import pg_session_truncate_story_graph
 
 
 def setup_test_db():
-    """Create a temporary test database."""
-    from sqlalchemy import text
-
-    # Use temporary in-memory SQLite database
-    engine = create_engine("sqlite:///:memory:", echo=False)
-    Base.metadata.create_all(engine)
-
-    # Create items table for article linking tests
-    # (items table is defined in app.db, not in stories Base)
-    with engine.connect() as conn:
-        conn.execute(
-            text(
-                """
-            CREATE TABLE IF NOT EXISTS items (
-                id INTEGER PRIMARY KEY,
-                title TEXT,
-                url TEXT NOT NULL,
-                url_hash TEXT NOT NULL UNIQUE,
-                published DATETIME,
-                summary TEXT,
-                content_hash TEXT,
-                content TEXT,
-                ai_summary TEXT,
-                ai_model TEXT,
-                ai_generated_at DATETIME,
-                structured_summary_json TEXT,
-                structured_summary_model TEXT,
-                structured_summary_content_hash TEXT,
-                structured_summary_generated_at DATETIME,
-                ranking_score REAL DEFAULT 0.0,
-                topic TEXT,
-                topic_confidence REAL,
-                source_weight REAL DEFAULT 1.0,
-                feed_id INTEGER NOT NULL,
-                created_at DATETIME,
-                FOREIGN KEY(feed_id) REFERENCES feeds(id)
-            )
-        """
-            )
+    """Reset story-related tables and seed feeds/items used by these tests."""
+    session = pg_session_truncate_story_graph()
+    session.execute(
+        text(
+            """
+            INSERT INTO feeds (id, url, name, disabled, health_score)
+            VALUES (1, 'http://example.com/feed', 'Test Feed', 0, 100.0)
+            """
         )
-
-        # Create feeds table for source weighting tests
-        conn.execute(
-            text(
-                """
-            CREATE TABLE IF NOT EXISTS feeds (
-                id INTEGER PRIMARY KEY,
-                url TEXT UNIQUE NOT NULL,
-                name TEXT,
-                category TEXT,
-                disabled INTEGER DEFAULT 0,
-                robots_allowed INTEGER DEFAULT 1,
-                created_at DATETIME,
-                updated_at DATETIME,
-                last_fetch_at DATETIME,
-                last_success_at DATETIME,
-                last_modified TEXT,
-                etag TEXT,
-                fetch_count INTEGER DEFAULT 0,
-                success_count INTEGER DEFAULT 0,
-                consecutive_failures INTEGER DEFAULT 0,
-                avg_response_time_ms INTEGER,
-                last_response_time_ms INTEGER,
-                health_score REAL DEFAULT 100.0,
-                last_error TEXT
+    )
+    session.execute(
+        text(
+            """
+            INSERT INTO items (
+                id, feed_id, title, url, url_hash, summary, ranking_score, topic
             )
-        """
-            )
-        )
-
-        # Insert a default feed
-        conn.execute(
-            text(
-                """
-            INSERT INTO feeds (id, url, name, disabled)
-            VALUES (1, 'http://example.com/feed', 'Test Feed', 0)
-        """
-            )
-        )
-
-        # Insert test articles
-        conn.execute(
-            text(
-                """
-            INSERT INTO items (id, title, url, url_hash, summary, ranking_score, topic, feed_id)
             VALUES
-                (10, 'Test Article 1', 'http://example.com/1', 'hash1', 'Summary 1', 0.9, 'AI/ML', 1),
-                (20, 'Test Article 2', 'http://example.com/2', 'hash2', 'Summary 2', 0.8, 'Cloud', 1),
-                (30, 'Test Article 3', 'http://example.com/3', 'hash3', 'Summary 3', 0.7, 'Security', 1)
-        """
-            )
+                (1, 1, 'Article 1', 'http://example.com/i1', 'hash_i1', 'S1', 0.5, 'tech'),
+                (2, 1, 'Article 2', 'http://example.com/i2', 'hash_i2', 'S2', 0.5, 'tech'),
+                (3, 1, 'Article 3', 'http://example.com/i3', 'hash_i3', 'S3', 0.5, 'tech'),
+                (4, 1, 'Article 4', 'http://example.com/i4', 'hash_i4', 'S4', 0.5, 'tech'),
+                (5, 1, 'Article 5', 'http://example.com/i5', 'hash_i5', 'S5', 0.5, 'tech'),
+                (10, 1, 'Test Article 1', 'http://example.com/1', 'hash1', 'Summary 1', 0.9, 'AI/ML'),
+                (20, 1, 'Test Article 2', 'http://example.com/2', 'hash2', 'Summary 2', 0.8, 'Cloud'),
+                (30, 1, 'Test Article 3', 'http://example.com/3', 'hash3', 'Summary 3', 0.7, 'Security'),
+                (100, 1, 'Article 100', 'http://example.com/100', 'hash100', 'S100', 0.5, 'tech'),
+                (200, 1, 'Article 200', 'http://example.com/200', 'hash200', 'S200', 0.5, 'tech')
+            """
         )
-        conn.commit()
-
-    SessionLocal = sessionmaker(bind=engine)
-    return SessionLocal()
+    )
+    session.commit()
+    return session
 
 
 def test_create_story():
@@ -468,48 +408,3 @@ def test_cleanup_archived():
         assert recent is not None, "Recent archived story should remain"
     finally:
         session.close()
-
-
-def main():
-    """Run all tests and report results."""
-    print("🧪 Testing Story CRUD Operations\n")
-    print("=" * 60)
-
-    tests = [
-        test_create_story,
-        test_link_articles,
-        test_get_story_by_id,
-        test_get_story_not_found,
-        test_get_stories_list,
-        test_update_story,
-        test_update_nonexistent,
-        test_archive_story,
-        test_delete_story,
-        test_cleanup_archived,
-    ]
-
-    passed = 0
-    failed = 0
-
-    for test in tests:
-        success, message = test()
-        if success:
-            print(f"✅ {message}")
-            passed += 1
-        else:
-            print(f"❌ {message}")
-            failed += 1
-
-    print("=" * 60)
-    print(f"\n📊 Summary: {passed}/{len(tests)} tests passed")
-
-    if failed > 0:
-        print(f"❌ {failed} tests failed")
-        return 1
-    else:
-        print("✅ All tests passed!")
-        return 0
-
-
-if __name__ == "__main__":
-    exit(main())

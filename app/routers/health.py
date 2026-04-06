@@ -25,7 +25,7 @@ def health_check() -> dict:
     Health check endpoint for container orchestration.
 
     Returns status of core dependencies:
-    - database: SQLite/PostgreSQL connectivity
+    - database: PostgreSQL connectivity
     - llm: Ollama LLM availability (optional, doesn't fail health check)
     - scheduler: Background job scheduler status
     """

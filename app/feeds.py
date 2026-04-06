@@ -848,7 +848,7 @@ def _store_import_history(
 ) -> int:
     """Store import results in the database for user reference."""
     with session_scope() as s:
-        # Create import history record - use RETURNING for PostgreSQL, last_insert_rowid for SQLite
+        # Create import history record (PostgreSQL RETURNING)
         params = {
             "filename": filename,
             "added": result["feeds_added"],

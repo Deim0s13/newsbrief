@@ -307,7 +307,7 @@ main (production)
 ### Core Application
 ```yaml
 ENVIRONMENT: dev|staging|prod
-DATABASE_URL: sqlite:///app/data/newsbrief.sqlite3
+DATABASE_URL: postgresql://user:pass@db:5432/newsbrief
 OLLAMA_BASE_URL: http://ollama:11434
 ```
 

@@ -14,7 +14,7 @@ services:
     restart: unless-stopped
 
   db:
-    image: postgres:16
+    image: pgvector/pgvector:pg16
     container_name: newsbrief-db
     environment:
       POSTGRES_DB: newsbrief
