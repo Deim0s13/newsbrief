@@ -48,8 +48,9 @@ def topics_page(request: Request):
             )
 
     return templates.TemplateResponse(
+        request,
         "topics.html",
-        {"request": request, "topics": topic_stats, "current_page": "topics"},
+        {"topics": topic_stats, "current_page": "topics"},
     )
 
 

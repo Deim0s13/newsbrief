@@ -19,7 +19,9 @@ router = APIRouter(prefix="", tags=["pages"])
 def home_page(request: Request):
     """Main web interface page - Stories landing page."""
     return templates.TemplateResponse(
-        "stories.html", {"request": request, "current_page": "stories"}
+        request,
+        "stories.html",
+        {"current_page": "stories"},
     )
 
 
@@ -27,7 +29,9 @@ def home_page(request: Request):
 def articles_page(request: Request):
     """Articles listing page (legacy view)."""
     return templates.TemplateResponse(
-        "index.html", {"request": request, "current_page": "articles"}
+        request,
+        "index.html",
+        {"current_page": "articles"},
     )
 
 
@@ -41,8 +45,9 @@ def story_detail_page(request: Request, story_id: int):
             raise HTTPException(status_code=404, detail="Story not found")
 
     return templates.TemplateResponse(
+        request,
         "story_detail.html",
-        {"request": request, "story": story, "current_page": "stories"},
+        {"story": story, "current_page": "stories"},
     )
 
 
@@ -112,8 +117,9 @@ def article_detail_page(request: Request, item_id: int):
             article["is_fallback_summary"] = True
 
     return templates.TemplateResponse(
+        request,
         "article_detail.html",
-        {"request": request, "article": article, "current_page": "articles"},
+        {"article": article, "current_page": "articles"},
     )
 
 
@@ -121,7 +127,9 @@ def article_detail_page(request: Request, item_id: int):
 def feeds_management_page(request: Request):
     """Feed management interface page."""
     return templates.TemplateResponse(
-        "feed_management.html", {"request": request, "current_page": "feed-management"}
+        request,
+        "feed_management.html",
+        {"current_page": "feed-management"},
     )
 
 
@@ -172,9 +180,9 @@ def search_page(request: Request, q: str = ""):
                 articles.append(article_dict)
 
     return templates.TemplateResponse(
+        request,
         "search_results.html",
         {
-            "request": request,
             "articles": articles,
             "search_query": search_query,
             "result_count": len(articles),

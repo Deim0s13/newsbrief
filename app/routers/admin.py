@@ -517,9 +517,9 @@ def lookup_credibility(
 def credibility_dashboard_page(request: Request):
     """Source credibility data dashboard."""
     return templates.TemplateResponse(
+        request,
         "credibility_dashboard.html",
         {
-            "request": request,
             "current_page": "admin",
             "environment": os.environ.get("ENVIRONMENT", "development"),
         },
@@ -530,9 +530,9 @@ def credibility_dashboard_page(request: Request):
 def extraction_dashboard_page(request: Request):
     """Extraction quality monitoring dashboard."""
     return templates.TemplateResponse(
+        request,
         "extraction_dashboard.html",
         {
-            "request": request,
             "current_page": "admin",
             "environment": os.environ.get("ENVIRONMENT", "development"),
         },
@@ -543,9 +543,9 @@ def extraction_dashboard_page(request: Request):
 def quality_dashboard_page(request: Request):
     """LLM output quality monitoring dashboard."""
     return templates.TemplateResponse(
+        request,
         "quality_dashboard.html",
         {
-            "request": request,
             "current_page": "admin",
             "environment": os.environ.get("ENVIRONMENT", "development"),
         },
@@ -558,9 +558,9 @@ def topics_management_page(request: Request):
     stats = get_reclassification_stats()
     topics = get_available_topics()
     return templates.TemplateResponse(
+        request,
         "topics_management.html",
         {
-            "request": request,
             "current_page": "admin",
             "environment": os.environ.get("ENVIRONMENT", "development"),
             "stats": stats,
@@ -578,9 +578,9 @@ def models_management_page(request: Request):
     active_profile = settings.get_profile_info(active_profile_id)
     models = settings.get_available_models()
     return templates.TemplateResponse(
+        request,
         "models_management.html",
         {
-            "request": request,
             "current_page": "admin",
             "environment": os.environ.get("ENVIRONMENT", "development"),
             "profiles": profiles,
@@ -594,9 +594,9 @@ def models_management_page(request: Request):
 def pipeline_operator_page(request: Request):
     """Pipeline operator: runs, replay, dead-letter, audit (#277)."""
     return templates.TemplateResponse(
+        request,
         "pipeline_operator.html",
         {
-            "request": request,
             "current_page": "admin",
             "environment": os.environ.get("ENVIRONMENT", "development"),
         },
