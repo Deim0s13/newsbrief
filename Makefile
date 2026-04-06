@@ -70,6 +70,10 @@ webhook-relay-stop:  ## Stop processes started by webhook-relay-start
 webhook-relay-status:  ## Check whether smee + port-forward from relay-start are healthy
 	@chmod +x scripts/status-webhook-relay.sh 2>/dev/null; scripts/status-webhook-relay.sh
 
+argo-ui:  ## Port-forward Argo CD UI on 8443 (avoids clash with Tekton relay on 8080)
+	@echo "Open https://localhost:8443 (admin + password from: kubectl -n argocd get secret argocd-initial-admin-secret ...)"
+	kubectl port-forward svc/argocd-server -n argocd 8443:443
+
 env-init:  ## Create .env from template with generated secure password
 	@if [ -f .env ]; then \
 		echo "⚠️  .env already exists. Delete it first or edit manually."; \

@@ -379,14 +379,18 @@ kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.pas
 
 ### Access ArgoCD UI
 
-```bash
-# Port forward to access UI
-kubectl port-forward svc/argocd-server -n argocd 8080:443
+Use a **local port other than 8080** if you run the Tekton EventListener relay (`make webhook-relay-start` uses **localhost:8080**).
 
-# Open in browser: https://localhost:8080
+```bash
+# Port forward (example: host 8443 → server 443)
+kubectl port-forward svc/argocd-server -n argocd 8443:443
+
+# Open in browser: https://localhost:8443
 # Username: admin
 # Password: (from command above)
 ```
+
+Or run **`make argo-ui`** (same port-forward, see Makefile).
 
 ### Deploy ArgoCD Applications
 
