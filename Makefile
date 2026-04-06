@@ -1,6 +1,8 @@
 # ---------- Config ----------
 RUNTIME          ?= podman
 REGISTRY         ?=                         # e.g. ghcr.io/Deim0s13
+# Kind local registry tag for newsbrief-prod (see scripts/push-kind-prod-image.sh)
+KIND_PROD_TAG    ?= v0.8.3.1
 IMAGE_NAME       ?= newsbrief-api
 PORT             ?= 8787
 DATA_DIR         ?= $(PWD)/data
@@ -63,6 +65,9 @@ push-dev:  ## git push origin dev && ci-dev (SKIP_CI_DEV=1 to push without pipel
 
 push-kind-dev-image:  ## Build + push localhost:5000/newsbrief:dev-latest for Argo newsbrief-dev
 	@chmod +x scripts/push-kind-dev-image.sh 2>/dev/null; RUNTIME=$(RUNTIME) KIND_REGISTRY_HOST=localhost:5000 scripts/push-kind-dev-image.sh
+
+push-kind-prod-image:  ## Build + push localhost:5000/newsbrief:$(KIND_PROD_TAG) for Argo newsbrief-prod
+	@chmod +x scripts/push-kind-prod-image.sh 2>/dev/null; RUNTIME=$(RUNTIME) KIND_REGISTRY_HOST=localhost:5000 scripts/push-kind-prod-image.sh "$(KIND_PROD_TAG)"
 
 webhook-relay-start:  ## Background: EventListener port-forward + smee (GitHub webhooks → Tekton)
 	@chmod +x scripts/start-webhook-relay.sh 2>/dev/null; scripts/start-webhook-relay.sh
@@ -437,4 +442,4 @@ smee:                             ## Start smee webhook bridge
 
 # ---------- Defaults ----------
 .DEFAULT_GOAL := run
-.PHONY: venv run-local dev dev-full push-kind-dev-image build tag push release local-release clean-release cleanup-old-images run deploy deploy-stop deploy-status deploy-init up down logs db-up db-down db-status db-logs db-psql db-reset db-backup db-restore db-backup-list migrate migrate-dev migrate-new migrate-stamp migrate-history migrate-current hostname-setup hostname-check hostname-remove hostname-trust-cert hostname-regen-certs autostart-install autostart-uninstall autostart-status autostart-start autostart-stop recover status port-forwards smee
+.PHONY: venv run-local dev dev-full push-kind-dev-image push-kind-prod-image build tag push release local-release clean-release cleanup-old-images run deploy deploy-stop deploy-status deploy-init up down logs db-up db-down db-status db-logs db-psql db-reset db-backup db-restore db-backup-list migrate migrate-dev migrate-new migrate-stamp migrate-history migrate-current hostname-setup hostname-check hostname-remove hostname-trust-cert hostname-regen-certs autostart-install autostart-uninstall autostart-status autostart-start autostart-stop recover status port-forwards smee

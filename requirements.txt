@@ -1,4 +1,6 @@
-fastapi
+fastapi>=0.115.0
+# FastAPI 0.133+ allows Starlette 1.x; stay on 0.x until templates use the (request, name, context) API everywhere in shipped images.
+starlette>=0.40.0,<1.0.0
 uvicorn
 httpx==0.27.*
 certifi>=2024.0.0

@@ -43,8 +43,8 @@ patches:
 images:
   - name: localhost:5000/newsbrief
     newName: kind-registry:5000/newsbrief
-    # This will be updated by CI pipeline with semantic version
-    newTag: v0.8.3
+    # Patch release: Starlette<1 pin + TemplateResponse / prod image alignment
+    newTag: v0.8.3.1
 
 # Prod-specific configuration overrides
 configMapGenerator:
