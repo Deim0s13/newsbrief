@@ -16,7 +16,7 @@ RATE_LIMIT_DEFAULT = os.environ.get("RATE_LIMIT_DEFAULT", "100/minute")
 RATE_LIMIT_LLM = os.environ.get("RATE_LIMIT_LLM", "10/minute")
 
 # Templates: created here so routers can import without depending on main.
-# main.py sets env globals (environment, app_version) on this object after app creation.
+# main.py sets env globals (environment, app_version callable, git_revision) after app creation.
 _templates_dir = Path(__file__).resolve().parent / "templates"
 templates = Jinja2Templates(directory=str(_templates_dir))
 

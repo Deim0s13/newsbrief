@@ -80,8 +80,9 @@
             • Tekton Dashboard: http://localhost:9097
             • Smee Relay:       https://smee.io/cddqBCYHwHG3ZcUY
 
-          Dev (Local):
-            • Run: make dev → http://localhost:8787
+          Dev:
+            • Kubernetes (Argo newsbrief-dev): http://localhost:8789
+            • Host uvicorn: make dev → http://localhost:8787
 
           CI/CD:
             • GitHub webhooks relay to local EventListener via Smee

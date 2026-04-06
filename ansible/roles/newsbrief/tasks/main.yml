@@ -8,13 +8,18 @@
   retries: 3
   delay: 10
 
-# Port Forwards (prod only - dev is local)
+# Port forwards: prod + K8s dev (host uvicorn still: make dev → :8787)
 - name: Kill existing kubectl port forwards
   shell: pkill -f "kubectl port-forward" || true
   changed_when: false
 
-- name: Start prod port forward (8788)
-  shell: nohup kubectl port-forward svc/newsbrief -n {{ prod_namespace }} 8788:8787 > /dev/null 2>&1 &
+- name: Start prod port forward (8788, all interfaces for Caddy)
+  shell: nohup kubectl port-forward svc/newsbrief -n {{ prod_namespace }} --address 0.0.0.0 8788:8787 > /dev/null 2>&1 &
+  async: 10
+  poll: 0
+
+- name: Start K8s dev port forward (8789)
+  shell: nohup kubectl port-forward svc/newsbrief -n {{ dev_namespace }} --address 0.0.0.0 8789:8787 > /dev/null 2>&1 &
   async: 10
   poll: 0
 
@@ -45,5 +50,6 @@
     msg: |
       ✅ NewsBrief prod is running in Kubernetes
 
-      Dev:  Run 'make dev' locally → http://localhost:8787
-      Prod: Kubernetes → https://newsbrief.local (or http://localhost:8788)
+      Prod:  https://newsbrief.local (or http://localhost:8788)
+      Dev:   K8s Argo newsbrief-dev → http://localhost:8789
+      Local: make dev → http://localhost:8787

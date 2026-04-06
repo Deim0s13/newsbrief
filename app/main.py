@@ -37,7 +37,8 @@ register_limiter_on_app(app)
 # Static files and template globals (templates object lives in deps)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates.env.globals["environment"] = os.environ.get("ENVIRONMENT", "development")
-templates.env.globals["app_version"] = get_version()
+# Callable so footer always reflects current pyproject (e.g. bind-mount or post-rollout clarity).
+templates.env.globals["app_version"] = get_version
 templates.env.globals["git_revision"] = get_git_revision()
 
 app.include_router(health.router)
