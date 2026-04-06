@@ -396,7 +396,7 @@ NewsBrief uses Kubernetes secrets for sensitive data, with Bitwarden integration
 | Secret | Purpose | Creation |
 |--------|---------|----------|
 | `cosign-keys` | Image signing | Auto-created via Bitwarden during `make recover` |
-| `github-release-token` | GitHub releases | Manual: `kubectl create secret generic github-release-token --from-literal=token='...'` |
+| `github-release-token` | GitHub releases & `update-manifest` git push | Pat (classic: **`repo`** scope, or fine-grained: **Contents** read/write on this repo). Create/update: `kubectl create secret generic github-release-token -n default --from-literal=token='ghp_...' --dry-run=client -o yaml \| kubectl apply -f -`. A **401** from `create-release` almost always means rotate this token. |
 | `github-webhook-secret` | Webhook validation | Manual: Match GitHub webhook secret |
 
 **Bitwarden Integration:**

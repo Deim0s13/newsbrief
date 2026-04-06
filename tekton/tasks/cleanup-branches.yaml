@@ -66,7 +66,7 @@ spec:
         CUTOFF_EPOCH=$(($(date +%s) - (DAYS_OLD * 86400)))
 
         # Get list of branches
-        BRANCHES=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+        BRANCHES=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
           "$API_URL/branches?per_page=100" | grep -o '"name": "[^"]*"' | cut -d'"' -f4)
 
         DELETE_COUNT=0
@@ -79,13 +79,13 @@ spec:
           fi
 
           # Check if branch is merged into main
-          COMPARE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+          COMPARE=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
             "$API_URL/compare/main...$branch")
           STATUS=$(echo "$COMPARE" | grep -o '"status": "[^"]*"' | cut -d'"' -f4)
 
           if [ "$STATUS" = "identical" ] || [ "$STATUS" = "behind" ]; then
             # Get last commit date
-            BRANCH_INFO=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            BRANCH_INFO=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
               "$API_URL/branches/$branch")
             COMMIT_DATE=$(echo "$BRANCH_INFO" | grep -o '"date": "[^"]*"' | head -1 | cut -d'"' -f4)
 
@@ -97,7 +97,7 @@ spec:
                 echo "🔍 Would delete: $branch (last commit: $DATE_PART)"
               else
                 echo "🗑️  Deleting: $branch (last commit: $DATE_PART)"
-                curl -s -X DELETE -H "Authorization: token $GITHUB_TOKEN" \
+                curl -s -X DELETE -H "Authorization: Bearer $GITHUB_TOKEN" \
                   "$API_URL/git/refs/heads/$branch" || echo "   Warning: Failed to delete $branch"
               fi
               DELETE_COUNT=$((DELETE_COUNT + 1))

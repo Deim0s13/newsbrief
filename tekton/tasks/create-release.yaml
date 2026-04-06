@@ -99,12 +99,13 @@ spec:
         API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME"
 
         # Check if release already exists
-        EXISTING=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+        # Bearer works for fine-grained and classic PATs (token prefix can 401 on fine-grained)
+        EXISTING=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
           "$API_URL/releases/tags/$VERSION" | grep -o '"html_url"' || true)
 
         if [ -n "$EXISTING" ]; then
           echo "Release $VERSION already exists, skipping..."
-          RELEASE_URL=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+          RELEASE_URL=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
             "$API_URL/releases/tags/$VERSION" | grep -o '"html_url": "[^"]*"' | head -1 | cut -d'"' -f4)
           echo "$RELEASE_URL" > $(results.release-url.path)
           exit 0
@@ -113,7 +114,7 @@ spec:
         # Create the release via GitHub API
         echo "Creating GitHub release $VERSION..."
         RESPONSE=$(curl -s -X POST \
-          -H "Authorization: token $GITHUB_TOKEN" \
+          -H "Authorization: Bearer $GITHUB_TOKEN" \
           -H "Accept: application/vnd.github.v3+json" \
           "$API_URL/releases" \
           -d "{
