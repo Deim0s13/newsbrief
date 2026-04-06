@@ -205,14 +205,14 @@ tkn pipeline start ci-dev -n default \
 ### Production Pipeline
 
 ```bash
-# Run the prod pipeline with signing
+# Run the prod pipeline with signing (release version = pyproject [project].version on `revision`)
 tkn pipeline start ci-prod \
   --workspace name=source,volumeClaimTemplateFile=tekton/pipelineruns/workspace-template.yaml \
   --workspace name=sbom-output,volumeClaimTemplateFile=tekton/pipelineruns/workspace-template.yaml \
   --serviceaccount=tekton-pipeline \
   --param repo-url=https://github.com/Deim0s13/newsbrief.git \
   --param revision=main \
-  --param image-tag=v0.7.5 \
+  --param build-tag=latest \
   --showlog
 ```
 

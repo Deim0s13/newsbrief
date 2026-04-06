@@ -8,6 +8,7 @@ from fastapi.templating import Jinja2Templates
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
+from ._version import read_pyproject_version
 from .db import session_scope
 from .llm import OLLAMA_BASE_URL, get_llm_service, is_llm_available
 
@@ -21,19 +22,13 @@ templates = Jinja2Templates(directory=str(_templates_dir))
 
 
 def get_version() -> str:
-    """Read version from pyproject.toml (single source of truth)."""
-    try:
-        import tomllib as _toml
-    except ImportError:
-        import tomli as _toml  # Python < 3.11 fallback
+    """Application version: same as pyproject [project].version (single source of truth)."""
+    return read_pyproject_version()
 
-    pyproject_path = Path(__file__).resolve().parent.parent / "pyproject.toml"
-    try:
-        with open(pyproject_path, "rb") as f:
-            data = _toml.load(f)
-            return data.get("project", {}).get("version", "dev")
-    except Exception:
-        return "dev"
+
+def get_git_revision() -> str:
+    """Full Git SHA baked in at image build (empty for local runs without build-arg)."""
+    return os.environ.get("NEWSBRIEF_GIT_SHA", "").strip()
 
 
 def get_client_ip(request: Request) -> str:

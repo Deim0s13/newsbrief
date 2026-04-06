@@ -47,10 +47,14 @@ spec:
       type: string
       default: "newsbrief"
       description: Image name
-    - name: image-tag
+    - name: build-tag
       type: string
-      description: Image tag (semantic version, e.g., v0.7.5)
-      # No default - must be provided for prod releases
+      default: "latest"
+      description: Ephemeral registry tag for build, scan, sign, SBOM (not the release version)
+    - name: version-override
+      type: string
+      default: ""
+      description: If set, use for GitHub release + final tag; if empty, read [project].version from pyproject.toml (single source of truth)
 
   tasks:
     # ══════════════════════════════════════════════════════════════
@@ -103,7 +107,9 @@ spec:
           workspace: source
       params:
         - name: IMAGE
-          value: "$(params.image-registry)/$(params.image-name):$(params.image-tag)"
+          value: "$(params.image-registry)/$(params.image-name):$(params.build-tag)"
+        - name: GIT_SHA
+          value: "$(tasks.fetch-source.results.commit)"
 
     # ══════════════════════════════════════════════════════════════
     # Stage 4: Security Scan
@@ -115,7 +121,7 @@ spec:
         - build-image
       params:
         - name: IMAGE
-          value: "$(params.image-registry)/$(params.image-name):$(params.image-tag)"
+          value: "$(params.image-registry)/$(params.image-name):$(params.build-tag)"
         - name: SEVERITY
           value: "CRITICAL,HIGH"
         - name: EXIT_ON_SEVERITY
@@ -133,7 +139,7 @@ spec:
         - security-scan
       params:
         - name: IMAGE
-          value: "$(params.image-registry)/$(params.image-name):$(params.image-tag)"
+          value: "$(params.image-registry)/$(params.image-name):$(params.build-tag)"
         - name: COSIGN_SECRET
           value: "cosign-keys"
         - name: COSIGN_SECRET_NAMESPACE
@@ -152,11 +158,11 @@ spec:
           workspace: sbom-output
       params:
         - name: IMAGE
-          value: "$(params.image-registry)/$(params.image-name):$(params.image-tag)"
+          value: "$(params.image-registry)/$(params.image-name):$(params.build-tag)"
         - name: FORMAT
           value: "cyclonedx"
         - name: OUTPUT_FILE
-          value: "sbom-$(params.image-tag).json"
+          value: "sbom-$(params.build-tag).json"
 
     # ══════════════════════════════════════════════════════════════
     # Stage 7: Create GitHub Release (after all other stages complete)
@@ -176,7 +182,7 @@ spec:
         - name: revision
           value: "$(params.revision)"
         - name: version-override
-          value: "$(params.image-tag)"
+          value: "$(params.version-override)"
 
     # ══════════════════════════════════════════════════════════════
     # Stage 8: Tag Image with Release Version
@@ -262,7 +268,7 @@ spec:
         - name: title
           value: "❌ Prod Pipeline Failed"
         - name: message
-          value: "ci-prod failed on $(params.revision) - $(params.image-tag)"
+          value: "ci-prod failed on $(params.revision) (build-tag $(params.build-tag))"
         - name: priority
           value: "urgent"
         - name: tags
@@ -281,7 +287,7 @@ spec:
         - name: title
           value: "🚀 Production Release Complete"
         - name: message
-          value: "$(params.image-tag) deployed to production"
+          value: "$(tasks.create-release.results.version) deployed to production"
         - name: priority
           value: "high"
         - name: tags

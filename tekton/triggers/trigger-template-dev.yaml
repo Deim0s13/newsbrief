@@ -41,8 +41,6 @@ spec:
             value: $(tt.params.git-repo-url)
           - name: revision
             value: $(tt.params.git-revision)
-          - name: image-tag
-            value: dev-latest
         workspaces:
           - name: source
             volumeClaimTemplate:

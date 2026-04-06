@@ -33,10 +33,10 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
 # -----------------------------------------------------------------------------
 FROM python:3.11-slim AS runtime
 
-# Build arguments for versioning
+# Build arguments for versioning (pass GIT_SHA from CI so running app matches a Git commit)
 ARG VERSION=dev
 ARG BUILD_DATE
-ARG GIT_SHA
+ARG GIT_SHA=
 
 # Labels for container metadata (OCI standard)
 LABEL org.opencontainers.image.title="NewsBrief"
@@ -47,8 +47,9 @@ LABEL org.opencontainers.image.revision="${GIT_SHA}"
 LABEL org.opencontainers.image.source="https://github.com/Deim0s13/newsbrief"
 LABEL org.opencontainers.image.licenses="MIT"
 
-# Runtime environment
-ENV PYTHONDONTWRITEBYTECODE=1 \
+# NEWSBRIEF_GIT_SHA: surfaced in /health and footer for deploy verification
+ENV NEWSBRIEF_GIT_SHA=${GIT_SHA} \
+    PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH"
 

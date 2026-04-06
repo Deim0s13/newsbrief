@@ -35,7 +35,7 @@ spec:
       description: Number of components in the SBOM
   steps:
     - name: generate
-      image: aquasec/trivy:latest
+      image: ghcr.io/aquasecurity/trivy:0.59.1
       script: |
         #!/usr/bin/env sh
         set -e
@@ -69,7 +69,7 @@ spec:
         echo -n "$OUTPUT_PATH" > $(results.SBOM_PATH.path)
 
     - name: summary
-      image: aquasec/trivy:latest
+      image: ghcr.io/aquasecurity/trivy:0.59.1
       script: |
         #!/usr/bin/env sh
         set -e

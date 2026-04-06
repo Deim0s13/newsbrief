@@ -19,9 +19,6 @@ spec:
     - name: git-author
       description: The commit author
       default: ""
-    - name: image-tag
-      description: The image tag (semantic version)
-      default: "latest"
   resourcetemplates:
     - apiVersion: tekton.dev/v1
       kind: PipelineRun
@@ -44,8 +41,6 @@ spec:
             value: $(tt.params.git-repo-url)
           - name: revision
             value: $(tt.params.git-revision)
-          - name: image-tag
-            value: $(tt.params.image-tag)
         workspaces:
           - name: source
             volumeClaimTemplate:

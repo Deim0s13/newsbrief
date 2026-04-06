@@ -54,13 +54,13 @@ tkn pipeline start ci-dev -n default \
   --param revision=dev \
   --showlog
 
-# Production pipeline
+# Production pipeline (release tag = v`project.version` from pyproject.toml on the cloned branch)
 tkn pipeline start ci-prod \
   --workspace name=source,volumeClaimTemplateFile=tekton/pipelineruns/workspace-template.yaml \
   --workspace name=sbom-output,volumeClaimTemplateFile=tekton/pipelineruns/workspace-template.yaml \
   --serviceaccount=tekton-pipeline \
   --param revision=main \
-  --param image-tag=v0.7.5 \
+  --param build-tag=latest \
   --showlog
 ```
 
@@ -85,19 +85,21 @@ NewsBrief uses **conventional commits** to automatically determine version bumps
 | `BREAKING CHANGE:` | In commit body | Major (X.0.0) |
 | `docs:`, `chore:`, `ci:` | Documentation/maintenance | No bump |
 
-**How it works:**
-1. Push to `main` triggers `ci-prod` pipeline
-2. `version-bump` task analyzes commits since last tag
-3. Version in `pyproject.toml` is automatically updated
-4. GitHub release is created with the new version
-5. Manifest is updated to deploy the new version
+**How it works (Tekton `ci-prod`):**
+1. Push to `main` triggers `ci-prod` (or start it manually).
+2. The pipeline clones `revision` and builds/scans an image tagged `build-tag` (default `latest`).
+3. **`create-release`** reads **`[project].version`** from the cloned `pyproject.toml`, prefixes `v`, creates the Git tag / GitHub release when needed, then **`update-manifest`** sets the prod overlay image to that version.
+4. Bump **`version`** in `pyproject.toml` on the branch you ship before expecting a new release number; optional **`version-override`** skips reading pyproject (emergency only).
 
-**Manual override:**
+**Manual version override (skip pyproject / use sparingly):**
 ```bash
 tkn pipeline start ci-prod \
-  --param bump-type=minor \  # force minor bump
+  ... \
+  --param version-override=v0.8.4 \
   ...
 ```
+
+**Single source of truth:** bump **`[project].version`** in `pyproject.toml` on the branch you build (`revision`). GitHub release + image tag + app `get_version()` all follow that value (unless `version-override` is set).
 
 ### Setup Guide
 

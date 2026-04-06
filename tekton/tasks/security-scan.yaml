@@ -38,7 +38,8 @@ spec:
       description: Number of high vulnerabilities found
   steps:
     - name: scan
-      image: aquasec/trivy:latest
+      # Pinned; docker.io aquasec/trivy tags are unreliable in-cluster (see GHCR images)
+      image: ghcr.io/aquasecurity/trivy:0.59.1
       script: |
         #!/usr/bin/env sh
         set -e

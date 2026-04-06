@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from . import scheduler
 from .credibility_import import ensure_credibility_data
 from .db import init_db
-from .deps import get_version, register_limiter_on_app, templates
+from .deps import get_git_revision, get_version, register_limiter_on_app, templates
 from .feeds import (
     import_opml,
     migrate_sanitize_existing_summaries,
@@ -38,6 +38,7 @@ register_limiter_on_app(app)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates.env.globals["environment"] = os.environ.get("ENVIRONMENT", "development")
 templates.env.globals["app_version"] = get_version()
+templates.env.globals["git_revision"] = get_git_revision()
 
 app.include_router(health.router)
 app.include_router(feeds.router)

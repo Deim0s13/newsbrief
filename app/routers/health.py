@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException
 from sqlalchemy import text
 
 from .. import scheduler
-from ..deps import get_version, session_scope
+from ..deps import get_git_revision, get_version, session_scope
 from ..llm import OLLAMA_BASE_URL, get_llm_service, is_llm_available
 from ..settings import get_settings_service
 
@@ -29,9 +29,12 @@ def health_check() -> dict:
     - llm: Ollama LLM availability (optional, doesn't fail health check)
     - scheduler: Background job scheduler status
     """
+    rev = get_git_revision()
     health_status: Dict[str, Any] = {
         "status": "healthy",
         "version": get_version(),
+        "git_revision": rev,
+        "git_revision_short": rev[:7] if len(rev) >= 7 else rev,
         "timestamp": datetime.utcnow().isoformat(),
         "components": {},
     }

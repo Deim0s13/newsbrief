@@ -33,6 +33,10 @@ spec:
       type: array
       description: Build arguments to pass to buildah
       default: []
+    - name: GIT_SHA
+      type: string
+      default: ""
+      description: Git commit built into image (NEWSBRIEF_GIT_SHA)
   results:
     - name: IMAGE_DIGEST
       description: Digest of the built image
@@ -63,11 +67,16 @@ spec:
         echo "   Context: $(params.CONTEXT)"
 
         # Build the image
+        EXTRA_ARGS=()
+        if [ -n "$(params.GIT_SHA)" ]; then
+          EXTRA_ARGS+=(--build-arg "GIT_SHA=$(params.GIT_SHA)")
+        fi
         buildah bud \
           --storage-driver=vfs \
           --format=oci \
           --tls-verify=false \
           -f $(params.DOCKERFILE) \
+          "${EXTRA_ARGS[@]}" \
           -t $(params.IMAGE) \
           $(params.CONTEXT)
 
