@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "013_pipeline_stage_run_reliability"
-down_revision: Union[str, Sequence[str], None] = "012_pipeline_stage_run_targets"
+down_revision: Union[str, Sequence[str], None] = "012b_alembic_version_widen"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -34,6 +34,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("idx_pipeline_stage_runs_dead_letter", table_name="pipeline_stage_runs")
+    op.drop_index(
+        "idx_pipeline_stage_runs_dead_letter", table_name="pipeline_stage_runs"
+    )
     op.drop_column("pipeline_stage_runs", "discarded_at")
     op.drop_column("pipeline_stage_runs", "attempts")
