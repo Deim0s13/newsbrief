@@ -168,6 +168,135 @@ def admin_pipeline_audit(
     return {"actions": list_recent_operator_actions(limit=limit)}
 
 
+@router.get("/api/admin/pipeline/failed-entities")
+def admin_pipeline_failed_entities(
+    limit_items: int = Query(50, ge=1, le=200),
+    limit_stories: int = Query(50, ge=1, le=200),
+):
+    """Items and stories with ``processing_state = failed`` (#293)."""
+    from ..failed_entities import list_failed_entities
+
+    return list_failed_entities(limit_items=limit_items, limit_stories=limit_stories)
+
+
+@router.post("/api/admin/pipeline/failed-items/{item_id}/discard")
+def admin_discard_failed_item(request: Request, item_id: int):
+    from ..failed_entities import discard_failed_item
+
+    try:
+        result = discard_failed_item(item_id)
+        record_operator_action(
+            request=request,
+            action_type="pipeline_failed_item_discard",
+            details=result,
+        )
+        return result
+    except ValueError as e:
+        record_operator_action(
+            request=request,
+            action_type="pipeline_failed_item_discard",
+            details={"item_id": item_id, "success": False, "error": str(e)},
+        )
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.post("/api/admin/pipeline/failed-stories/{story_id}/discard")
+def admin_discard_failed_story(request: Request, story_id: int):
+    from ..failed_entities import discard_failed_story
+
+    try:
+        result = discard_failed_story(story_id)
+        record_operator_action(
+            request=request,
+            action_type="pipeline_failed_story_discard",
+            details=result,
+        )
+        return result
+    except ValueError as e:
+        record_operator_action(
+            request=request,
+            action_type="pipeline_failed_story_discard",
+            details={"story_id": story_id, "success": False, "error": str(e)},
+        )
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.post("/api/admin/pipeline/failed-items/{item_id}/retry")
+def admin_retry_failed_item(
+    request: Request,
+    item_id: int,
+    model: Optional[str] = Query(
+        None,
+        description="LLM model (defaults to STORY_MODEL / scheduler)",
+    ),
+):
+    from .. import scheduler as scheduler_mod
+    from ..failed_entities import retry_failed_item
+
+    m = model or scheduler_mod.STORY_MODEL
+    try:
+        result = retry_failed_item(item_id, model=m)
+        record_operator_action(
+            request=request,
+            action_type="pipeline_failed_item_retry",
+            details=result,
+        )
+        return result
+    except ValueError as e:
+        record_operator_action(
+            request=request,
+            action_type="pipeline_failed_item_retry",
+            details={"item_id": item_id, "success": False, "error": str(e)},
+        )
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        record_operator_action(
+            request=request,
+            action_type="pipeline_failed_item_retry",
+            details={"item_id": item_id, "success": False, "error": str(e)},
+        )
+        logger.error("Failed item retry failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.post("/api/admin/pipeline/failed-stories/{story_id}/retry")
+def admin_retry_failed_story(
+    request: Request,
+    story_id: int,
+    model: Optional[str] = Query(
+        None,
+        description="LLM model (defaults to STORY_MODEL / scheduler)",
+    ),
+):
+    from .. import scheduler as scheduler_mod
+    from ..failed_entities import retry_failed_story
+
+    m = model or scheduler_mod.STORY_MODEL
+    try:
+        result = retry_failed_story(story_id, model=m)
+        record_operator_action(
+            request=request,
+            action_type="pipeline_failed_story_retry",
+            details=result,
+        )
+        return result
+    except ValueError as e:
+        record_operator_action(
+            request=request,
+            action_type="pipeline_failed_story_retry",
+            details={"story_id": story_id, "success": False, "error": str(e)},
+        )
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        record_operator_action(
+            request=request,
+            action_type="pipeline_failed_story_retry",
+            details={"story_id": story_id, "success": False, "error": str(e)},
+        )
+        logger.error("Failed story retry failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
 @router.get("/api/admin/pipeline/runs")
 def admin_pipeline_runs(
     limit: int = Query(50, ge=1, le=200, description="Max rows to return"),

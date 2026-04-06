@@ -107,6 +107,7 @@ See [ADR-0022](../adr/0022-dev-prod-database-parity.md) for PostgreSQL parity. H
 
 - **Dashboard:** [http://localhost:8787/admin/pipeline](http://localhost:8787/admin/pipeline) (same host/port as your dev server).
 - **Behaviour:** Coarse runs (`POST /api/admin/pipeline/run`), targeted replay (`POST /api/admin/pipeline/replay`), stage-run list/filters (`GET /api/admin/pipeline/runs`), dead-letter discard/retry (`POST .../discard`, `POST .../retry`).
+- **Failed entities (#293):** `GET /api/admin/pipeline/failed-entities` lists `items` / `stories` with `processing_state = failed`. `POST .../failed-items/{id}/discard|retry` and `.../failed-stories/{id}/discard|retry` — retry runs targeted **enrich** (article) or **regenerate synthesis** (story) after clearing the failure record.
 - **Audit:** Mutating admin calls append rows to `operator_actions` (see Alembic `014_operator_actions`). Optional header **`X-Operator-Label`** (or `X-Operator-Id`) is stored with each action; the dashboard can save a label in **localStorage** and send it automatically.
 - **API-only:** Use the same routes from scripts or `curl`; OpenAPI docs list request bodies under the admin tag.
 

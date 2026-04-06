@@ -9,7 +9,7 @@
         <div class="mb-8">
             <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Pipeline operator</h1>
             <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                Targeted pipeline runs, replay, dead-letter retry/discard, and audit log (#277).
+                Targeted pipeline runs, replay, dead-letter retry/discard, failed articles/stories (#293), and audit log (#277).
             </p>
         </div>
 
@@ -89,6 +89,53 @@
                         Replay
                     </button>
                 </div>
+            </div>
+        </div>
+
+        <!-- Failed entities (#293) -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Failed articles &amp; stories</h2>
+                <button type="button" onclick="loadFailedEntities()"
+                        class="px-3 py-2 bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white rounded-lg text-sm">
+                    Refresh
+                </button>
+            </div>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                <strong>Discard</strong> clears failure metadata and resets processing state (article → <code class="text-xs">enriched</code>, story → <code class="text-xs">candidate</code>).
+                <strong>Retry item</strong> discards then runs <strong>enrich</strong>; <strong>Retry story</strong> discards then <strong>regenerates synthesis</strong>.
+            </p>
+            <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">Articles (<code class="text-xs">items</code>)</h3>
+            <div class="overflow-x-auto mb-6">
+                <table class="min-w-full text-sm">
+                    <thead>
+                        <tr class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-600">
+                            <th class="pb-2 pr-3">id</th>
+                            <th class="pb-2 pr-3">title</th>
+                            <th class="pb-2 pr-3">stage</th>
+                            <th class="pb-2 pr-3">failed at</th>
+                            <th class="pb-2 pr-3">error</th>
+                            <th class="pb-2">actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="failed-items-body"></tbody>
+                </table>
+            </div>
+            <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">Stories</h3>
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-sm">
+                    <thead>
+                        <tr class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-600">
+                            <th class="pb-2 pr-3">id</th>
+                            <th class="pb-2 pr-3">title</th>
+                            <th class="pb-2 pr-3">stage</th>
+                            <th class="pb-2 pr-3">failed at</th>
+                            <th class="pb-2 pr-3">error</th>
+                            <th class="pb-2">actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="failed-stories-body"></tbody>
+                </table>
             </div>
         </div>
 
@@ -183,8 +230,22 @@ function saveOperatorLabel() {
     showToast('Saved operator label in this browser.', false);
 }
 
+function escHtml(s) {
+    const t = document.createElement('div');
+    t.textContent = s == null ? '' : String(s);
+    return t.innerHTML;
+}
+
+function escAttr(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;');
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('operator-label').value = localStorage.getItem('operatorLabel') || '';
+    loadFailedEntities();
     loadRuns();
     loadAudit();
 });
@@ -202,6 +263,7 @@ async function runPipelineCoarse() {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || res.statusText);
         showToast('Pipeline run finished. success=' + data.success + ' run_group_id=' + (data.run_group_id || ''), false);
+        loadFailedEntities();
         loadRuns();
         loadAudit();
     } catch (e) {
@@ -230,10 +292,127 @@ async function runReplay() {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || res.statusText);
         showToast('Replay finished. success=' + data.success, false);
+        loadFailedEntities();
         loadRuns();
         loadAudit();
     } catch (e) {
         showToast('Replay failed: ' + e.message, true);
+    }
+}
+
+function renderFailedEntities(data) {
+    const itemsTb = document.getElementById('failed-items-body');
+    const storiesTb = document.getElementById('failed-stories-body');
+    itemsTb.innerHTML = '';
+    storiesTb.innerHTML = '';
+    for (const it of (data.items || [])) {
+        const tr = document.createElement('tr');
+        tr.className = 'border-b border-gray-100 dark:border-gray-700';
+        tr.innerHTML = `<td class="py-2 pr-3 font-mono">${it.id}</td>
+            <td class="py-2 pr-3 max-w-xs truncate" title="${escAttr(it.title)}">${escHtml(it.title)}</td>
+            <td class="py-2 pr-3">${escHtml(it.failure_stage || '—')}</td>
+            <td class="py-2 pr-3 text-xs whitespace-nowrap">${escHtml(it.processing_failed_at || '—')}</td>
+            <td class="py-2 pr-3 text-xs max-w-md break-all">${escHtml(it.processing_error || '—')}</td>
+            <td class="py-2 whitespace-nowrap">
+              <button type="button" class="text-blue-600 dark:text-blue-400 mr-2" onclick="retryFailedItem(${it.id})">Retry</button>
+              <button type="button" class="text-gray-600 dark:text-gray-300" onclick="discardFailedItem(${it.id})">Discard</button>
+            </td>`;
+        itemsTb.appendChild(tr);
+    }
+    for (const st of (data.stories || [])) {
+        const tr = document.createElement('tr');
+        tr.className = 'border-b border-gray-100 dark:border-gray-700';
+        tr.innerHTML = `<td class="py-2 pr-3 font-mono">${st.id}</td>
+            <td class="py-2 pr-3 max-w-xs truncate" title="${escAttr(st.title)}">${escHtml(st.title)}</td>
+            <td class="py-2 pr-3">${escHtml(st.failure_stage || '—')}</td>
+            <td class="py-2 pr-3 text-xs whitespace-nowrap">${escHtml(st.processing_failed_at || '—')}</td>
+            <td class="py-2 pr-3 text-xs max-w-md break-all">${escHtml(st.processing_error || '—')}</td>
+            <td class="py-2 whitespace-nowrap">
+              <button type="button" class="text-blue-600 dark:text-blue-400 mr-2" onclick="retryFailedStory(${st.id})">Retry</button>
+              <button type="button" class="text-gray-600 dark:text-gray-300" onclick="discardFailedStory(${st.id})">Discard</button>
+            </td>`;
+        storiesTb.appendChild(tr);
+    }
+}
+
+async function loadFailedEntities() {
+    try {
+        const res = await fetch('/api/admin/pipeline/failed-entities?limit_items=100&limit_stories=100');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || res.statusText);
+        renderFailedEntities(data);
+    } catch (e) {
+        showToast('Failed to load failed entities: ' + e.message, true);
+    }
+}
+
+async function discardFailedItem(id) {
+    if (!confirm('Discard failure for article ' + id + '?')) return;
+    try {
+        const res = await fetch('/api/admin/pipeline/failed-items/' + id + '/discard', {
+            method: 'POST',
+            headers: operatorLabelOnlyHeaders(),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || res.statusText);
+        showToast('Discarded article ' + id, false);
+        loadFailedEntities();
+        loadAudit();
+    } catch (e) {
+        showToast('Discard failed: ' + e.message, true);
+    }
+}
+
+async function discardFailedStory(id) {
+    if (!confirm('Discard failure for story ' + id + '?')) return;
+    try {
+        const res = await fetch('/api/admin/pipeline/failed-stories/' + id + '/discard', {
+            method: 'POST',
+            headers: operatorLabelOnlyHeaders(),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || res.statusText);
+        showToast('Discarded story ' + id, false);
+        loadFailedEntities();
+        loadAudit();
+    } catch (e) {
+        showToast('Discard failed: ' + e.message, true);
+    }
+}
+
+async function retryFailedItem(id) {
+    if (!confirm('Retry article ' + id + ' (discard + enrich)?')) return;
+    try {
+        const res = await fetch('/api/admin/pipeline/failed-items/' + id + '/retry', {
+            method: 'POST',
+            headers: operatorLabelOnlyHeaders(),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || res.statusText);
+        showToast('Item retry finished. success=' + data.success, !data.success);
+        loadFailedEntities();
+        loadRuns();
+        loadAudit();
+    } catch (e) {
+        showToast('Retry failed: ' + e.message, true);
+    }
+}
+
+async function retryFailedStory(id) {
+    if (!confirm('Retry story ' + id + ' (discard + regenerate)?')) return;
+    try {
+        const res = await fetch('/api/admin/pipeline/failed-stories/' + id + '/retry', {
+            method: 'POST',
+            headers: operatorLabelOnlyHeaders(),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || res.statusText);
+        showToast('Story retry finished. success=' + data.success, !data.success);
+        loadFailedEntities();
+        loadRuns();
+        loadAudit();
+    } catch (e) {
+        showToast('Retry failed: ' + e.message, true);
     }
 }
 
@@ -283,6 +462,7 @@ async function discardRun(id) {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || res.statusText);
         showToast('Discarded run ' + id, false);
+        loadFailedEntities();
         loadRuns();
         loadAudit();
     } catch (e) {
@@ -300,6 +480,7 @@ async function retryRun(id) {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || res.statusText);
         showToast('Retry submitted. new_run_group_id=' + (data.new_run_group_id || ''), false);
+        loadFailedEntities();
         loadRuns();
         loadAudit();
     } catch (e) {
