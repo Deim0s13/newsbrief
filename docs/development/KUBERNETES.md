@@ -542,13 +542,15 @@ GitHub Push ──► smee.io ──► EventListener ──► Interceptor ─�
 
 For local development, use smee.io to relay GitHub webhooks.
 
-**Recommended (one command, background + logs in `logs/`):**
+**Recommended (one command — prod/dev/EL/dashboard forwards + Smee):**
 
 ```bash
-make webhook-relay-start
+make port-forwards
 make webhook-relay-status   # optional
-# make webhook-relay-stop   # when done
+# make webhook-relay-stop   # stops Smee only; pkill kubectl port-forward to stop forwards
 ```
+
+(`make webhook-relay-start` is an alias for `make port-forwards`.)
 
 **Manual (two terminals):**
 

@@ -1,45 +1,45 @@
 #!/usr/bin/env bash
+# Health: EventListener on LOCAL_PORT + smee-client + github-webhook-secret.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-PIDFILE="${ROOT}/logs/webhook-relay.pids"
 PORT="${LOCAL_PORT:-8080}"
-
-if [ ! -f "${PIDFILE}" ]; then
-  echo "status: not running (no ${PIDFILE})"
-  echo "start with: make webhook-relay-start"
-  exit 1
-fi
-
-pfs=$(sed -n '1p' "${PIDFILE}" || true)
-sms=$(sed -n '2p' "${PIDFILE}" || true)
-ok=0
-
-if [ -n "${pfs}" ] && kill -0 "${pfs}" 2>/dev/null; then
-  echo "status: port-forward pid ${pfs} running"
-  ok=1
-else
-  echo "status: port-forward pid ${pfs:-?} not running"
-fi
-
-if [ -n "${sms}" ] && kill -0 "${sms}" 2>/dev/null; then
-  echo "status: smee-client pid ${sms} running"
-  ok=1
-else
-  echo "status: smee-client pid ${sms:-?} not running"
-fi
+CHANNEL_ID="cddqBCYHwHG3ZcUY"
+port_ok=0
+smee_ok=0
+secret_ok=0
 
 if command -v lsof >/dev/null 2>&1; then
   if lsof -nP -iTCP:"${PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
-    echo "status: port ${PORT} is listening"
+    echo "status: port ${PORT} listening (EventListener port-forward)"
+    port_ok=1
   else
-    echo "status: port ${PORT} not listening"
-    ok=0
+    echo "status: port ${PORT} not listening — run: make port-forwards"
   fi
+else
+  echo "status: install lsof for port check; assuming port ok"
+  port_ok=1
 fi
 
-if [ "${ok}" -eq 1 ]; then
+if pgrep -f "smee-client.*${CHANNEL_ID}" >/dev/null 2>&1; then
+  echo "status: smee-client running (GitHub → :${PORT})"
+  smee_ok=1
+else
+  echo "status: smee-client not running — run: make port-forwards"
+fi
+
+if command -v kubectl >/dev/null 2>&1 && kubectl cluster-info >/dev/null 2>&1; then
+  if kubectl get secret github-webhook-secret -n default >/dev/null 2>&1; then
+    echo "status: secret github-webhook-secret present"
+    secret_ok=1
+  else
+    echo "status: missing github-webhook-secret in default — see docs/development/KUBERNETES.md"
+  fi
+else
+  echo "status: kubectl cluster not reachable (cannot verify secret)"
+fi
+
+if [ "${port_ok}" -eq 1 ] && [ "${smee_ok}" -eq 1 ] && [ "${secret_ok}" -eq 1 ]; then
   exit 0
 fi
-echo "status: unhealthy — run: make webhook-relay-stop && make webhook-relay-start"
+echo "status: unhealthy — fix items above"
 exit 1

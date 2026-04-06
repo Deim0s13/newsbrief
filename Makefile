@@ -69,13 +69,13 @@ push-kind-dev-image:  ## Build + push localhost:5000/newsbrief:dev-latest for Ar
 push-kind-prod-image:  ## Build + push localhost:5000/newsbrief:$(KIND_PROD_TAG) for Argo newsbrief-prod
 	@chmod +x scripts/push-kind-prod-image.sh 2>/dev/null; RUNTIME=$(RUNTIME) KIND_REGISTRY_HOST=localhost:5000 scripts/push-kind-prod-image.sh "$(KIND_PROD_TAG)"
 
-webhook-relay-start:  ## Background: EventListener port-forward + smee (GitHub webhooks → Tekton)
+webhook-relay-start:  ## Same as port-forwards (all kubectl forwards + Smee for GitHub→Tekton)
 	@chmod +x scripts/start-webhook-relay.sh 2>/dev/null; scripts/start-webhook-relay.sh
 
-webhook-relay-stop:  ## Stop processes started by webhook-relay-start
+webhook-relay-stop:  ## Stop smee-client (kubectl port-forwards unchanged; pkill them separately if needed)
 	@chmod +x scripts/stop-webhook-relay.sh 2>/dev/null; scripts/stop-webhook-relay.sh
 
-webhook-relay-status:  ## Check whether smee + port-forward from relay-start are healthy
+webhook-relay-status:  ## Smee + port 8080 + github-webhook-secret checks
 	@chmod +x scripts/status-webhook-relay.sh 2>/dev/null; scripts/status-webhook-relay.sh
 
 argo-ui:  ## Port-forward Argo CD UI on 8443 (avoids clash with Tekton relay on 8080)
@@ -424,20 +424,23 @@ recover:                          ## Recover all services after reboot/sleep
 status:                           ## Check status of all services
 	cd ansible && ansible-playbook -i inventory/localhost.yml playbooks/status.yml
 
-port-forwards:                    ## Restart port forwards for prod, K8s dev, Tekton
-	@echo "🔌 Restarting port forwards..."
+port-forwards:                    ## Prod + dev + EventListener + dashboard + Smee (GitHub→Tekton)
+	@echo "🔌 Restarting port forwards + Smee (short-term webhook path)..."
 	@pkill -f "kubectl port-forward" 2>/dev/null || true
 	@kubectl port-forward svc/newsbrief -n newsbrief-prod --address 0.0.0.0 8788:8787 &
 	@kubectl port-forward svc/newsbrief -n newsbrief-dev --address 0.0.0.0 8789:8787 &
-	@kubectl port-forward svc/el-newsbrief-listener 8080:8080 &
+	@kubectl port-forward svc/el-newsbrief-listener 8080:8080 -n default &
 	@kubectl port-forward svc/tekton-dashboard -n tekton-pipelines 9097:9097 &
 	@sleep 2
-	@echo "✅ Port forwards restarted"
+	@chmod +x scripts/ensure-smee-client.sh 2>/dev/null; scripts/ensure-smee-client.sh
+	@echo "✅ Port forwards + Smee"
 	@echo "   Prod (K8s): http://localhost:8788 — https://newsbrief.local via Caddy"
 	@echo "   Dev (K8s):  http://localhost:8789 — Argo app newsbrief-dev"
-	@echo "   Tekton:     http://localhost:9097"
+	@echo "   Tekton EL:  http://localhost:8080 — Smee → GitHub webhooks"
+	@echo "   Tekton UI: http://localhost:9097"
 	@echo ""
-	@echo "   Dev (host uvicorn): make dev → http://localhost:8787"
+	@echo "   Dev (host): make dev → http://localhost:8787"
+	@echo "   Webhook secret must match GitHub: kubectl get secret github-webhook-secret -n default"
 
 smee:                             ## Start smee webhook bridge
 	npx smee-client --url https://smee.io/cddqBCYHwHG3ZcUY --target http://localhost:8080 --path /

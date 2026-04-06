@@ -186,9 +186,9 @@ make dev-full
 make db-up      # Start PostgreSQL container (requires Docker/Podman)
 make dev        # Run development server
 
-# With kind/Tekton: keep GitHub→Tekton webhooks alive (after reboot):
-# make webhook-relay-start
-# Push `dev` and run CI in cluster (fallback if webhooks down): make push-dev
+# With kind/Tekton: after reboot, GitHub→Tekton needs forwards + Smee:
+# make port-forwards
+# (Same as make webhook-relay-start.) Fallback CI without webhooks: make push-dev
 
 # Access at http://localhost:8787
 # Orange "DEVELOPMENT MODE" banner distinguishes from production
