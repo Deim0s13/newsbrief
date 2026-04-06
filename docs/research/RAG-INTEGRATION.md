@@ -260,13 +260,13 @@ If Light RAG is adopted, NewsBrief needs:
 CREATE EXTENSION IF NOT EXISTS vector;
 
 -- Add embedding columns to articles
-ALTER TABLE items ADD COLUMN embedding vector(1536);
+ALTER TABLE items ADD COLUMN embedding vector(768);
 ALTER TABLE items ADD COLUMN embedding_model VARCHAR(100);
 ALTER TABLE items ADD COLUMN embedding_version VARCHAR(50);
 ALTER TABLE items ADD COLUMN embedded_at TIMESTAMP WITH TIME ZONE;
 
 -- Add embedding columns to stories
-ALTER TABLE stories ADD COLUMN embedding vector(1536);
+ALTER TABLE stories ADD COLUMN embedding vector(768);
 ALTER TABLE stories ADD COLUMN embedding_model VARCHAR(100);
 ALTER TABLE stories ADD COLUMN embedding_version VARCHAR(50);
 ALTER TABLE stories ADD COLUMN embedded_at TIMESTAMP WITH TIME ZONE;

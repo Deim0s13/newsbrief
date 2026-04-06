@@ -36,8 +36,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
 
-# Keep in sync with alembic/versions/016_pgvector_embeddings.py (ADR-0026, #250).
-_EMBEDDING_DIMENSIONS = 1536
+# Keep in sync with alembic/versions/017_embedding_vector_768.py (#251).
+_EMBEDDING_DIMENSIONS = 768
 
 
 class Base(DeclarativeBase):

@@ -80,7 +80,7 @@ Use a separate vector database alongside PostgreSQL.
 
 ### Negative
 
-1. **Storage overhead** — Embeddings add ~6KB per article (1536-dim float32)
+1. **Storage overhead** — Embeddings add ~3KB per article (768-dim float32)
 2. **Compute at ingestion** — Embedding generation adds latency
 3. **Re-indexing requirement** — Model changes require re-embedding
 4. **Complexity increase** — New retrieval layer and tracing infrastructure
@@ -113,13 +113,13 @@ Before proceeding to implementation, validate:
 -- pgvector extension
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- Article embeddings
-ALTER TABLE items ADD COLUMN embedding vector(1536);
+-- Article embeddings (introduced in schema migrations; width 768 after #251)
+ALTER TABLE items ADD COLUMN embedding vector(768);
 ALTER TABLE items ADD COLUMN embedding_model VARCHAR(100);
 ALTER TABLE items ADD COLUMN embedded_at TIMESTAMP WITH TIME ZONE;
 
 -- Story embeddings
-ALTER TABLE stories ADD COLUMN embedding vector(1536);
+ALTER TABLE stories ADD COLUMN embedding vector(768);
 ALTER TABLE stories ADD COLUMN embedding_model VARCHAR(100);
 ALTER TABLE stories ADD COLUMN embedded_at TIMESTAMP WITH TIME ZONE;
 
@@ -130,8 +130,8 @@ CREATE INDEX idx_stories_embedding ON stories USING ivfflat (embedding vector_co
 
 ### Embedding Model
 
-- **Primary candidate:** Ollama with `nomic-embed-text` or `bge-base`
-- **Dimension:** 1536 (adjustable based on model)
+- **Primary candidate:** Ollama with `nomic-embed-text` or other **768-dim** embedding models
+- **Dimension:** **768** in PostgreSQL (`vector(768)`); must match the active embedding model
 - **Local execution:** Aligned with local-first LLM strategy (ADR-0025)
 
 ## References

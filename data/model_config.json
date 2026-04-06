@@ -1,6 +1,22 @@
 {
   "version": "2.0",
   "description": "LLM model configuration with profile support",
+  "embedding": {
+    "model_version": "1.0",
+    "active_profile": "fast",
+    "profiles": {
+      "fast": {
+        "model": "nomic-embed-text",
+        "dimensions": 768,
+        "description": "Fast Ollama embedding (aligns with pgvector vector(768))"
+      },
+      "quality": {
+        "model": "nomic-embed-text",
+        "dimensions": 768,
+        "description": "Same width as fast; swap model when using another 768-dim Ollama embedder"
+      }
+    }
+  },
   "defaults": {
     "max_articles_per_prompt": 8,
     "summary_chars_per_article": 500,

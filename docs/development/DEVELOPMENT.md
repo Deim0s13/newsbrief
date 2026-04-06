@@ -106,8 +106,8 @@ See [ADR-0022](../adr/0022-dev-prod-database-parity.md) for PostgreSQL parity. H
 ### **Embeddings schema (pgvector, #250)**
 
 - **Extension:** Migrations enable `vector` via `CREATE EXTENSION`. Dev/prod Docker DB images use **`pgvector/pgvector:pg16`** (`compose.yaml`, `compose.dev.yaml`). External PostgreSQL hosts must have [pgvector](https://github.com/pgvector/pgvector) installed separately.
-- **Tables:** `items` and `stories` have nullable `embedding vector(1536)`, plus `embedding_model`, `embedding_version`, and `embedded_at`. Dimension matches [ADR-0026](../adr/0026-rag-integration-strategy.md); the embedding service (#251) must produce **1536**-wide vectors (or the schema/migration must change).
-- **Indexes:** Partial **IVFFlat** indexes (`idx_items_embedding`, `idx_stories_embedding`) use cosine distance on non-null embeddings. Re-tune `lists` (Alembic `016`) as row counts grow.
+- **Tables:** `items` and `stories` have nullable `embedding vector(768)`, plus `embedding_model`, `embedding_version`, and `embedded_at` (Alembic `016` + `017`). The embedding service (#251, `app/embedding_service.py`) uses Ollama and **`model_config.json`** (`embedding` section); output width must match the DB (see `NEWSBRIEF_EMBEDDING_MODEL` / `NEWSBRIEF_EMBEDDING_DIMENSIONS`).
+- **Indexes:** Partial **IVFFlat** indexes (`idx_items_embedding`, `idx_stories_embedding`) use cosine distance on non-null embeddings. Re-tune `lists` in Alembic migrations as row counts grow.
 
 ### **Pipeline operator controls (#277)** ⭐
 
