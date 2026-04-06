@@ -36,6 +36,8 @@ if [ -n "${CI_PROD_VERSION_OVERRIDE:-}" ]; then
   EXTRA+=(-p "version-override=${CI_PROD_VERSION_OVERRIDE}")
   echo "Starting ci-prod (override version=${CI_PROD_VERSION_OVERRIDE})..."
 else
+  # Explicit empty value avoids interactive tkn prompt for version-override
+  EXTRA+=(-p "version-override=")
   echo "Starting ci-prod (release version from pyproject on ${REV})..."
 fi
 
