@@ -61,6 +61,15 @@ ci-dev:  ## Run Tekton pipeline ci-dev (lint + pytest); needs kubectl, tkn, clus
 push-dev:  ## git push origin dev && ci-dev (SKIP_CI_DEV=1 to push without pipeline)
 	@scripts/push-dev.sh
 
+webhook-relay-start:  ## Background: EventListener port-forward + smee (GitHub webhooks → Tekton)
+	@chmod +x scripts/start-webhook-relay.sh 2>/dev/null; scripts/start-webhook-relay.sh
+
+webhook-relay-stop:  ## Stop processes started by webhook-relay-start
+	@chmod +x scripts/stop-webhook-relay.sh 2>/dev/null; scripts/stop-webhook-relay.sh
+
+webhook-relay-status:  ## Check whether smee + port-forward from relay-start are healthy
+	@chmod +x scripts/status-webhook-relay.sh 2>/dev/null; scripts/status-webhook-relay.sh
+
 env-init:  ## Create .env from template with generated secure password
 	@if [ -f .env ]; then \
 		echo "⚠️  .env already exists. Delete it first or edit manually."; \

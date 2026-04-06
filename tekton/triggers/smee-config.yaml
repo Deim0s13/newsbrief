@@ -3,10 +3,16 @@
 # This file documents the smee.io channel used for local webhook testing.
 # The smee client relays webhooks from GitHub to your local EventListener.
 #
-# Usage:
-#   1. Start port-forward: kubectl port-forward svc/el-newsbrief-listener 8080:8080
-#   2. Start smee client:  ./scripts/smee-client.sh
-#   3. Configure GitHub webhook to use the smee URL below
+# Usage (automatic webhooks to Tekton):
+#   make webhook-relay-start   # port-forward + smee in background (logs under logs/)
+#   make webhook-relay-status
+#   make webhook-relay-stop
+#
+# Manual (two terminals):
+#   1. kubectl port-forward svc/el-newsbrief-listener 8080:8080 -n default
+#   2. ./scripts/smee-client.sh
+#
+# Configure GitHub webhook to use the smee URL below.
 #
 # Note: Smee channels don't expire, but you can create a new one at https://smee.io/new
 

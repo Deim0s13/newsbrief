@@ -536,11 +536,21 @@ GitHub Push ──► smee.io ──► EventListener ──► Interceptor ─�
 
 ### Webhook Relay with smee.io
 
-For local development, use smee.io to relay GitHub webhooks:
+For local development, use smee.io to relay GitHub webhooks.
+
+**Recommended (one command, background + logs in `logs/`):**
+
+```bash
+make webhook-relay-start
+make webhook-relay-status   # optional
+# make webhook-relay-stop   # when done
+```
+
+**Manual (two terminals):**
 
 ```bash
 # Terminal 1: Port-forward EventListener
-kubectl port-forward svc/el-newsbrief-listener 8080:8080
+kubectl port-forward svc/el-newsbrief-listener 8080:8080 -n default
 
 # Terminal 2: Run smee client
 ./scripts/smee-client.sh

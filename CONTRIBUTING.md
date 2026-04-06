@@ -168,9 +168,16 @@ make push-dev
 
 That **`git push origin dev`** and then starts **`ci-dev`** on your cluster (same workload as the webhook: clone `dev`, lint, pytest). Push only without the pipeline: `SKIP_CI_DEV=1 make push-dev`. To re-run CI without pushing: `make ci-dev`.
 
-### GitHub webhook (optional automation)
+### GitHub webhook → Tekton (automatic `ci-dev` / `ci-prod`)
 
-If you keep **Smee + port-forward** running, pushes to `dev` can still trigger `ci-dev` via GitHub. See `tekton/triggers/smee-config.yaml`. **“Delivery: OK” in GitHub only means Smee accepted the payload** — the EventListener still needs the relay and matching **`github-webhook-secret`**. Details: [KUBERNETES.md — Webhooks](docs/development/KUBERNETES.md).
+After a reboot or when pipelines stop firing on push, start the relay:
+
+```bash
+make webhook-relay-start   # background: kubectl port-forward + smee
+make webhook-relay-status  # optional health check
+```
+
+Stop with `make webhook-relay-stop`. Logs: `logs/eventlistener-port-forward.log`, `logs/smee-client.log` (ignored by git). Configuration matches `tekton/triggers/smee-config.yaml`. **GitHub “Delivery: OK”** only means Smee received the POST; the EventListener still needs this relay and a **`github-webhook-secret`** that matches GitHub. Details: [KUBERNETES.md — Webhooks](docs/development/KUBERNETES.md).
 
 ## Pull Request Checklist
 
