@@ -168,6 +168,45 @@ def admin_pipeline_audit(
     return {"actions": list_recent_operator_actions(limit=limit)}
 
 
+@router.get("/api/admin/pipeline/stages")
+def admin_pipeline_stages():
+    """Article/story counts by ``processing_state`` (#276)."""
+    from ..pipeline_monitoring import get_processing_stage_snapshot
+
+    return get_processing_stage_snapshot()
+
+
+@router.get("/api/admin/pipeline/run-metrics")
+def admin_pipeline_run_metrics(
+    window_hours: float = Query(
+        24.0,
+        ge=0.25,
+        le=720.0,
+        description="Rolling window for runs whose started_at is within this many hours",
+    ),
+):
+    """Aggregates from ``pipeline_stage_runs`` by stage (#276)."""
+    from ..pipeline_monitoring import get_pipeline_run_metrics
+
+    return get_pipeline_run_metrics(window_hours=window_hours)
+
+
+@router.get("/api/admin/pipeline/stuck")
+def admin_pipeline_stuck(
+    max_age_seconds: Optional[int] = Query(
+        None,
+        ge=60,
+        le=86400 * 14,
+        description="Override PIPELINE_STUCK_AFTER_SECONDS (default 3600); min 60",
+    ),
+    limit: int = Query(50, ge=1, le=200, description="Max stuck rows to return"),
+):
+    """In-flight stage runs older than the stuck threshold (#276)."""
+    from ..pipeline_monitoring import list_stuck_pipeline_runs
+
+    return list_stuck_pipeline_runs(max_age_seconds=max_age_seconds, limit=limit)
+
+
 @router.get("/api/admin/pipeline/failed-entities")
 def admin_pipeline_failed_entities(
     limit_items: int = Query(50, ge=1, le=200),

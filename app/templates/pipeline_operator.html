@@ -9,7 +9,7 @@
         <div class="mb-8">
             <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Pipeline operator</h1>
             <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                Targeted pipeline runs, replay, dead-letter retry/discard, failed articles/stories (#293), and audit log (#277).
+                Targeted pipeline runs, replay, dead-letter retry/discard, failed articles/stories (#293), stage snapshot and stuck-run visibility (#276), and audit log (#277).
             </p>
         </div>
 
@@ -89,6 +89,112 @@
                         Replay
                     </button>
                 </div>
+            </div>
+        </div>
+
+        <!-- Stage snapshot & run metrics (#276) -->
+        <div class="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                    <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Processing states</h2>
+                    <button type="button" onclick="loadStageSnapshot()"
+                            class="px-3 py-2 bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white rounded-lg text-sm">
+                        Refresh
+                    </button>
+                </div>
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                    Article and story counts by <code class="text-xs">processing_state</code> (ADR-0030). Oldest row per state when count &gt; 0.
+                </p>
+                <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">Articles</h3>
+                <div class="overflow-x-auto mb-4">
+                    <table class="min-w-full text-sm">
+                        <thead>
+                            <tr class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-600">
+                                <th class="pb-2 pr-3">state</th>
+                                <th class="pb-2 pr-3">count</th>
+                                <th class="pb-2">oldest</th>
+                            </tr>
+                        </thead>
+                        <tbody id="snapshot-articles-body"></tbody>
+                    </table>
+                </div>
+                <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">Stories</h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead>
+                            <tr class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-600">
+                                <th class="pb-2 pr-3">state</th>
+                                <th class="pb-2 pr-3">count</th>
+                                <th class="pb-2">oldest</th>
+                            </tr>
+                        </thead>
+                        <tbody id="snapshot-stories-body"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                    <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Stage run metrics</h2>
+                    <div class="flex flex-wrap gap-2 items-center">
+                        <label class="text-xs text-gray-500 dark:text-gray-400">window (h)</label>
+                        <input type="number" id="run-metrics-hours" value="24" min="0.25" max="720" step="0.25"
+                               class="w-20 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded dark:bg-gray-700 dark:text-white text-sm">
+                        <button type="button" onclick="loadRunMetrics()"
+                                class="px-3 py-2 bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white rounded-lg text-sm">
+                            Refresh
+                        </button>
+                    </div>
+                </div>
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                    Aggregates from <code class="text-xs">pipeline_stage_runs</code> for runs started in the window.
+                </p>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead>
+                            <tr class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-600">
+                                <th class="pb-2 pr-3">stage</th>
+                                <th class="pb-2 pr-3">started</th>
+                                <th class="pb-2 pr-3">finished</th>
+                                <th class="pb-2 pr-3">ok rate</th>
+                                <th class="pb-2 pr-3">avg s</th>
+                                <th class="pb-2 pr-3">retries+</th>
+                                <th class="pb-2">open</th>
+                            </tr>
+                        </thead>
+                        <tbody id="run-metrics-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Stuck stage runs</h2>
+                <div class="flex flex-wrap gap-2 items-center">
+                    <span class="text-xs text-gray-500 dark:text-gray-400" id="stuck-threshold-hint"></span>
+                    <button type="button" onclick="loadStuckRuns()"
+                            class="px-3 py-2 bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white rounded-lg text-sm">
+                        Refresh
+                    </button>
+                </div>
+            </div>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                In-flight <code class="text-xs">pipeline_stage_runs</code> (no finish time, not discarded) with <code class="text-xs">started_at</code> older than <code class="text-xs">PIPELINE_STUCK_AFTER_SECONDS</code> (default 3600s). Override with <code class="text-xs">GET /api/admin/pipeline/stuck?max_age_seconds=...</code>.
+            </p>
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-sm">
+                    <thead>
+                        <tr class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-600">
+                            <th class="pb-2 pr-3">id</th>
+                            <th class="pb-2 pr-3">stage</th>
+                            <th class="pb-2 pr-3">age (s)</th>
+                            <th class="pb-2 pr-3">started</th>
+                            <th class="pb-2 pr-3">target</th>
+                            <th class="pb-2">attempts</th>
+                        </tr>
+                    </thead>
+                    <tbody id="stuck-runs-body"></tbody>
+                </table>
             </div>
         </div>
 
@@ -245,10 +351,131 @@ function escAttr(s) {
 
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('operator-label').value = localStorage.getItem('operatorLabel') || '';
+    loadStageSnapshot();
+    loadRunMetrics();
+    loadStuckRuns();
     loadFailedEntities();
     loadRuns();
     loadAudit();
 });
+
+function renderSnapshotTable(tbodyId, block) {
+    const tb = document.getElementById(tbodyId);
+    tb.innerHTML = '';
+    const ordered = block.states_ordered || [];
+    const by = block.by_state || {};
+    const oldest = block.oldest_waiting_at_by_state || {};
+    for (const state of ordered) {
+        const c = by[state] ?? 0;
+        if (c === 0) continue;
+        const tr = document.createElement('tr');
+        tr.className = 'border-b border-gray-100 dark:border-gray-700';
+        tr.innerHTML = `<td class="py-2 pr-3 font-mono text-xs">${escHtml(state)}</td>
+            <td class="py-2 pr-3">${c}</td>
+            <td class="py-2 text-xs whitespace-nowrap">${escHtml(oldest[state] || '—')}</td>`;
+        tb.appendChild(tr);
+    }
+    for (const state of Object.keys(by).sort()) {
+        if (ordered.includes(state)) continue;
+        const c = by[state] ?? 0;
+        if (c === 0) continue;
+        const tr = document.createElement('tr');
+        tr.className = 'border-b border-gray-100 dark:border-gray-700';
+        tr.innerHTML = `<td class="py-2 pr-3 font-mono text-xs">${escHtml(state)}</td>
+            <td class="py-2 pr-3">${c}</td>
+            <td class="py-2 text-xs whitespace-nowrap">${escHtml(oldest[state] || '—')}</td>`;
+        tb.appendChild(tr);
+    }
+    if (!tb.children.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="3" class="py-2 text-gray-500">No rows in non-zero states.</td>';
+        tb.appendChild(tr);
+    }
+}
+
+async function loadStageSnapshot() {
+    try {
+        const res = await fetch('/api/admin/pipeline/stages');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || res.statusText);
+        renderSnapshotTable('snapshot-articles-body', data.articles || {});
+        renderSnapshotTable('snapshot-stories-body', data.stories || {});
+    } catch (e) {
+        showToast('Failed to load stage snapshot: ' + e.message, true);
+    }
+}
+
+function renderRunMetrics(rows) {
+    const tb = document.getElementById('run-metrics-body');
+    tb.innerHTML = '';
+    for (const r of rows) {
+        const tr = document.createElement('tr');
+        tr.className = 'border-b border-gray-100 dark:border-gray-700';
+        const rate = r.success_rate_finished != null ? String(r.success_rate_finished) : '—';
+        const avgs = r.avg_duration_seconds != null ? r.avg_duration_seconds.toFixed(1) : '—';
+        tr.innerHTML = `<td class="py-2 pr-3">${escHtml(r.stage)}</td>
+            <td class="py-2 pr-3">${r.started_in_window}</td>
+            <td class="py-2 pr-3">${r.finished}</td>
+            <td class="py-2 pr-3">${rate}</td>
+            <td class="py-2 pr-3">${avgs}</td>
+            <td class="py-2 pr-3">${r.runs_with_attempts_gt_1}</td>
+            <td class="py-2">${r.unfinished_started_in_window}</td>`;
+        tb.appendChild(tr);
+    }
+    if (!rows.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="7" class="py-2 text-gray-500">No runs in window.</td>';
+        tb.appendChild(tr);
+    }
+}
+
+async function loadRunMetrics() {
+    const h = parseFloat(document.getElementById('run-metrics-hours').value) || 24;
+    try {
+        const res = await fetch('/api/admin/pipeline/run-metrics?window_hours=' + encodeURIComponent(h));
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || res.statusText);
+        renderRunMetrics(data.by_stage || []);
+    } catch (e) {
+        showToast('Failed to load run metrics: ' + e.message, true);
+    }
+}
+
+function renderStuckRuns(data) {
+    const hint = document.getElementById('stuck-threshold-hint');
+    hint.textContent = 'threshold: ' + (data.threshold_seconds || '—') + 's';
+    const tb = document.getElementById('stuck-runs-body');
+    tb.innerHTML = '';
+    const runs = data.runs || [];
+    for (const r of runs) {
+        const tr = document.createElement('tr');
+        tr.className = 'border-b border-gray-100 dark:border-gray-700';
+        const tgt = (r.target_type != null) ? `${r.target_type}:${r.target_id}` : '—';
+        tr.innerHTML = `<td class="py-2 pr-3 font-mono">${r.id}</td>
+            <td class="py-2 pr-3">${escHtml(r.stage)}</td>
+            <td class="py-2 pr-3">${r.age_seconds}</td>
+            <td class="py-2 pr-3 text-xs">${escHtml(r.started_at || '—')}</td>
+            <td class="py-2 pr-3">${tgt}</td>
+            <td class="py-2">${r.attempts ?? '—'}</td>`;
+        tb.appendChild(tr);
+    }
+    if (!runs.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="6" class="py-2 text-gray-500">No stuck runs.</td>';
+        tb.appendChild(tr);
+    }
+}
+
+async function loadStuckRuns() {
+    try {
+        const res = await fetch('/api/admin/pipeline/stuck?limit=100');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || res.statusText);
+        renderStuckRuns(data);
+    } catch (e) {
+        showToast('Failed to load stuck runs: ' + e.message, true);
+    }
+}
 
 async function runPipelineCoarse() {
     const fromStage = document.getElementById('run-from-stage').value;
@@ -263,6 +490,9 @@ async function runPipelineCoarse() {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || res.statusText);
         showToast('Pipeline run finished. success=' + data.success + ' run_group_id=' + (data.run_group_id || ''), false);
+        loadStageSnapshot();
+        loadRunMetrics();
+        loadStuckRuns();
         loadFailedEntities();
         loadRuns();
         loadAudit();
@@ -292,6 +522,9 @@ async function runReplay() {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || res.statusText);
         showToast('Replay finished. success=' + data.success, false);
+        loadStageSnapshot();
+        loadRunMetrics();
+        loadStuckRuns();
         loadFailedEntities();
         loadRuns();
         loadAudit();
@@ -462,6 +695,9 @@ async function discardRun(id) {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || res.statusText);
         showToast('Discarded run ' + id, false);
+        loadStageSnapshot();
+        loadRunMetrics();
+        loadStuckRuns();
         loadFailedEntities();
         loadRuns();
         loadAudit();
@@ -480,6 +716,9 @@ async function retryRun(id) {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || res.statusText);
         showToast('Retry submitted. new_run_group_id=' + (data.new_run_group_id || ''), false);
+        loadStageSnapshot();
+        loadRunMetrics();
+        loadStuckRuns();
         loadFailedEntities();
         loadRuns();
         loadAudit();

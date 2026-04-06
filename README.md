@@ -88,6 +88,7 @@ Comprehensive improvements to LLM output quality and content intelligence.
 - [x] **LLM Model Evaluation** (#99): Research complete - Qwen 2.5 recommended (see ADR-0025)
 - [x] **Model Configuration Profiles** (#100): Fast/Balanced/Quality profiles with Qwen 2.5, admin UI at `/admin/models`
 - [x] **Pipeline operator** (#277 / #293): Admin UI at `/admin/pipeline` for manual runs, targeted replay, dead-letter retry/discard, failed article/story list and actions, and audit log (`GET /api/admin/pipeline/audit`)
+- [x] **Pipeline monitoring** (#276): Stage-aware JSON endpoints for backlog and run health (`GET /api/admin/pipeline/stages`, `.../run-metrics`, `.../stuck`); same data is summarized on `/admin/pipeline`. Optional alerting can poll these endpoints (see **Pipeline monitoring** below)
 - [x] **RAG Integration Research** (#108): Light RAG with pgvector recommended (see ADR-0026)
 - [x] **Fine-Tuning Feasibility** (#109): Deferred - better alternatives first (see ADR-0027)
 
@@ -115,6 +116,20 @@ Standardized on PostgreSQL for all environments (ADR-0022).
 - ✅ **Database Schema**: New status/progress columns in `import_history` table
 
 📚 **[Full Release History →](docs/releases/README.md)**
+
+### Pipeline monitoring (#276)
+
+These endpoints describe **in-app** pipeline backlog and stage runs (article/story `processing_state` and `pipeline_stage_runs`). They do **not** depend on Tekton, Argo, or other CI/CD machinery.
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/admin/pipeline/stages` | Counts per `processing_state` for items and stories; optional oldest timestamp per non-empty state |
+| `GET /api/admin/pipeline/run-metrics?window_hours=24` | Per coarse stage (`ingest`, `enrich`, `story_generation`, …): started/finished counts, success rate among finished runs, average duration, retry-heavy runs |
+| `GET /api/admin/pipeline/stuck?max_age_seconds=&limit=` | In-flight stage runs with no `finished_at` and `started_at` older than the threshold |
+
+**Stuck threshold:** default **3600** seconds (`PIPELINE_STUCK_AFTER_SECONDS`). Minimum override **60** via query param or env.
+
+**Suggested alerting (external):** Alert if `GET .../stuck` returns `count > 0`; if any `success_rate_finished` in `.../run-metrics` drops below an agreed floor over your usual window; if `stages` shows sustained growth in pre-terminal article/story states. Tune thresholds to your workload and cron/scheduler interval.
 
 ## 🚀 Quick Start
 
