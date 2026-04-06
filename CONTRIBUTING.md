@@ -149,24 +149,22 @@ When a PR **adds or changes** files under `alembic/versions/`, every environment
 
 ## Branching Strategy
 
+Single-maintainer workflow: **work on `dev`**, **cut releases from `main`**.
+
 | Branch | Purpose |
 |--------|---------|
-| `main` | Production releases |
-| `dev` | Integration branch |
-| `feature/*` | New features |
-| `fix/*` | Bug fixes |
+| `dev` | Day-to-day development; push here. Tekton `ci-dev` runs on **`push` to `dev`** (when the [webhook relay](docs/development/KUBERNETES.md) path is up). |
+| `main` | Production releases only — merge or promote from `dev` when you ship. Tekton `ci-prod` runs on **`push` to `main`**. |
 
-### Workflow
+Long-lived `feature/*` / `fix/*` branches are optional; avoid them unless you truly need isolation, since they add merge overhead for a solo setup.
 
-1. Create feature branch from `dev`
-2. Make changes with pre-commit hooks active
-3. Push and create PR to `dev`
-4. After review, merge to `dev`
-5. Periodically merge `dev` to `main` for releases
+### GitHub webhook (push → Tekton)
+
+GitHub should have a **`push`** webhook pointing at your Smee URL (see `tekton/triggers/smee-config.yaml`). **“Delivery: OK” in GitHub only means Smee accepted the payload** — you still need **`kubectl port-forward svc/el-newsbrief-listener 8080:8080`** and **`./scripts/smee-client.sh`** running so events reach the cluster EventListener. The webhook **secret** in GitHub must match **`github-webhook-secret`** in the cluster (`token` key). Details: [KUBERNETES.md — Webhooks](docs/development/KUBERNETES.md).
 
 ## Pull Request Checklist
 
-Before submitting a PR:
+Before pushing to `dev` (or before opening a PR, if you use one for notes/review):
 
 - [ ] Pre-commit hooks pass (`pre-commit run --all-files`)
 - [ ] Tests pass (`pytest tests/ -v`)
