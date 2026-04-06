@@ -851,7 +851,7 @@ flowchart LR
     end
 
     subgraph Finally["Finally (Always Runs)"]
-        Notify["notify-ntfy<br/>notify-slack"]
+        Notify["notify-ntfy"]
     end
 
     subgraph Delivery["Notifications"]

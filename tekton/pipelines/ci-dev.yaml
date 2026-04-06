@@ -110,19 +110,3 @@ spec:
           value: "default"
         - name: tags
           value: "white_check_mark,pipeline,dev"
-
-    # Slack (disabled by default - enable by creating slack-webhook secret)
-    - name: notify-slack
-      taskRef:
-        name: notify-slack
-      params:
-        - name: pipeline-name
-          value: "ci-dev"
-        - name: pipeline-run
-          value: "$(context.pipelineRun.name)"
-        - name: status
-          value: "$(tasks.status)"
-        - name: git-revision
-          value: "$(params.revision)"
-        - name: environment
-          value: "dev"

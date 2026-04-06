@@ -136,6 +136,19 @@ def idempotency_feed():
             {"h": url_hash(article_url)},
         )
         s.execute(text("DELETE FROM feeds WHERE url = :u"), {"u": feed_url})
+        # Other tests insert feeds with explicit ids (e.g. id=1) without advancing the
+        # PostgreSQL sequence; realign so SERIAL allocates a free id (CI Tekton runs full suite).
+        s.execute(
+            text(
+                """
+                SELECT setval(
+                    pg_get_serial_sequence('feeds', 'id'),
+                    COALESCE((SELECT MAX(id) FROM feeds), 0),
+                    true
+                )
+                """
+            )
+        )
         res = s.execute(
             text(
                 """
@@ -190,12 +203,13 @@ def test_double_refresh_rss_no_second_row(
     rss = _rss_one_item(article_url=article_url)
     html = _html_article("BODY_MARK_RSS_STABLE")
 
+    # Second refresh: feed is fetched again, but the RSS entry is unchanged so
+    # should_reingest_existing_item() is false and the article URL is not re-fetched.
     q: deque[tuple[str, bytes, str]] = deque(
         [
             (feed_url, rss, "application/rss+xml; charset=utf-8"),
             (article_url, html, "text/html; charset=utf-8"),
             (feed_url, rss, "application/rss+xml; charset=utf-8"),
-            (article_url, html, "text/html; charset=utf-8"),
         ]
     )
     mock_client_cls.return_value = _install_httpx_mock(feed_url, q)

@@ -7,7 +7,9 @@ metadata:
 spec:
   description: |
     Send notifications via ntfy.sh for pipeline status updates.
-    Delivers native push notifications to macOS, iOS, Android, and web.
+    Subscribers must add this topic in the ntfy app or open
+    https://ntfy.sh/<topic> (default topic: newsbrief-ci) to receive messages.
+    Topic is public unless you self-host ntfy with access control.
   params:
     - name: topic
       description: ntfy.sh topic name (use unique name for privacy)
@@ -42,25 +44,13 @@ spec:
         echo "   Title: $(params.title)"
         echo "   Priority: $(params.priority)"
 
-        # Build curl command
-        CURL_ARGS="-s"
-        CURL_ARGS="$CURL_ARGS -H 'Title: $(params.title)'"
-        CURL_ARGS="$CURL_ARGS -H 'Priority: $(params.priority)'"
-        CURL_ARGS="$CURL_ARGS -H 'Tags: $(params.tags)'"
-
-        # Add click URL if provided
-        if [ -n "$(params.click-url)" ]; then
-          CURL_ARGS="$CURL_ARGS -H 'Click: $(params.click-url)'"
-        fi
-
-        # Send notification
-        curl -s \
+        # -f: fail on HTTP 4xx/5xx so the step errors instead of printing false success
+        curl -fsS \
           -H "Title: $(params.title)" \
           -H "Priority: $(params.priority)" \
           -H "Tags: $(params.tags)" \
-          ${CLICK_HEADER:-} \
           -d "$(params.message)" \
           "https://ntfy.sh/$(params.topic)"
 
         echo ""
-        echo "✅ Notification sent successfully"
+        echo "✅ ntfy accepted the message (subscribe to topic $(params.topic) in the ntfy app to see it)"

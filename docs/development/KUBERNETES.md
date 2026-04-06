@@ -178,12 +178,13 @@ kubectl apply -f k8s/infrastructure/tekton-rbac.yaml
 ### Development Pipeline
 
 ```bash
-# Run the dev pipeline
-tkn pipeline start ci-dev \
+# Run the dev pipeline (from repo root so the workspace template path resolves)
+# ci-dev only declares repo-url + revision; it requires a `source` workspace — without
+# --workspace, tkn prompts interactively.
+tkn pipeline start ci-dev -n default \
   --workspace name=source,volumeClaimTemplateFile=tekton/pipelineruns/workspace-template.yaml \
   --param repo-url=https://github.com/Deim0s13/newsbrief.git \
   --param revision=dev \
-  --param image-tag=dev-latest \
   --showlog
 ```
 

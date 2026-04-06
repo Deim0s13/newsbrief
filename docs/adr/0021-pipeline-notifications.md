@@ -103,68 +103,7 @@ spec:
         echo "✅ Notification sent to ntfy.sh/$(params.topic)"
 ```
 
-### 2. Slack Notification Task (Groundwork)
-
-```yaml
-# tekton/tasks/notify-slack.yaml
-apiVersion: tekton.dev/v1beta1
-kind: Task
-metadata:
-  name: notify-slack
-spec:
-  params:
-    - name: webhook-url-secret
-      description: Name of secret containing Slack webhook URL
-      default: "slack-webhook"
-    - name: webhook-url-key
-      description: Key in secret for webhook URL
-      default: "url"
-    - name: channel
-      description: Slack channel (optional, uses webhook default)
-      default: ""
-    - name: message
-      description: Message to send
-    - name: status
-      description: Pipeline status (success/failure)
-      default: "failure"
-  steps:
-    - name: send-slack
-      image: curlimages/curl:latest
-      env:
-        - name: SLACK_WEBHOOK_URL
-          valueFrom:
-            secretKeyRef:
-              name: $(params.webhook-url-secret)
-              key: $(params.webhook-url-key)
-              optional: true
-      script: |
-        #!/bin/sh
-        if [ -z "$SLACK_WEBHOOK_URL" ]; then
-          echo "⏭️ Slack notifications disabled (no webhook configured)"
-          exit 0
-        fi
-
-        # Set color based on status
-        if [ "$(params.status)" = "success" ]; then
-          COLOR="good"
-          EMOJI=":white_check_mark:"
-        else
-          COLOR="danger"
-          EMOJI=":x:"
-        fi
-
-        curl -s -X POST "$SLACK_WEBHOOK_URL" \
-          -H "Content-Type: application/json" \
-          -d "{
-            \"attachments\": [{
-              \"color\": \"$COLOR\",
-              \"text\": \"$EMOJI $(params.message)\"
-            }]
-          }"
-        echo "✅ Slack notification sent"
-```
-
-### 3. Pipeline Integration
+### 2. Pipeline Integration (ntfy only)
 
 ```yaml
 # In ci-dev.yaml and ci-prod.yaml
@@ -208,7 +147,7 @@ finally:
         value: "white_check_mark,pipeline"
 ```
 
-### 4. macOS Setup
+### 3. macOS Setup
 
 ```bash
 # Install ntfy macOS app
@@ -227,17 +166,6 @@ brew install --cask ntfy
 | Variable | Purpose | Required |
 |----------|---------|----------|
 | `NTFY_TOPIC` | ntfy.sh topic name | Yes (default: newsbrief-ci) |
-| `slack-webhook` secret | Slack webhook URL | No (disabled if missing) |
-
-### Enabling Slack (Future)
-
-1. Create Slack incoming webhook
-2. Create Kubernetes secret:
-   ```bash
-   kubectl create secret generic slack-webhook \
-     --from-literal=url=https://hooks.slack.com/services/XXX/YYY/ZZZ
-   ```
-3. Add `notify-slack` task to pipeline `finally` block
 
 ## Consequences
 
@@ -246,7 +174,6 @@ brew install --cask ntfy
 - ✅ Native macOS system notifications
 - ✅ No local infrastructure to maintain
 - ✅ Works when laptop sleeps/wakes
-- ✅ Slack ready to enable for team use
 - ✅ Zero cost (ntfy.sh free tier)
 
 ### Negative
@@ -257,7 +184,6 @@ brew install --cask ntfy
 ### Mitigations
 - Use unique, hard-to-guess topic names (e.g., `newsbrief-ci-a8x9k2`)
 - For sensitive environments, self-host ntfy server
-- Slack provides private alternative for teams
 
 ## Alternatives Considered
 

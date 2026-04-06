@@ -47,11 +47,11 @@ security-scan ──► sign-image ──► generate-sbom
 ### Running Pipelines
 
 ```bash
-# Development pipeline
-tkn pipeline start ci-dev \
+# Development pipeline (repo root or absolute path to workspace-template.yaml)
+tkn pipeline start ci-dev -n default \
   --workspace name=source,volumeClaimTemplateFile=tekton/pipelineruns/workspace-template.yaml \
+  --param repo-url=https://github.com/Deim0s13/newsbrief.git \
   --param revision=dev \
-  --param image-tag=dev-latest \
   --showlog
 
 # Production pipeline
@@ -444,7 +444,7 @@ Bitwarden items required:
 - **ArgoCD Integration** - GitOps deployment with auto-sync
 - **Tekton Triggers** - GitHub webhook-triggered pipelines
 - **Tekton Dashboard** - Visual pipeline monitoring (localhost:9097)
-- **Pipeline Notifications** - ntfy.sh and Slack alerts
+- **Pipeline Notifications** - ntfy.sh (subscribe to topic `newsbrief-ci` in the ntfy app)
 - **Persistent Storage** - PVC for prod data persistence
 - **Smee Webhook Relay** - GitHub webhook forwarding to local cluster
 - **Bitwarden Secrets** - Automated cosign key management via `bw` CLI
