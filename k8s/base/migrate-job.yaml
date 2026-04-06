@@ -1,6 +1,7 @@
 # Runs Alembic against the same DATABASE_URL as the API Deployment.
-# Sync wave 1 applies after ConfigMap (wave 0); Argo CD waits for Job success before wave 2 (Deployment).
-# Replace=true: Job spec.template is immutable in Kubernetes; replace recreates the Job when the image or env changes.
+# Wave 1 after ConfigMap (wave 0); Deployment is wave 2.
+# Sync hook + BeforeHookCreation: Kubernetes Job pod templates are immutable — delete previous Job
+# before applying the new one (Replace=true uses kubectl replace and fails validation).
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -9,8 +10,9 @@ metadata:
     app.kubernetes.io/name: newsbrief
     app.kubernetes.io/component: db-migrate
   annotations:
+    argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/sync-wave: "1"
-    argocd.argoproj.io/sync-options: Replace=true
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 spec:
   ttlSecondsAfterFinished: 3600
   backoffLimit: 2
