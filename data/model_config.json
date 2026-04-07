@@ -2,6 +2,7 @@
   "version": "2.0",
   "description": "LLM model configuration with profile support",
   "embedding": {
+    "enabled": true,
     "model_version": "1.0",
     "active_profile": "fast",
     "profiles": {

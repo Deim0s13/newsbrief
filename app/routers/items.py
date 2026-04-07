@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import text
 
 from ..deps import session_scope
+from ..item_embeddings import maybe_embed_item_after_summary
 from ..llm import OLLAMA_BASE_URL, get_llm_service, is_llm_available
 from ..models import (
     ItemOut,
@@ -235,7 +236,7 @@ def generate_summaries(request: SummaryRequest):
                 row = s.execute(
                     text(
                         """
-                    SELECT id, title, content, content_hash,
+                    SELECT id, title, content, summary, content_hash,
                            ai_summary, ai_model, ai_generated_at,
                            structured_summary_json, structured_summary_model,
                            structured_summary_content_hash, structured_summary_generated_at
@@ -258,8 +259,13 @@ def generate_summaries(request: SummaryRequest):
                     errors += 1
                     continue
 
-                title, content, content_hash = row[1] or "", row[2] or "", row[3]
-                structured_json, structured_model = row[7], row[8]
+                title, content, feed_summary, content_hash = (
+                    row[1] or "",
+                    row[2] or "",
+                    row[3],
+                    row[4],
+                )
+                structured_json, structured_model = row[8], row[9]
                 active_model = get_settings_service().get_active_model()
 
                 if (
@@ -274,8 +280,8 @@ def generate_summaries(request: SummaryRequest):
                             content_hash or "",
                             structured_model,
                             (
-                                datetime.fromisoformat(row[10])
-                                if row[10]
+                                datetime.fromisoformat(row[11])
+                                if row[11]
                                 else datetime.now(timezone.utc)
                             ),
                         )
@@ -297,15 +303,15 @@ def generate_summaries(request: SummaryRequest):
                         )
                 elif (
                     not request.use_structured
-                    and row[4]
+                    and row[5]
                     and not request.force_regenerate
                 ):
                     results.append(
                         SummaryResultOut(
                             item_id=item_id,
                             success=True,
-                            summary=row[4],
-                            model=row[5] or "existing",
+                            summary=row[5],
+                            model=row[6] or "existing",
                             cache_hit=True,
                         )
                     )
@@ -363,6 +369,14 @@ def generate_summaries(request: SummaryRequest):
                             },
                         )
                     summaries_generated += 1
+                    maybe_embed_item_after_summary(
+                        s,
+                        item_id,
+                        title,
+                        result,
+                        use_structured=request.use_structured,
+                        feed_summary=feed_summary,
+                    )
                 else:
                     errors += 1
 

@@ -107,6 +107,7 @@ See [ADR-0022](../adr/0022-dev-prod-database-parity.md) for PostgreSQL parity. H
 
 - **Extension:** Migrations enable `vector` via `CREATE EXTENSION`. Dev/prod Docker DB images use **`pgvector/pgvector:pg16`** (`compose.yaml`, `compose.dev.yaml`). External PostgreSQL hosts must have [pgvector](https://github.com/pgvector/pgvector) installed separately.
 - **Tables:** `items` and `stories` have nullable `embedding vector(768)`, plus `embedding_model`, `embedding_version`, and `embedded_at` (Alembic `016` + `017`). The embedding service (#251, `app/embedding_service.py`) uses Ollama and **`model_config.json`** (`embedding` section); output width must match the DB (see `NEWSBRIEF_EMBEDDING_MODEL` / `NEWSBRIEF_EMBEDDING_DIMENSIONS`).
+- **Article embeddings (#252):** After a **fresh** `POST /summarize` (not cache-hit shortcuts), the app calls **`app/item_embeddings.py`** to embed **title + summary** (structured or plain) and update the row. Disable with **`NEWSBRIEF_EMBEDDING_ENABLED=false`** or **`embedding.enabled: false`** in `model_config.json`. Failures are logged; the summary write still succeeds.
 - **Indexes:** Partial **IVFFlat** indexes (`idx_items_embedding`, `idx_stories_embedding`) use cosine distance on non-null embeddings. Re-tune `lists` in Alembic migrations as row counts grow.
 
 ### **Pipeline operator controls (#277)** ⭐
