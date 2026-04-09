@@ -29,6 +29,14 @@ from app.stories import (
 from tests.pg_testutil import pg_session_truncate_story_graph
 
 
+@pytest.fixture(autouse=True)
+def disable_embedding_for_incremental_tests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Story synthesis hooks call Ollama; keep these DB tests offline."""
+    monkeypatch.setenv("NEWSBRIEF_EMBEDDING_ENABLED", "0")
+
+
 def setup_test_db():
     """Reset story-related tables, seed feed and ten articles (ids 1–10)."""
     session = pg_session_truncate_story_graph()

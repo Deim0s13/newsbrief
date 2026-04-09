@@ -81,6 +81,7 @@ from .prompts import (
     parse_refinement_response,
 )
 from .quality_metrics import QualityBreakdown, calculate_quality_score, log_llm_metrics
+from .story_embeddings import maybe_embed_story_after_synthesis
 
 logger = logging.getLogger(__name__)
 
@@ -874,6 +875,8 @@ def update_story_with_new_articles(
         f"Created story #{new_story_id} v{new_version} "
         f"(supersedes #{old_story_id} v{old_version})"
     )
+
+    maybe_embed_story_after_synthesis(session, new_story)
 
     return new_story_id  # type: ignore[return-value]
 
@@ -3242,6 +3245,9 @@ def generate_stories_simple(
                     context="generate_stories_simple:link_articles",
                 )
             continue
+
+    for story, _article_ids in stories_to_create:
+        maybe_embed_story_after_synthesis(session, story)
 
     # Single commit for ALL stories
     try:
