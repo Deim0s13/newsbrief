@@ -14,6 +14,7 @@ labels:
 
 resources:
   - ../../base
+  - embed-backfill-job.yaml  # PostSync embedding backfill (prod only; #254)
   - pdb.yaml  # PodDisruptionBudget for HA
   - pvc.yaml  # Persistent storage for data
 

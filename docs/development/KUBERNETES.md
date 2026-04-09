@@ -461,14 +461,17 @@ k8s/
 │   ├── kustomization.yaml
 │   ├── namespace.yaml
 │   ├── configmap.yaml
-│   ├── migrate-job.yaml     # Alembic `upgrade head` (Argo CD sync wave 1)
+│   ├── migrate-job.yaml     # Alembic `upgrade head` (Argo CD Sync hook, wave 1)
 │   ├── deployment.yaml
 │   └── service.yaml
 ├── overlays/
 │   ├── dev/                 # Dev overrides
 │   │   └── kustomization.yaml
 │   └── prod/                # Prod overrides
-│       └── kustomization.yaml
+│       ├── kustomization.yaml
+│       ├── embed-backfill-job.yaml  # `embed-backfill` CLI (PostSync hook; #254)
+│       ├── deployment-patch.yaml
+│       └── …
 └── argocd/                  # ArgoCD applications
     ├── kustomization.yaml
     ├── project.yaml
@@ -658,7 +661,10 @@ Resources deploy in order using Argo CD sync waves (lower numbers first; Argo CD
 1. **Wave -1**: Namespace (and prod-only resources such as PVC that use wave -1)
 2. **Wave 0**: ConfigMaps (e.g. `newsbrief-config` including `DATABASE_URL`)
 3. **Wave 1**: **`Job` `newsbrief-db-migrate`** — runs `alembic upgrade head` using the same image and `envFrom` as the API pod. The Job uses Argo **Sync** hook + **`hook-delete-policy: BeforeHookCreation`** so a new Job can replace the old one (plain `Replace=true` breaks Job validation on many clusters).
-4. **Wave 2**: Deployment, Service
+
+4. **Wave 2**: **`Deployment` `newsbrief`** — API pods (same ordering as before).
+
+5. **PostSync (wave 3, prod only)**: **`Job` `newsbrief-embed-backfill`** (`k8s/overlays/prod/embed-backfill-job.yaml`) — runs `python -m app.cli embed-backfill` with production `DATABASE_URL`, `OLLAMA_BASE_URL`, and embedding settings from **`newsbrief-config`**. Runs **after** the Deployment is healthy so each **newsbrief-prod** sync backfills rows still missing vectors (re-sync with nothing to do exits quickly). **Dev** overlay does not include this Job; use the CLI locally with `--dev` if you need the same behavior. Tuned with **`activeDeadlineSeconds: 7200`**; increase via overlay patch if a large corpus needs longer. A failing Job fails the Argo sync hook so the operator sees it. Tekton **`ci-prod`** does not run backfill directly; it relies on this hook after **`update-manifest`** triggers Argo.
 
 **Plain `kubectl apply -k`**: Kubernetes does not interpret Argo sync waves; resources may be applied in an arbitrary order and nothing waits for the Job before starting pods. Prefer Argo CD for cluster deploys, or run migrations explicitly first (apply ConfigMap and Job, `kubectl wait --for=condition=complete job/newsbrief-db-migrate -n <namespace>`, then apply the rest).
 
