@@ -10,6 +10,7 @@ from typing import List, Optional
 
 from sqlalchemy import text
 
+from .datetime_utils import coerce_datetime
 from .db import session_scope
 from .models import (
     ChunkSummary,
@@ -600,9 +601,7 @@ JSON Response:"""
 
                 if row and row[0]:
                     # Parse from database
-                    generated_at = (
-                        datetime.fromisoformat(row[1]) if row[1] else datetime.now()
-                    )
+                    generated_at = coerce_datetime(row[1]) or datetime.now()
                     return StructuredSummary.from_json_string(
                         row[0], content_hash, model, generated_at
                     )

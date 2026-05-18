@@ -9,6 +9,7 @@ from typing import Any, List, Optional
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import text
 
+from ..datetime_utils import coerce_datetime
 from ..deps import session_scope
 from ..item_embeddings import maybe_embed_item_after_summary
 from ..llm import OLLAMA_BASE_URL, get_llm_service, is_llm_available
@@ -40,11 +41,7 @@ def _parse_structured(
             r[idx_json],
             r[idx_chash] or r[idx_content_hash] or "",
             r[idx_model],
-            (
-                datetime.fromisoformat(r[idx_ts])
-                if r[idx_ts]
-                else datetime.now(timezone.utc)
-            ),
+            coerce_datetime(r[idx_ts]) or datetime.now(timezone.utc),
         )
     except Exception as e:
         logger.warning(f"Failed to parse structured summary for item {r[0]}: {e}")
@@ -279,11 +276,7 @@ def generate_summaries(request: SummaryRequest):
                             structured_json,
                             content_hash or "",
                             structured_model,
-                            (
-                                datetime.fromisoformat(row[11])
-                                if row[11]
-                                else datetime.now(timezone.utc)
-                            ),
+                            coerce_datetime(row[11]) or datetime.now(timezone.utc),
                         )
                         results.append(
                             SummaryResultOut(

@@ -45,6 +45,7 @@ from .context_manager import (
     select_articles_for_synthesis,
 )
 from .credibility import canonicalize_domain
+from .datetime_utils import coerce_datetime
 from .entities import ExtractedEntities, extract_and_cache_entities, get_entity_overlap
 from .llm import get_llm_service
 from .llm_output import SynthesisOutput, get_circuit_breaker, parse_and_validate
@@ -114,13 +115,7 @@ def _parse_datetime(value: Any) -> Optional[datetime]:
 
     Handles both ISO strings (e.g. from raw SQL) and ``datetime`` objects (ORM).
     """
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value
-    if isinstance(value, str):
-        return datetime.fromisoformat(value)
-    return None
+    return coerce_datetime(value)
 
 
 def _build_in_clause_params(

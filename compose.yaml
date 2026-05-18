@@ -6,7 +6,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./Caddyfile.compose:/etc/caddy/Caddyfile:ro
       - caddy_data:/data      # Persist certificates
       - caddy_config:/config  # Persist config
     depends_on:
