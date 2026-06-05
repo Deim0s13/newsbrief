@@ -13,6 +13,9 @@ filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::pytest.PytestReturnNotNoneWarning",
 ]
+markers = [
+    "requires_ollama: marks tests that need a live Ollama instance (deselect with -m 'not requires_ollama')",
+]
 
 [tool.coverage.run]
 source = ["app"]

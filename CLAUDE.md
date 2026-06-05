@@ -37,12 +37,18 @@ make dev-full       # db-up + wait + dev in one command
 
 ### Tests
 ```bash
-pytest tests/ -v                             # All tests (requires dev DB at localhost:5433)
-pytest tests/test_stories.py -v              # Single test file
-pytest tests/ -v -k "test_ranking"           # Single test by name
-CI=true pytest tests/ -v                     # Skip LLM-dependent tests
-pytest tests/ --cov=app --cov-report=term    # With coverage (threshold: 34%)
+pytest tests/ -v                                    # All non-LLM tests (requires dev DB at localhost:5433)
+pytest tests/ -v -m "not requires_ollama"           # Same — explicit (what CI runs)
+pytest tests/ -v -m "requires_ollama"               # LLM tests only (requires Ollama running)
+pytest tests/test_stories.py -v                     # Single test file
+pytest tests/ -v -k "test_ranking"                  # Single test by name
+pytest tests/ --cov=app --cov-report=term           # With coverage (threshold: 34%)
 ```
+
+Tests are split into three categories:
+- **Unit / mocked** — always safe, no external deps
+- **DB integration** — hit real PostgreSQL; skip automatically without `DATABASE_URL`
+- **LLM tests** (`@pytest.mark.requires_ollama`) — require live Ollama; excluded from CI via `-m "not requires_ollama"`
 
 Integration tests hit a **real PostgreSQL** (no mocks). Set `DATABASE_URL=postgresql://newsbrief:newsbrief_dev@localhost:5433/newsbrief` or start the dev DB with `make db-up`.
 

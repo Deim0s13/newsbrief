@@ -69,7 +69,7 @@ jobs:
         run: alembic upgrade head
 
       - name: pytest
-        run: pytest tests/ --cov=app --cov-report=term -v --tb=short
+        run: pytest tests/ --cov=app --cov-report=term -v --tb=short -m "not requires_ollama"
 
       - name: mypy
         run: mypy app/ --ignore-missing-imports
