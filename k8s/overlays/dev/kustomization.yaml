@@ -28,8 +28,8 @@ patches:
 
 images:
   - name: localhost:5000/newsbrief
-    newName: kind-registry:5000/newsbrief
-    # Floating tag: build + push with `make push-kind-dev-image` (current dev tree)
+    newName: ghcr.io/deim0s13/newsbrief
+    # Tag updated automatically by ci-dev.yml update-manifest job on each push to dev
     newTag: dev-latest
 
 # Dev-specific configuration overrides

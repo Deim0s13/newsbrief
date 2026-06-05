@@ -43,8 +43,8 @@ patches:
 
 images:
   - name: localhost:5000/newsbrief
-    newName: kind-registry:5000/newsbrief
-    # Patch release: Starlette<1 pin + TemplateResponse / prod image alignment
+    newName: ghcr.io/deim0s13/newsbrief
+    # Tag updated automatically by ci-prod.yml update-manifest job on each release
     newTag: v0.8.3.1
 
 # Prod-specific configuration overrides
