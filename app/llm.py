@@ -114,9 +114,10 @@ class LLMService:
     def is_available(self) -> bool:
         """Check if Ollama service is available."""
         try:
-            # Try to list models to check connectivity
-            self.client.list()
-            return True
+            import httpx
+
+            response = httpx.get(f"{self.base_url}/api/tags", timeout=3.0)
+            return response.status_code == 200
         except Exception as e:
             logger.warning(f"Ollama service not available: {e}")
             return False
