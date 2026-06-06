@@ -38,16 +38,25 @@ kubectl wait \
 
 log "ArgoCD is ready"
 
-# 5. Trigger sync for both apps (async — ArgoCD will reconcile)
+# 5. Ensure ArgoCD Application CRs exist — cluster recreation wipes them
+if ! kubectl get application newsbrief-prod -n argocd >/dev/null 2>&1; then
+    log "ArgoCD Applications not found — applying from k8s/argocd/..."
+    kubectl apply -f "${PROJECT_ROOT}/k8s/argocd/"
+    log "Applications registered"
+else
+    log "ArgoCD Applications already registered"
+fi
+
+# 6. Trigger sync for both apps (async — auto-sync will also pick these up)
 argocd app sync newsbrief-dev --async 2>/dev/null \
     && log "Triggered sync: newsbrief-dev" \
-    || log "Warning: could not sync newsbrief-dev (ArgoCD CLI not configured?)"
+    || log "Warning: could not trigger newsbrief-dev sync (ArgoCD CLI not logged in?)"
 
 argocd app sync newsbrief-prod --async 2>/dev/null \
     && log "Triggered sync: newsbrief-prod" \
-    || log "Warning: could not sync newsbrief-prod"
+    || log "Warning: could not trigger newsbrief-prod sync"
 
-# 6. Re-establish port-forwards (kill any stale ones first)
+# 7. Re-establish port-forwards (kill any stale ones first)
 pkill -f "kubectl port-forward" 2>/dev/null || true
 sleep 1
 
