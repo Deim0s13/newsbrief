@@ -18,7 +18,7 @@ nodes:
     extraPortMappings:
       # HTTP ingress / ArgoCD
       - containerPort: 30080
-        hostPort: 8080
+        hostPort: 18080
         protocol: TCP
       # HTTPS ingress
       - containerPort: 30443

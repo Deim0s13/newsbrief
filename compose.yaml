@@ -33,13 +33,14 @@ services:
   api:
     build: .
     container_name: newsbrief
-    # Note: No port mapping - production only accessible via Caddy proxy at newsbrief.local
-    # For development, run: make dev (uses localhost:8787)
+    # Direct access on 8787 for Windows (TLS via Caddy on newsbrief.local when WSL2 forwarding is set up)
+    ports:
+      - "8787:8787"
     environment:
       ENVIRONMENT: production
       # Database connection - must match POSTGRES_PASSWORD above
       # If you change POSTGRES_PASSWORD, also update DATABASE_URL
-      DATABASE_URL: ${DATABASE_URL:-postgresql://newsbrief:newsbrief_dev@db:5432/newsbrief}
+      DATABASE_URL: ${DATABASE_URL}
       # Ollama LLM connection — Podman resolves host.containers.internal on macOS and Windows
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.containers.internal:11434}
     volumes:
