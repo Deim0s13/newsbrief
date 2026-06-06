@@ -33,15 +33,15 @@ We will add a `synthesis_cache` table that stores LLM synthesis results keyed by
 
 #### 1. Database Cache vs In-Memory Cache
 
-**Decision**: Database cache (SQLite)
+**Decision**: Database cache (same PostgreSQL database as the application; ADR-0022)
 
 | Option | Pros | Cons |
 |--------|------|------|
 | **In-memory (dict/LRU)** | Fast, simple | Lost on restart, memory limits, no persistence |
 | **Redis/Memcached** | Fast, distributed | New dependency, overkill for local-first app |
-| **Database (SQLite)** | Persistent, queryable, no new deps | Slightly slower than memory |
+| **Database (PostgreSQL)** | Persistent, queryable, no new deps | Slightly slower than memory |
 
-**Rationale**: SQLite is already our data store. A database cache:
+**Rationale**: The primary datastore is already PostgreSQL. A database cache:
 - Survives application restarts
 - Can be queried for metrics/debugging
 - Doesn't add dependencies
@@ -128,7 +128,7 @@ CREATE INDEX idx_synthesis_cache_expires ON synthesis_cache(expires_at);
 ✅ **Visibility**: Track token usage and synthesis performance over time
 ✅ **Correctness**: Invalidation ensures stale data doesn't persist
 ✅ **Operational control**: TTL + manual clear for production management
-✅ **No new dependencies**: Uses existing SQLite database
+✅ **No new dependencies**: Uses existing PostgreSQL database
 
 ### Negative
 
@@ -185,7 +185,7 @@ Store synthesis results as JSON files.
 **Rejected because**:
 - Harder to query for metrics
 - File management complexity
-- No benefit over SQLite for our use case
+- No benefit over PostgreSQL for our use case
 
 ## Success Metrics
 

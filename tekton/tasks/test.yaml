@@ -39,7 +39,7 @@ spec:
       description: Coverage percentage achieved
   sidecars:
     - name: postgres
-      image: postgres:16
+      image: pgvector/pgvector:pg16
       env:
         - name: POSTGRES_USER
           value: test
@@ -54,7 +54,7 @@ spec:
         initialDelaySeconds: 2
   steps:
     - name: wait-for-postgres
-      image: postgres:16
+      image: pgvector/pgvector:pg16
       script: |
         #!/usr/bin/env bash
         set -e

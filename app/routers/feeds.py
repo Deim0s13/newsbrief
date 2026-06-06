@@ -16,7 +16,7 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.responses import Response
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 
 from ..deps import limiter, session_scope
 from ..feeds import (
@@ -374,7 +374,9 @@ def bulk_assign_category(feed_ids: List[int], category: str):
 
     with session_scope() as s:
         existing_feeds = s.execute(
-            text("SELECT id FROM feeds WHERE id IN :feed_ids"),
+            text("SELECT id FROM feeds WHERE id IN :feed_ids").bindparams(
+                bindparam("feed_ids", expanding=True)
+            ),
             {"feed_ids": tuple(feed_ids)},
         ).fetchall()
         existing_ids = {row[0] for row in existing_feeds}
@@ -390,7 +392,7 @@ def bulk_assign_category(feed_ids: List[int], category: str):
                 SET category = :category, updated_at = CURRENT_TIMESTAMP
                 WHERE id IN :feed_ids
             """
-            ),
+            ).bindparams(bindparam("feed_ids", expanding=True)),
             {"category": category, "feed_ids": tuple(feed_ids)},
         )
         return {
@@ -411,7 +413,9 @@ def bulk_assign_priority(feed_ids: List[int], priority: int):
 
     with session_scope() as s:
         existing_feeds = s.execute(
-            text("SELECT id FROM feeds WHERE id IN :feed_ids"),
+            text("SELECT id FROM feeds WHERE id IN :feed_ids").bindparams(
+                bindparam("feed_ids", expanding=True)
+            ),
             {"feed_ids": tuple(feed_ids)},
         ).fetchall()
         existing_ids = {row[0] for row in existing_feeds}
@@ -427,7 +431,7 @@ def bulk_assign_priority(feed_ids: List[int], priority: int):
                 SET priority = :priority, updated_at = CURRENT_TIMESTAMP
                 WHERE id IN :feed_ids
             """
-            ),
+            ).bindparams(bindparam("feed_ids", expanding=True)),
             {"priority": priority, "feed_ids": tuple(feed_ids)},
         )
         return {
@@ -574,9 +578,9 @@ def get_feed_stats(feed_id: int):
                 """
                 SELECT
                     COUNT(*) as total_articles,
-                    COUNT(CASE WHEN created_at >= datetime('now', '-1 day') THEN 1 END) as articles_last_24h,
-                    COUNT(CASE WHEN created_at >= datetime('now', '-7 days') THEN 1 END) as articles_last_7d,
-                    COUNT(CASE WHEN created_at >= datetime('now', '-30 days') THEN 1 END) as articles_last_30d,
+                    COUNT(*) FILTER (WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '1 day') as articles_last_24h,
+                    COUNT(*) FILTER (WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '7 days') as articles_last_7d,
+                    COUNT(*) FILTER (WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '30 days') as articles_last_30d,
                     MAX(created_at) as last_fetch_at
                 FROM items
                 WHERE feed_id = :feed_id
@@ -620,8 +624,14 @@ def get_feed_stats(feed_id: int):
 @router.post("/refresh")
 def refresh_endpoint(request: Request):
     """Trigger feed refresh. Rate limited."""
-    from ..scheduler import set_feed_refresh_in_progress
+    from ..scheduler import is_feed_refresh_in_progress, set_feed_refresh_in_progress
 
+    if is_feed_refresh_in_progress():
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse(
+            status_code=409, content={"error": "Feed refresh already in progress"}
+        )
     set_feed_refresh_in_progress(True)
     try:
         stats: RefreshStats = fetch_and_store()

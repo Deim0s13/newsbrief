@@ -76,7 +76,7 @@ Multi-stage Dockerfile, health endpoint, production deployment (`make deploy`), 
 ### v0.7.1 - PostgreSQL Migration
 **January 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.7.1)
 
-PostgreSQL support via `DATABASE_URL`, dual database mode (SQLite dev, Postgres prod), SQLAlchemy ORM models, Alembic migrations.
+PostgreSQL support via `DATABASE_URL`, SQLAlchemy ORM models, Alembic migrations (SQLite later dropped; see ADR-0022).
 
 ---
 

@@ -307,6 +307,38 @@ class SettingsService:
         config = self._load_model_config()
         return config.get("defaults", {})
 
+    def get_embedding_profile_config(self) -> Dict[str, Any]:
+        """
+        Resolved Ollama embedding settings for #251 (separate from chat LLM profiles).
+
+        Returns:
+            profile_id, model, dimensions, model_version (config label, not Ollama tag).
+        """
+        cfg = self._load_model_config().get("embedding", {})
+        profiles: Dict[str, Any] = cfg.get("profiles") or {}
+        active = str(cfg.get("active_profile") or "fast")
+        prof = profiles.get(active) or {}
+        model = os.getenv(
+            "NEWSBRIEF_EMBEDDING_MODEL", str(prof.get("model") or "nomic-embed-text")
+        )
+        dims = prof.get("dimensions", 768)
+        env_dims = os.getenv("NEWSBRIEF_EMBEDDING_DIMENSIONS")
+        if env_dims:
+            try:
+                dims = int(env_dims)
+            except ValueError:
+                logger.warning(
+                    "Invalid NEWSBRIEF_EMBEDDING_DIMENSIONS=%r; using profile value",
+                    env_dims,
+                )
+        version = cfg.get("model_version", "1.0")
+        return {
+            "profile_id": active,
+            "model": model,
+            "dimensions": int(dims),
+            "model_version": str(version),
+        }
+
 
 # Singleton instance
 _settings_service: Optional[SettingsService] = None

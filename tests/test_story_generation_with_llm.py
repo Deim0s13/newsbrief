@@ -4,7 +4,7 @@ Manual test for story generation with real Ollama LLM.
 Tests the complete synthesis pipeline with actual AI generation.
 
 NOTE: These tests require Ollama to be running with llama3.1:8b model.
-They will be skipped in CI where Ollama is not available.
+Run manually with: pytest tests/test_story_generation_with_llm.py -m requires_ollama -v
 
 Uses PostgreSQL via DATABASE_URL (ADR 0022).
 """
@@ -18,6 +18,8 @@ from sqlalchemy import text
 from app.db import SessionLocal, init_db
 from app.llm import get_llm_service
 from app.stories import _generate_story_synthesis, generate_stories_simple
+
+pytestmark = pytest.mark.requires_ollama
 
 
 def _check_llm_available():

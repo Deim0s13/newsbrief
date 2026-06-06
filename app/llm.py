@@ -10,6 +10,7 @@ from typing import List, Optional
 
 from sqlalchemy import text
 
+from .datetime_utils import coerce_datetime
 from .db import session_scope
 from .models import (
     ChunkSummary,
@@ -113,9 +114,10 @@ class LLMService:
     def is_available(self) -> bool:
         """Check if Ollama service is available."""
         try:
-            # Try to list models to check connectivity
-            self.client.list()
-            return True
+            import httpx
+
+            response = httpx.get(f"{self.base_url}/api/tags", timeout=3.0)
+            return response.status_code == 200
         except Exception as e:
             logger.warning(f"Ollama service not available: {e}")
             return False
@@ -600,9 +602,7 @@ JSON Response:"""
 
                 if row and row[0]:
                     # Parse from database
-                    generated_at = (
-                        datetime.fromisoformat(row[1]) if row[1] else datetime.now()
-                    )
+                    generated_at = coerce_datetime(row[1]) or datetime.now()
                     return StructuredSummary.from_json_string(
                         row[0], content_hash, model, generated_at
                     )

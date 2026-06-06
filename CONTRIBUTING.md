@@ -170,14 +170,16 @@ That **`git push origin dev`** and then starts **`ci-dev`** on your cluster (sam
 
 ### GitHub webhook → Tekton (automatic `ci-dev` / `ci-prod`)
 
-After a reboot or when pipelines stop firing on push, start the relay:
+After a reboot or when pipelines stop firing on push, bring up **all** kubectl forwards **and** Smee in one step:
 
 ```bash
-make webhook-relay-start   # background: kubectl port-forward + smee
-make webhook-relay-status  # optional health check
+make port-forwards          # prod 8788, dev 8789, EventListener 8080, dashboard 9097, + smee-client
+make webhook-relay-status   # optional: port 8080 + smee + github-webhook-secret
 ```
 
-Stop with `make webhook-relay-stop`. Logs: `logs/eventlistener-port-forward.log`, `logs/smee-client.log` (ignored by git). Configuration matches `tekton/triggers/smee-config.yaml`. **GitHub “Delivery: OK”** only means Smee received the POST; the EventListener still needs this relay and a **`github-webhook-secret`** that matches GitHub. Details: [KUBERNETES.md — Webhooks](docs/development/KUBERNETES.md).
+`make webhook-relay-start` is the same as `make port-forwards`. Stop **only** Smee with `make webhook-relay-stop`; use `pkill -f "kubectl port-forward"` if you need to tear down forwards too.
+
+Logs: `logs/smee-client.log` (gitignored). Config: `tekton/triggers/smee-config.yaml`. **GitHub “Delivery: OK”** only means Smee received the POST; Tekton still needs this relay and a **`github-webhook-secret`** in `default` matching GitHub’s hook secret. Details: [KUBERNETES.md — Webhooks](docs/development/KUBERNETES.md).
 
 ## Pull Request Checklist
 

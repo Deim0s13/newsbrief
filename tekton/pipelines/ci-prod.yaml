@@ -13,6 +13,11 @@
 #   9. update-manifest - Update Kustomize overlay and push to Git (triggers ArgoCD)
 #  10. cleanup         - Prune old images, branches, and runs (keeps last N)
 #
+#  GitOps (Argo CD): after this pipeline updates manifests, Argo sync applies
+#  `newsbrief-db-migrate` (Pre-Deploy / Sync hook) then the Deployment, then
+#  `newsbrief-embed-backfill` (PostSync hook) so prod gets schema + app + embedding
+#  backfill without a separate Tekton step. See k8s/overlays/prod/embed-backfill-job.yaml.
+#
 # Per ADR-0019: CI/CD Pipeline Design
 # Per ADR-0018: Secure Supply Chain
 

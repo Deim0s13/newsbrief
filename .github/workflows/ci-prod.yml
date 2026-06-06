@@ -1,0 +1,297 @@
+name: CI Prod
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write        # manifest update commit + push, create release tag
+  packages: write        # push to GHCR
+  security-events: write # upload SARIF to GitHub Code Scanning
+  id-token: write        # keyless Cosign OIDC (unused with key-based signing, but harmless)
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: deim0s13/newsbrief
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install formatting tools
+        run: pip install black==24.10.0 isort
+
+      - name: black
+        run: black --check --diff app/ tests/
+
+      - name: isort
+        run: isort --check-only --diff --profile=black app/ tests/
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: newsbrief
+          POSTGRES_PASSWORD: newsbrief
+          POSTGRES_DB: newsbrief_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      CI: "true"
+      DATABASE_URL: postgresql://newsbrief:newsbrief@localhost:5432/newsbrief_test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run migrations
+        run: alembic upgrade head
+
+      - name: pytest
+        run: pytest tests/ --cov=app --cov-report=term -v --tb=short -m "not requires_ollama"
+
+      - name: mypy
+        run: mypy app/ --ignore-missing-imports
+        continue-on-error: true
+
+  build-and-push:
+    name: Build & Push
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      version: ${{ steps.version.outputs.version }}
+      image-ref: ${{ steps.version.outputs.image-ref }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from pyproject.toml
+        id: version
+        run: |
+          VERSION=$(python -c "
+          import re, pathlib
+          content = pathlib.Path('pyproject.toml').read_text()
+          m = re.search(r'^version\s*=\s*\"([^\"]+)\"', content, re.MULTILINE)
+          print(m.group(1))
+          ")
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
+          echo "image-ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v${VERSION}" >> $GITHUB_OUTPUT
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+            GIT_SHA=${{ github.sha }}
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Trivy scan (table — visible in logs)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build-and-push.outputs.digest }}
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+
+      - name: Trivy scan (SARIF — blocks on CRITICAL)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build-and-push.outputs.digest }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL
+          exit-code: "1"
+          limit-severities-for-sarif: true
+
+      - name: Upload SARIF to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: trivy-results.sarif
+
+  sign-image:
+    name: Sign Image
+    runs-on: ubuntu-latest
+    needs: [build-and-push, security-scan]
+    steps:
+      - uses: sigstore/cosign-installer@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sign image by digest
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: |
+          cosign sign --yes --key env://COSIGN_PRIVATE_KEY \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build-and-push.outputs.digest }}
+
+      - name: Verify signature
+        run: |
+          cosign verify --key cosign.pub \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build-and-push.outputs.digest }}
+
+  generate-sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    needs: [build-and-push, security-scan]
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate CycloneDX SBOM
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build-and-push.outputs.digest }}
+          format: cyclonedx
+          output: sbom-${{ needs.build-and-push.outputs.version }}.json
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom-${{ needs.build-and-push.outputs.version }}.json
+          retention-days: 90
+
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [build-and-push, sign-image, generate-sbom]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download SBOM artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sbom
+
+      - name: Generate release notes from commits
+        id: notes
+        run: |
+          # Get commits since last tag
+          LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || git rev-list --max-parents=0 HEAD)
+          {
+            echo "## Changes in v${{ needs.build-and-push.outputs.version }}"
+            echo ""
+            git log --pretty=format:"- %s" "${LAST_TAG}..HEAD" | grep -v '\[skip ci\]' || true
+            echo ""
+            echo "---"
+            echo "**Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v${{ needs.build-and-push.outputs.version }}\`"
+            echo "**Digest:** \`${{ needs.build-and-push.outputs.digest }}\`"
+          } > RELEASE_NOTES.md
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.build-and-push.outputs.version }}
+          name: v${{ needs.build-and-push.outputs.version }}
+          body_path: RELEASE_NOTES.md
+          files: sbom-${{ needs.build-and-push.outputs.version }}.json
+          draft: false
+          prerelease: ${{ contains(needs.build-and-push.outputs.version, 'alpha') || contains(needs.build-and-push.outputs.version, 'beta') || contains(needs.build-and-push.outputs.version, 'rc') }}
+
+  update-manifest:
+    name: Update k8s Manifest
+    runs-on: ubuntu-latest
+    needs: [build-and-push, create-release]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update prod kustomization image tag
+        run: |
+          VERSION="${{ needs.build-and-push.outputs.version }}"
+          sed -i "s/newTag:.*/newTag: v${VERSION}/" k8s/overlays/prod/kustomization.yaml
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add k8s/overlays/prod/kustomization.yaml
+          if git diff --cached --quiet; then
+            echo "No manifest changes needed (version already at v${VERSION})"
+          else
+            git commit -m "chore(cd): deploy v${VERSION} to prod [skip ci]"
+            git push
+          fi
+
+  notify:
+    name: Notify
+    runs-on: ubuntu-latest
+    needs: [lint, test, build-and-push, security-scan, sign-image, generate-sbom, create-release, update-manifest]
+    if: always()
+    steps:
+      - name: Send ntfy notification
+        run: |
+          if echo '${{ toJSON(needs) }}' | grep -q '"result":"failure"'; then
+            PRIORITY="urgent"
+            EMOJI="❌"
+            STATUS="FAILED"
+          else
+            PRIORITY="default"
+            EMOJI="🚀"
+            STATUS="released"
+          fi
+          curl -s -X POST \
+            -H "Priority: ${PRIORITY}" \
+            -H "Title: NewsBrief CI prod ${EMOJI}" \
+            -d "${STATUS}: v${{ needs.build-and-push.outputs.version }} — ${{ github.event.head_commit.message }}" \
+            "https://ntfy.sh/${{ secrets.NTFY_TOPIC }}"

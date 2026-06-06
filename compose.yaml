@@ -6,7 +6,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./Caddyfile.compose:/etc/caddy/Caddyfile:ro
       - caddy_data:/data      # Persist certificates
       - caddy_config:/config  # Persist config
     depends_on:
@@ -14,7 +14,7 @@ services:
     restart: unless-stopped
 
   db:
-    image: postgres:16
+    image: pgvector/pgvector:pg16
     container_name: newsbrief-db
     environment:
       POSTGRES_DB: newsbrief
@@ -40,19 +40,13 @@ services:
       # Database connection - must match POSTGRES_PASSWORD above
       # If you change POSTGRES_PASSWORD, also update DATABASE_URL
       DATABASE_URL: ${DATABASE_URL:-postgresql://newsbrief:newsbrief_dev@db:5432/newsbrief}
-      # Ollama LLM connection
-      # Docker Desktop on macOS/Windows:
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-      # On Podman, override to:
-      # OLLAMA_BASE_URL=http://host.containers.internal:11434
+      # Ollama LLM connection — Podman resolves host.containers.internal on macOS and Windows
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.containers.internal:11434}
     volumes:
       - newsbrief_data:/app/data
     depends_on:
       db:
         condition: service_healthy
-    # For Docker on Linux, uncomment to resolve host.docker.internal
-    # extra_hosts:
-    #   - "host.docker.internal:host-gateway"
 
 volumes:
   postgres_data:

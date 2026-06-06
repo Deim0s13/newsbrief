@@ -10,6 +10,7 @@ from typing import List
 from fastapi import APIRouter, HTTPException, Query, Request
 from sqlalchemy import text
 
+from ..datetime_utils import coerce_datetime
 from ..deps import limiter, session_scope
 from ..models import (
     ItemOut,
@@ -316,11 +317,7 @@ def get_story_articles(story_id: int):
                         r[10],
                         r[12] or r[5] or "",
                         r[11],
-                        (
-                            datetime.fromisoformat(r[13])
-                            if r[13]
-                            else datetime.now(timezone.utc)
-                        ),
+                        coerce_datetime(r[13]) or datetime.now(timezone.utc),
                     )
                 except Exception as e:
                     logger.warning(

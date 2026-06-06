@@ -6,15 +6,19 @@ Tests:
 - Finding overlapping stories by article IDs
 - Updating stories with new articles
 - Version tracking and supersession
+
+Uses PostgreSQL via DATABASE_URL (ADR-0022).
 """
+import os
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import text
+
+if not os.environ.get("DATABASE_URL"):
+    pytest.skip("PostgreSQL required (set DATABASE_URL)", allow_module_level=True)
 
 from app.stories import (
-    Base,
     Story,
     StoryArticle,
     create_story,
@@ -22,77 +26,52 @@ from app.stories import (
     link_articles_to_story,
     update_story_with_new_articles,
 )
+from tests.pg_testutil import pg_session_truncate_story_graph
+
+
+@pytest.fixture(autouse=True)
+def disable_embedding_for_incremental_tests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Story synthesis hooks call Ollama; keep these DB tests offline."""
+    monkeypatch.setenv("NEWSBRIEF_EMBEDDING_ENABLED", "0")
 
 
 def setup_test_db():
-    """Create a temporary test database with all required tables."""
-    engine = create_engine("sqlite:///:memory:", echo=False)
-    Base.metadata.create_all(engine)
-
-    # Create items and feeds tables
-    with engine.connect() as conn:
-        conn.execute(
-            text(
-                """
-            CREATE TABLE IF NOT EXISTS feeds (
-                id INTEGER PRIMARY KEY,
-                name TEXT,
-                url TEXT,
-                health_score REAL DEFAULT 100.0
-            )
-        """
-            )
-        )
-
-        conn.execute(
-            text(
-                """
-            CREATE TABLE IF NOT EXISTS items (
-                id INTEGER PRIMARY KEY,
-                title TEXT,
-                url TEXT,
-                url_hash TEXT NOT NULL,
-                published DATETIME,
-                summary TEXT,
-                ai_summary TEXT,
-                topic TEXT,
-                feed_id INTEGER NOT NULL
-            )
-        """
-            )
-        )
-
-        # Insert a test feed
-        conn.execute(
-            text(
-                "INSERT INTO feeds (id, name, url) VALUES (1, 'Test Feed', 'http://test.com')"
-            )
-        )
-
-        # Insert test articles
-        for i in range(1, 11):
-            conn.execute(
-                text(
-                    """
-                INSERT INTO items (id, title, url, url_hash, summary, topic, published, feed_id)
-                VALUES (:id, :title, :url, :url_hash, :summary, :topic, :published, :feed_id)
+    """Reset story-related tables, seed feed and ten articles (ids 1–10)."""
+    session = pg_session_truncate_story_graph()
+    session.execute(
+        text(
             """
-                ),
-                {
-                    "id": i,
-                    "title": f"Test Article {i}",
-                    "url": f"http://example.com/{i}",
-                    "url_hash": f"hash{i}",
-                    "summary": f"Summary for article {i}",
-                    "topic": "tech",
-                    "published": datetime.now(UTC) - timedelta(hours=i),
-                    "feed_id": 1,
-                },
-            )
-        conn.commit()
-
-    SessionLocal = sessionmaker(bind=engine)
-    return SessionLocal()
+            INSERT INTO feeds (id, url, name, disabled, health_score)
+            VALUES (1, 'http://test.com', 'Test Feed', 0, 100.0)
+            """
+        )
+    )
+    for i in range(1, 11):
+        session.execute(
+            text(
+                """
+                INSERT INTO items (
+                    id, feed_id, title, url, url_hash, summary, topic, published
+                )
+                VALUES (
+                    :id, 1, :title, :url, :url_hash, :summary, :topic, :published
+                )
+                """
+            ),
+            {
+                "id": i,
+                "title": f"Test Article {i}",
+                "url": f"http://example.com/{i}",
+                "url_hash": f"hash{i}",
+                "summary": f"Summary for article {i}",
+                "topic": "tech",
+                "published": datetime.now(UTC) - timedelta(hours=i),
+            },
+        )
+    session.commit()
+    return session
 
 
 class TestFindOverlappingStory:
@@ -359,7 +338,7 @@ class TestUpdateStoryWithNewArticles:
 
         # Verify first_seen preserved
         new_story = session.query(Story).filter(Story.id == new_story_id).first()
-        # Compare without microseconds due to SQLite precision
+        assert new_story.first_seen is not None
         assert new_story.first_seen.date() == original_first_seen.date()
 
     def test_links_all_merged_articles(self):

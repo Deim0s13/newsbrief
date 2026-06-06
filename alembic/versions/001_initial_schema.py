@@ -4,8 +4,7 @@ Revision ID: 001_initial
 Revises:
 Create Date: 2026-01-06
 
-This migration creates all tables from scratch.
-For existing SQLite databases, run: alembic stamp head
+This migration creates all tables from scratch (PostgreSQL).
 """
 
 from typing import Sequence, Union

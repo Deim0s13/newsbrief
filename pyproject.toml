@@ -7,10 +7,14 @@ description = "Story-based News Aggregator with AI Synthesis"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
-addopts = "-v --tb=short"
+addopts = "-v --tb=short --timeout=120"
+asyncio_mode = "auto"
 filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::pytest.PytestReturnNotNoneWarning",
+]
+markers = [
+    "requires_ollama: marks tests that need a live Ollama instance (deselect with -m 'not requires_ollama')",
 ]
 
 [tool.coverage.run]

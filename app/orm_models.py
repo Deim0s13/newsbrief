@@ -2,7 +2,8 @@
 SQLAlchemy ORM models for NewsBrief database.
 
 This module defines all database tables as SQLAlchemy ORM models,
-providing portable schema definitions that work with both SQLite and PostgreSQL.
+providing schema definitions for PostgreSQL (ADR-0022), including pgvector-backed
+embedding columns.
 
 Tables:
 - Feed: RSS/Atom feed sources
@@ -20,6 +21,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Optional
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     Boolean,
     Column,
@@ -33,6 +35,9 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
+
+# Keep in sync with alembic/versions/017_embedding_vector_768.py (#251).
+_EMBEDDING_DIMENSIONS = 768
 
 
 class Base(DeclarativeBase):
@@ -129,6 +134,11 @@ class Item(Base):
     processing_failed_at = Column(DateTime(timezone=True), nullable=True)
     failure_stage = Column(String(64), nullable=True)
     last_failed_run_group_id = Column(String(36), nullable=True)
+    # Semantic embeddings (pgvector; #250, ADR-0026)
+    embedding = Column(Vector(_EMBEDDING_DIMENSIONS), nullable=True)
+    embedding_model = Column(String(100), nullable=True)
+    embedding_version = Column(String(50), nullable=True)
+    embedded_at = Column(DateTime(timezone=True), nullable=True)
     # Timestamps
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
 
@@ -201,6 +211,11 @@ class Story(Base):
     processing_failed_at = Column(DateTime(timezone=True), nullable=True)
     failure_stage = Column(String(64), nullable=True)
     last_failed_run_group_id = Column(String(36), nullable=True)
+    # Semantic embeddings (pgvector; #250, ADR-0026)
+    embedding = Column(Vector(_EMBEDDING_DIMENSIONS), nullable=True)
+    embedding_model = Column(String(100), nullable=True)
+    embedding_version = Column(String(50), nullable=True)
+    embedded_at = Column(DateTime(timezone=True), nullable=True)
     # Source credibility (v0.8.2 - Issue #198)
     source_credibility_score = Column(Float)  # Weighted average 0.0-1.0
     low_credibility_warning = Column(Boolean, default=False)  # All sources < 0.5

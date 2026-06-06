@@ -129,7 +129,7 @@ def get_cached_synthesis(
         logger.debug(f"Cache MISS: entry invalidated at {cache_entry.invalidated_at}")
         return None
 
-    # Check if expired (handle timezone-naive datetimes from SQLite)
+    # Check if expired (normalize timezone-naive datetimes from the DB)
     expires_at = cache_entry.expires_at
     if expires_at:
         # Make timezone-aware if needed

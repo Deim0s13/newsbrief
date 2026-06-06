@@ -1,12 +1,13 @@
 # ---------- Config ----------
 RUNTIME          ?= podman
 REGISTRY         ?=                         # e.g. ghcr.io/Deim0s13
-# Kind local registry tag for newsbrief-prod (see scripts/push-kind-prod-image.sh)
-KIND_PROD_TAG    ?= v0.8.3.1
 IMAGE_NAME       ?= newsbrief-api
 PORT             ?= 8787
 DATA_DIR         ?= $(PWD)/data
 BACKUP_DIR       ?= $(PWD)/backups
+
+# OS detection (Darwin = macOS, Linux covers WSL2 and native Linux)
+UNAME_S          := $(shell uname -s)
 
 # Version metadata
 GIT_SHA          := $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
@@ -54,44 +55,6 @@ dev-full:  ## Start PostgreSQL + development server (single command)
 	@echo "✅ PostgreSQL ready"
 	@echo ""
 	@$(MAKE) dev
-
-# ---------- Tekton dev CI (local cluster) ----------
-# Push dev then run ci-dev in one step (no GitHub→Smee relay required).
-ci-dev:  ## Run Tekton pipeline ci-dev (lint + pytest); needs kubectl, tkn, cluster up
-	@scripts/trigger-ci-dev.sh
-
-push-dev:  ## git push origin dev && ci-dev (SKIP_CI_DEV=1 to push without pipeline)
-	@scripts/push-dev.sh
-
-push-kind-dev-image:  ## Build + push localhost:5000/newsbrief:dev-latest for Argo newsbrief-dev
-	@chmod +x scripts/push-kind-dev-image.sh 2>/dev/null; RUNTIME=$(RUNTIME) KIND_REGISTRY_HOST=localhost:5000 scripts/push-kind-dev-image.sh
-
-push-kind-prod-image:  ## Build + push localhost:5000/newsbrief:$(KIND_PROD_TAG) for Argo newsbrief-prod
-	@chmod +x scripts/push-kind-prod-image.sh 2>/dev/null; RUNTIME=$(RUNTIME) KIND_REGISTRY_HOST=localhost:5000 scripts/push-kind-prod-image.sh "$(KIND_PROD_TAG)"
-
-webhook-relay-start:  ## Background: EventListener port-forward + smee (GitHub webhooks → Tekton)
-	@chmod +x scripts/start-webhook-relay.sh 2>/dev/null; scripts/start-webhook-relay.sh
-
-webhook-relay-stop:  ## Stop processes started by webhook-relay-start
-	@chmod +x scripts/stop-webhook-relay.sh 2>/dev/null; scripts/stop-webhook-relay.sh
-
-webhook-relay-status:  ## Check whether smee + port-forward from relay-start are healthy
-	@chmod +x scripts/status-webhook-relay.sh 2>/dev/null; scripts/status-webhook-relay.sh
-
-argo-ui:  ## Port-forward Argo CD UI on 8443 (avoids clash with Tekton relay on 8080)
-	@echo "Open https://localhost:8443 (admin + password from: kubectl -n argocd get secret argocd-initial-admin-secret ...)"
-	kubectl port-forward svc/argocd-server -n argocd 8443:443
-
-env-init:  ## Create .env from template with generated secure password
-	@if [ -f .env ]; then \
-		echo "⚠️  .env already exists. Delete it first or edit manually."; \
-		exit 1; \
-	fi
-	@cp .env.example .env
-	@PASSWORD=$$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32) && \
-		sed -i '' "s/CHANGE_ME_USE_MAKE_ENV_INIT/$$PASSWORD/" .env
-	@echo "✅ Created .env with secure generated password"
-	@echo "📝 Review .env and adjust OLLAMA_BASE_URL if needed"
 
 # ---------- API Convenience Commands ----------
 refresh:  ## Refresh all feeds (fetches new articles)
@@ -190,7 +153,6 @@ deploy:                           ## Deploy production stack (containers + Postg
 		$(RUNTIME)-compose up -d --build; \
 	fi
 	@echo "✅ Production deployed at https://$(HOSTNAME)"
-	@echo "   (Development: make dev → http://localhost:$(PORT))"
 	@echo "📊 View logs: make deploy-logs"
 
 deploy-stop:                      ## Stop production stack (preserves data)
@@ -299,23 +261,21 @@ migrate-dev:                        ## Run migrations on dev database (requires 
 
 migrate-new:                        ## Create a new migration: make migrate-new MSG="add xyz column"
 	@test -n "$(MSG)" || (echo "Set MSG=\"description\"" && exit 1)
-	.venv/bin/alembic revision --autogenerate -m "$(MSG)"
+	DATABASE_URL=$${DATABASE_URL:-$(DEV_DATABASE_URL)} .venv/bin/alembic revision --autogenerate -m "$(MSG)"
 
 migrate-stamp:                      ## Mark existing DB as current (no migration run)
-	.venv/bin/alembic stamp head
+	DATABASE_URL=$${DATABASE_URL:-$(DEV_DATABASE_URL)} .venv/bin/alembic stamp head
 
 migrate-history:                    ## Show migration history
 	.venv/bin/alembic history
 
 migrate-current:                    ## Show current migration version
-	.venv/bin/alembic current
+	DATABASE_URL=$${DATABASE_URL:-$(DEV_DATABASE_URL)} .venv/bin/alembic current
 
-# ---------- Hostname & Autostart ----------
+# ---------- Hostname & TLS ----------
 HOSTNAME         ?= newsbrief.local
 PROJECT_PATH     ?= $(PWD)
-PODMAN_COMPOSE   ?= $(shell which podman-compose 2>/dev/null || echo /opt/homebrew/bin/podman-compose)
-PLIST_NAME       := com.newsbrief.plist
-PLIST_DEST       := $(HOME)/Library/LaunchAgents/$(PLIST_NAME)
+PODMAN_COMPOSE   ?= $(shell which podman-compose 2>/dev/null || echo podman-compose)
 
 hostname-setup:                   ## Add newsbrief.local to /etc/hosts (requires sudo)
 	@if grep -q "$(HOSTNAME)" /etc/hosts; then \
@@ -329,7 +289,6 @@ hostname-setup:                   ## Add newsbrief.local to /etc/hosts (requires
 hostname-check:                   ## Verify hostname is configured
 	@if grep -q "$(HOSTNAME)" /etc/hosts; then \
 		echo "✅ $(HOSTNAME) is configured"; \
-		echo "   Access production at: http://$(HOSTNAME)"; \
 	else \
 		echo "❌ $(HOSTNAME) not found in /etc/hosts"; \
 		echo "   Run: make hostname-setup"; \
@@ -338,7 +297,7 @@ hostname-check:                   ## Verify hostname is configured
 hostname-remove:                  ## Remove newsbrief.local from /etc/hosts (requires sudo)
 	@if grep -q "$(HOSTNAME)" /etc/hosts; then \
 		echo "Removing $(HOSTNAME) from /etc/hosts (requires sudo)..."; \
-		sudo sed -i '' '/$(HOSTNAME)/d' /etc/hosts; \
+		sudo sed -i.bak '/$(HOSTNAME)/d' /etc/hosts && sudo rm -f /etc/hosts.bak; \
 		echo "✅ $(HOSTNAME) removed"; \
 	else \
 		echo "$(HOSTNAME) not found in /etc/hosts"; \
@@ -346,21 +305,25 @@ hostname-remove:                  ## Remove newsbrief.local from /etc/hosts (req
 
 CADDY_CONTAINER ?= newsbrief-proxy
 
-hostname-trust-cert:              ## Export Caddy root CA and show command to trust it (fix browser cert error)
+hostname-trust-cert:              ## Export Caddy root CA and show command to trust it (macOS only)
+ifeq ($(UNAME_S),Darwin)
 	@mkdir -p caddy-data
 	@if ! podman cp $(CADDY_CONTAINER):/data/caddy/pki/authorities/local/root.crt caddy-data/caddy-root-ca.crt 2>/dev/null; then \
 		echo "⚠️  Caddy has not generated a cert yet."; \
-		echo "   Open https://$(HOSTNAME) in the browser once (accept the warning), then run:"; \
-		echo "   make hostname-trust-cert"; \
+		echo "   Open https://$(HOSTNAME) in the browser once, then run: make hostname-trust-cert"; \
 		exit 1; \
 	fi
 	@echo "✅ Exported Caddy root CA to caddy-data/caddy-root-ca.crt"
-	@echo ""
-	@echo "Trust it in macOS Keychain (run from project root; use the full path below):"
+	@echo "Trust it in macOS Keychain:"
 	@echo "  sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain $(abspath caddy-data/caddy-root-ca.crt)"
-	@echo ""
+else
+	@echo "hostname-trust-cert is macOS only."
+	@echo "On Linux/WSL2, trust the cert with:"
+	@echo "  sudo cp caddy-data/caddy-root-ca.crt /usr/local/share/ca-certificates/newsbrief.crt"
+	@echo "  sudo update-ca-certificates"
+endif
 
-hostname-regen-certs:             ## Fix ERR_CERT_DATE_INVALID: regenerate Caddy certs (then trust again)
+hostname-regen-certs:             ## Fix ERR_CERT_DATE_INVALID: regenerate Caddy certs
 	@echo "Stopping Caddy and clearing old certificates..."
 	@podman rm -f $(CADDY_CONTAINER) 2>/dev/null || true
 	@rm -rf caddy-data/data/caddy
@@ -372,14 +335,14 @@ hostname-regen-certs:             ## Fix ERR_CERT_DATE_INVALID: regenerate Caddy
 		-v $(PWD)/caddy-data/data:/data \
 		-v $(PWD)/caddy-data/config:/config \
 		caddy:2-alpine
-	@echo "✅ Caddy restarted. Next:"
-	@echo "  1. Open https://$(HOSTNAME) once (browser may show warning — that triggers cert generation)"
-	@echo "  2. make hostname-trust-cert"
-	@echo "  3. Run the sudo command it prints, then reload https://$(HOSTNAME)"
-	@echo "  If you see HSTS blocking, clear HSTS for $(HOSTNAME) (see README Troubleshooting)."
+	@echo "✅ Caddy restarted. Next: make hostname-trust-cert"
 
-# ---------- Autostart (launchd) ----------
-autostart-install:                ## Install launchd plist for auto-start on login
+# ---------- Autostart (app — macOS launchd only) ----------
+PLIST_NAME       := com.newsbrief.plist
+PLIST_DEST       := $(HOME)/Library/LaunchAgents/$(PLIST_NAME)
+
+autostart-install:                ## Install launchd plist for app auto-start on login (macOS only)
+ifeq ($(UNAME_S),Darwin)
 	@mkdir -p "$(PROJECT_PATH)/logs"
 	@mkdir -p "$$(dirname $(PLIST_DEST))"
 	@sed -e 's|__PROJECT_PATH__|$(PROJECT_PATH)|g' \
@@ -387,10 +350,12 @@ autostart-install:                ## Install launchd plist for auto-start on log
 	     scripts/com.newsbrief.plist.template > $(PLIST_DEST)
 	@launchctl load $(PLIST_DEST)
 	@echo "✅ Autostart installed and enabled"
-	@echo "   NewsBrief will start automatically on login"
-	@echo "   Logs: $(PROJECT_PATH)/logs/"
+else
+	@echo "autostart-install is macOS only. On Windows use Podman Desktop auto-start + Task Scheduler."
+endif
 
-autostart-uninstall:              ## Remove launchd plist (disable auto-start)
+autostart-uninstall:              ## Remove launchd plist (macOS only)
+ifeq ($(UNAME_S),Darwin)
 	@if [ -f "$(PLIST_DEST)" ]; then \
 		launchctl unload $(PLIST_DEST) 2>/dev/null || true; \
 		rm -f $(PLIST_DEST); \
@@ -398,8 +363,12 @@ autostart-uninstall:              ## Remove launchd plist (disable auto-start)
 	else \
 		echo "Autostart not installed"; \
 	fi
+else
+	@echo "autostart-uninstall is macOS only."
+endif
 
-autostart-status:                 ## Check autostart status
+autostart-status:                 ## Check autostart status (macOS only)
+ifeq ($(UNAME_S),Darwin)
 	@if [ -f "$(PLIST_DEST)" ]; then \
 		echo "✅ Autostart is installed"; \
 		launchctl list | grep com.newsbrief || echo "   (not currently loaded)"; \
@@ -407,14 +376,49 @@ autostart-status:                 ## Check autostart status
 		echo "❌ Autostart not installed"; \
 		echo "   Run: make autostart-install"; \
 	fi
+else
+	@echo "autostart-status is macOS only."
+endif
 
-autostart-start:                  ## Manually trigger autostart (for testing)
-	@launchctl start com.newsbrief
-	@echo "✅ Triggered com.newsbrief"
+# ---------- Infrastructure Auto-Start ----------
+infra-start:                      ## Manually start k8s infra (kind + ArgoCD + port-forwards)
+	@bash scripts/infra-start.sh
 
-autostart-stop:                   ## Stop the launchd job
-	@launchctl stop com.newsbrief 2>/dev/null || true
-	@echo "✅ Stopped com.newsbrief"
+infra-autostart-install:          ## Install infra auto-start (launchd on macOS)
+ifeq ($(UNAME_S),Darwin)
+	@mkdir -p "$(HOME)/Library/LaunchAgents"
+	@sed -e 's|__PROJECT_PATH__|$(PROJECT_PATH)|g' \
+	     -e 's|__HOME__|$(HOME)|g' \
+		launchd/com.newsbrief.infra.plist > "$(HOME)/Library/LaunchAgents/com.newsbrief.infra.plist"
+	@launchctl load "$(HOME)/Library/LaunchAgents/com.newsbrief.infra.plist"
+	@echo "✅ Infra auto-start installed (macOS launchd)"
+	@echo "   The kind cluster + ArgoCD will start automatically on login"
+else
+	@echo "On Windows: run scripts/infra-task-install.ps1 in PowerShell to register the Task Scheduler task"
+	@echo "  powershell.exe -ExecutionPolicy Bypass -File scripts/infra-task-install.ps1"
+endif
+
+infra-autostart-uninstall:        ## Remove infra auto-start
+ifeq ($(UNAME_S),Darwin)
+	@launchctl unload "$(HOME)/Library/LaunchAgents/com.newsbrief.infra.plist" 2>/dev/null || true
+	@rm -f "$(HOME)/Library/LaunchAgents/com.newsbrief.infra.plist"
+	@echo "✅ Infra auto-start removed"
+else
+	@echo "On Windows: open Task Scheduler and delete the 'NewsBrief Infrastructure' task"
+endif
+
+infra-autostart-status:           ## Check infra auto-start status
+ifeq ($(UNAME_S),Darwin)
+	@if [ -f "$(HOME)/Library/LaunchAgents/com.newsbrief.infra.plist" ]; then \
+		echo "✅ Infra auto-start is installed (macOS launchd)"; \
+		launchctl list | grep com.newsbrief.infra || echo "   (not currently loaded)"; \
+	else \
+		echo "❌ Infra auto-start not installed"; \
+		echo "   Run: make infra-autostart-install"; \
+	fi
+else
+	@echo "On Windows: check Task Scheduler for 'NewsBrief Infrastructure' task"
+endif
 
 # ---------- Kubernetes Operations (Ansible) ----------
 recover:                          ## Recover all services after reboot/sleep
@@ -424,24 +428,46 @@ recover:                          ## Recover all services after reboot/sleep
 status:                           ## Check status of all services
 	cd ansible && ansible-playbook -i inventory/localhost.yml playbooks/status.yml
 
-port-forwards:                    ## Restart port forwards for prod, K8s dev, Tekton
+port-forwards:                    ## Restart kubectl port-forwards (prod:8788, dev:8789, ArgoCD:8443, Tekton:9097)
 	@echo "🔌 Restarting port forwards..."
 	@pkill -f "kubectl port-forward" 2>/dev/null || true
 	@kubectl port-forward svc/newsbrief -n newsbrief-prod --address 0.0.0.0 8788:8787 &
 	@kubectl port-forward svc/newsbrief -n newsbrief-dev --address 0.0.0.0 8789:8787 &
-	@kubectl port-forward svc/el-newsbrief-listener 8080:8080 &
+	@kubectl port-forward svc/argocd-server -n argocd 8443:443 &
 	@kubectl port-forward svc/tekton-dashboard -n tekton-pipelines 9097:9097 &
 	@sleep 2
-	@echo "✅ Port forwards restarted"
+	@echo "✅ Port forwards active"
 	@echo "   Prod (K8s): http://localhost:8788 — https://newsbrief.local via Caddy"
-	@echo "   Dev (K8s):  http://localhost:8789 — Argo app newsbrief-dev"
-	@echo "   Tekton:     http://localhost:9097"
-	@echo ""
-	@echo "   Dev (host uvicorn): make dev → http://localhost:8787"
+	@echo "   Dev  (K8s): http://localhost:8789"
+	@echo "   ArgoCD UI:  https://localhost:8443"
+	@echo "   Tekton UI:  http://localhost:9097"
 
-smee:                             ## Start smee webhook bridge
-	npx smee-client --url https://smee.io/cddqBCYHwHG3ZcUY --target http://localhost:8080 --path /
+argo-ui:  ## Port-forward Argo CD UI on 8443
+	@echo "Open https://localhost:8443"
+	kubectl port-forward svc/argocd-server -n argocd 8443:443
+
+# ---------- Setup ----------
+env-init:  ## Create .env from template with generated secure password
+	@if [ -f .env ]; then \
+		echo "⚠️  .env already exists. Delete it first or edit manually."; \
+		exit 1; \
+	fi
+	@cp .env.example .env
+	@PASSWORD=$$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32) && \
+		sed -i.bak "s/CHANGE_ME_USE_MAKE_ENV_INIT/$$PASSWORD/" .env && rm -f .env.bak
+	@echo "✅ Created .env with secure generated password"
+	@echo "📝 Review .env and adjust OLLAMA_BASE_URL if needed"
 
 # ---------- Defaults ----------
 .DEFAULT_GOAL := run
-.PHONY: venv run-local dev dev-full push-kind-dev-image push-kind-prod-image build tag push release local-release clean-release cleanup-old-images run deploy deploy-stop deploy-status deploy-init up down logs db-up db-down db-status db-logs db-psql db-reset db-backup db-restore db-backup-list migrate migrate-dev migrate-new migrate-stamp migrate-history migrate-current hostname-setup hostname-check hostname-remove hostname-trust-cert hostname-regen-certs autostart-install autostart-uninstall autostart-status autostart-start autostart-stop recover status port-forwards smee
+.PHONY: venv run-local dev dev-full refresh stories-generate api-health \
+	build tag push release local-release clean-release cleanup-old-images run \
+	deploy deploy-stop deploy-status deploy-init up down logs \
+	db-up db-down db-status db-logs db-psql db-reset \
+	db-backup db-restore db-backup-list \
+	secrets-create secrets-list secrets-delete \
+	migrate migrate-dev migrate-new migrate-stamp migrate-history migrate-current \
+	hostname-setup hostname-check hostname-remove hostname-trust-cert hostname-regen-certs \
+	autostart-install autostart-uninstall autostart-status \
+	infra-start infra-autostart-install infra-autostart-uninstall infra-autostart-status \
+	recover status port-forwards argo-ui env-init

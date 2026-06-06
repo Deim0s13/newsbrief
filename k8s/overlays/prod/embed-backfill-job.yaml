@@ -1,0 +1,50 @@
+# Prod only: embedding backfill for items/stories with embedding IS NULL (#254).
+# PostSync: runs after the main sync (Deployment healthy), so schema + app image are
+# already in place; uses same ConfigMap as the API (DATABASE_URL, OLLAMA_BASE_URL, etc.).
+# Tekton ci-prod updates Git; Argo CD applies this hook when syncing newsbrief-prod.
+# Dev overlay omits this Job — use `python -m app.cli embed-backfill --dev` locally if needed.
+#
+# Hook delete policy: replace Job on next sync (Job spec is immutable) and after success.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: newsbrief-embed-backfill
+  labels:
+    app.kubernetes.io/name: newsbrief
+    app.kubernetes.io/component: embed-backfill
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/sync-wave: "3"
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  ttlSecondsAfterFinished: 7200
+  backoffLimit: 1
+  activeDeadlineSeconds: 7200
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: newsbrief
+        app.kubernetes.io/component: embed-backfill
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: embed-backfill
+          image: localhost:5000/newsbrief:dev-latest
+          imagePullPolicy: Always
+          workingDir: /app
+          command: ["/opt/venv/bin/python", "-m", "app.cli", "embed-backfill"]
+          args:
+            - --batch-size
+            - "32"
+            - --sleep-seconds
+            - "0.5"
+          envFrom:
+            - configMapRef:
+                name: newsbrief-config
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "1000m"

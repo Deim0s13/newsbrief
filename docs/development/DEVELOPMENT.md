@@ -103,6 +103,15 @@ See [ADR-0022](../adr/0022-dev-prod-database-parity.md) for PostgreSQL parity. H
 - **Tekton:** CI runs `alembic upgrade head` during the test task.
 - **Argo CD:** **`newsbrief-db-migrate` Job** runs before the API `Deployment` (sync waves). See [KUBERNETES.md](KUBERNETES.md#sync-waves) and [CI-CD.md](CI-CD.md#database-migrations-alembic).
 
+### **Embeddings schema (pgvector, #250)**
+
+- **Extension:** Migrations enable `vector` via `CREATE EXTENSION`. Dev/prod Docker DB images use **`pgvector/pgvector:pg16`** (`compose.yaml`, `compose.dev.yaml`). External PostgreSQL hosts must have [pgvector](https://github.com/pgvector/pgvector) installed separately.
+- **Tables:** `items` and `stories` have nullable `embedding vector(768)`, plus `embedding_model`, `embedding_version`, and `embedded_at` (Alembic `016` + `017`). The embedding service (#251, `app/embedding_service.py`) uses Ollama and **`model_config.json`** (`embedding` section); output width must match the DB (see `NEWSBRIEF_EMBEDDING_MODEL` / `NEWSBRIEF_EMBEDDING_DIMENSIONS`).
+- **Article embeddings (#252):** After a **fresh** `POST /summarize` (not cache-hit shortcuts), the app calls **`app/item_embeddings.py`** to embed **title + summary** (structured or plain) and update the row. Disable with **`NEWSBRIEF_EMBEDDING_ENABLED=false`** or **`embedding.enabled: false`** in `model_config.json`. Failures are logged; the summary write still succeeds.
+- **Story embeddings (#253):** After synthesis, **`app/story_embeddings.py`** embeds **title + synthesis** on the new or superseding story row (batch generation, incremental updates, targeted regeneration). Same enable/disable flags as articles; failures are logged; the story write still succeeds.
+- **Embedding backfill (#254):** ``python -m app.cli embed-backfill`` (see ``--help``). Requires **``DATABASE_URL``** (or ``--database-url …``, or ``--dev`` for the same default as ``make dev`` / port **5433**). Respects the same embedding enable flags; use ``--dry-run`` for counts only. Batching and ``--sleep-seconds`` limit load on Ollama; rows with no summary/synthesis text are skipped (logged). **Production:** ``k8s/overlays/prod/embed-backfill-job.yaml`` is an Argo CD **PostSync** Job (``newsbrief-embed-backfill``) so each prod GitOps sync runs backfill after the Deployment is healthy; dev overlay omits it (run the CLI manually against dev if needed).
+- **Indexes:** Partial **IVFFlat** indexes (`idx_items_embedding`, `idx_stories_embedding`) use cosine distance on non-null embeddings. Re-tune `lists` in Alembic migrations as row counts grow.
+
 ### **Pipeline operator controls (#277)** ⭐
 
 - **Dashboard:** [http://localhost:8787/admin/pipeline](http://localhost:8787/admin/pipeline) (same host/port as your dev server).
@@ -724,39 +733,35 @@ curl -s "http://localhost:8787/items?limit=50" | jq '[.[] | select(.topic == "ai
 
 ### **Database Inspection**
 
+Use **`psql`** against your dev URL (see [Database](#database) / `DATABASE_URL`; `compose.dev.yaml` defaults to port **5433**):
+
 ```bash
-# SQLite CLI (if installed)
-sqlite3 data/newsbrief.sqlite3
+psql "postgresql://newsbrief:newsbrief_dev@localhost:5433/newsbrief"
 
-# View tables
-.tables
+-- \dt
+-- SELECT id, url, robots_allowed, disabled FROM feeds LIMIT 5;
 
-# Check feeds
-SELECT id, url, robots_allowed, disabled FROM feeds;
-
-# Check recent articles with ranking data ⭐ *Updated in v0.4.0*
-SELECT id, title, published, ranking_score, topic, topic_confidence, source_weight FROM items
+-- Recent articles with ranking
+SELECT id, title, published, ranking_score, topic, topic_confidence, source_weight
+FROM items
 ORDER BY ranking_score DESC, COALESCE(published, created_at) DESC
 LIMIT 5;
 
-# Analyze ranking distribution
-SELECT
-  topic,
-  COUNT(*) as article_count,
-  ROUND(AVG(ranking_score), 3) as avg_ranking,
-  ROUND(AVG(topic_confidence), 3) as avg_confidence
+-- Ranking by topic
+SELECT topic, COUNT(*) AS article_count,
+       ROUND(AVG(ranking_score)::numeric, 3) AS avg_ranking,
+       ROUND(AVG(topic_confidence)::numeric, 3) AS avg_confidence
 FROM items
 WHERE topic IS NOT NULL
 GROUP BY topic
 ORDER BY avg_ranking DESC;
 
-# Find top-ranked articles
+-- Top-ranked articles
 SELECT id, title, ranking_score, topic FROM items
 ORDER BY ranking_score DESC
 LIMIT 10;
 
-# Exit SQLite
-.quit
+-- \q
 ```
 
 ### **Debugging Tips**
@@ -772,13 +777,10 @@ LIMIT 10;
    uvicorn app.main:app --reload --port 8788
    ```
 
-2. **Database locked errors**
+2. **Database connection errors**
    ```bash
-   # Stop all running instances
-   pkill -f "uvicorn.*newsbrief"
-
-   # Remove lock if exists
-   rm -f data/newsbrief.sqlite3-shm data/newsbrief.sqlite3-wal
+   # Ensure PostgreSQL is up (e.g. make db-up) and DATABASE_URL matches user/password/port
+   pg_isready -h localhost -p 5433 -U newsbrief
    ```
 
 3. **Module import errors**
@@ -1102,8 +1104,8 @@ curl -X POST http://localhost:8787/feeds \
 **Debug robots.txt behavior:**
 
 ```bash
-# Check feed status in database
-sqlite3 data/newsbrief.sqlite3 "SELECT url, robots_allowed FROM feeds;"
+# Check feed status in database (adjust URL/port to your dev DB)
+psql "postgresql://newsbrief:newsbrief_dev@localhost:5433/newsbrief" -c "SELECT url, robots_allowed FROM feeds;"
 
 # Watch cache behavior in logs
 podman logs newsbrief | grep -i robots

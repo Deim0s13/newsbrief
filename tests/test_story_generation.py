@@ -144,6 +144,7 @@ def _check_llm_available():
         return False
 
 
+@pytest.mark.requires_ollama
 def test_story_generation():
     """Test the full story generation pipeline."""
     # Skip if LLM is not available (e.g., in CI environment)
