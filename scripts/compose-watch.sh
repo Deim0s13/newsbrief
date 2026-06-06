@@ -32,7 +32,8 @@ if ! podman info >/dev/null 2>&1; then
     exit 0
 fi
 
-RUNNING_DIGEST=$(podman inspect newsbrief --format '{{.ImageDigest}}' 2>/dev/null || echo "")
+# Image ID (sha256) of what the running container is using
+RUNNING_ID=$(podman inspect newsbrief --format '{{.Image}}' 2>/dev/null || echo "")
 
 log "Pulling $IMAGE..."
 if ! podman pull "$IMAGE" --quiet 2>/dev/null; then
@@ -40,15 +41,16 @@ if ! podman pull "$IMAGE" --quiet 2>/dev/null; then
     exit 0
 fi
 
-LATEST_DIGEST=$(podman image inspect "$IMAGE" --format '{{.Digest}}' 2>/dev/null || echo "")
+# Image ID of the freshly pulled image
+LATEST_ID=$(podman image inspect "$IMAGE" --format '{{.Id}}' 2>/dev/null || echo "")
 
-if [ -z "$LATEST_DIGEST" ]; then
-    log "Could not determine latest digest. Skipping."
+if [ -z "$LATEST_ID" ]; then
+    log "Could not determine latest image ID. Skipping."
     exit 0
 fi
 
-if [ "$RUNNING_DIGEST" = "$LATEST_DIGEST" ]; then
-    log "Already at latest ($LATEST_DIGEST). No action needed."
+if [ "$RUNNING_ID" = "$LATEST_ID" ]; then
+    log "Already at latest ($LATEST_ID). No action needed."
     exit 0
 fi
 
@@ -63,7 +65,7 @@ done
 log "Running migrations..."
 podman-compose -f compose.yaml -f compose.prod.yaml exec -T api alembic upgrade head
 
-log "Deploy complete: $LATEST_DIGEST"
+log "Deploy complete: $LATEST_ID"
 
 if [ -n "${NTFY_TOPIC:-}" ]; then
     curl -s -X POST \

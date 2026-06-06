@@ -151,7 +151,7 @@ deploy:                           ## Deploy production stack (start, migrate, au
 		grep '^POSTGRES_PASSWORD=' .env | cut -d= -f2- | \
 			$(RUNTIME) secret create db_password -; \
 	fi
-	@$(RUNTIME)-compose -f compose.yaml -f compose.prod.yaml up -d --build
+	@$(RUNTIME)-compose -f compose.yaml -f compose.prod.yaml up -d
 	@echo "⏳ Waiting for database..."
 	@until $(RUNTIME) exec newsbrief-db pg_isready -U newsbrief -d newsbrief \
 		>/dev/null 2>&1; do sleep 1; done
