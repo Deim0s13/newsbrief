@@ -29,8 +29,10 @@ function Register-NB {
 
     Unregister-ScheduledTask -TaskName $Name -Confirm:$false -ErrorAction SilentlyContinue
 
-    $wslArgs = "-d $WslDistro -- bash $ProjectDir/$ScriptRelPath"
-    $action  = New-ScheduledTaskAction -Execute "wsl.exe" -Argument $wslArgs
+    # Run via hidden PowerShell so no console window appears (important during gaming/fullscreen)
+    $wslCmd  = "wsl.exe -d $WslDistro -- bash $ProjectDir/$ScriptRelPath"
+    $psArgs  = "-WindowStyle Hidden -NonInteractive -Command `"$wslCmd`""
+    $action  = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $psArgs
 
     $settings = New-ScheduledTaskSettingsSet `
         -StartWhenAvailable `
