@@ -13,15 +13,16 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: deim0s13/newsbrief
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
@@ -57,9 +58,9 @@ jobs:
       CI: "true"
       DATABASE_URL: postgresql://newsbrief:newsbrief@localhost:5432/newsbrief_test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
@@ -86,7 +87,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       image-ref: ${{ steps.version.outputs.image-ref }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Extract version from pyproject.toml
         id: version
@@ -101,9 +102,9 @@ jobs:
           echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
           echo "image-ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v${VERSION}" >> $GITHUB_OUTPUT
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -111,7 +112,7 @@ jobs:
 
       - name: Build and push
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -131,7 +132,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-and-push
     steps:
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -168,11 +169,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build-and-push, security-scan]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: sigstore/cosign-installer@v3
+      - uses: sigstore/cosign-installer@v4
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -196,7 +197,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build-and-push, security-scan]
     steps:
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -210,7 +211,7 @@ jobs:
           output: sbom-${{ needs.build-and-push.outputs.version }}.json
 
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sbom
           path: sbom-${{ needs.build-and-push.outputs.version }}.json
@@ -221,10 +222,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build-and-push, sign-image, generate-sbom]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download SBOM artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: sbom
 
@@ -244,7 +245,7 @@ jobs:
           } > RELEASE_NOTES.md
 
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ needs.build-and-push.outputs.version }}
           name: v${{ needs.build-and-push.outputs.version }}
@@ -258,7 +259,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build-and-push, create-release]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
