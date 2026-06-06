@@ -13,6 +13,7 @@ import certifi
 import feedparser
 import httpx
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 logger = logging.getLogger(__name__)
 
@@ -1646,7 +1647,7 @@ def fetch_and_store() -> RefreshStats:
                     "title": title,
                     "url": link,
                     "url_hash": h,
-                    "published": published.isoformat() if published else None,
+                    "published": published.replace(tzinfo=None) if published else None,
                     "author": author,
                     "summary": summary,
                     "content": content_text,
@@ -1659,7 +1660,7 @@ def fetch_and_store() -> RefreshStats:
                     "extraction_quality": extraction_quality,
                     "extraction_error": extraction_error,
                     "extracted_at": (
-                        extracted_at.isoformat() if extracted_at else None
+                        extracted_at.replace(tzinfo=None) if extracted_at else None
                     ),
                     "extraction_time_ms": extraction_time_ms,
                     "processing_state": ingest_processing_state.value,
@@ -1667,16 +1668,22 @@ def fetch_and_store() -> RefreshStats:
 
                 with session_scope() as s:
                     if existing_id is None:
-                        s.execute(
-                            text(
-                                """
+                        try:
+                            s.execute(
+                                text(
+                                    """
                         INSERT INTO items(feed_id, title, url, url_hash, published, author, summary, content, content_hash, ranking_score, topic, topic_confidence, source_weight, extraction_method, extraction_quality, extraction_error, extracted_at, extraction_time_ms, processing_state)
                         VALUES(:feed_id, :title, :url, :url_hash, :published, :author, :summary, :content, :content_hash, :ranking_score, :topic, :topic_confidence, :source_weight, :extraction_method, :extraction_quality, :extraction_error, :extracted_at, :extraction_time_ms, :processing_state)
+                        ON CONFLICT (url_hash) DO NOTHING
                         """
-                            ),
-                            row_params,
-                        )
-                        stats.items_inserted += 1
+                                ),
+                                row_params,
+                            )
+                            stats.items_inserted += 1
+                        except IntegrityError as e:
+                            logger.warning(
+                                "Skipping item (integrity conflict): %s — %s", link, e
+                            )
                     else:
                         s.execute(
                             text(

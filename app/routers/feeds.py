@@ -624,8 +624,14 @@ def get_feed_stats(feed_id: int):
 @router.post("/refresh")
 def refresh_endpoint(request: Request):
     """Trigger feed refresh. Rate limited."""
-    from ..scheduler import set_feed_refresh_in_progress
+    from ..scheduler import is_feed_refresh_in_progress, set_feed_refresh_in_progress
 
+    if is_feed_refresh_in_progress():
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse(
+            status_code=409, content={"error": "Feed refresh already in progress"}
+        )
     set_feed_refresh_in_progress(True)
     try:
         stats: RefreshStats = fetch_and_store()
