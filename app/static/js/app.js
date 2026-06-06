@@ -211,6 +211,13 @@ function createArticleElement(article) {
     // Set content (AI summary or fallback)
     const content = element.querySelector('.article-content');
 
+    // Strip HTML tags to get plain text (used for skim line)
+    function stripHtml(html) {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        return tmp.textContent || tmp.innerText || '';
+    }
+
     // Generate skim summary (one line)
     let skimText = '';
     if (article.structured_summary && article.structured_summary.bullets && article.structured_summary.bullets.length > 0) {
@@ -218,7 +225,7 @@ function createArticleElement(article) {
     } else if (article.fallback_summary) {
         skimText = article.fallback_summary;
     } else if (article.summary) {
-        skimText = article.summary;
+        skimText = stripHtml(article.summary);
     } else {
         skimText = 'No summary available';
     }
@@ -255,7 +262,7 @@ function createArticleElement(article) {
     } else if (article.fallback_summary) {
         fullContent = `<p class="text-gray-700 dark:text-gray-300">${article.fallback_summary}</p>`;
     } else if (article.summary) {
-        fullContent = `<p class="text-gray-700 dark:text-gray-300">${article.summary}</p>`;
+        fullContent = `<div class="text-gray-700 dark:text-gray-300 space-y-2">${article.summary}</div>`;
     } else {
         fullContent = `<p class="text-gray-500 dark:text-gray-400 italic">No summary available</p>`;
     }
