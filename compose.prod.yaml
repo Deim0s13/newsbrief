@@ -10,13 +10,6 @@
 #   make deploy     # auto-creates secret, pulls image, runs migrations
 
 services:
-  api:
-    # Use the pre-built GHCR image in production instead of building locally.
-    # compose-watch.sh compares the running container's image digest against
-    # the pulled GHCR digest to detect new releases.
-    image: ghcr.io/deim0s13/newsbrief:latest
-    build: null
-
   db:
     environment:
       # Override: Use secret file instead of env var
