@@ -2,7 +2,7 @@
 RUNTIME          ?= podman
 REGISTRY         ?=                         # e.g. ghcr.io/Deim0s13
 IMAGE_NAME       ?= newsbrief-api
-PORT             ?= 8787
+PORT             ?= 8790
 DATA_DIR         ?= $(PWD)/data
 BACKUP_DIR       ?= $(PWD)/backups
 
