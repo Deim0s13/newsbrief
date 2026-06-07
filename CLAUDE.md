@@ -11,7 +11,7 @@ The app runs on **two machines** — a macOS MBP and a Windows machine — both 
 | Container runtime | Podman Desktop | Podman Desktop for Windows |
 | Prod CD | kind/ArgoCD (GitOps, auto-sync) | Podman Compose + GHCR image polling |
 | Dev deployment | Podman Compose | Podman Compose (WSL2) |
-| Development (Python, tests) | macOS terminal | **WSL2 only** |
+| Development (Python, tests) | macOS terminal | WSL2 (dev only — not required at runtime) |
 | Ollama | Ollama.app (native) | Ollama.exe (native, GPU) |
 | Ollama URL (containers) | `host.containers.internal:11434` | Same — identical |
 | Infra auto-start | launchd (`make infra-autostart-install`) | Task Scheduler (`scripts\compose-task-install.ps1`) |
@@ -84,25 +84,28 @@ make deploy-status  # Check prod container status
 
 ### Windows CD — Compose + GHCR polling
 ```bash
-# Install Task Scheduler tasks (run once from PowerShell, not WSL2):
+# Install Task Scheduler tasks (run once — no WSL2 required):
+# From PowerShell:
 powershell -ExecutionPolicy Bypass -File scripts\compose-task-install.ps1
 # Or from WSL2:
 make compose-autostart-install
 
-# Manual triggers:
+# Manual triggers (from WSL2):
 make compose-start   # Idempotent stack start (safe to call on boot)
 make compose-watch   # Pull latest GHCR image and redeploy if newer
 ```
 
-Two tasks are registered:
-- **NewsBrief Compose Start** — runs `compose-start.sh` at login (30 s delay); uses hidden PowerShell window
-- **NewsBrief Compose Watch** — runs `compose-watch.sh` daily at 06:00; pulls `ghcr.io/deim0s13/newsbrief:latest`, redeploys if digest changed, runs migrations, sends ntfy push
+Two tasks are registered (both run silently — no console window):
+- **NewsBrief Compose Start** — runs `compose-start.ps1` at login (30 s delay); waits for Podman, then brings stack up
+- **NewsBrief Compose Watch** — runs `compose-watch.ps1` daily at 06:00; pulls `ghcr.io/deim0s13/newsbrief:latest`, redeploys if digest changed, runs migrations, sends ntfy push
+
+Both scripts are native PowerShell — **WSL2 is not required** to run the app on Windows.
 
 ### CI/CD — GitHub Actions
 CI runs automatically on push. No local trigger commands needed.
 
 - **Push to `dev`** → `.github/workflows/ci-dev.yml` → lint + test + build (multi-arch) + push `ghcr.io/deim0s13/newsbrief:sha-{SHA}` + update `k8s/overlays/dev/kustomization.yaml` → ArgoCD auto-deploys (macOS)
-- **Push to `main`** → `.github/workflows/ci-prod.yml` → same + Trivy scan + Cosign sign + SBOM + GitHub release + update `k8s/overlays/prod/kustomization.yaml` → ArgoCD auto-deploys (macOS); Windows picks up new image next morning (06:00) via `compose-watch.sh`
+- **Push to `main`** → `.github/workflows/ci-prod.yml` → same + Trivy scan + Cosign sign + SBOM + GitHub release + update `k8s/overlays/prod/kustomization.yaml` → ArgoCD auto-deploys (macOS); Windows picks up new image next morning (06:00) via `compose-watch.ps1`
 
 **GitHub secrets required** (set in repo Settings → Secrets):
 

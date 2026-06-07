@@ -1,37 +1,31 @@
 # Register Compose auto-start and auto-update as Windows Task Scheduler tasks.
+# No WSL2 required — tasks invoke native PowerShell scripts directly.
+#
 # Run once from PowerShell (no admin required):
 #   powershell -ExecutionPolicy Bypass -File scripts\compose-task-install.ps1
 #
 # Or from WSL2:
-#   powershell.exe -ExecutionPolicy Bypass -File scripts/compose-task-install.ps1
+#   make compose-autostart-install
 #
 # Tasks registered:
-#   "NewsBrief Compose Start" — runs compose-start.sh at login (30s delay)
-#   "NewsBrief Compose Watch" — runs compose-watch.sh once daily at 06:00
+#   "NewsBrief Compose Start" — runs compose-start.ps1 at login (30s delay)
+#   "NewsBrief Compose Watch" — runs compose-watch.ps1 once daily at 06:00
 
 $ErrorActionPreference = "Stop"
-
-# Detect WSL distro name — defaults to "Ubuntu"; override with $env:WSL_DISTRO if needed
-$WslDistro  = if ($env:WSL_DISTRO) { $env:WSL_DISTRO } else { "Ubuntu" }
-
-# WSL2 path to the project root (adjust if your checkout is elsewhere)
-$ProjectDir = "/home/pleathen/projects/newsbrief"
-
-$LogDir = Join-Path (Split-Path -Parent $PSScriptRoot) "logs"
-New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
 function Register-NB {
     param(
         [string]$Name,
-        [string]$ScriptRelPath,
+        [string]$ScriptStem,
         $Trigger
     )
 
     Unregister-ScheduledTask -TaskName $Name -Confirm:$false -ErrorAction SilentlyContinue
 
-    # Run via hidden PowerShell so no console window appears (important during gaming/fullscreen)
-    $wslCmd  = "wsl.exe -d $WslDistro -- bash $ProjectDir/$ScriptRelPath"
-    $psArgs  = "-WindowStyle Hidden -NonInteractive -Command `"$wslCmd`""
+    # Derive the PS1 path from this installer's own location — portable regardless
+    # of whether the repo lives on a Windows path or a \\wsl$\ UNC path.
+    $ps1Path = Join-Path $PSScriptRoot ($ScriptStem + ".ps1")
+    $psArgs  = "-WindowStyle Hidden -NonInteractive -ExecutionPolicy Bypass -File `"$ps1Path`""
     $action  = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $psArgs
 
     $settings = New-ScheduledTaskSettingsSet `
@@ -56,17 +50,18 @@ function Register-NB {
 }
 
 # Task 1: Start Compose stack at login (30s delay to let Podman Desktop initialise first)
-$loginTrigger        = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
-$loginTrigger.Delay  = "PT30S"
-Register-NB "NewsBrief Compose Start" "scripts/compose-start.sh" $loginTrigger
+$loginTrigger       = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+$loginTrigger.Delay = "PT30S"
+Register-NB "NewsBrief Compose Start" "compose-start" $loginTrigger
 
 # Task 2: Check GHCR for updates once daily at 06:00 (off-peak, avoids gaming disruption)
 $dailyTrigger = New-ScheduledTaskTrigger -Daily -At "06:00"
-Register-NB "NewsBrief Compose Watch" "scripts/compose-watch.sh" $dailyTrigger
+Register-NB "NewsBrief Compose Watch" "compose-watch" $dailyTrigger
 
 Write-Host ""
 Write-Host "Tasks registered. Test them manually:"
 Write-Host "  Start-ScheduledTask 'NewsBrief Compose Start'"
 Write-Host "  Start-ScheduledTask 'NewsBrief Compose Watch'"
 Write-Host ""
+Write-Host "Logs: $(Split-Path -Parent $PSScriptRoot)\logs\"
 Write-Host "To remove: Unregister-ScheduledTask 'NewsBrief Compose Start','NewsBrief Compose Watch' -Confirm:`$false"

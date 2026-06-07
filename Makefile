@@ -450,10 +450,18 @@ argo-ui:  ## Port-forward Argo CD UI on 8443
 
 # ---------- Compose CD (Windows) ----------
 compose-start:  ## Start Compose stack (idempotent — safe to call on boot)
-	@bash scripts/compose-start.sh
+ifneq ($(UNAME_S),Darwin)
+	@powershell.exe -ExecutionPolicy Bypass -File scripts/compose-start.ps1
+else
+	@echo "compose-start is for Windows. On macOS use: make infra-start"
+endif
 
 compose-watch:  ## Check GHCR for newer image and redeploy if found
-	@bash scripts/compose-watch.sh
+ifneq ($(UNAME_S),Darwin)
+	@powershell.exe -ExecutionPolicy Bypass -File scripts/compose-watch.ps1
+else
+	@echo "compose-watch is for Windows. On macOS CD is handled by ArgoCD."
+endif
 
 compose-autostart-install:  ## Install Task Scheduler tasks for Compose auto-deploy (Windows)
 ifneq ($(UNAME_S),Darwin)

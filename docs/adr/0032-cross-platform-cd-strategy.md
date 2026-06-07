@@ -86,14 +86,14 @@ Sync wave 2: API Deployment rolls to new image
 ```
 CI pushes image to ghcr.io/deim0s13/newsbrief:latest
   ↓
-scripts/compose-watch.sh (every 15 min via Task Scheduler)
+scripts/compose-watch.ps1 (daily at 06:00 via Task Scheduler)
   → podman pull :latest
   → compare running digest vs pulled digest
   → if newer: podman-compose up -d → wait for DB → alembic upgrade head
   → ntfy push notification on deploy
 ```
 
-**Auto-start:** Task Scheduler fires `scripts/compose-start.sh` at login (30s delay to let Podman Desktop initialise). Compose stack comes up; watch fires 15 min later.
+**Auto-start:** Task Scheduler fires `scripts/compose-start.ps1` at login (30s delay to let Podman Desktop initialise). Both scripts run silently (hidden PowerShell window) and require only Podman Desktop — no WSL2 at runtime.
 
 **Install once:**
 ```powershell
@@ -127,6 +127,12 @@ Both CD paths track `:latest` (prod) or `:dev-latest` (dev environment).
 ### Neutral
 - Both platforms use the same GHCR image, so the deployed artefact is identical
 - Migrations run automatically on both paths (ArgoCD sync wave 1 on macOS; `alembic upgrade head` in watch script on Windows)
+
+---
+
+## Amendment — June 2026
+
+The Windows CD scripts were converted from bash-via-WSL2 to native PowerShell (`scripts/compose-start.ps1`, `scripts/compose-watch.ps1`). The original bash scripts (`compose-start.sh`, `compose-watch.sh`) have been removed. WSL2 is now a developer tool only; the production runtime on Windows requires only Podman Desktop. The Task Scheduler installer (`scripts/compose-task-install.ps1`) was updated to invoke the PS1 scripts directly with `-WindowStyle Hidden` — no console window appears during gaming or fullscreen use.
 
 ## Related ADRs
 
