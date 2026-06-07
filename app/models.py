@@ -541,7 +541,9 @@ class StoryGenerationRequest(BaseModel):
         ge=0.0,
         le=1.0,
     )
-    model: str = Field("llama3.1:8b", description="LLM model to use for synthesis")
+    model: Optional[str] = Field(
+        None, description="LLM model to use for synthesis (None = active profile)"
+    )
 
 
 class StoryGenerationResponse(BaseModel):

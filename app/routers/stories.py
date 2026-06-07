@@ -7,7 +7,7 @@ import logging
 from datetime import datetime, timezone
 from typing import List
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from sqlalchemy import text
 
 from ..datetime_utils import coerce_datetime
@@ -20,6 +20,7 @@ from ..models import (
     StoryOut,
     StructuredSummary,
 )
+from ..settings import get_settings_service
 from ..stories import generate_stories_simple, get_stories, get_story_by_id
 
 logger = logging.getLogger(__name__)
@@ -27,60 +28,95 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="", tags=["stories"])
 
 
-@limiter.limit("10/minute")
-@router.post("/stories/generate", response_model=StoryGenerationResponse)
-def generate_stories_endpoint(
-    request: Request, body: StoryGenerationRequest = None  # type: ignore[assignment]
-):
-    """
-    Generate stories from recent articles using hybrid clustering and LLM synthesis.
-    """
+def _run_generation_task(
+    time_window_hours: int,
+    min_articles_per_story: int,
+    similarity_threshold: float,
+    resolved_model: str,
+) -> None:
+    """Background task: run story generation and log result."""
     try:
-        if body is None:
-            body = StoryGenerationRequest()  # type: ignore[call-arg]
-
         with session_scope() as s:
             result = generate_stories_simple(
                 session=s,
-                time_window_hours=body.time_window_hours,
-                min_articles_per_story=body.min_articles_per_story,
-                similarity_threshold=body.similarity_threshold,
-                model=body.model,
+                time_window_hours=time_window_hours,
+                min_articles_per_story=min_articles_per_story,
+                similarity_threshold=similarity_threshold,
+                model=resolved_model,
                 max_workers=3,
             )
-
-            story_ids = result["story_ids"]
-            articles_found = result["articles_found"]
-            clusters_created = result["clusters_created"]
-            duplicates_skipped = result["duplicates_skipped"]
-
-            message = None
-            if len(story_ids) == 0:
-                if articles_found == 0:
-                    message = f"No articles found in the last {body.time_window_hours} hours. Try fetching feeds or increasing the time window."
-                elif duplicates_skipped > 0:
-                    message = f"All {duplicates_skipped} story clusters were duplicates of existing stories. Your stories are up to date! Try increasing the time window or fetch new articles."
-                elif clusters_created == 0:
-                    message = f"Found {articles_found} articles but they didn't cluster into stories. Try adjusting the similarity threshold or minimum articles per story."
-                else:
-                    message = f"Found {articles_found} articles in {clusters_created} clusters, but story generation failed. Check logs for details."
-
-            return StoryGenerationResponse(
-                success=True,
-                story_ids=story_ids,
-                stories_generated=len(story_ids),
-                time_window_hours=body.time_window_hours,
-                model=body.model,
-                articles_found=articles_found,
-                clusters_created=clusters_created,
-                duplicates_skipped=duplicates_skipped,
-                message=message,
-            )
-    except Exception as e:
-        logger.error(f"Story generation failed: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500, detail=f"Story generation failed: {str(e)}"
+        n = len(result.get("story_ids", []))
+        logger.info(
+            "Background story generation complete: %d stories, model=%s",
+            n,
+            resolved_model,
         )
+    except Exception as e:
+        logger.error("Background story generation failed: %s", e, exc_info=True)
+
+
+@limiter.limit("10/minute")
+@router.post("/stories/generate", status_code=202)
+def generate_stories_endpoint(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    body: StoryGenerationRequest = None,  # type: ignore[assignment]
+):
+    """
+    Trigger story generation in the background.
+
+    Returns 202 immediately; generation continues regardless of page navigation.
+    Poll GET /stories/generation-status to track progress.
+    """
+    if body is None:
+        body = StoryGenerationRequest()  # type: ignore[call-arg]
+
+    resolved_model = body.model or get_settings_service().get_active_model()
+    background_tasks.add_task(
+        _run_generation_task,
+        body.time_window_hours,
+        body.min_articles_per_story,
+        body.similarity_threshold,
+        resolved_model,
+    )
+    return {
+        "status": "started",
+        "message": "Story generation started in background",
+        "model": resolved_model,
+    }
+
+
+@router.get("/stories/generation-status")
+def generation_status_endpoint(request: Request):
+    """
+    Return whether a story generation stage is currently running.
+
+    Clients can poll this endpoint (e.g. every 5 s) after triggering generation
+    to know when it is safe to reload the stories list.
+    """
+    with session_scope() as s:
+        row = s.execute(
+            text(
+                """
+                SELECT started_at, finished_at
+                FROM pipeline_stage_runs
+                WHERE stage = 'story_generation'
+                ORDER BY started_at DESC
+                LIMIT 1
+                """
+            )
+        ).fetchone()
+
+    if row is None:
+        return {"in_progress": False, "last_started_at": None}
+
+    started_at, finished_at = row
+    in_progress = finished_at is None
+    return {
+        "in_progress": in_progress,
+        "last_started_at": started_at.isoformat() if started_at else None,
+        "last_finished_at": finished_at.isoformat() if finished_at else None,
+    }
 
 
 @router.get("/stories", response_model=StoriesListOut)

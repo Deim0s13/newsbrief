@@ -41,7 +41,7 @@ class PipelineReplayBody(BaseModel):
     from_stage: Literal["enrich", "story_generation"]
     model: Optional[str] = Field(
         default=None,
-        description="LLM model (defaults to STORY_MODEL from scheduler settings)",
+        description="LLM model (defaults to active profile from settings)",
     )
 
 
@@ -73,7 +73,7 @@ def admin_pipeline_run(request: Request, body: Optional[PipelineRunBody] = None)
             from_stage=mapped,
             time_window_hours=scheduler_mod.STORY_TIME_WINDOW_HOURS,
             min_articles_per_story=scheduler_mod.STORY_MIN_ARTICLES,
-            model=scheduler_mod.STORY_MODEL,
+            model=get_settings_service().get_active_model(),
             max_workers=3,
         )
         record_operator_action(
@@ -109,7 +109,7 @@ def admin_pipeline_replay(request: Request, body: PipelineReplayBody):
     from .. import scheduler as scheduler_mod
     from ..pipeline_runner import run_targeted_replay
 
-    model = body.model or scheduler_mod.STORY_MODEL
+    model = body.model or get_settings_service().get_active_model()
     try:
         result = run_targeted_replay(
             trigger="manual",
@@ -266,13 +266,13 @@ def admin_retry_failed_item(
     item_id: int,
     model: Optional[str] = Query(
         None,
-        description="LLM model (defaults to STORY_MODEL / scheduler)",
+        description="LLM model (defaults to active profile from settings)",
     ),
 ):
     from .. import scheduler as scheduler_mod
     from ..failed_entities import retry_failed_item
 
-    m = model or scheduler_mod.STORY_MODEL
+    m = model or get_settings_service().get_active_model()
     try:
         result = retry_failed_item(item_id, model=m)
         record_operator_action(
@@ -304,13 +304,13 @@ def admin_retry_failed_story(
     story_id: int,
     model: Optional[str] = Query(
         None,
-        description="LLM model (defaults to STORY_MODEL / scheduler)",
+        description="LLM model (defaults to active profile from settings)",
     ),
 ):
     from .. import scheduler as scheduler_mod
     from ..failed_entities import retry_failed_story
 
-    m = model or scheduler_mod.STORY_MODEL
+    m = model or get_settings_service().get_active_model()
     try:
         result = retry_failed_story(story_id, model=m)
         record_operator_action(

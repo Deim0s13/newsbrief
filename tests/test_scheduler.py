@@ -330,7 +330,6 @@ class TestConfigurationEnvironmentVariables:
             STORY_ARCHIVE_DAYS,
             STORY_GENERATION_SCHEDULE,
             STORY_MIN_ARTICLES,
-            STORY_MODEL,
             STORY_TIME_WINDOW_HOURS,
         )
 
@@ -341,4 +340,3 @@ class TestConfigurationEnvironmentVariables:
         assert STORY_ARCHIVE_DAYS == 7
         assert STORY_TIME_WINDOW_HOURS == 24
         assert STORY_MIN_ARTICLES == 2
-        assert STORY_MODEL == "llama3.1:8b"

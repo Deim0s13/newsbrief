@@ -688,7 +688,7 @@ def retry_pipeline_stage_run(run_id: int) -> Dict[str, Any]:
                 trigger=trigger,
                 run_group_id=new_group,
                 story_id=int(tgt_id),
-                model=scheduler_mod.STORY_MODEL,
+                model=get_settings_service().get_active_model(),
             )
         elif tgt_type is None:
             r = execute_story_generation_stage(
@@ -696,7 +696,7 @@ def retry_pipeline_stage_run(run_id: int) -> Dict[str, Any]:
                 run_group_id=new_group,
                 time_window_hours=scheduler_mod.STORY_TIME_WINDOW_HOURS,
                 min_articles_per_story=scheduler_mod.STORY_MIN_ARTICLES,
-                model=scheduler_mod.STORY_MODEL,
+                model=get_settings_service().get_active_model(),
                 max_workers=3,
             )
         else:
@@ -710,7 +710,7 @@ def retry_pipeline_stage_run(run_id: int) -> Dict[str, Any]:
             trigger=trigger,
             run_group_id=new_group,
             item_id=int(tgt_id),
-            model=scheduler_mod.STORY_MODEL,
+            model=get_settings_service().get_active_model(),
         )
     else:
         raise ValueError(f"unknown stage: {stage!r}")
