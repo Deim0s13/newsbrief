@@ -7,7 +7,7 @@
 #
 # Tasks registered:
 #   "NewsBrief Compose Start" — runs compose-start.sh at login (30s delay)
-#   "NewsBrief Compose Watch" — runs compose-watch.sh every 15 minutes
+#   "NewsBrief Compose Watch" — runs compose-watch.sh every hour
 
 $ErrorActionPreference = "Stop"
 
@@ -60,9 +60,9 @@ $loginTrigger        = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 $loginTrigger.Delay  = "PT30S"
 Register-NB "NewsBrief Compose Start" "scripts/compose-start.sh" $loginTrigger
 
-# Task 2: Check GHCR for updates every 15 minutes
+# Task 2: Check GHCR for updates once per hour
 $repeatTrigger = New-ScheduledTaskTrigger `
-    -RepetitionInterval (New-TimeSpan -Minutes 15) `
+    -RepetitionInterval (New-TimeSpan -Hours 1) `
     -Once -At (Get-Date)
 Register-NB "NewsBrief Compose Watch" "scripts/compose-watch.sh" $repeatTrigger
 

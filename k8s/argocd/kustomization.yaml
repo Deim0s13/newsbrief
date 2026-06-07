@@ -6,6 +6,7 @@ metadata:
 
 resources:
   - project.yaml
+  - argocd-cm.yaml
   # Individual apps (can be replaced by appset.yaml)
   - app-dev.yaml
   - app-prod.yaml

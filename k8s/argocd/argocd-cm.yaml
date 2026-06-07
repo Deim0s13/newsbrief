@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  # Poll git every hour instead of the default 3 minutes.
+  # This is a personal app with infrequent releases — hourly is more than enough.
+  timeout.reconciliation: 3600s
