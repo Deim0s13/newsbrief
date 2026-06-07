@@ -9,11 +9,12 @@ The app runs on **two machines** — a macOS MBP and a Windows machine — both 
 | Concern | macOS | Windows |
 |---|---|---|
 | Container runtime | Podman Desktop | Podman Desktop for Windows |
-| App deployment | Podman Compose + kind/ArgoCD | Same |
+| Prod CD | kind/ArgoCD (GitOps, auto-sync) | Podman Compose + GHCR image polling |
+| Dev deployment | Podman Compose | Podman Compose (WSL2) |
 | Development (Python, tests) | macOS terminal | **WSL2 only** |
 | Ollama | Ollama.app (native) | Ollama.exe (native, GPU) |
 | Ollama URL (containers) | `host.containers.internal:11434` | Same — identical |
-| Infra auto-start | launchd | Windows Task Scheduler |
+| Infra auto-start | launchd (`make infra-autostart-install`) | Task Scheduler (`scripts\compose-task-install.ps1`) |
 
 ---
 
@@ -74,15 +75,34 @@ Always commit migration files under `alembic/versions/` together with the code t
 ### Container & Deployment
 ```bash
 make build          # Build OCI image (Podman)
-make deploy         # Production stack: PostgreSQL + API + Caddy
-make deploy-init    # Run migrations on fresh production DB (first time only)
+make deploy         # Start prod stack (auto-creates db_password secret, runs migrations)
+make deploy-stop    # Stop prod stack (preserves data volumes)
+make deploy-status  # Check prod container status
 ```
+
+`make deploy` is idempotent: it creates the `db_password` Podman secret from `.env` if missing, brings Compose up, waits for the DB, then runs `alembic upgrade head`. No separate `make deploy-init` needed.
+
+### Windows CD — Compose + GHCR polling
+```bash
+# Install Task Scheduler tasks (run once from PowerShell, not WSL2):
+powershell -ExecutionPolicy Bypass -File scripts\compose-task-install.ps1
+# Or from WSL2:
+make compose-autostart-install
+
+# Manual triggers:
+make compose-start   # Idempotent stack start (safe to call on boot)
+make compose-watch   # Pull latest GHCR image and redeploy if newer
+```
+
+Two tasks are registered:
+- **NewsBrief Compose Start** — runs `compose-start.sh` at login (30 s delay); uses hidden PowerShell window
+- **NewsBrief Compose Watch** — runs `compose-watch.sh` daily at 06:00; pulls `ghcr.io/deim0s13/newsbrief:latest`, redeploys if digest changed, runs migrations, sends ntfy push
 
 ### CI/CD — GitHub Actions
 CI runs automatically on push. No local trigger commands needed.
 
-- **Push to `dev`** → `.github/workflows/ci-dev.yml` → lint + test + build (multi-arch) + push `ghcr.io/deim0s13/newsbrief:sha-{SHA}` + update `k8s/overlays/dev/kustomization.yaml` → ArgoCD auto-deploys
-- **Push to `main`** → `.github/workflows/ci-prod.yml` → lint + test + build + Trivy scan + Cosign sign + SBOM + GitHub release + update `k8s/overlays/prod/kustomization.yaml` → ArgoCD auto-deploys
+- **Push to `dev`** → `.github/workflows/ci-dev.yml` → lint + test + build (multi-arch) + push `ghcr.io/deim0s13/newsbrief:sha-{SHA}` + update `k8s/overlays/dev/kustomization.yaml` → ArgoCD auto-deploys (macOS)
+- **Push to `main`** → `.github/workflows/ci-prod.yml` → same + Trivy scan + Cosign sign + SBOM + GitHub release + update `k8s/overlays/prod/kustomization.yaml` → ArgoCD auto-deploys (macOS); Windows picks up new image next morning (06:00) via `compose-watch.sh`
 
 **GitHub secrets required** (set in repo Settings → Secrets):
 
@@ -92,9 +112,9 @@ CI runs automatically on push. No local trigger commands needed.
 | `COSIGN_PASSWORD` | Cosign key passphrase |
 | `NTFY_TOPIC` | ntfy.sh topic for pipeline notifications |
 
-### Kubernetes (local kind cluster)
+### Kubernetes / ArgoCD (macOS only)
 ```bash
-make infra-start           # Manually start kind + ArgoCD + port-forwards
+make infra-start           # Start kind + ArgoCD + port-forwards; applies App CRs if missing
 make port-forwards         # Restart port-forwards only
 make recover               # Full Ansible recovery (after major failure)
 make argo-ui               # Port-forward ArgoCD UI to localhost:8443
@@ -104,18 +124,18 @@ Port map after `make infra-start`:
 - `localhost:8788` — prod app (newsbrief-prod namespace)
 - `localhost:8789` — dev app (newsbrief-dev namespace)
 - `localhost:8443` — ArgoCD UI
-- `localhost:9097` — Tekton dashboard
 
-### Infrastructure Auto-Start (replaces `make recover` for day-to-day)
+ArgoCD polls Git every hour (`timeout.reconciliation: 3600s` in `k8s/argocd/argocd-cm.yaml`). `infra-start.sh` auto-applies Application CRs from `k8s/argocd/` if they're missing after cluster recreation — the script is idempotent.
+
+### Infrastructure Auto-Start
 ```bash
-# macOS — install once, runs automatically on every login:
+# macOS — launchd; install once, runs on every login:
 make infra-autostart-install
+make infra-autostart-status   # Verify launchd plist is loaded
 
-# Windows — run once from PowerShell (not WSL2):
-powershell -ExecutionPolicy Bypass -File scripts\infra-task-install.ps1
-
-# Check status:
-make infra-autostart-status
+# Windows — Task Scheduler; run once from PowerShell:
+powershell -ExecutionPolicy Bypass -File scripts\compose-task-install.ps1
+# (re-run to update task configuration — it unregisters and re-registers)
 ```
 
 ---
@@ -155,7 +175,8 @@ make infra-autostart-status
 | Reverse Proxy | Caddy (TLS termination; `newsbrief.local` in production) |
 | Container Runtime | Podman Desktop (macOS + Windows) |
 | CI | GitHub Actions (hosted runners, `.github/workflows/`) |
-| CD | ArgoCD on local kind cluster (each machine) |
+| CD (macOS) | ArgoCD on local kind cluster (GitOps, hourly poll, auto-sync) |
+| CD (Windows) | Podman Compose + GHCR polling via Task Scheduler (daily 06:00) |
 | Image Registry | `ghcr.io/deim0s13/newsbrief` (public) |
 
 ### Module Map (`app/`)
@@ -230,11 +251,13 @@ The embedding model (`nomic-embed-text`, 768 dimensions) is separate and configu
 
 ### Branching & CI/CD
 
-- **`dev`** — daily development. Push triggers `ci-dev.yml` (GitHub Actions): lint → test → build → push `ghcr.io/deim0s13/newsbrief:sha-{SHA}` → update `k8s/overlays/dev/kustomization.yaml` → ArgoCD auto-deploys to `newsbrief-dev`.
-- **`main`** — releases only (merge from `dev`). Push triggers `ci-prod.yml`: same + Trivy scan → Cosign sign → SBOM → GitHub release → update `k8s/overlays/prod/kustomization.yaml` → ArgoCD auto-deploys to `newsbrief-prod`.
-- ArgoCD runs a `newsbrief-db-migrate` Job (sync wave) before rolling the API Deployment — migrations are automatic on every GitOps sync.
-- Each machine runs its own ArgoCD instance watching the same Git repo. Whichever machine's ArgoCD is active reconciles and self-updates when it detects a manifest change.
-- Pipeline notifications go to ntfy.sh topic `newsbrief-ci` (macOS/iOS push).
+- **`dev`** — daily development. Push triggers `ci-dev.yml`: lint → test → build → push `ghcr.io/deim0s13/newsbrief:sha-{SHA}` → update `k8s/overlays/dev/kustomization.yaml`.
+- **`main`** — releases only (merge from `dev`). Push triggers `ci-prod.yml`: same + Trivy scan → Cosign sign → SBOM → GitHub release → update `k8s/overlays/prod/kustomization.yaml` + push `:latest` tag to GHCR.
+- **macOS CD**: ArgoCD polls Git hourly, detects new tag in kustomization, runs `newsbrief-db-migrate` Job (sync wave 0) then rolls the API Deployment — fully automatic.
+- **Windows CD**: `compose-watch.sh` runs once daily at 06:00 via Task Scheduler, compares running container SHA against `ghcr.io/deim0s13/newsbrief:latest`, redeploys + migrates if changed.
+- Dev DB (`compose.dev.yaml`) runs on `newsbrief_dev_network`; prod DB runs on `newsbrief_default` — isolated to prevent DNS round-robin.
+- `make env-init` generates a single random password and substitutes it into both `POSTGRES_PASSWORD` and `DATABASE_URL` in `.env` — credentials are always in sync.
+- Pipeline CI notifications go to ntfy.sh topic set in `NTFY_TOPIC` env/secret. Deploy notifications sent by `compose-watch.sh` (Windows) use the same topic from `.env`.
 
 ### Key Design Constraints
 

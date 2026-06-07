@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Check GHCR for a newer image; redeploy + migrate if one is found.
-# Called by Windows Task Scheduler every 15 minutes.
+# Called by Windows Task Scheduler once daily at 06:00 (off-peak, before gaming).
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
