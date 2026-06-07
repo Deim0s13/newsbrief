@@ -3,6 +3,8 @@
 ## Status
 **Accepted** - January 2026
 
+> Note (June 2026): The ntfy.sh notification decision remains valid and is still in use. The implementation mechanism changed from Tekton finally blocks to GitHub Actions job steps and a `compose-watch.sh` deploy step (see ADR-0032). The notification channel and strategy are unchanged.
+
 ## Context
 
 NewsBrief uses Tekton pipelines for CI/CD running in a local kind cluster. When pipelines fail, developers currently need to manually check pipeline status via `kubectl` or the Tekton Dashboard. This creates a poor developer experience and delays response to failures.

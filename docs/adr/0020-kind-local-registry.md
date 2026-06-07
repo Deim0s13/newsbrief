@@ -1,7 +1,9 @@
 # ADR-0020: Kind Local Registry Configuration
 
 ## Status
-**Accepted** - January 2026
+**Superseded** by [ADR-0032: Cross-Platform CD Strategy](0032-cross-platform-cd-strategy.md) — June 2026
+
+> The kind local registry is no longer used. Container images are built by GitHub Actions and pushed to `ghcr.io/deim0s13/newsbrief`. ArgoCD on macOS and Podman Compose on Windows both pull from GHCR.
 
 ## Context
 

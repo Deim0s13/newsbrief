@@ -1,7 +1,9 @@
 # ADR-0016: CI/CD Platform Migration
 
 ## Status
-**Accepted** - January 2026
+**Superseded** by [ADR-0032: Cross-Platform CD Strategy](0032-cross-platform-cd-strategy.md) — June 2026
+
+> The decision to adopt Tekton as the CI/CD platform has been reversed. GitHub Actions (the previous platform) was reinstated as the CI runtime in June 2026, with ArgoCD retained for CD on macOS and Podman Compose polling added for Windows. See ADR-0032.
 
 ## Context
 
