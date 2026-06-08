@@ -84,9 +84,9 @@ if ($RunningId -eq $LatestId) {
 }
 
 Log "New image detected ($LatestId). Deploying..."
-podman-compose -f compose.yaml -f compose.windows.yaml up -d
+podman compose -f compose.yaml -f compose.windows.yaml up -d
 if ($LASTEXITCODE -ne 0) {
-    Log "ERROR: podman-compose up failed (exit $LASTEXITCODE)."
+    Log "ERROR: podman compose up failed (exit $LASTEXITCODE)."
     exit $LASTEXITCODE
 }
 
@@ -98,7 +98,7 @@ while ($true) {
 }
 
 Log "Running migrations..."
-podman-compose -f compose.yaml -f compose.windows.yaml exec -T api alembic upgrade head
+podman compose -f compose.yaml -f compose.windows.yaml exec -T api alembic upgrade head
 if ($LASTEXITCODE -ne 0) {
     Log "ERROR: alembic upgrade failed (exit $LASTEXITCODE)."
     exit $LASTEXITCODE
