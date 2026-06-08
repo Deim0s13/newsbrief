@@ -1,6 +1,6 @@
 # Start the NewsBrief Compose stack idempotently.
 # Called by Windows Task Scheduler at login (30s delay).
-# No WSL2 required — runs native Podman Desktop commands.
+# No WSL2 required - runs native Podman Desktop commands.
 #
 # Manual run (from PowerShell or WSL2):
 #   powershell.exe -ExecutionPolicy Bypass -File scripts/compose-start.ps1
