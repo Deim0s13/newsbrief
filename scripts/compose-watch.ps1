@@ -47,6 +47,13 @@ if ($LASTEXITCODE -ne 0) {
 
 Set-Location $ProjectRoot
 
+# Pull latest scripts and compose files before doing anything else
+Log "Pulling latest repo from main..."
+git pull origin main 2>&1 | ForEach-Object { Log $_ }
+if ($LASTEXITCODE -ne 0) {
+    Log "WARNING: git pull failed — continuing with current files."
+}
+
 $Image = "ghcr.io/deim0s13/newsbrief:latest"
 
 # SHA256 of the image the running container is using
