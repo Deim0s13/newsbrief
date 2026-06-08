@@ -1,6 +1,6 @@
 # Check GHCR for a newer image; redeploy + migrate if one is found.
 # Called by Windows Task Scheduler once daily at 06:00.
-# No WSL2 required — runs native Podman Desktop commands.
+# No WSL2 required - runs native Podman Desktop commands.
 #
 # Manual run (from PowerShell or WSL2):
 #   powershell.exe -ExecutionPolicy Bypass -File scripts/compose-watch.ps1
@@ -51,7 +51,7 @@ Set-Location $ProjectRoot
 Log "Pulling latest repo from main..."
 git pull origin main 2>&1 | ForEach-Object { Log $_ }
 if ($LASTEXITCODE -ne 0) {
-    Log "WARNING: git pull failed — continuing with current files."
+    Log "WARNING: git pull failed - continuing with current files."
 }
 
 $Image = "ghcr.io/deim0s13/newsbrief:latest"

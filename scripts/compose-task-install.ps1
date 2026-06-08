@@ -1,5 +1,5 @@
 # Register Compose auto-start and auto-update as Windows Task Scheduler tasks.
-# No WSL2 required — tasks invoke native PowerShell scripts directly.
+# No WSL2 required - tasks invoke native PowerShell scripts directly.
 #
 # Run once from PowerShell (no admin required):
 #   powershell -ExecutionPolicy Bypass -File scripts\compose-task-install.ps1
@@ -8,8 +8,8 @@
 #   make compose-autostart-install
 #
 # Tasks registered:
-#   "NewsBrief Compose Start" — runs compose-start.ps1 at login (30s delay)
-#   "NewsBrief Compose Watch" — runs compose-watch.ps1 once daily at 06:00
+#   "NewsBrief Compose Start" - runs compose-start.ps1 at login (30s delay)
+#   "NewsBrief Compose Watch" - runs compose-watch.ps1 once daily at 06:00
 
 $ErrorActionPreference = "Stop"
 
@@ -22,7 +22,7 @@ function Register-NB {
 
     Unregister-ScheduledTask -TaskName $Name -Confirm:$false -ErrorAction SilentlyContinue
 
-    # Derive the PS1 path from this installer's own location — portable regardless
+    # Derive the PS1 path from this installer's own location - portable regardless
     # of whether the repo lives on a Windows path or a \\wsl$\ UNC path.
     $ps1Path = Join-Path $PSScriptRoot ($ScriptStem + ".ps1")
     $psArgs  = "-WindowStyle Hidden -NonInteractive -ExecutionPolicy Bypass -File `"$ps1Path`""
