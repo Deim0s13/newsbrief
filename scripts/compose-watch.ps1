@@ -47,11 +47,21 @@ if ($LASTEXITCODE -ne 0) {
 
 Set-Location $ProjectRoot
 
+# Pull latest scripts and compose files before doing anything else
+Log "Pulling latest repo from main..."
+git pull origin main 2>&1 | ForEach-Object { Log $_ }
+if ($LASTEXITCODE -ne 0) {
+    Log "WARNING: git pull failed — continuing with current files."
+}
+
 $Image = "ghcr.io/deim0s13/newsbrief:latest"
 
-# SHA256 of the image the running container is using
-$RunningId = podman inspect newsbrief --format '{{.Image}}' 2>$null
-if ($LASTEXITCODE -ne 0) { $RunningId = "" }
+# SHA256 of the image the running container is using (empty if not yet deployed)
+$RunningId = ""
+try {
+    $output = podman inspect newsbrief --format '{{.Image}}' 2>&1
+    if ($LASTEXITCODE -eq 0) { $RunningId = $output }
+} catch { }
 
 Log "Pulling $Image..."
 $null = podman pull $Image --quiet 2>&1
