@@ -132,7 +132,11 @@ Both CD paths track `:latest` (prod) or `:dev-latest` (dev environment).
 
 ## Amendment — June 2026
 
-The Windows CD scripts were converted from bash-via-WSL2 to native PowerShell (`scripts/compose-start.ps1`, `scripts/compose-watch.ps1`). The original bash scripts (`compose-start.sh`, `compose-watch.sh`) have been removed. WSL2 is now a developer tool only; the production runtime on Windows requires only Podman Desktop. The Task Scheduler installer (`scripts/compose-task-install.ps1`) was updated to invoke the PS1 scripts directly with `-WindowStyle Hidden` — no console window appears during gaming or fullscreen use.
+**Phase 1 — Native PowerShell scripts:** The Windows CD scripts were converted from bash-via-WSL2 to native PowerShell (`scripts/compose-start.ps1`, `scripts/compose-watch.ps1`). The original bash scripts (`compose-start.sh`, `compose-watch.sh`) have been removed. The Task Scheduler installer (`scripts/compose-task-install.ps1`) was updated to invoke the PS1 scripts directly with `-WindowStyle Hidden` — no console window appears during gaming or fullscreen use.
+
+**Phase 2 — Windows-native compose overlay:** A new `compose.windows.yaml` overlay was introduced for use by the PS1 scripts instead of `compose.prod.yaml`. This was necessary because `compose.prod.yaml` uses Podman secrets (`secrets.db_password: external: true`), which are namespaced per Podman runtime instance. A secret created inside WSL2 Podman does not exist in Windows Podman Desktop's instance (they are separate container runtimes — Podman Desktop manages its own Podman Machine, distinct from the user's Ubuntu WSL2 distro). `compose.windows.yaml` omits secrets entirely and reads `POSTGRES_PASSWORD` from `.env` directly, the same way as the base `compose.yaml`. It also adds `restart: unless-stopped` to all services.
+
+**Result:** WSL2 is now a developer tool only. The production runtime on Windows requires only Podman Desktop — production containers are visible in the Podman Desktop GUI. `make deploy` from WSL2 continues to work for macOS and for dev/test on Windows (WSL2 Podman, separate from Podman Desktop).
 
 ## Related ADRs
 

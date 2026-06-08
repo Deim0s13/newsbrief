@@ -779,7 +779,7 @@ flowchart TB
     end
 
     subgraph Windows["Windows — Compose + GHCR polling"]
-        Task["Task Scheduler (hourly)\ncompose-watch.sh"]
+        Task["Task Scheduler (daily 06:00)\ncompose-watch.ps1 (native PowerShell)"]
         ComposeUp["podman-compose up\n+ alembic upgrade head"]
         Task --> ComposeUp
     end
@@ -790,7 +790,7 @@ flowchart TB
     GHCR --> Windows
 ```
 
-Each ArgoCD sync applies a **`Job` (`newsbrief-db-migrate`)** that runs **`alembic upgrade head`** using the same container image and `DATABASE_URL` as the API **before** the `Deployment` rolls (sync waves; failures block the rollout). Details in [Kubernetes setup](development/KUBERNETES.md#sync-waves). The Windows path runs the same migration step inside `compose-watch.sh` after pulling the new image.
+Each ArgoCD sync applies a **`Job` (`newsbrief-db-migrate`)** that runs **`alembic upgrade head`** using the same container image and `DATABASE_URL` as the API **before** the `Deployment` rolls (sync waves; failures block the rollout). Details in [Kubernetes setup](development/KUBERNETES.md#sync-waves). The Windows path runs the same migration step inside `compose-watch.ps1` after pulling the new image.
 
 ---
 
@@ -825,7 +825,7 @@ flowchart LR
     subgraph CD["CD"]
         Kustomize["update kustomization.yaml"]
         ArgoCD["ArgoCD auto-sync (macOS)"]
-        ComposeWatch["compose-watch.sh hourly (Windows)"]
+        ComposeWatch["compose-watch.ps1 daily (Windows)"]
     end
 
     subgraph Notify["Notifications"]
@@ -945,16 +945,26 @@ Port map after `make infra-start`:
 - `localhost:8789` — dev app (newsbrief-dev namespace)
 - `localhost:8443` — ArgoCD UI
 
-**Windows** (Podman Compose + GHCR polling):
+**Windows** (Podman Compose + GHCR polling — native PowerShell, no WSL2 at runtime):
+
+Production containers run under **Podman Desktop for Windows** and are visible in the Podman Desktop GUI. The runtime path is entirely native — WSL2 is used only for development tooling.
 
 ```bash
+# First-time setup (from WSL2):
+make compose-autostart-install
+# Then from PowerShell to trigger initial deploy:
+# Start-ScheduledTask 'NewsBrief Compose Watch'
+
+# Manual triggers (from WSL2 — delegates to PowerShell scripts via interop):
 make compose-start    # Idempotent stack start (safe to call on boot)
 make compose-watch    # Pull latest GHCR image and redeploy if newer
 ```
 
-Two Task Scheduler tasks run automatically:
-- **NewsBrief Compose Start** — runs at login (30 s delay)
-- **NewsBrief Compose Watch** — runs hourly; pulls `ghcr.io/deim0s13/newsbrief:latest`, redeploys if digest changed
+Two Task Scheduler tasks run automatically (both silent — no console window):
+- **NewsBrief Compose Start** — runs `compose-start.ps1` at login (30 s delay); `restart: unless-stopped` keeps containers up across reboots
+- **NewsBrief Compose Watch** — runs `compose-watch.ps1` daily at 06:00; pulls `ghcr.io/deim0s13/newsbrief:latest`, redeploys if digest changed, runs migrations
+
+Both use `compose.windows.yaml` instead of `compose.prod.yaml` — no Podman secrets (secrets are namespaced per runtime instance and cannot be shared between WSL2 Podman and Windows Podman Desktop).
 
 See [CI/CD Guide](development/CI-CD.md) for full operational detail.
 

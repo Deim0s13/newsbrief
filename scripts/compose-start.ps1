@@ -34,7 +34,7 @@ if ($LASTEXITCODE -ne 0) {
 
 Log "Podman ready. Starting stack..."
 Set-Location $ProjectRoot
-podman-compose -f compose.yaml -f compose.prod.yaml up -d
+podman-compose -f compose.yaml -f compose.windows.yaml up -d
 
 if ($LASTEXITCODE -eq 0) {
     Log "Stack started successfully."

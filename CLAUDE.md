@@ -83,23 +83,29 @@ make deploy-status  # Check prod container status
 `make deploy` is idempotent: it creates the `db_password` Podman secret from `.env` if missing, brings Compose up, waits for the DB, then runs `alembic upgrade head`. No separate `make deploy-init` needed.
 
 ### Windows CD — Compose + GHCR polling
+
+Production containers run under **Windows Podman Desktop** (visible in the Podman Desktop GUI) via native PowerShell scripts. WSL2 is not involved in the runtime path.
+
 ```bash
-# Install Task Scheduler tasks (run once — no WSL2 required):
-# From PowerShell:
-powershell -ExecutionPolicy Bypass -File scripts\compose-task-install.ps1
-# Or from WSL2:
+# Install Task Scheduler tasks (run once from WSL2):
 make compose-autostart-install
 
-# Manual triggers (from WSL2):
+# First-time deploy — run from PowerShell after installing tasks:
+# Start-ScheduledTask 'NewsBrief Compose Watch'
+# This pulls the image, starts all containers, and runs migrations.
+
+# Manual triggers (from WSL2 — calls PowerShell scripts via interop):
 make compose-start   # Idempotent stack start (safe to call on boot)
 make compose-watch   # Pull latest GHCR image and redeploy if newer
 ```
 
-Two tasks are registered (both run silently — no console window):
+Two tasks are registered (both run silently — no console window, no gaming disruption):
 - **NewsBrief Compose Start** — runs `compose-start.ps1` at login (30 s delay); waits for Podman, then brings stack up
 - **NewsBrief Compose Watch** — runs `compose-watch.ps1` daily at 06:00; pulls `ghcr.io/deim0s13/newsbrief:latest`, redeploys if digest changed, runs migrations, sends ntfy push
 
-Both scripts are native PowerShell — **WSL2 is not required** to run the app on Windows.
+Both scripts use `compose.windows.yaml` (no Podman secrets — password from `.env` directly). Podman secrets cannot be shared across runtime instances (WSL2 Podman ≠ Windows Podman Desktop).
+
+**`make deploy` from WSL2** uses `compose.prod.yaml` with Podman secrets and deploys to WSL2 Podman (containers not visible in Podman Desktop). This is intentional — use it for dev/test only.
 
 ### CI/CD — GitHub Actions
 CI runs automatically on push. No local trigger commands needed.
