@@ -38,8 +38,6 @@ def _get_default_model() -> str:
         return os.getenv("NEWSBRIEF_LLM_MODEL", "llama3.1:8b")
 
 
-# For backward compatibility, expose as a property-like access
-DEFAULT_MODEL = _get_default_model()
 MAX_CONTENT_LENGTH = int(os.getenv("NEWSBRIEF_MAX_CONTENT_LENGTH", "8000"))
 SUMMARY_MAX_LENGTH = int(os.getenv("NEWSBRIEF_SUMMARY_MAX_LENGTH", "300"))
 

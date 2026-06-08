@@ -19,7 +19,7 @@
     {% if environment != 'production' %}
     <!-- DEV Banner -->
     <div class="bg-orange-500 text-white text-center py-1 px-4 text-sm font-bold shadow-sm">
-        ⚠️ DEVELOPMENT MODE - localhost:8787
+        ⚠️ DEVELOPMENT MODE - {{ request.url.netloc }}
     </div>
     {% endif %}
 

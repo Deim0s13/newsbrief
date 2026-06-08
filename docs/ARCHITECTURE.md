@@ -1,12 +1,12 @@
 # NewsBrief Architecture Document
 
-> **Version**: 1.4
-> **Last Updated**: February 2026 (v0.8.3)
+> **Version**: 1.5
+> **Last Updated**: June 2026 (v0.8.4)
 > **Status**: Living Document
 
 ---
 
-> **Future Direction**: NewsBrief is evolving from a news aggregator into an intelligence platform. See [ADR-0023: Intelligence Platform Strategy](adr/0023-intelligence-platform-strategy.md) for the strategic vision covering entity intelligence, multi-perspective synthesis, and premium features. **Operating model**: Story processing is moving toward pipeline-oriented orchestration with explicit state, stages, retries, and stage-aware observability—see [ADR-0029: Pipeline-oriented orchestration](adr/0029-pipeline-oriented-orchestration.md).
+> **Direction**: NewsBrief is evolving from a news aggregator into an intelligence platform. See [ADR-0023: Intelligence Platform Strategy](adr/0023-intelligence-platform-strategy.md) for the strategic vision covering entity intelligence, multi-perspective synthesis, and contextual depth. **Operating model**: Story processing uses an orchestrated pipeline with explicit state, stages, retries, and stage-aware observability—see [ADR-0029: Pipeline-oriented orchestration](adr/0029-pipeline-oriented-orchestration.md).
 
 ---
 
@@ -311,7 +311,7 @@ C4Context
 |-------|-------------|-------------|
 | **User** | Primary consumer of synthesized news | Web browser, API |
 | **Scheduler** | Internal automated job runner | Triggers feed refresh, story generation |
-| **CI/CD System** | Tekton pipelines | Builds, tests, deploys |
+| **CI/CD System** | GitHub Actions | Builds, tests, deploys |
 
 ---
 
@@ -420,9 +420,9 @@ sequenceDiagram
 | **Container Runtime** | Podman/Docker | OCI-compliant |
 | **Orchestration** | Podman Compose | Multi-container |
 
-### 6.4 Story processing: toward pipeline orchestration
+### 6.4 Story processing: pipeline orchestration
 
-Story processing is moving from a set of partly manual steps (scheduled refresh, on-demand generation) to an **orchestrated pipeline** with explicit article and story states, defined stages (ingest → extract → enrich → cluster → retrieval → synthesize → quality-check → publish), retries and dead-letter handling, and stage-aware observability. This improves reliability, testability, and extension points (retrieval, synthesis routing, context, confidence gating). See [Section 7.5](#75-story-processing-pipeline-orchestration) and [ADR-0029](adr/0029-pipeline-oriented-orchestration.md).
+Story processing uses an **orchestrated pipeline** with explicit article and story states, defined stages (ingest → extract → enrich → cluster → retrieval → synthesize → quality-check → publish), retries and dead-letter handling, and stage-aware observability. This improves reliability, testability, and extension points (retrieval, synthesis routing, context, confidence gating). See [Section 7.5](#75-story-processing-pipeline-orchestration) and [ADR-0029](adr/0029-pipeline-oriented-orchestration.md).
 
 ---
 
@@ -524,7 +524,7 @@ flowchart TB
 
 ### 7.5 Story Processing Pipeline (orchestration)
 
-NewsBrief is evolving from loosely connected processing steps toward an **orchestrated pipeline** with explicit article and story states, stage-based flow, retries, and stage-aware observability (see [ADR-0029](adr/0029-pipeline-oriented-orchestration.md)). The following describes the target model; implementation is tracked in the pipeline-orchestration workstream (GitHub issues #273–#291).
+NewsBrief implements an **orchestrated pipeline** with explicit article and story states, stage-based flow, retries, and stage-aware observability (see [ADR-0029](adr/0029-pipeline-oriented-orchestration.md)). Implementation is complete (pipeline-orchestration workstream, issues #273–#291 closed April 2026). The remaining extension points — retrieval hook, confidence gate, synthesis routing — are tracked in v0.8.4–v0.8.5.
 
 #### End-to-end pipeline stages
 
@@ -757,60 +757,40 @@ flowchart TB
 | **Visual** | DEV banner | Clean UI |
 | **Command** | `make dev` | `make deploy` |
 
-### 9.3 Kubernetes Deployment (Local)
+### 9.3 CI/CD Architecture
+
+CI runs on GitHub Actions (hosted runners). CD is hybrid: ArgoCD on macOS (GitOps), Podman Compose + GHCR polling on Windows — see [ADR-0032](adr/0032-cross-platform-cd-strategy.md).
 
 ```mermaid
 flowchart TB
-    subgraph Kind["kind Cluster (newsbrief-dev)"]
-        subgraph NS_Default["Namespace: default"]
-            subgraph Tekton["Tekton Pipelines"]
-                Pipeline["CI Pipelines<br/>ci-dev, ci-prod"]
-                Tasks["Tasks<br/>lint, test, build, scan, sign"]
-                Triggers["Event Listener<br/>GitHub webhooks"]
-                Notify["Notify Tasks<br/>ntfy, slack"]
-            end
-        end
-
-        subgraph NS_Registry["Namespace: registry"]
-            Registry["Container Registry<br/>:5000"]
-            RegPVC["Registry PVC"]
-        end
-
-        subgraph NS_ArgoCD["Namespace: argocd"]
-            ArgoCD["ArgoCD Server"]
-            AppDev["App: newsbrief-dev"]
-            AppProd["App: newsbrief-prod"]
-        end
-
-        subgraph NS_Dev["Namespace: newsbrief-dev"]
-            DevApp["NewsBrief (dev)"]
-        end
-
-        subgraph NS_Prod["Namespace: newsbrief-prod"]
-            ProdApp["NewsBrief (prod)"]
-        end
+    subgraph GH["GitHub Actions (CI)"]
+        direction LR
+        Lint["lint"] --> Test["test"] --> Build["build-image"] --> Scan["scan (Trivy)"]
+        Scan -->|prod| Sign["sign (Cosign) + SBOM"]
     end
 
-    GitHub["GitHub Repo"]
-    Smee["smee.io"]
-    ntfy["ntfy.sh"]
-    macOS["🔔 macOS/iOS"]
+    GHCR["ghcr.io/deim0s13/newsbrief\n:sha-{SHA} / :latest"]
 
-    GitHub -->|"webhook"| Smee
-    Smee -->|"relay"| Triggers
-    Triggers -->|"trigger"| Pipeline
-    Pipeline -->|"push"| Registry
-    Pipeline -->|"finally"| Notify
-    Notify -->|"POST"| ntfy
-    ntfy -->|"push"| macOS
-    ArgoCD -->|"watch"| GitHub
-    ArgoCD -->|"deploy"| DevApp
-    ArgoCD -->|"deploy"| ProdApp
-    DevApp -->|"pull"| Registry
-    ProdApp -->|"pull"| Registry
+    subgraph macOS["macOS — ArgoCD (GitOps)"]
+        Argo["ArgoCD polls Git hourly"]
+        MigrateJob["newsbrief-db-migrate Job\n(sync wave 0)"]
+        KubeApp["API Deployment\n(sync wave 1)"]
+        Argo --> MigrateJob --> KubeApp
+    end
+
+    subgraph Windows["Windows — Compose + GHCR polling"]
+        Task["Task Scheduler (daily 06:00)\ncompose-watch.ps1 (native PowerShell)"]
+        ComposeUp["podman-compose up\n+ alembic upgrade head"]
+        Task --> ComposeUp
+    end
+
+    Push["git push"] --> GH
+    GH --> GHCR
+    GHCR --> macOS
+    GHCR --> Windows
 ```
 
-Each Argo CD sync applies a **`Job` (`newsbrief-db-migrate`)** that runs **`alembic upgrade head`** using the same container image and `DATABASE_URL` as the API **before** the `Deployment` rolls (sync waves; failures block the rollout). Details and caveats for plain `kubectl apply` are in [Kubernetes setup](development/KUBERNETES.md#sync-waves).
+Each ArgoCD sync applies a **`Job` (`newsbrief-db-migrate`)** that runs **`alembic upgrade head`** using the same container image and `DATABASE_URL` as the API **before** the `Deployment` rolls (sync waves; failures block the rollout). Details in [Kubernetes setup](development/KUBERNETES.md#sync-waves). The Windows path runs the same migration step inside `compose-watch.ps1` after pulling the new image.
 
 ---
 
@@ -821,56 +801,49 @@ Each Argo CD sync applies a **`Job` (`newsbrief-db-migrate`)** that runs **`alem
 ```mermaid
 flowchart LR
     subgraph Trigger["Trigger"]
-        Push["Git Push"]
-        Webhook["GitHub Webhook"]
+        Push["git push (dev / main)"]
     end
 
-    subgraph CI["CI Pipeline (Tekton)"]
-        Clone["git-clone"]
+    subgraph CI["GitHub Actions"]
+        Clone["checkout"]
 
         subgraph Parallel["Parallel"]
-            Lint["lint<br/>(black, isort)"]
-            Test["test<br/>(pytest, mypy)"]
+            Lint["lint<br/>(black, isort, mypy)"]
+            Test["test<br/>(pytest)"]
         end
 
-        Build["build-image<br/>(Buildah)"]
+        Build["build-image<br/>(docker/buildx)"]
         Scan["security-scan<br/>(Trivy)"]
     end
 
-    subgraph Security["Security (Prod Only)"]
+    subgraph Security["Security (prod only)"]
         Sign["sign-image<br/>(Cosign)"]
         SBOM["generate-sbom<br/>(Trivy)"]
+        Release["GitHub Release"]
     end
 
-    subgraph CD["CD (ArgoCD)"]
-        Sync["GitOps Sync"]
-        Deploy["Deploy to K8s"]
+    subgraph CD["CD"]
+        Kustomize["update kustomization.yaml"]
+        ArgoCD["ArgoCD auto-sync (macOS)"]
+        ComposeWatch["compose-watch.ps1 daily (Windows)"]
     end
 
-    subgraph Finally["Finally (Always Runs)"]
-        Notify["notify-ntfy"]
+    subgraph Notify["Notifications"]
+        ntfy["ntfy.sh → macOS/iOS"]
     end
 
-    subgraph Delivery["Notifications"]
-        macOS["🔔 macOS"]
-        Slack["💬 Slack"]
-    end
-
-    Push --> Webhook
-    Webhook --> Clone
+    Push --> Clone
     Clone --> Parallel
     Parallel --> Build
     Build --> Scan
-    Scan -->|"dev"| Sync
+    Scan -->|"dev"| Kustomize
     Scan -->|"prod"| Sign
-    Sign --> SBOM
-    SBOM --> Sync
-    Sync --> Deploy
+    Sign --> SBOM --> Release --> Kustomize
+    Kustomize --> ArgoCD
+    Kustomize --> ComposeWatch
 
-    CI -.->|"success/failure"| Finally
-    Security -.->|"success/failure"| Finally
-    Notify --> macOS
-    Notify -.->|"if configured"| Slack
+    CI -.->|"always"| ntfy
+    Security -.->|"always"| ntfy
 ```
 
 ### 10.2 Security Gates
@@ -902,10 +875,10 @@ gitGraph
     merge dev id: "release" tag: "ci-prod triggers"
 ```
 
-| Branch | Pipeline | Image Tag | Deploy To |
+| Branch | Workflow | Image Tag | Deploy To |
 |--------|----------|-----------|-----------|
-| `dev` | ci-dev | `dev-latest` | newsbrief-dev |
-| `main` | ci-prod | `v0.7.5` | newsbrief-prod |
+| `dev` | `ci-dev.yml` | `sha-{SHA}` | newsbrief-dev (macOS ArgoCD) + Windows Compose |
+| `main` | `ci-prod.yml` | `sha-{SHA}` + `:latest` | newsbrief-prod (macOS ArgoCD) + Windows Compose |
 
 ### 10.4 Pipeline Notifications
 
@@ -913,9 +886,9 @@ Pipelines send real-time notifications for both successes and failures:
 
 ```mermaid
 flowchart LR
-    subgraph Pipeline["Tekton Pipeline"]
-        Tasks["Pipeline Tasks"]
-        Finally["finally block"]
+    subgraph Pipeline["GitHub Actions"]
+        Tasks["Workflow Jobs"]
+        Finally["always-run step"]
     end
 
     subgraph Notifications["Notification Channels"]
@@ -956,32 +929,44 @@ See [ADR-0021: Pipeline Notifications](adr/0021-pipeline-notifications.md) for f
 
 ### 10.5 Operational Procedures
 
-The development environment runs on a laptop and requires service recovery after reboots or wake from sleep.
+Both machines use auto-start mechanisms that bring the stack up on login/reboot without manual intervention.
 
-**Ansible Playbooks** (`ansible/`):
-
-| Playbook | Purpose |
-|----------|---------|
-| `recover.yml` | Full environment recovery - starts all services |
-| `status.yml` | Check status without making changes |
-
-**Quick Commands**:
+**macOS** (kind + ArgoCD):
 
 ```bash
-make recover       # Full recovery after reboot
-make status        # Check service status
-make port-forwards # Restart port forwards only
+make infra-start      # Start kind cluster + ArgoCD + port-forwards; applies App CRs if missing
+make recover          # Full Ansible recovery after major failure
+make port-forwards    # Restart port-forwards only
+make argo-ui          # Port-forward ArgoCD UI to localhost:8443
 ```
 
-**Recovery Order**:
-1. Podman machine
-2. Kind cluster + local registry
-3. Tekton (pipelines, triggers, dashboard)
-4. ArgoCD (apps, sync)
-5. Port forwards (dev:8787, prod:8788, tekton:9097)
-6. Caddy reverse proxy (newsbrief.local)
+Port map after `make infra-start`:
+- `localhost:8788` — prod app (newsbrief-prod namespace)
+- `localhost:8789` — dev app (newsbrief-dev namespace)
+- `localhost:8443` — ArgoCD UI
 
-See [`ansible/README.md`](../ansible/README.md) for detailed procedures.
+**Windows** (Podman Compose + GHCR polling — native PowerShell, no WSL2 at runtime):
+
+Production containers run under **Podman Desktop for Windows** and are visible in the Podman Desktop GUI. The runtime path is entirely native — WSL2 is used only for development tooling.
+
+```bash
+# First-time setup (from WSL2):
+make compose-autostart-install
+# Then from PowerShell to trigger initial deploy:
+# Start-ScheduledTask 'NewsBrief Compose Watch'
+
+# Manual triggers (from WSL2 — delegates to PowerShell scripts via interop):
+make compose-start    # Idempotent stack start (safe to call on boot)
+make compose-watch    # Pull latest GHCR image and redeploy if newer
+```
+
+Two Task Scheduler tasks run automatically (both silent — no console window):
+- **NewsBrief Compose Start** — runs `compose-start.ps1` at login (30 s delay); `restart: unless-stopped` keeps containers up across reboots
+- **NewsBrief Compose Watch** — runs `compose-watch.ps1` daily at 06:00; pulls `ghcr.io/deim0s13/newsbrief:latest`, redeploys if digest changed, runs migrations
+
+Both use `compose.windows.yaml` instead of `compose.prod.yaml` — no Podman secrets (secrets are namespaced per runtime instance and cannot be shared between WSL2 Podman and Windows Podman Desktop).
+
+See [CI/CD Guide](development/CI-CD.md) for full operational detail.
 
 ---
 
@@ -1006,7 +991,7 @@ All significant architectural decisions are documented as ADRs (Architecture Dec
 | [ADR-0013](adr/0013-podman-secrets.md) | Podman Secrets | Accepted |
 | [ADR-0014](adr/0014-api-rate-limiting.md) | API Rate Limiting | Accepted |
 | [ADR-0015](adr/0015-local-kubernetes-distribution.md) | Local Kubernetes (kind) | Accepted |
-| [ADR-0016](adr/0016-cicd-platform-migration.md) | CI/CD Platform (Tekton) | Accepted |
+| [ADR-0016](adr/0016-cicd-platform-migration.md) | CI/CD Platform (Tekton) | Superseded |
 | [ADR-0017](adr/0017-gitops-tooling.md) | GitOps Tooling (ArgoCD) | Accepted |
 | [ADR-0018](adr/0018-secure-supply-chain.md) | Secure Supply Chain | Accepted |
 | [ADR-0019](adr/0019-cicd-pipeline-design.md) | CI/CD Pipeline Design | Accepted |
@@ -1022,6 +1007,7 @@ All significant architectural decisions are documented as ADRs (Architecture Dec
 | [ADR-0029](adr/0029-pipeline-oriented-orchestration.md) | Pipeline-oriented orchestration | Accepted |
 | [ADR-0030](adr/0030-article-story-processing-states.md) | Article and story processing states | Accepted |
 | [ADR-0031](adr/0031-pipeline-idempotency-and-reingest.md) | Pipeline idempotency and article re-ingest | Accepted |
+| [ADR-0032](adr/0032-cross-platform-cd-strategy.md) | Cross-Platform CD Strategy | Accepted |
 
 ---
 

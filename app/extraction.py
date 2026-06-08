@@ -186,7 +186,7 @@ def _try_trafilatura(
             with_metadata=True,  # Required for title extraction
             include_comments=False,
             include_tables=True,
-            include_images=True,
+            include_images=False,
             include_links=False,
             favor_recall=True,  # Prefer getting more content
             config=config,

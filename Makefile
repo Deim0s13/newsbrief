@@ -2,7 +2,7 @@
 RUNTIME          ?= podman
 REGISTRY         ?=                         # e.g. ghcr.io/Deim0s13
 IMAGE_NAME       ?= newsbrief-api
-PORT             ?= 8787
+PORT             ?= 8790
 DATA_DIR         ?= $(PWD)/data
 BACKUP_DIR       ?= $(PWD)/backups
 
@@ -43,6 +43,7 @@ dev:  ## Run development server (requires PostgreSQL - see make db-up)
 		exit 1; \
 	fi
 	ENVIRONMENT=development DATABASE_URL=postgresql://newsbrief:newsbrief_dev@localhost:5433/newsbrief \
+	OLLAMA_BASE_URL=http://localhost:11434 \
 		.venv/bin/uvicorn app.main:app --reload --port $(PORT)
 
 dev-full:  ## Start PostgreSQL + development server (single command)
@@ -143,17 +144,21 @@ run:
 		--name newsbrief $(IMAGE_BASE):$(word 1,$(TAGS))
 
 # ---------- Production Deployment ----------
-deploy:                           ## Deploy production stack (containers + PostgreSQL)
+deploy:                           ## Deploy production stack (start, migrate, auto-create secret)
+	@test -f .env || { echo "❌ .env not found — run: make env-init"; exit 1; }
 	@echo "🚀 Deploying NewsBrief production stack..."
-	@if $(RUNTIME) secret inspect db_password >/dev/null 2>&1; then \
-		echo "🔐 Using Podman Secrets for database credentials"; \
-		$(RUNTIME)-compose -f compose.yaml -f compose.prod.yaml up -d --build; \
-	else \
-		echo "⚠️  No secret found - using .env file (run 'make secrets-create' for production)"; \
-		$(RUNTIME)-compose up -d --build; \
+	@if ! $(RUNTIME) secret inspect db_password >/dev/null 2>&1; then \
+		echo "🔑 Creating db_password secret from .env..."; \
+		grep '^POSTGRES_PASSWORD=' .env | cut -d= -f2- | \
+			$(RUNTIME) secret create db_password -; \
 	fi
-	@echo "✅ Production deployed at https://$(HOSTNAME)"
-	@echo "📊 View logs: make deploy-logs"
+	@$(RUNTIME)-compose -f compose.yaml -f compose.prod.yaml up -d
+	@echo "⏳ Waiting for database..."
+	@until $(RUNTIME) exec newsbrief-db pg_isready -U newsbrief -d newsbrief \
+		>/dev/null 2>&1; do sleep 1; done
+	@echo "🔧 Applying migrations..."
+	@$(RUNTIME)-compose -f compose.yaml -f compose.prod.yaml exec -T api alembic upgrade head
+	@echo "✅ Running at http://localhost:8787"
 
 deploy-stop:                      ## Stop production stack (preserves data)
 	@echo "🛑 Stopping production stack..."
@@ -163,10 +168,10 @@ deploy-stop:                      ## Stop production stack (preserves data)
 deploy-status:                    ## Check production stack status
 	@$(RUNTIME)-compose ps
 
-deploy-init:                      ## First-time setup: run migrations on fresh database
-	@echo "🔧 Initializing production database..."
-	$(RUNTIME)-compose exec api alembic upgrade head
-	@echo "✅ Database initialized"
+deploy-init:                      ## Run migrations on production database (also called by make deploy)
+	@echo "🔧 Running migrations on production database..."
+	$(RUNTIME)-compose -f compose.yaml -f compose.prod.yaml exec -T api alembic upgrade head
+	@echo "✅ Database up to date"
 
 # ---------- Compose (dev/debugging) ----------
 up:
@@ -210,7 +215,7 @@ db-psql:                            ## Connect to PostgreSQL with psql
 
 db-reset:                           ## Reset development database (WARNING: deletes all data)
 	@echo "⚠️  This will delete all development data!"
-	@read -p "Continue? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
+	@bash -c 'read -p "Continue? [y/N] " confirm && [ "$$confirm" = "y" ]' || exit 1
 	$(RUNTIME)-compose -f compose.dev.yaml down -v
 	$(RUNTIME)-compose -f compose.dev.yaml up -d
 	@echo "Waiting for PostgreSQL to be ready..."
@@ -237,9 +242,7 @@ db-backup-list:                     ## List available backups
 # ---------- Secrets Management (Production) ----------
 secrets-create:  ## Create Podman secret for database password
 	@echo "Creating Podman secret for database password..."
-	@read -sp "Enter database password: " pwd && echo && \
-		echo "$$pwd" | $(RUNTIME) secret create db_password - && \
-		echo "✅ Secret created: db_password"
+	@bash -c 'read -sp "Enter database password: " pwd && echo && echo "$$pwd" | $(RUNTIME) secret create db_password - && echo "✅ Secret created: db_password"'
 
 secrets-list:  ## List Podman secrets
 	$(RUNTIME) secret ls
@@ -446,16 +449,37 @@ argo-ui:  ## Port-forward Argo CD UI on 8443
 	@echo "Open https://localhost:8443"
 	kubectl port-forward svc/argocd-server -n argocd 8443:443
 
+# ---------- Compose CD (Windows) ----------
+compose-start:  ## Start Compose stack (idempotent — safe to call on boot)
+ifneq ($(UNAME_S),Darwin)
+	@powershell.exe -ExecutionPolicy Bypass -File scripts/compose-start.ps1
+else
+	@echo "compose-start is for Windows. On macOS use: make infra-start"
+endif
+
+compose-watch:  ## Check GHCR for newer image and redeploy if found
+ifneq ($(UNAME_S),Darwin)
+	@powershell.exe -ExecutionPolicy Bypass -File scripts/compose-watch.ps1
+else
+	@echo "compose-watch is for Windows. On macOS CD is handled by ArgoCD."
+endif
+
+compose-autostart-install:  ## Install Task Scheduler tasks for Compose auto-deploy (Windows)
+ifneq ($(UNAME_S),Darwin)
+	@powershell.exe -ExecutionPolicy Bypass -File scripts/compose-task-install.ps1
+else
+	@echo "compose-autostart-install is for Windows. On macOS use: make infra-autostart-install"
+endif
+
 # ---------- Setup ----------
 env-init:  ## Create .env from template with generated secure password
 	@if [ -f .env ]; then \
 		echo "⚠️  .env already exists. Delete it first or edit manually."; \
 		exit 1; \
 	fi
-	@cp .env.example .env
 	@PASSWORD=$$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32) && \
-		sed -i.bak "s/CHANGE_ME_USE_MAKE_ENV_INIT/$$PASSWORD/" .env && rm -f .env.bak
-	@echo "✅ Created .env with secure generated password"
+		sed "s/CHANGE_ME_USE_MAKE_ENV_INIT/$$PASSWORD/g" .env.example > .env
+	@echo "✅ Created .env — run 'make deploy' to start the stack"
 	@echo "📝 Review .env and adjust OLLAMA_BASE_URL if needed"
 
 # ---------- Defaults ----------
@@ -470,4 +494,6 @@ env-init:  ## Create .env from template with generated secure password
 	hostname-setup hostname-check hostname-remove hostname-trust-cert hostname-regen-certs \
 	autostart-install autostart-uninstall autostart-status \
 	infra-start infra-autostart-install infra-autostart-uninstall infra-autostart-status \
-	recover status port-forwards argo-ui env-init
+	recover status port-forwards argo-ui \
+	compose-start compose-watch compose-autostart-install \
+	env-init

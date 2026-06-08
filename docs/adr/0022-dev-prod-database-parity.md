@@ -2,7 +2,7 @@
 
 ## Status
 
-**Proposed**
+**Accepted** — February 2026
 
 ## Date
 

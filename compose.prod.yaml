@@ -1,11 +1,13 @@
 # Production overrides - use with: podman-compose -f compose.yaml -f compose.prod.yaml
-# Adds Podman Secrets support for secure credential management
+#
+# Two things this file does:
+#   1. Replaces the local build with the pre-built GHCR image so the watch
+#      script can compare digests correctly and auto-deploy on new releases
+#   2. Uses a Podman Secret for the DB password instead of a plain env var
 #
 # Setup:
-#   1. Create secret: make secrets-create
-#   2. Deploy: make deploy (automatically uses this file)
-#
-# Note: Secret must be named "db_password" (podman-compose limitation)
+#   make env-init   # generate .env with matching credentials
+#   make deploy     # auto-creates secret, pulls image, runs migrations
 
 services:
   db:

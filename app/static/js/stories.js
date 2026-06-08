@@ -1,9 +1,20 @@
 // NewsBrief Stories Page JavaScript
 // Handles story listing, filtering, and display
 
+let _generationPollInterval = null;
+
 document.addEventListener('DOMContentLoaded', function() {
     loadStories();
     setupEventListeners();
+    checkGenerationStatus();
+});
+
+// bfcache restore: re-run when user navigates back to this page
+window.addEventListener('pageshow', function(event) {
+    if (event.persisted) {
+        loadStories();
+        checkGenerationStatus();
+    }
 });
 
 // Setup all event listeners
@@ -42,7 +53,6 @@ async function loadStories() {
 
     try {
         loading.classList.remove('hidden');
-        container.innerHTML = '';
         statsDiv.classList.add('hidden');
 
         // Get filter values
@@ -77,6 +87,8 @@ async function loadStories() {
         const data = await response.json();
         console.log('Loaded stories:', data);
 
+        // Clear and repopulate only after data is ready (prevents blank flash)
+        container.innerHTML = '';
         loading.classList.add('hidden');
 
         // Show stats
@@ -277,76 +289,100 @@ function createStoryElement(story) {
     return element;
 }
 
-// Refresh stories (trigger generation)
+// Refresh stories (trigger generation as background task)
 async function refreshStories() {
     const btn = document.getElementById('refresh-stories-btn');
-    const originalContent = btn.innerHTML;
+    if (!btn) return;
 
     try {
-        // Disable button and show loading state
         btn.disabled = true;
         btn.innerHTML = `
             <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
             <span>Generating...</span>
         `;
 
-        // Show notification
-        showNotification('Generating stories from recent articles... This may take a few minutes.', 'info');
+        showNotification('Story generation started — you can navigate freely, it runs in the background.', 'info');
 
-        // Trigger story generation (this may take a while)
         const response = await fetch('/stories/generate', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 time_window_hours: 24,
                 min_articles_per_story: 2,
-                similarity_threshold: 0.3,
-                model: "llama3.1:8b"
+                similarity_threshold: 0.3
             })
         });
 
-        if (!response.ok) {
-            throw new Error(`Generation failed: ${response.statusText}`);
+        if (!response.status === 202 && !response.ok) {
+            throw new Error(`Generation request failed: ${response.statusText}`);
         }
 
-        const result = await response.json();
-
-        // v0.7.6: Show detailed message with article/cluster counts
-        if (result.stories_generated > 0) {
-            const articlesFound = result.articles_found || 0;
-            const clustersCreated = result.clusters_created || 0;
-            showNotification(
-                `Generated ${result.stories_generated} stories from ${articlesFound} articles (${clustersCreated} clusters)`,
-                'success'
-            );
-
-            // Switch to "Latest" sort to show newly generated stories at top
-            const sortSelect = document.getElementById('sort-filter');
-            if (sortSelect) {
-                sortSelect.value = 'generated_at';
-            }
-        } else if (result.message) {
-            // Show helpful message explaining why 0 stories
-            showNotification(result.message, 'info');
-        } else {
-            showNotification(`Generation complete: ${result.stories_generated} stories created.`, 'info');
-        }
-
-        // Reload stories with latest sort
-        setTimeout(() => {
-            loadStories();
-        }, 1000);
+        // Start polling for completion
+        startGenerationPolling(btn);
 
     } catch (error) {
         console.error('Story generation error:', error);
-        showNotification(`Failed to generate stories: ${error.message}`, 'error');
-    } finally {
-        // Re-enable button
+        showNotification(`Failed to start generation: ${error.message}`, 'error');
         btn.disabled = false;
-        btn.innerHTML = originalContent;
+        btn.innerHTML = originalGenerateBtnContent();
     }
+}
+
+function originalGenerateBtnContent() {
+    return `<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
+        </path></svg>
+    <span>Generate Stories</span>`;
+}
+
+function startGenerationPolling(btn) {
+    if (_generationPollInterval) return;  // already polling
+    _generationPollInterval = setInterval(async () => {
+        try {
+            const st = await fetch('/stories/generation-status');
+            if (!st.ok) return;
+            const data = await st.json();
+            if (!data.in_progress) {
+                stopGenerationPolling(btn);
+                showNotification('Story generation complete — reloading stories.', 'success');
+                const sortSelect = document.getElementById('sort-filter');
+                if (sortSelect) sortSelect.value = 'generated_at';
+                loadStories();
+            }
+        } catch (_) { /* ignore network errors during poll */ }
+    }, 5000);
+}
+
+function stopGenerationPolling(btn) {
+    if (_generationPollInterval) {
+        clearInterval(_generationPollInterval);
+        _generationPollInterval = null;
+    }
+    if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = originalGenerateBtnContent();
+    }
+}
+
+async function checkGenerationStatus() {
+    try {
+        const st = await fetch('/stories/generation-status');
+        if (!st.ok) return;
+        const data = await st.json();
+        if (data.in_progress) {
+            const btn = document.getElementById('refresh-stories-btn');
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = `
+                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    <span>Generating...</span>
+                `;
+            }
+            showNotification('Story generation is in progress…', 'info');
+            startGenerationPolling(btn);
+        }
+    } catch (_) { /* silently ignore on page load */ }
 }
 
 // Helper: Get topic color

@@ -19,7 +19,7 @@ services:
     environment:
       POSTGRES_DB: newsbrief
       POSTGRES_USER: newsbrief
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-newsbrief_dev}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
@@ -31,15 +31,19 @@ services:
       retries: 5
 
   api:
+    # image: used by production (make deploy pulls from GHCR, no --build)
+    # build: used by development (make dev or explicit --build flag)
+    image: ghcr.io/deim0s13/newsbrief:latest
     build: .
     container_name: newsbrief
-    # Note: No port mapping - production only accessible via Caddy proxy at newsbrief.local
-    # For development, run: make dev (uses localhost:8787)
+    # Direct access on 8787 for Windows (TLS via Caddy on newsbrief.local when WSL2 forwarding is set up)
+    ports:
+      - "8787:8787"
     environment:
       ENVIRONMENT: production
       # Database connection - must match POSTGRES_PASSWORD above
       # If you change POSTGRES_PASSWORD, also update DATABASE_URL
-      DATABASE_URL: ${DATABASE_URL:-postgresql://newsbrief:newsbrief_dev@db:5432/newsbrief}
+      DATABASE_URL: ${DATABASE_URL}
       # Ollama LLM connection — Podman resolves host.containers.internal on macOS and Windows
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.containers.internal:11434}
     volumes:

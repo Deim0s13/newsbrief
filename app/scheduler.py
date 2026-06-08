@@ -46,7 +46,6 @@ STORY_TIME_WINDOW_HOURS = int(
 STORY_MIN_ARTICLES = int(
     os.getenv("STORY_MIN_ARTICLES", "2")
 )  # Minimum articles per story
-STORY_MODEL = os.getenv("STORY_MODEL", "llama3.1:8b")  # LLM model for synthesis
 
 # Topic reclassification configuration (v0.7.6)
 TOPIC_RECLASSIFY_ENABLED = (
@@ -61,9 +60,6 @@ TOPIC_RECLASSIFY_USE_LLM = (
 TOPIC_RECLASSIFY_BATCH_SIZE = int(
     os.getenv("TOPIC_RECLASSIFY_BATCH_SIZE", "100")
 )  # Process 100 articles per run
-TOPIC_RECLASSIFY_MODEL = os.getenv(
-    "TOPIC_RECLASSIFY_MODEL", "llama3.1:8b"
-)  # LLM model for classification
 
 # Credibility data refresh configuration (v0.8.2 - Issue #271)
 CREDIBILITY_REFRESH_ENABLED = (
@@ -227,14 +223,16 @@ def scheduled_story_generation():
 
     try:
         from app.pipeline_runner import execute_story_generation_stage
+        from app.settings import get_settings_service
 
         run_group_id = str(uuid.uuid4())
+        active_model = get_settings_service().get_active_model()
         res = execute_story_generation_stage(
             trigger="scheduled",
             run_group_id=run_group_id,
             time_window_hours=STORY_TIME_WINDOW_HOURS,
             min_articles_per_story=STORY_MIN_ARTICLES,
-            model=STORY_MODEL,
+            model=active_model,
             max_workers=3,
         )
 
@@ -287,7 +285,14 @@ def scheduled_topic_reclassification() -> dict:
     try:
         from sqlalchemy import text
 
+        from app.settings import get_settings_service
         from app.topics import classify_topic
+
+        active_model = (
+            get_settings_service().get_active_model()
+            if TOPIC_RECLASSIFY_USE_LLM
+            else None
+        )
 
         stats = {
             "articles_processed": 0,
@@ -338,9 +343,7 @@ def scheduled_topic_reclassification() -> dict:
                         title=title,
                         summary=f"{content} {summary}".strip(),
                         use_llm=TOPIC_RECLASSIFY_USE_LLM,
-                        model=(
-                            TOPIC_RECLASSIFY_MODEL if TOPIC_RECLASSIFY_USE_LLM else None
-                        ),
+                        model=active_model,
                     )
 
                     stats["articles_processed"] += 1
@@ -394,7 +397,7 @@ def scheduled_topic_reclassification() -> dict:
             **stats,
             "elapsed_seconds": elapsed,
             "use_llm": TOPIC_RECLASSIFY_USE_LLM,
-            "model": TOPIC_RECLASSIFY_MODEL if TOPIC_RECLASSIFY_USE_LLM else None,
+            "model": active_model,
         }
 
     except Exception as e:
@@ -557,7 +560,7 @@ def start_scheduler():
             f"Configuration: "
             f"time_window={STORY_TIME_WINDOW_HOURS}h, "
             f"archive_after={STORY_ARCHIVE_DAYS}d, "
-            f"model={STORY_MODEL}, "
+            f"model=active-profile, "
             f"timezone={STORY_GENERATION_TIMEZONE}"
         )
 
@@ -620,7 +623,7 @@ def get_scheduler_status() -> dict:
             "configuration": {
                 "use_llm": TOPIC_RECLASSIFY_USE_LLM,
                 "batch_size": TOPIC_RECLASSIFY_BATCH_SIZE,
-                "model": TOPIC_RECLASSIFY_MODEL,
+                "model": "active-profile",
             },
         },
         "feed_refresh": {
@@ -636,7 +639,7 @@ def get_scheduler_status() -> dict:
                 "time_window_hours": STORY_TIME_WINDOW_HOURS,
                 "archive_days": STORY_ARCHIVE_DAYS,
                 "min_articles": STORY_MIN_ARTICLES,
-                "model": STORY_MODEL,
+                "model": "active-profile",
             },
         },
     }

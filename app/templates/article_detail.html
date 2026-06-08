@@ -230,7 +230,7 @@
                     </svg>
                     <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Article Summary</h2>
                 </div>
-                <p class="text-gray-700 dark:text-gray-300">{{ article.summary }}</p>
+                <p class="text-gray-700 dark:text-gray-300">{{ article.summary|safe }}</p>
             </div>
             {% endif %}
         </div>

@@ -1,0 +1,26 @@
+# Windows production overrides.
+# Use with: podman-compose -f compose.yaml -f compose.windows.yaml
+#
+# Differences from compose.prod.yaml:
+#   - No Podman secrets — password comes from .env POSTGRES_PASSWORD directly.
+#     Podman secrets are namespaced per runtime instance; a secret created in
+#     WSL2 Podman is invisible to Windows Podman Desktop (separate machine).
+#   - restart: unless-stopped on all services so containers survive reboots
+#     without any WSL2 involvement.
+#
+# First-time setup:
+#   1. make env-init           (in WSL2) — generates .env with credentials
+#   2. make compose-autostart-install  (in WSL2) — registers Task Scheduler tasks
+#   3. Start-ScheduledTask 'NewsBrief Compose Watch'  (PowerShell) — initial deploy + migrate
+
+services:
+  db:
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    restart: unless-stopped
+
+  api:
+    restart: unless-stopped
+
+  caddy:
+    restart: unless-stopped

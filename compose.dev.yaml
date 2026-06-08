@@ -25,6 +25,12 @@ services:
       interval: 2s
       timeout: 2s
       retries: 10
+    networks:
+      - dev_net
 
 volumes:
   newsbrief_dev_data:
+
+networks:
+  dev_net:
+    name: newsbrief_dev_network

@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted
+**Superseded** by [ADR-0032: Cross-Platform CD Strategy](0032-cross-platform-cd-strategy.md) — June 2026
+
+> The Tekton-specific pipeline design (Triggers, EventListener, smee.io relay) documented here has been replaced. GitHub Actions implements the equivalent stages (lint, test, build, scan, sign, deploy) via hosted runners. The pipeline structure and security gate principles remain valid and are reflected in the GitHub Actions workflow files.
 
 ## Context
 

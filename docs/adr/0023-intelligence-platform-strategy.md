@@ -8,7 +8,7 @@
 
 NewsBrief has evolved from a simple RSS reader to a story-based news aggregator with LLM-powered synthesis. With the completion of v0.7.x (infrastructure maturity, PostgreSQL parity), we now have a solid foundation to build upon.
 
-However, the current product is fundamentally an **aggregator** - it collects and summarizes content. To create a monetizable, differentiated product, we need to transform NewsBrief into an **intelligence platform** that helps users truly understand what's happening, not just see what's being reported.
+However, the current product is fundamentally an **aggregator** - it collects and summarizes content. To create a high-quality, differentiated personal tool, we need to transform NewsBrief into an **intelligence platform** that helps truly understand what's happening, not just see what's being reported.
 
 ### Current Limitations
 
@@ -19,15 +19,15 @@ However, the current product is fundamentally an **aggregator** - it collects an
 5. **Single output format**: One-size-fits-all story presentation
 6. **No entity intelligence**: People/companies mentioned but not tracked across stories
 
-### Market Opportunity
+### Design Standard
 
-Premium news intelligence products (Bloomberg Terminal, Feedly Pro, specialized industry newsletters) command significant subscription fees because they provide **insight**, not just information. NewsBrief can differentiate by:
+Professional news intelligence products (Bloomberg Terminal, Feedly Pro) are built to provide **insight**, not just information. NewsBrief is built to that same quality standard — not because it will be sold, but because a tool used daily deserves the same depth and rigour. That means:
 
-- Offering multi-perspective analysis (what sources agree/disagree on)
-- Tracking entities and their sentiment over time
-- Providing confidence signals and source transparency
-- Delivering tiered depth (headlines → deep dives)
-- Surfacing patterns and trends across stories
+- Multi-perspective analysis (what sources agree/disagree on)
+- Entity tracking and sentiment over time
+- Confidence signals and source transparency
+- Tiered depth (headlines → deep dives)
+- Pattern and trend detection across stories
 
 ## Decision
 
@@ -45,8 +45,8 @@ Provide "why this matters" context, trend detection, and confidence scoring.
 ### Phase 4: Experience Layer (v0.11.x)
 Deliver content through multiple formats: reading tiers, audio, visualizations.
 
-### Phase 5: Monetization (v1.0)
-Enable sustainable business model with premium features, API access, and team capabilities.
+### Phase 5: Production Ready (v1.0)
+Polish for long-term personal production use: authentication, API access, data portability, and multi-machine capability.
 
 ## Architecture Evolution
 
@@ -339,43 +339,24 @@ ALTER TABLE stories ADD COLUMN verification_status VARCHAR(20);
 - Trend charts and dashboards
 - Source diversity indicators
 
-### Phase 5: Monetization (v1.0)
+### Phase 5: Production Ready (v1.0)
 
-#### v1.0.0 - Premium Platform
-**Goal**: Sustainable business model.
+#### v1.0.0 - Production Ready
+**Goal**: Polish the app for stable long-term personal use with the quality bar of a production product.
 
-**Free Tier**:
-- Basic synthesis
-- Limited feeds (10)
-- Standard depth only
-- 24-hour delay on new stories
-- Web access only
-
-**Premium Tier**:
-- Multi-perspective analysis
-- Unlimited feeds
-- All depth levels
-- Real-time updates
-- Entity tracking & alerts
-- Audio narration
-- API access
-- Export capabilities
-- Priority support
-
-**Team/Enterprise**:
-- Shared workspaces
-- Custom feed bundles
-- Competitive intelligence features
-- SSO integration
-- Usage analytics
+- Optional user authentication and API key management
+- REST API access for external tooling and widgets
+- Data export and portability (feeds, stories, entities)
+- Full-text search (PostgreSQL FTS)
+- Multi-machine capability (auth enables clean state separation)
+- Platform polish: macOS widget, packaging for clean install
 
 ## Consequences
 
 ### Positive
 
-1. **Differentiation**: Transforms from commodity aggregator to unique intelligence product
-2. **Monetization path**: Clear premium value proposition
-3. **Defensibility**: Entity intelligence and context layers create switching costs
+1. **Quality**: Transforms from commodity aggregator to a genuinely insightful personal tool
+2. **Depth**: Entity intelligence and context layers make stories more meaningful over time
 4. **Quality focus**: Each phase improves output quality
 5. **Incremental delivery**: Each milestone provides standalone value
 
@@ -401,9 +382,9 @@ ALTER TABLE stories ADD COLUMN verification_status VARCHAR(20);
 |-------|-------------|
 | Foundation | Extraction success rate >95%, synthesis quality score improvement |
 | Intelligence | Entity coverage >80%, perspective detection accuracy |
-| Context | User engagement with context features, time-on-story increase |
-| Experience | Tier adoption rates, audio playback minutes |
-| Monetization | Conversion rate, MRR, churn rate |
+| Context | Context generation success rate, historical link accuracy |
+| Experience | Reading tier usage, audio playback completions |
+| Production Ready | Auth stability, API response times, data export integrity |
 
 ## References
 
@@ -413,7 +394,7 @@ ALTER TABLE stories ADD COLUMN verification_status VARCHAR(20);
 
 ## Appendix: Competitive Analysis
 
-| Feature | NewsBrief (Target) | Feedly | Apple News | Google News |
+| Feature | NewsBrief (Goal) | Feedly | Apple News | Google News |
 |---------|-------------------|--------|------------|-------------|
 | Multi-perspective | ✅ | ❌ | ❌ | ❌ |
 | Entity intelligence | ✅ | Partial | ❌ | Partial |

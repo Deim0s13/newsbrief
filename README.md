@@ -77,7 +77,7 @@ NewsBrief runs as a production service on two machines simultaneously:
 |---|---|---|
 | Container runtime | Podman Desktop | Podman Desktop for Windows |
 | App deployment | Podman Compose + kind/ArgoCD | Same |
-| Development (Python, tests) | macOS terminal | **WSL2 only** |
+| Development (Python, tests) | macOS terminal | WSL2 (dev tooling only — not required to run the app) |
 | Ollama | Ollama.app (native) | Ollama.exe (native, GPU-accelerated) |
 | Ollama URL (containers) | `host.containers.internal:11434` | Same — identical |
 | Infra auto-start | launchd | Windows Task Scheduler |
@@ -115,8 +115,8 @@ make infra-autostart-install
 ### **Development Mode**
 
 ```bash
-# On Windows: run these commands in WSL2
-# The app itself runs in Podman Desktop for Windows (not in WSL2)
+# On Windows: run these commands in WSL2 (dev tooling only)
+# Production containers run natively in Podman Desktop for Windows — no WSL2 needed to run the app
 
 # Create virtual environment
 python3 -m venv .venv
@@ -132,7 +132,7 @@ make dev-full
 make db-up      # Start PostgreSQL container
 make dev        # Run development server
 
-# Access at http://localhost:8787
+# Access at http://localhost:8790
 # Orange "DEVELOPMENT MODE" banner distinguishes from production
 ```
 
