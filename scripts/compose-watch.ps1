@@ -49,7 +49,9 @@ Set-Location $ProjectRoot
 
 # Pull latest scripts and compose files before doing anything else
 Log "Pulling latest repo from main..."
-git pull origin main 2>&1 | ForEach-Object { Log $_ }
+try {
+    git pull origin main 2>&1 | ForEach-Object { Log $_ }
+} catch { }
 if ($LASTEXITCODE -ne 0) {
     Log "WARNING: git pull failed - continuing with current files."
 }
