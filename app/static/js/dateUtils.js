@@ -6,15 +6,15 @@
  */
 
 const DateUtils = (function() {
-    // Get user's preferred locale (from localStorage or browser)
+    // Get user's preferred locale (from localStorage or app default)
     function getLocale() {
         // Check for user override in localStorage
         const savedLocale = localStorage.getItem('newsbrief_date_locale');
         if (savedLocale) {
             return savedLocale;
         }
-        // Fall back to browser locale
-        return navigator.language || navigator.userLanguage || 'en-NZ';
+        // Use en-GB (D/M/Y) — don't rely on browser locale which varies by OS/region setting
+        return 'en-GB';
     }
 
     // Set user's preferred locale

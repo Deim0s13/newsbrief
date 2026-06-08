@@ -43,6 +43,7 @@ dev:  ## Run development server (requires PostgreSQL - see make db-up)
 		exit 1; \
 	fi
 	ENVIRONMENT=development DATABASE_URL=postgresql://newsbrief:newsbrief_dev@localhost:5433/newsbrief \
+	OLLAMA_BASE_URL=http://localhost:11434 \
 		.venv/bin/uvicorn app.main:app --reload --port $(PORT)
 
 dev-full:  ## Start PostgreSQL + development server (single command)
