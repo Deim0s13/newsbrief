@@ -11,7 +11,14 @@ LOG_PREFIX="[newsbrief-infra]"
 
 log() { echo "${LOG_PREFIX} $*"; }
 
-# 1. Ensure kind cluster exists (create if not)
+# 1. Ensure Podman Compose prod stack is running (DB required by kind pods)
+log "Starting Podman Compose prod stack (DB)..."
+cd "${PROJECT_ROOT}"
+podman compose -f compose.yaml -f compose.prod.yaml up -d 2>&1 | sed "s/^/${LOG_PREFIX} /" || \
+    log "Warning: podman compose up failed — API pods may not reach the DB"
+cd - >/dev/null
+
+# 2. Ensure kind cluster exists (create if not)
 if kind get clusters 2>/dev/null | grep -q "^${CLUSTER_NAME}$"; then
     log "Kind cluster '${CLUSTER_NAME}' already exists"
 else
@@ -19,16 +26,16 @@ else
     kind create cluster --name "${CLUSTER_NAME}" --config "${CLUSTER_CONFIG}"
 fi
 
-# 2. Export kubeconfig so kubectl commands work
+# 3. Export kubeconfig so kubectl commands work
 kind export kubeconfig --name "${CLUSTER_NAME}"
 log "Kubeconfig set to cluster '${CLUSTER_NAME}'"
 
-# 3. Ensure local registry is connected (for cluster-internal workloads)
+# 4. Ensure local registry is connected (for cluster-internal workloads)
 if [ -f "${PROJECT_ROOT}/scripts/setup-kind-registry.sh" ]; then
     bash "${PROJECT_ROOT}/scripts/setup-kind-registry.sh" >/dev/null 2>&1 || true
 fi
 
-# 4. Wait for ArgoCD server to be available
+# 5. Wait for ArgoCD server to be available
 log "Waiting for ArgoCD server..."
 kubectl wait \
     --for=condition=available \
@@ -38,7 +45,7 @@ kubectl wait \
 
 log "ArgoCD is ready"
 
-# 5. Ensure ArgoCD Application CRs exist — cluster recreation wipes them
+# 6. Ensure ArgoCD Application CRs exist — cluster recreation wipes them
 if ! kubectl get application newsbrief-prod -n argocd >/dev/null 2>&1; then
     log "ArgoCD Applications not found — applying from k8s/argocd/..."
     kubectl apply -f "${PROJECT_ROOT}/k8s/argocd/"
@@ -47,7 +54,7 @@ else
     log "ArgoCD Applications already registered"
 fi
 
-# 6. Trigger sync for both apps (async — auto-sync will also pick these up)
+# 7. Trigger sync for both apps (async — auto-sync will also pick these up)
 argocd app sync newsbrief-dev --async 2>/dev/null \
     && log "Triggered sync: newsbrief-dev" \
     || log "Warning: could not trigger newsbrief-dev sync (ArgoCD CLI not logged in?)"
@@ -56,7 +63,7 @@ argocd app sync newsbrief-prod --async 2>/dev/null \
     && log "Triggered sync: newsbrief-prod" \
     || log "Warning: could not trigger newsbrief-prod sync"
 
-# 7. Re-establish port-forwards (kill any stale ones first)
+# 8. Re-establish port-forwards (kill any stale ones first)
 pkill -f "kubectl port-forward" 2>/dev/null || true
 sleep 1
 
