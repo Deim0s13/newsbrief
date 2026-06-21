@@ -439,6 +439,8 @@ class StoryOut(BaseModel):
     sources_excluded: int = 0  # Ineligible sources filtered from synthesis
     # Confidence score: source reliability × breadth × recency × synthesis quality (#220)
     confidence_score: Optional[float] = None
+    # Synthesis routing path: 'standard' or 'deep' (#282)
+    synthesis_path: Optional[str] = None
 
     @property
     def credibility_label(self) -> str:

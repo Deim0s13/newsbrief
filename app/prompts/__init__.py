@@ -56,7 +56,7 @@ from .map_reduce import (
     parse_group_summary_response,
 )
 from .refinement import create_refinement_prompt, parse_refinement_response
-from .synthesis import get_synthesis_prompt
+from .synthesis import get_deep_synthesis_prompt, get_synthesis_prompt
 
 __all__ = [
     "StoryType",
@@ -67,6 +67,7 @@ __all__ = [
     "create_analysis_prompt",
     "parse_analysis_response",
     "get_synthesis_prompt",
+    "get_deep_synthesis_prompt",
     "create_refinement_prompt",
     "parse_refinement_response",
     # Map-reduce prompts (Issue #106)

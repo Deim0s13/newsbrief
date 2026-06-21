@@ -127,6 +127,11 @@
       "use_cases": ["important_stories", "weekly_summaries", "deep_analysis"]
     }
   },
+  "synthesis_routing": {
+    "deep_min_articles": 6,
+    "deep_min_topic_diversity": 0.6,
+    "description": "Thresholds for classifying clusters as standard vs deep processing path"
+  },
   "synthesis_strategies": {
     "direct": {
       "max_articles": 8,

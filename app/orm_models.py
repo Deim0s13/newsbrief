@@ -185,6 +185,8 @@ class Story(Base):
     quality_score = Column(Float, default=0.5)
     # Confidence score: source reliability × breadth × recency × synthesis quality (#220)
     confidence_score = Column(Float, nullable=True)
+    # Synthesis routing path: 'standard' or 'deep' (#282)
+    synthesis_path = Column(String(20), nullable=True)
     # Quality metrics breakdown (v0.8.1 - Issue #105)
     quality_breakdown_json = Column(Text)  # JSON breakdown of score components
     title_source = Column(String(20))  # 'llm' or 'fallback'
