@@ -266,7 +266,8 @@ def classify_cluster_path(cluster_articles: List[Dict[str, Any]]) -> str:
         for a in cluster_articles
         if a.get("topic", "").strip()
     ]
-    if topics:
+    # Diversity is only meaningful with ≥2 articles; a single article trivially has 1.0
+    if len(topics) >= 2:
         unique_topics = len(set(topics))
         diversity = unique_topics / len(topics)
         if diversity >= deep_min_diversity:

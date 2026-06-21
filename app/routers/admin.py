@@ -207,6 +207,30 @@ def admin_pipeline_stuck(
     return list_stuck_pipeline_runs(max_age_seconds=max_age_seconds, limit=limit)
 
 
+@router.get("/api/admin/pipeline/metrics")
+def admin_pipeline_unified_metrics(
+    window_hours: float = Query(
+        24.0,
+        ge=0.25,
+        le=720.0,
+        description="Rolling window hours for run metrics and throughput",
+    ),
+    stuck_max_age_hours: float = Query(
+        2.0,
+        ge=0.1,
+        le=168.0,
+        description="Age threshold (hours) for classifying items/stories as stuck",
+    ),
+):
+    """Unified pipeline health: snapshot + run metrics + throughput + stuck items (#291)."""
+    from ..pipeline_monitoring import get_unified_pipeline_metrics
+
+    return get_unified_pipeline_metrics(
+        window_hours=window_hours,
+        stuck_max_age_hours=stuck_max_age_hours,
+    )
+
+
 @router.get("/api/admin/pipeline/failed-entities")
 def admin_pipeline_failed_entities(
     limit_items: int = Query(50, ge=1, le=200),
