@@ -10,7 +10,7 @@ The app runs on **two machines** — a macOS MBP and a Windows machine — both 
 |---|---|---|
 | Container runtime | Podman Desktop | Podman Desktop for Windows |
 | Prod CD | kind/ArgoCD (GitOps, auto-sync) | Podman Compose + GHCR image polling |
-| Dev deployment | Podman Compose | Podman Compose (WSL2) |
+| Dev deployment | Podman Compose (containerised DB) | Native PostgreSQL 16 in WSL2 |
 | Development (Python, tests) | macOS terminal | WSL2 (dev only — not required at runtime) |
 | Ollama | Ollama.app (native) | Ollama.exe (native, GPU) |
 | Ollama URL (containers) | `host.containers.internal:11434` | Same — identical |
@@ -30,11 +30,17 @@ make env-init    # generate .env from template
 
 ### Development server
 ```bash
-make db-up          # Start PostgreSQL on localhost:5433
+# WSL2 only — one-time setup (installs native PostgreSQL 16 + pgvector):
+make setup-dev-db
+
+make db-up          # Start PostgreSQL (native on WSL2; container on macOS)
 make migrate-dev    # Apply Alembic migrations to dev DB
 make dev            # Run uvicorn with reload (requires db-up first)
 make dev-full       # db-up + wait + dev in one command
 ```
+
+On WSL2, `db-up` is a fast `pg_isready` check — no containers involved.
+On macOS, it starts a `pgvector/pg16` container via Podman.
 
 ### Tests
 ```bash

@@ -1,15 +1,25 @@
 # Production overrides - use with: podman-compose -f compose.yaml -f compose.prod.yaml
+# macOS only — not used on Windows (see compose.windows.yaml).
 #
-# Two things this file does:
-#   1. Replaces the local build with the pre-built GHCR image so the watch
+# Three things this file does:
+#   1. Mounts Caddyfile for TLS termination on newsbrief.local (macOS-only;
+#      Windows Podman Desktop cannot bind-mount WSL2 UNC paths)
+#   2. Replaces the local build with the pre-built GHCR image so the watch
 #      script can compare digests correctly and auto-deploy on new releases
-#   2. Uses a Podman Secret for the DB password instead of a plain env var
+#   3. Uses a Podman Secret for the DB password instead of a plain env var
 #
 # Setup:
 #   make env-init   # generate .env with matching credentials
 #   make deploy     # auto-creates secret, pulls image, runs migrations
 
 services:
+  caddy:
+    # macOS-only: mount Caddyfile for TLS termination on newsbrief.local.
+    # Kept here (not in compose.yaml) so Windows Podman Desktop never sees
+    # the WSL2 UNC path that it cannot resolve.
+    volumes:
+      - ./Caddyfile.compose:/etc/caddy/Caddyfile:ro
+
   db:
     environment:
       # Override: Use secret file instead of env var
