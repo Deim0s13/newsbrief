@@ -81,7 +81,12 @@ from .prompts import (
     parse_group_summary_response,
     parse_refinement_response,
 )
-from .quality_metrics import QualityBreakdown, calculate_quality_score, log_llm_metrics
+from .quality_metrics import (
+    QualityBreakdown,
+    calculate_confidence_score,
+    calculate_quality_score,
+    log_llm_metrics,
+)
 from .story_embeddings import maybe_embed_story_after_synthesis
 
 logger = logging.getLogger(__name__)
@@ -814,6 +819,13 @@ def update_story_with_new_articles(
         quality_score=synthesis_data.get(
             "_quality_score", cluster_data.get("quality_score", 0.5)
         ),
+        # Confidence score: source reliability × breadth × recency × synthesis quality (#220)
+        confidence_score=calculate_confidence_score(
+            source_credibility=cred_meta.get("aggregate_score"),
+            article_count=len(merged_article_ids),
+            freshness_score=cluster_data.get("freshness_score", 0.5),
+            synthesis_quality=synthesis_data.get("_quality_score", 0.5),
+        ),
         # Quality metrics (v0.8.1 - Issue #105)
         quality_breakdown_json=serialize_story_json_field(
             synthesis_data.get("_quality_breakdown")
@@ -1069,6 +1081,8 @@ def _story_db_to_model(  # type: ignore[misc]
         source_credibility_score=story.source_credibility_score,  # type: ignore[arg-type]
         low_credibility_warning=story.low_credibility_warning or False,  # type: ignore[arg-type]
         sources_excluded=story.sources_excluded or 0,  # type: ignore[arg-type]
+        # Confidence score (#220)
+        confidence_score=story.confidence_score,  # type: ignore[arg-type]
     )
     # fmt: on
 
@@ -3152,6 +3166,13 @@ def generate_stories_simple(
                 # Use synthesis quality score if available, else cluster score
                 quality_score=synthesis_data.get(
                     "_quality_score", cluster_data["quality_score"]
+                ),
+                # Confidence score: source reliability × breadth × recency × synthesis quality (#220)
+                confidence_score=calculate_confidence_score(
+                    source_credibility=cred_meta.get("aggregate_score"),
+                    article_count=len(cluster_data["article_ids"]),
+                    freshness_score=cluster_data.get("freshness_score", 0.5),
+                    synthesis_quality=synthesis_data.get("_quality_score", 0.5),
                 ),
                 # Quality metrics (v0.8.1 - Issue #105)
                 quality_breakdown_json=serialize_story_json_field(

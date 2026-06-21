@@ -283,6 +283,44 @@ def calculate_quality_score(
 
 
 # =============================================================================
+# Confidence Scoring (#220)
+# =============================================================================
+
+
+def calculate_confidence_score(
+    source_credibility: Optional[float],
+    article_count: int,
+    freshness_score: float,
+    synthesis_quality: float,
+) -> float:
+    """
+    Calculate a confidence score (0.0–1.0) for a synthesised story.
+
+    Combines four factors with fixed weights:
+    - Source credibility (30%): average MBFC/source-weight credibility of articles
+    - Breadth (25%): article count scaled to 1.0 at 5+ articles
+    - Recency (20%): freshness_score from _calculate_freshness_score
+    - Synthesis quality (25%): QualityBreakdown.overall from synthesis step
+
+    Args:
+        source_credibility: Weighted credibility 0.0-1.0, or None (defaults to 0.5)
+        article_count: Number of articles in the cluster
+        freshness_score: Pre-calculated freshness 0.0-1.0
+        synthesis_quality: Pre-calculated synthesis quality 0.0-1.0
+
+    Returns:
+        Confidence score 0.0-1.0 rounded to 4 decimal places
+    """
+    credibility = source_credibility if source_credibility is not None else 0.5
+    breadth = min(1.0, article_count / 5.0)
+    recency = max(0.0, min(1.0, freshness_score))
+    quality = max(0.0, min(1.0, synthesis_quality))
+
+    score = 0.30 * credibility + 0.25 * breadth + 0.20 * recency + 0.25 * quality
+    return round(min(1.0, max(0.0, score)), 4)
+
+
+# =============================================================================
 # Metrics Logging
 # =============================================================================
 
