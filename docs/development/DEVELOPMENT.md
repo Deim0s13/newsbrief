@@ -29,12 +29,42 @@ cd newsbrief
 
 # Create and activate virtual environment
 python3 -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+source .venv/bin/activate
 
 # Install development dependencies
 pip install -U pip
-pip install -r requirements.txt
+pip install -r requirements.txt -r requirements-dev.txt
+pre-commit install
+make env-init    # generate .env from template
 ```
+
+### **Platform-specific: dev database setup**
+
+The development database (port 5433) is set up differently per platform:
+
+**macOS** — uses a Podman container (no extra steps needed):
+```bash
+make db-up          # starts pgvector/pg16 container on port 5433
+make migrate-dev    # apply migrations
+make dev            # start uvicorn
+```
+
+**WSL2 (Windows)** — uses native PostgreSQL 16 + pgvector installed in WSL2.
+This eliminates the WSL2/Podman systemd session dependency entirely.
+
+Run once (requires sudo — open your own WSL2 terminal, not via Claude Code):
+```bash
+make setup-dev-db   # installs PG 16 + pgvector, creates DB, enables auto-start
+make migrate-dev    # apply schema migrations
+```
+
+After that, on every session:
+```bash
+make dev-full       # start DB (instant check) + uvicorn
+```
+
+PostgreSQL is enabled as a systemd service and starts automatically with WSL2,
+so `make db-up` is usually a no-op.
 
 ### **Verify Installation**
 

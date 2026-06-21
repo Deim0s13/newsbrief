@@ -8,6 +8,8 @@ BACKUP_DIR       ?= $(PWD)/backups
 
 # OS detection (Darwin = macOS, Linux covers WSL2 and native Linux)
 UNAME_S          := $(shell uname -s)
+# 1 when running inside WSL2, 0 on macOS or native Linux
+IS_WSL2          := $(shell grep -qi microsoft /proc/version 2>/dev/null && echo 1 || echo 0)
 
 # Version metadata
 GIT_SHA          := $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
@@ -36,11 +38,15 @@ dev:  ## Run development server (requires PostgreSQL - see make db-up)
 	@echo "   Database: PostgreSQL (localhost:5433)"
 	@echo "   Production: https://newsbrief.local"
 	@echo ""
-	@# Check if PostgreSQL is running
-	@if ! $(RUNTIME) ps --format "{{.Names}}" 2>/dev/null | grep -q "newsbrief-db-dev"; then \
-		echo "❌ PostgreSQL not running. Start it with: make db-up"; \
-		echo "   Or use: make dev-full (starts DB + app together)"; \
-		exit 1; \
+	@if [ "$(IS_WSL2)" = "1" ]; then \
+		pg_isready -h localhost -p 5433 -U newsbrief -d newsbrief >/dev/null 2>&1 || \
+			{ echo "❌ PostgreSQL not running. Start it with: make db-up"; exit 1; }; \
+	else \
+		if ! $(RUNTIME) ps --format "{{.Names}}" 2>/dev/null | grep -q "newsbrief-db-dev"; then \
+			echo "❌ PostgreSQL not running. Start it with: make db-up"; \
+			echo "   Or use: make dev-full (starts DB + app together)"; \
+			exit 1; \
+		fi; \
 	fi
 	ENVIRONMENT=development DATABASE_URL=postgresql://newsbrief:newsbrief_dev@localhost:5433/newsbrief \
 	OLLAMA_BASE_URL=http://localhost:11434 \
@@ -50,9 +56,11 @@ dev-full:  ## Start PostgreSQL + development server (single command)
 	@echo "🚀 Starting full development environment..."
 	@$(MAKE) db-up
 	@echo "⏳ Waiting for PostgreSQL to be ready..."
-	@until $(RUNTIME) exec newsbrief-db-dev pg_isready -U newsbrief -d newsbrief >/dev/null 2>&1; do \
-		sleep 1; \
-	done
+	@if [ "$(IS_WSL2)" = "1" ]; then \
+		until pg_isready -h localhost -p 5433 -U newsbrief -d newsbrief >/dev/null 2>&1; do sleep 1; done; \
+	else \
+		until $(RUNTIME) exec newsbrief-db-dev pg_isready -U newsbrief -d newsbrief >/dev/null 2>&1; do sleep 1; done; \
+	fi
 	@echo "✅ PostgreSQL ready"
 	@echo ""
 	@$(MAKE) dev
@@ -188,16 +196,54 @@ logs:
 	$(RUNTIME)-compose logs -f
 
 # ---------- Database (PostgreSQL for Development) ----------
+# On WSL2: uses native PostgreSQL 16 (run make setup-dev-db once to install).
+# On macOS: uses a Podman container via compose.dev.yaml (no systemd issues on macOS).
+
+setup-dev-db:                       ## (WSL2) One-time: install native PostgreSQL 16 + pgvector
+ifeq ($(IS_WSL2),1)
+	@bash scripts/setup-dev-db.sh
+else
+	@echo "setup-dev-db is for WSL2 only."
+	@echo "On macOS, the dev database runs in Podman — use: make db-up"
+endif
+
 db-up:                              ## Start PostgreSQL for development (port 5433)
+ifeq ($(IS_WSL2),1)
+	@echo "🐘 Starting PostgreSQL (native, WSL2)..."
+	@if pg_isready -h localhost -p 5433 -U newsbrief -d newsbrief >/dev/null 2>&1; then \
+		echo "✅ PostgreSQL already running on localhost:5433"; \
+	else \
+		sudo service postgresql start && \
+		until pg_isready -h localhost -p 5433 -U newsbrief -d newsbrief >/dev/null 2>&1; do sleep 1; done && \
+		echo "✅ PostgreSQL running on localhost:5433"; \
+	fi
+	@echo "   Connection: postgresql://newsbrief:newsbrief_dev@localhost:5433/newsbrief"
+else
 	@echo "🐘 Starting PostgreSQL for development..."
 	$(RUNTIME)-compose -f compose.dev.yaml up -d
 	@echo "✅ PostgreSQL running on localhost:5433"
 	@echo "   Connection: postgresql://newsbrief:newsbrief_dev@localhost:5433/newsbrief"
+endif
 
-db-down:                            ## Stop PostgreSQL development container
+db-down:                            ## Stop PostgreSQL development database
+ifeq ($(IS_WSL2),1)
+	@echo "🛑 Stopping native PostgreSQL..."
+	@sudo service postgresql stop
+	@echo "✅ PostgreSQL stopped"
+else
 	$(RUNTIME)-compose -f compose.dev.yaml down
+endif
 
 db-status:                          ## Check if dev PostgreSQL is running
+ifeq ($(IS_WSL2),1)
+	@if pg_isready -h localhost -p 5433 -U newsbrief -d newsbrief >/dev/null 2>&1; then \
+		echo "✅ PostgreSQL is running (native, port 5433)"; \
+		echo "   Status: Ready for connections"; \
+	else \
+		echo "❌ PostgreSQL not running"; \
+		echo "   Start with: make db-up"; \
+	fi
+else
 	@if $(RUNTIME) ps --format "{{.Names}}" 2>/dev/null | grep -q "newsbrief-db-dev"; then \
 		echo "✅ PostgreSQL is running (newsbrief-db-dev)"; \
 		$(RUNTIME) exec newsbrief-db-dev pg_isready -U newsbrief -d newsbrief >/dev/null 2>&1 && \
@@ -206,22 +252,39 @@ db-status:                          ## Check if dev PostgreSQL is running
 		echo "❌ PostgreSQL not running"; \
 		echo "   Start with: make db-up"; \
 	fi
+endif
 
 db-logs:                            ## View PostgreSQL logs
+ifeq ($(IS_WSL2),1)
+	@sudo journalctl -u 'postgresql*' -f
+else
 	$(RUNTIME)-compose -f compose.dev.yaml logs -f db
+endif
 
-db-psql:                            ## Connect to PostgreSQL with psql
+db-psql:                            ## Connect to dev PostgreSQL with psql
+ifeq ($(IS_WSL2),1)
+	@psql postgresql://newsbrief:newsbrief_dev@localhost:5433/newsbrief
+else
 	$(RUNTIME) exec -it newsbrief-db-dev psql -U newsbrief -d newsbrief
+endif
 
 db-reset:                           ## Reset development database (WARNING: deletes all data)
 	@echo "⚠️  This will delete all development data!"
 	@bash -c 'read -p "Continue? [y/N] " confirm && [ "$$confirm" = "y" ]' || exit 1
+ifeq ($(IS_WSL2),1)
+	@sudo -u postgres psql -c "DROP DATABASE IF EXISTS newsbrief;"
+	@sudo -u postgres psql -c "CREATE DATABASE newsbrief OWNER newsbrief;"
+	@sudo -u postgres psql -d newsbrief -c "CREATE EXTENSION IF NOT EXISTS vector;"
+	@DATABASE_URL=$(DEV_DATABASE_URL) .venv/bin/alembic upgrade head
+	@echo "✅ Database reset and migrations applied"
+else
 	$(RUNTIME)-compose -f compose.dev.yaml down -v
 	$(RUNTIME)-compose -f compose.dev.yaml up -d
 	@echo "Waiting for PostgreSQL to be ready..."
 	@until $(RUNTIME) exec newsbrief-db-dev pg_isready -U newsbrief -d newsbrief >/dev/null 2>&1; do sleep 1; done
-	DATABASE_URL=postgresql://newsbrief:newsbrief_dev@localhost:5433/newsbrief .venv/bin/alembic upgrade head
+	DATABASE_URL=$(DEV_DATABASE_URL) .venv/bin/alembic upgrade head
 	@echo "✅ Database reset and migrations applied"
+endif
 
 # ---------- Database Backup/Restore ----------
 db-backup:                          ## Backup production database to BACKUP_DIR
@@ -487,7 +550,7 @@ env-init:  ## Create .env from template with generated secure password
 .PHONY: venv run-local dev dev-full refresh stories-generate api-health \
 	build tag push release local-release clean-release cleanup-old-images run \
 	deploy deploy-stop deploy-status deploy-init up down logs \
-	db-up db-down db-status db-logs db-psql db-reset \
+	setup-dev-db db-up db-down db-status db-logs db-psql db-reset \
 	db-backup db-restore db-backup-list \
 	secrets-create secrets-list secrets-delete \
 	migrate migrate-dev migrate-new migrate-stamp migrate-history migrate-current \

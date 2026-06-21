@@ -5,6 +5,9 @@
 #   - No Podman secrets — password comes from .env POSTGRES_PASSWORD directly.
 #     Podman secrets are namespaced per runtime instance; a secret created in
 #     WSL2 Podman is invisible to Windows Podman Desktop (separate machine).
+#   - Caddy uses command-line reverse-proxy (no Caddyfile bind mount).
+#     Windows Podman Desktop cannot bind-mount WSL2 UNC paths; named volumes
+#     work fine. TLS (newsbrief.local) is macOS-only via compose.yaml.
 #   - restart: unless-stopped on all services so containers survive reboots
 #     without any WSL2 involvement.
 #
@@ -23,4 +26,11 @@ services:
     restart: unless-stopped
 
   caddy:
+    # Override: use Caddy's built-in reverse-proxy command instead of a Caddyfile.
+    # This removes the ./Caddyfile.compose bind mount (UNC paths unsupported by
+    # Windows Podman Desktop). Access the app at http://localhost or http://localhost:8787.
+    command: caddy reverse-proxy --from :80 --to newsbrief:8787
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
     restart: unless-stopped
