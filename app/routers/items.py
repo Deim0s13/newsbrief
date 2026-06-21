@@ -95,7 +95,9 @@ def list_items(
                 )
 
         select_clause = """
-        SELECT DISTINCT i.id, i.title, i.url, i.published, i.summary, i.content_hash, i.content,
+        SELECT DISTINCT i.id, i.title, i.url,
+               COALESCE(i.published, i.created_at) AS published,
+               i.summary, i.content_hash, i.content,
                i.ai_summary, i.ai_model, i.ai_generated_at,
                i.structured_summary_json, i.structured_summary_model,
                i.structured_summary_content_hash, i.structured_summary_generated_at,
@@ -411,7 +413,8 @@ def get_item(item_id: int):
         row = s.execute(
             text(
                 """
-            SELECT id, title, url, published, summary, content_hash, content,
+            SELECT id, title, url, COALESCE(published, created_at) AS published,
+                   summary, content_hash, content,
                    ai_summary, ai_model, ai_generated_at,
                    structured_summary_json, structured_summary_model,
                    structured_summary_content_hash, structured_summary_generated_at,
@@ -461,7 +464,8 @@ def get_items_by_topic(topic_key: str, limit: int = Query(50, le=200)):
         rows = s.execute(
             text(
                 """
-        SELECT id, title, url, published, summary, content_hash, content,
+        SELECT id, title, url, COALESCE(published, created_at) AS published,
+               summary, content_hash, content,
                ai_summary, ai_model, ai_generated_at,
                structured_summary_json, structured_summary_model,
                structured_summary_content_hash, structured_summary_generated_at,

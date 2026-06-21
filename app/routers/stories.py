@@ -329,7 +329,9 @@ def get_story_articles(story_id: int):
         rows = s.execute(
             text(
                 """
-                SELECT i.id, i.title, i.url, i.published, i.summary, i.content_hash, i.content,
+                SELECT i.id, i.title, i.url,
+                       COALESCE(i.published, i.created_at) AS published,
+                       i.summary, i.content_hash, i.content,
                        i.ai_summary, i.ai_model, i.ai_generated_at,
                        i.structured_summary_json, i.structured_summary_model,
                        i.structured_summary_content_hash, i.structured_summary_generated_at,
@@ -338,7 +340,8 @@ def get_story_articles(story_id: int):
                 FROM items i
                 JOIN story_articles sa ON i.id = sa.article_id
                 WHERE sa.story_id = :story_id
-                ORDER BY sa.is_primary DESC, sa.relevance_score DESC, i.published DESC
+                ORDER BY sa.is_primary DESC, sa.relevance_score DESC,
+                         COALESCE(i.published, i.created_at) DESC
                 """
             ),
             {"story_id": story_id},
