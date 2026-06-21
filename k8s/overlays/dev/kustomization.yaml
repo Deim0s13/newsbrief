@@ -30,7 +30,7 @@ images:
   - name: localhost:5000/newsbrief
     newName: ghcr.io/deim0s13/newsbrief
     # Tag updated automatically by ci-dev.yml update-manifest job on each push to dev
-    newTag: sha-f1d27a5
+    newTag: sha-0a9208b
 
 # Dev-specific configuration overrides
 configMapGenerator:
