@@ -69,6 +69,10 @@ CREDIBILITY_REFRESH_SCHEDULE = os.getenv(
     "CREDIBILITY_REFRESH_SCHEDULE", "0 3 * * 0"
 )  # Default: 3 AM every Sunday (weekly)
 
+# Data retention configuration (#178, #118)
+RETENTION_ENABLED = os.getenv("NEWSBRIEF_RETENTION_ENABLED", "true").lower() == "true"
+RETENTION_SCHEDULE = os.getenv("NEWSBRIEF_RETENTION_SCHEDULE", "0 3 * * *")
+
 # =============================================================================
 # Global state
 # =============================================================================
@@ -456,6 +460,39 @@ def scheduled_credibility_refresh() -> dict:
         }
 
 
+def scheduled_retention() -> dict:
+    """
+    Run data retention policies on schedule.
+
+    Purges articles older than NEWSBRIEF_ARTICLE_RETENTION_DAYS that are not
+    linked to any story, and pipeline log rows older than
+    NEWSBRIEF_PIPELINE_LOG_RETENTION_DAYS.
+    """
+    from app.retention import run_retention
+
+    logger.info("Starting scheduled data retention run")
+    start_time = datetime.now(UTC)
+
+    try:
+        with session_scope() as session:
+            result = run_retention(session, dry_run=False)
+
+        elapsed = (datetime.now(UTC) - start_time).total_seconds()
+        logger.info(
+            "Scheduled retention complete: %d rows deleted in %.1fs",
+            result["total_deleted"],
+            elapsed,
+        )
+        return {"success": True, **result}
+
+    except Exception as e:
+        elapsed = (datetime.now(UTC) - start_time).total_seconds()
+        logger.error(
+            "Scheduled retention failed after %.1fs: %s", elapsed, e, exc_info=True
+        )
+        return {"success": False, "error": str(e), "elapsed_seconds": elapsed}
+
+
 def start_scheduler():
     """
     Start the background scheduler.
@@ -518,6 +555,25 @@ def start_scheduler():
             logger.info(
                 "Credibility refresh disabled (CREDIBILITY_REFRESH_ENABLED=false)"
             )
+
+        # Add scheduled retention job (#178, #118)
+        if RETENTION_ENABLED:
+            retention_trigger = CronTrigger.from_crontab(
+                RETENTION_SCHEDULE, timezone=STORY_GENERATION_TIMEZONE
+            )
+            scheduler.add_job(
+                scheduled_retention,
+                trigger=retention_trigger,
+                id="data_retention",
+                name="Scheduled Data Retention",
+                replace_existing=True,
+                max_instances=1,
+            )
+            logger.info(
+                f"Data retention scheduled: {RETENTION_SCHEDULE} {STORY_GENERATION_TIMEZONE}"
+            )
+        else:
+            logger.info("Data retention disabled (NEWSBRIEF_RETENTION_ENABLED=false)")
 
         # Add scheduled feed refresh job (v0.6.3)
         if FEED_REFRESH_ENABLED:
@@ -612,6 +668,7 @@ def get_scheduler_status() -> dict:
     story_job = next((j for j in jobs if j.id == "story_generation"), None)
     feed_job = next((j for j in jobs if j.id == "feed_refresh"), None)
     topic_job = next((j for j in jobs if j.id == "topic_reclassification"), None)
+    retention_job = next((j for j in jobs if j.id == "data_retention"), None)
 
     return {
         "running": True,
@@ -641,5 +698,12 @@ def get_scheduler_status() -> dict:
                 "min_articles": STORY_MIN_ARTICLES,
                 "model": "active-profile",
             },
+        },
+        "data_retention": {
+            "enabled": RETENTION_ENABLED,
+            "schedule": RETENTION_SCHEDULE if RETENTION_ENABLED else None,
+            "next_run": (
+                retention_job.next_run_time.isoformat() if retention_job else None
+            ),
         },
     }

@@ -280,6 +280,36 @@
             </div>
         </div>
 
+        <!-- Data Retention -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Data retention</h2>
+                <div class="flex gap-2">
+                    <button type="button" onclick="loadRetentionStatus()"
+                            class="px-3 py-2 bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white rounded-lg text-sm">
+                        Refresh counts
+                    </button>
+                    <button type="button" onclick="runRetention(true)"
+                            class="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm">
+                        Dry run
+                    </button>
+                    <button type="button" onclick="runRetention(false)"
+                            class="px-3 py-2 bg-red-600 text-white rounded-lg text-sm">
+                        Purge now
+                    </button>
+                </div>
+            </div>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Purges unlinked articles and pipeline logs beyond their configured retention windows.
+                The daily scheduler job runs automatically at 03:00. Use <strong>Dry run</strong> to
+                preview counts before committing.
+            </p>
+            <div id="retention-counts" class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div class="text-sm text-gray-500 dark:text-gray-400 col-span-3">Click "Refresh counts" to load.</div>
+            </div>
+            <pre id="retention-result" class="hidden text-xs bg-gray-100 dark:bg-gray-700 rounded p-3 overflow-x-auto"></pre>
+        </div>
+
         <!-- Audit -->
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
             <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -751,6 +781,50 @@ async function loadAudit() {
         renderAudit(data.actions || []);
     } catch (e) {
         showToast('Failed to load audit: ' + e.message, true);
+    }
+}
+
+async function loadRetentionStatus() {
+    try {
+        const res = await fetch('/api/admin/retention/status');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || res.statusText);
+        const container = document.getElementById('retention-counts');
+        const types = [
+            { key: 'articles', label: 'Articles' },
+            { key: 'pipeline_logs', label: 'Pipeline logs' },
+            { key: 'stories', label: 'Archived stories' },
+        ];
+        container.innerHTML = types.map(t => {
+            const d = data[t.key] || {};
+            return `<div class="bg-gray-50 dark:bg-gray-700 rounded p-3">
+                <div class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">${t.label}</div>
+                <div class="text-lg font-bold text-gray-900 dark:text-white">${d.eligible_for_purge ?? '—'} <span class="text-sm font-normal text-gray-500">/ ${d.total ?? '—'} total</span></div>
+                <div class="text-xs text-gray-500 dark:text-gray-400">Older than ${d.retention_days ?? '?'}d (before ${d.cutoff_date ?? '?'})</div>
+            </div>`;
+        }).join('');
+    } catch (e) {
+        showToast('Failed to load retention counts: ' + e.message, true);
+    }
+}
+
+async function runRetention(dryRun) {
+    const label = dryRun ? 'Dry run' : 'Purge';
+    if (!dryRun && !confirm('This will permanently delete eligible rows. Continue?')) return;
+    try {
+        const res = await fetch(`/api/admin/retention/run?dry_run=${dryRun}`, {
+            method: 'POST',
+            headers: operatorLabelOnlyHeaders(),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || res.statusText);
+        const pre = document.getElementById('retention-result');
+        pre.textContent = JSON.stringify(data, null, 2);
+        pre.classList.remove('hidden');
+        showToast(`${label} complete: ${data.total_eligible ?? data.total_deleted} rows affected`, false);
+        if (!dryRun) loadRetentionStatus();
+    } catch (e) {
+        showToast(`${label} failed: ` + e.message, true);
     }
 }
 </script>

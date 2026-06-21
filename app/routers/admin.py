@@ -837,3 +837,55 @@ def get_quality_trends_endpoint(
             status_code=500,
             detail=f"Failed to retrieve quality trends: {str(e)}",
         )
+
+
+# -----------------------------------------------------------------------------
+# Data retention (#178, #118)
+# -----------------------------------------------------------------------------
+
+
+@router.get("/api/admin/retention/status")
+def retention_status():
+    """Return current row counts and eligibility under each retention policy."""
+    from ..retention import get_retention_counts
+
+    try:
+        with session_scope() as s:
+            return get_retention_counts(s)
+    except Exception as e:
+        logger.error("Failed to get retention counts: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/admin/retention/run")
+def retention_run(
+    request: Request,
+    dry_run: bool = Query(True, description="Preview deletions without committing"),
+):
+    """
+    Run data retention policies.
+
+    With dry_run=true (default) returns eligible counts without deleting.
+    With dry_run=false commits the deletes and logs the operator action.
+    """
+    from ..retention import run_retention
+
+    try:
+        with session_scope() as s:
+            result = run_retention(s, dry_run=dry_run)
+
+        if not dry_run:
+            record_operator_action(
+                request=request,
+                action_type="retention_run",
+                details={
+                    "total_deleted": result["total_deleted"],
+                    "articles_deleted": result["articles"]["deleted"],
+                    "pipeline_logs_deleted": result["pipeline_logs"]["deleted"],
+                },
+            )
+
+        return result
+    except Exception as e:
+        logger.error("Retention run failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
