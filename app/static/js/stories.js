@@ -220,6 +220,12 @@ function createStoryElement(story) {
         topicsSpan.innerHTML = topicBadges;
     }
 
+    // Confidence warning badge (#287)
+    if (story.confidence_warning) {
+        const warningBadge = element.querySelector('.confidence-warning-badge');
+        if (warningBadge) warningBadge.classList.remove('hidden');
+    }
+
     // Article count
     element.querySelector('.article-count-number').textContent = `${story.article_count} sources`;
 

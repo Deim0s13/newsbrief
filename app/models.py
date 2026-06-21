@@ -441,6 +441,8 @@ class StoryOut(BaseModel):
     confidence_score: Optional[float] = None
     # Synthesis routing path: 'standard' or 'deep' (#282)
     synthesis_path: Optional[str] = None
+    # Confidence gate warning: score below warn threshold (#287)
+    confidence_warning: bool = False
 
     @property
     def credibility_label(self) -> str:

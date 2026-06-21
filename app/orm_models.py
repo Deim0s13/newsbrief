@@ -224,6 +224,8 @@ class Story(Base):
     source_credibility_score = Column(Float)  # Weighted average 0.0-1.0
     low_credibility_warning = Column(Boolean, default=False)  # All sources < 0.5
     sources_excluded = Column(Integer, default=0)  # Ineligible sources filtered
+    # Confidence gate warning: score below warn threshold but above hold threshold (#287)
+    confidence_warning = Column(Boolean, default=False)
     # Versioning (v0.6.3 - ADR 0004)
     version = Column(Integer, default=1)
     previous_version_id = Column(Integer, ForeignKey("stories.id"))
