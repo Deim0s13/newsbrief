@@ -91,9 +91,8 @@ uvicorn app.main:app --reload --port 8787
 make dev
 
 # Method 3: Production containers
-make deploy        # Start PostgreSQL + API + Caddy
-make deploy-init   # Initialize database (first time)
-# Access at https://newsbrief.local
+make deploy        # Start PostgreSQL + API (+ Caddy on macOS); runs migrations automatically
+# Access at https://newsbrief.local (macOS) or http://localhost:8787 (Windows)
 ```
 
 ### **Development vs Production** ⭐ *v0.7.x*
@@ -102,7 +101,7 @@ NewsBrief supports separate development and production environments:
 
 | Aspect | Development | Production |
 |--------|-------------|------------|
-| **URL** | `http://localhost:8787` | `https://newsbrief.local` |
+| **URL** | `http://localhost:8787` | `https://newsbrief.local` (macOS) · `http://localhost:8787` (Windows) |
 | **Database** | PostgreSQL (`localhost:5433`) | PostgreSQL (Docker volume) |
 | **Command** | `make dev-full` | `make deploy` |
 | **Visual** | Orange DEV banner + tab prefix | Clean UI |
@@ -119,10 +118,9 @@ make dev-full
 # Or: make db-up && make migrate-dev && make dev
 # → DEV banner at http://localhost:8787 when using the dev configuration
 
-# Production-style stack (containers + PostgreSQL + Caddy)
-make deploy
-make deploy-init  # First time only — see Makefile / README
-# → https://newsbrief.local
+# Production-style stack (containers + PostgreSQL; + Caddy on macOS)
+make deploy       # Idempotent — runs migrations automatically
+# → https://newsbrief.local (macOS) or http://localhost:8787 (Windows)
 ```
 
 See [ADR-0022](../adr/0022-dev-prod-database-parity.md) for PostgreSQL parity. Historical note: [ADR-0007](../adr/0007-postgresql-database-migration.md).

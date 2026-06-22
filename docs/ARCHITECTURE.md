@@ -749,9 +749,9 @@ flowchart TB
 
 | Aspect | Development | Production |
 |--------|-------------|------------|
-| **URL** | `http://localhost:8787` | `https://newsbrief.local` |
+| **URL** | `http://localhost:8787` | `https://newsbrief.local` (macOS, via Caddy) · `http://localhost:8787` (Windows) |
 | **Database** | PostgreSQL (local compose / `make db-up`) | PostgreSQL (compose + persistent volume) |
-| **TLS** | None | Caddy auto-certs |
+| **TLS** | None | Caddy auto-certs (macOS only) |
 | **Secrets** | `.env` file | Podman Secrets |
 | **Logging** | Human-readable | JSON structured |
 | **Visual** | DEV banner | Clean UI |
