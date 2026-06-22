@@ -45,7 +45,7 @@ images:
   - name: localhost:5000/newsbrief
     newName: ghcr.io/deim0s13/newsbrief
     # Tag updated automatically by ci-prod.yml update-manifest job on each release
-    newTag: v0.8.4.2
+    newTag: v0.8.5
 
 # Prod-specific configuration overrides
 configMapGenerator:
