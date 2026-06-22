@@ -286,6 +286,9 @@ else
 	@echo "✅ Database reset and migrations applied"
 endif
 
+seed-dev:                            ## Wipe test data and populate dev DB with real RSS feeds (requires make db-up)
+	DATABASE_URL=$(DEV_DATABASE_URL) .venv/bin/python scripts/seed_dev_feeds.py
+
 # ---------- Database Backup/Restore ----------
 db-backup:                          ## Backup production database to BACKUP_DIR
 	@mkdir -p "$(BACKUP_DIR)"
@@ -550,7 +553,7 @@ env-init:  ## Create .env from template with generated secure password
 .PHONY: venv run-local dev dev-full refresh stories-generate api-health \
 	build tag push release local-release clean-release cleanup-old-images run \
 	deploy deploy-stop deploy-status deploy-init up down logs \
-	setup-dev-db db-up db-down db-status db-logs db-psql db-reset \
+	setup-dev-db db-up db-down db-status db-logs db-psql db-reset seed-dev \
 	db-backup db-restore db-backup-list \
 	secrets-create secrets-list secrets-delete \
 	migrate migrate-dev migrate-new migrate-stamp migrate-history migrate-current \
