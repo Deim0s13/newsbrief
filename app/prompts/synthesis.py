@@ -97,6 +97,80 @@ Respond with valid JSON only:
 JSON:"""
 
 
+def get_deep_synthesis_prompt(
+    story_type: StoryType,
+    analysis: AnalysisResult,
+    article_summaries: list[dict[str, str]],
+    max_articles: int = 8,
+    max_title_chars: int = 80,
+) -> str:
+    """
+    Get the deep-path synthesis prompt for complex, divergent clusters.
+
+    Used when classify_cluster_path() returns 'deep' — clusters with high
+    topic diversity or many articles spanning multiple angles on an issue.
+    Emphasises tensions, uncertainty, and multiple stakeholder perspectives.
+    """
+    analysis_context = _format_analysis_context(analysis)
+    articles_context = "\n".join(
+        f"- {a.get('title', 'Untitled')[:max_title_chars]}"
+        for a in article_summaries[:max_articles]
+    )
+    type_instructions = _get_type_instructions(story_type)
+
+    return f"""You are a senior news editor at a respected publication covering a complex, multi-angle story. Your task is to synthesize multiple source articles that approach this issue from different perspectives.
+
+STORY TYPE: {story_type.value.upper()}
+{type_instructions}
+
+ANALYSIS FROM SOURCES:
+{analysis_context}
+
+SOURCE ARTICLES:
+{articles_context}
+
+WRITING GUIDELINES FOR COMPLEX STORIES:
+1. HEADLINE (title): 8-12 words, under 80 characters
+   - Capture the core tension or central question
+   - Avoid false certainty — this story has multiple dimensions
+   - Use active voice, present tense
+
+2. SYNTHESIS: 2-4 sentences (60-150 words)
+   - Acknowledge the complexity: where do sources agree, where do they diverge?
+   - Surface the central tension or open question, not just the headline fact
+   - Note any significant uncertainty or conflicting claims across sources
+   - Write for readers who want the full picture, not a single narrative
+
+3. KEY_POINTS: 3-5 bullet points
+   - Include at least one point on areas of agreement across sources
+   - Include at least one point on areas of disagreement or uncertainty
+   - Each point should stand alone with specific details
+   - Flag contested claims where sources conflict
+
+4. WHY_IT_MATTERS: 2-3 sentences
+   - Explain stakes for multiple stakeholder groups
+   - Highlight what remains unknown or unresolved
+   - Connect to broader trends, including dissenting perspectives
+
+5. TOPICS: 1-3 relevant tags (e.g., "AI/ML", "Cloud", "Security", "Business")
+
+6. ENTITIES: 3-7 key entities (companies, products, people)
+   - Include entities on different sides of the debate or topic
+   - Prioritise entities mentioned across multiple sources
+
+Respond with valid JSON only:
+{{
+  "title": "Compelling headline capturing the tension",
+  "synthesis": "Your synthesized narrative acknowledging complexity...",
+  "key_points": ["Point covering agreement", "Point on disagreement/uncertainty", "Point 3"],
+  "why_it_matters": "Multi-perspective significance and unresolved questions...",
+  "topics": ["Topic1", "Topic2"],
+  "entities": ["Entity1", "Entity2", "Entity3"]
+}}
+
+JSON:"""
+
+
 def _format_analysis_context(analysis: AnalysisResult) -> str:
     """Format analysis results for inclusion in synthesis prompt."""
     sections = []

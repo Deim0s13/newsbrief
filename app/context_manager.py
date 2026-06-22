@@ -229,6 +229,53 @@ def determine_strategy(article_count: int) -> str:
         return "direct"
 
 
+def classify_cluster_path(cluster_articles: List[Dict[str, Any]]) -> str:
+    """
+    Classify a cluster as 'standard' or 'deep' processing path.
+
+    'deep' is chosen when the cluster is large OR has high topic diversity,
+    indicating multiple angles on an issue that benefit from richer synthesis.
+
+    Args:
+        cluster_articles: List of article dicts from articles_cache
+            (fields: id, title, topic, published, summary, ai_summary)
+
+    Returns:
+        'standard' or 'deep'
+    """
+    if not cluster_articles:
+        return "standard"
+
+    config_data: dict = {}
+    try:
+        if CONFIG_PATH.exists():
+            with open(CONFIG_PATH) as f:
+                config_data = json.load(f).get("synthesis_routing", {})
+    except Exception:
+        pass
+
+    deep_min_articles: int = config_data.get("deep_min_articles", 6)
+    deep_min_diversity: float = config_data.get("deep_min_topic_diversity", 0.6)
+
+    article_count = len(cluster_articles)
+    if article_count >= deep_min_articles:
+        return "deep"
+
+    topics = [
+        a.get("topic", "").strip().lower()
+        for a in cluster_articles
+        if a.get("topic", "").strip()
+    ]
+    # Diversity is only meaningful with ≥2 articles; a single article trivially has 1.0
+    if len(topics) >= 2:
+        unique_topics = len(set(topics))
+        diversity = unique_topics / len(topics)
+        if diversity >= deep_min_diversity:
+            return "deep"
+
+    return "standard"
+
+
 def prioritize_articles(
     articles: List[ArticleForSynthesis],
 ) -> List[ArticleForSynthesis]:

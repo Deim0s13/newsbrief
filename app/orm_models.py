@@ -183,6 +183,10 @@ class Story(Base):
     importance_score = Column(Float, default=0.0)
     freshness_score = Column(Float, default=0.0)
     quality_score = Column(Float, default=0.5)
+    # Confidence score: source reliability × breadth × recency × synthesis quality (#220)
+    confidence_score = Column(Float, nullable=True)
+    # Synthesis routing path: 'standard' or 'deep' (#282)
+    synthesis_path = Column(String(20), nullable=True)
     # Quality metrics breakdown (v0.8.1 - Issue #105)
     quality_breakdown_json = Column(Text)  # JSON breakdown of score components
     title_source = Column(String(20))  # 'llm' or 'fallback'
@@ -220,6 +224,8 @@ class Story(Base):
     source_credibility_score = Column(Float)  # Weighted average 0.0-1.0
     low_credibility_warning = Column(Boolean, default=False)  # All sources < 0.5
     sources_excluded = Column(Integer, default=0)  # Ineligible sources filtered
+    # Confidence gate warning: score below warn threshold but above hold threshold (#287)
+    confidence_warning = Column(Boolean, default=False)
     # Versioning (v0.6.3 - ADR 0004)
     version = Column(Integer, default=1)
     previous_version_id = Column(Integer, ForeignKey("stories.id"))

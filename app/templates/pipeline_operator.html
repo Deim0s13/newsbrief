@@ -167,6 +167,74 @@
             </div>
         </div>
 
+        <!-- Unified pipeline health metrics (#291) -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Pipeline health</h2>
+                <div class="flex flex-wrap gap-2 items-center">
+                    <label class="text-xs text-gray-500 dark:text-gray-400">window (h)</label>
+                    <input type="number" id="health-window-hours" value="24" min="0.25" max="720" step="0.25"
+                           class="w-20 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded dark:bg-gray-700 dark:text-white text-sm">
+                    <label class="text-xs text-gray-500 dark:text-gray-400">stuck age (h)</label>
+                    <input type="number" id="health-stuck-hours" value="2" min="0.1" max="168" step="0.1"
+                           class="w-20 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded dark:bg-gray-700 dark:text-white text-sm">
+                    <button type="button" onclick="loadPipelineHealth()"
+                            class="px-3 py-2 bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white rounded-lg text-sm">
+                        Refresh
+                    </button>
+                </div>
+            </div>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Throughput (stories published in window) and items stuck in intermediate
+                <code class="text-xs">processing_state</code> longer than the stuck-age threshold.
+                Source: <code class="text-xs">GET /api/admin/pipeline/metrics</code>.
+            </p>
+            <div class="flex flex-wrap gap-6 mb-4">
+                <div>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">stories published in window</p>
+                    <p id="health-published-count" class="text-2xl font-bold text-gray-900 dark:text-white">—</p>
+                </div>
+                <div>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">stories / hour</p>
+                    <p id="health-stories-per-hour" class="text-2xl font-bold text-gray-900 dark:text-white">—</p>
+                </div>
+                <div>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">total stuck items</p>
+                    <p id="health-total-stuck" class="text-2xl font-bold text-amber-600 dark:text-amber-400">—</p>
+                </div>
+            </div>
+            <div id="health-stuck-detail" class="hidden">
+                <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">Stuck articles</h3>
+                <div class="overflow-x-auto mb-4">
+                    <table class="min-w-full text-sm">
+                        <thead>
+                            <tr class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-600">
+                                <th class="pb-2 pr-3">state</th>
+                                <th class="pb-2 pr-3">count</th>
+                                <th class="pb-2 pr-3">oldest age (h)</th>
+                                <th class="pb-2">oldest at</th>
+                            </tr>
+                        </thead>
+                        <tbody id="health-stuck-articles-body"></tbody>
+                    </table>
+                </div>
+                <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">Stuck stories</h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead>
+                            <tr class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-600">
+                                <th class="pb-2 pr-3">state</th>
+                                <th class="pb-2 pr-3">count</th>
+                                <th class="pb-2 pr-3">oldest age (h)</th>
+                                <th class="pb-2">oldest at</th>
+                            </tr>
+                        </thead>
+                        <tbody id="health-stuck-stories-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
             <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Stuck stage runs</h2>
@@ -280,6 +348,36 @@
             </div>
         </div>
 
+        <!-- Data Retention -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Data retention</h2>
+                <div class="flex gap-2">
+                    <button type="button" onclick="loadRetentionStatus()"
+                            class="px-3 py-2 bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white rounded-lg text-sm">
+                        Refresh counts
+                    </button>
+                    <button type="button" onclick="runRetention(true)"
+                            class="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm">
+                        Dry run
+                    </button>
+                    <button type="button" onclick="runRetention(false)"
+                            class="px-3 py-2 bg-red-600 text-white rounded-lg text-sm">
+                        Purge now
+                    </button>
+                </div>
+            </div>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Purges unlinked articles and pipeline logs beyond their configured retention windows.
+                The daily scheduler job runs automatically at 03:00. Use <strong>Dry run</strong> to
+                preview counts before committing.
+            </p>
+            <div id="retention-counts" class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div class="text-sm text-gray-500 dark:text-gray-400 col-span-3">Click "Refresh counts" to load.</div>
+            </div>
+            <pre id="retention-result" class="hidden text-xs bg-gray-100 dark:bg-gray-700 rounded p-3 overflow-x-auto"></pre>
+        </div>
+
         <!-- Audit -->
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
             <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -353,6 +451,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('operator-label').value = localStorage.getItem('operatorLabel') || '';
     loadStageSnapshot();
     loadRunMetrics();
+    loadPipelineHealth();
     loadStuckRuns();
     loadFailedEntities();
     loadRuns();
@@ -477,6 +576,58 @@ async function loadStuckRuns() {
     }
 }
 
+function renderStuckItemsTable(tbodyId, rows) {
+    const tb = document.getElementById(tbodyId);
+    tb.innerHTML = '';
+    for (const r of rows) {
+        const tr = document.createElement('tr');
+        tr.className = 'border-b border-gray-100 dark:border-gray-700';
+        const ageClass = r.oldest_age_hours != null && r.oldest_age_hours > 6
+            ? 'text-red-600 dark:text-red-400 font-semibold'
+            : r.oldest_age_hours != null && r.oldest_age_hours > 2
+                ? 'text-amber-600 dark:text-amber-400'
+                : '';
+        tr.innerHTML = `<td class="py-2 pr-3 font-mono text-xs">${escHtml(r.state)}</td>
+            <td class="py-2 pr-3">${r.count}</td>
+            <td class="py-2 pr-3 ${ageClass}">${r.oldest_age_hours != null ? r.oldest_age_hours : '—'}</td>
+            <td class="py-2 text-xs whitespace-nowrap">${escHtml(r.oldest_at || '—')}</td>`;
+        tb.appendChild(tr);
+    }
+    if (!rows.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td colspan="4" class="py-2 text-gray-500">None.</td>`;
+        tb.appendChild(tr);
+    }
+}
+
+async function loadPipelineHealth() {
+    const wh = parseFloat(document.getElementById('health-window-hours').value) || 24;
+    const sh = parseFloat(document.getElementById('health-stuck-hours').value) || 2;
+    try {
+        const url = '/api/admin/pipeline/metrics?window_hours=' + encodeURIComponent(wh)
+            + '&stuck_max_age_hours=' + encodeURIComponent(sh);
+        const res = await fetch(url);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || res.statusText);
+        const tp = data.throughput || {};
+        document.getElementById('health-published-count').textContent = tp.stories_published_in_window ?? '—';
+        document.getElementById('health-stories-per-hour').textContent = tp.stories_per_hour != null ? tp.stories_per_hour.toFixed(2) : '—';
+        const stuck = data.stuck_items || {};
+        document.getElementById('health-total-stuck').textContent = stuck.total_stuck ?? '—';
+        const hasStuck = (stuck.total_stuck || 0) > 0;
+        const detail = document.getElementById('health-stuck-detail');
+        if (hasStuck) {
+            detail.classList.remove('hidden');
+            renderStuckItemsTable('health-stuck-articles-body', stuck.articles || []);
+            renderStuckItemsTable('health-stuck-stories-body', stuck.stories || []);
+        } else {
+            detail.classList.add('hidden');
+        }
+    } catch (e) {
+        showToast('Failed to load pipeline health: ' + e.message, true);
+    }
+}
+
 async function runPipelineCoarse() {
     const fromStage = document.getElementById('run-from-stage').value;
     if (fromStage === 'full' && !confirm('Run full pipeline (ingest + story generation)? This can take a while.')) return;
@@ -492,6 +643,7 @@ async function runPipelineCoarse() {
         showToast('Pipeline run finished. success=' + data.success + ' run_group_id=' + (data.run_group_id || ''), false);
         loadStageSnapshot();
         loadRunMetrics();
+        loadPipelineHealth();
         loadStuckRuns();
         loadFailedEntities();
         loadRuns();
@@ -751,6 +903,50 @@ async function loadAudit() {
         renderAudit(data.actions || []);
     } catch (e) {
         showToast('Failed to load audit: ' + e.message, true);
+    }
+}
+
+async function loadRetentionStatus() {
+    try {
+        const res = await fetch('/api/admin/retention/status');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || res.statusText);
+        const container = document.getElementById('retention-counts');
+        const types = [
+            { key: 'articles', label: 'Articles' },
+            { key: 'pipeline_logs', label: 'Pipeline logs' },
+            { key: 'stories', label: 'Archived stories' },
+        ];
+        container.innerHTML = types.map(t => {
+            const d = data[t.key] || {};
+            return `<div class="bg-gray-50 dark:bg-gray-700 rounded p-3">
+                <div class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">${t.label}</div>
+                <div class="text-lg font-bold text-gray-900 dark:text-white">${d.eligible_for_purge ?? '—'} <span class="text-sm font-normal text-gray-500">/ ${d.total ?? '—'} total</span></div>
+                <div class="text-xs text-gray-500 dark:text-gray-400">Older than ${d.retention_days ?? '?'}d (before ${d.cutoff_date ?? '?'})</div>
+            </div>`;
+        }).join('');
+    } catch (e) {
+        showToast('Failed to load retention counts: ' + e.message, true);
+    }
+}
+
+async function runRetention(dryRun) {
+    const label = dryRun ? 'Dry run' : 'Purge';
+    if (!dryRun && !confirm('This will permanently delete eligible rows. Continue?')) return;
+    try {
+        const res = await fetch(`/api/admin/retention/run?dry_run=${dryRun}`, {
+            method: 'POST',
+            headers: operatorLabelOnlyHeaders(),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || res.statusText);
+        const pre = document.getElementById('retention-result');
+        pre.textContent = JSON.stringify(data, null, 2);
+        pre.classList.remove('hidden');
+        showToast(`${label} complete: ${data.total_eligible ?? data.total_deleted} rows affected`, false);
+        if (!dryRun) loadRetentionStatus();
+    } catch (e) {
+        showToast(`${label} failed: ` + e.message, true);
     }
 }
 </script>

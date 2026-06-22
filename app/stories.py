@@ -33,6 +33,7 @@ from .context_manager import (
     SelectionResult,
     calculate_aggregate_credibility,
     calculate_context_metrics,
+    classify_cluster_path,
     create_article_groups,
     determine_strategy,
     filter_eligible_articles,
@@ -75,13 +76,20 @@ from .prompts import (
     create_hierarchical_tier2_prompt,
     create_reduce_prompt,
     create_refinement_prompt,
+    get_deep_synthesis_prompt,
     get_synthesis_prompt,
     parse_analysis_response,
     parse_detection_response,
     parse_group_summary_response,
     parse_refinement_response,
 )
-from .quality_metrics import QualityBreakdown, calculate_quality_score, log_llm_metrics
+from .publish_gate import evaluate_confidence, gate_result_to_story_fields
+from .quality_metrics import (
+    QualityBreakdown,
+    calculate_confidence_score,
+    calculate_quality_score,
+    log_llm_metrics,
+)
 from .story_embeddings import maybe_embed_story_after_synthesis
 
 logger = logging.getLogger(__name__)
@@ -792,6 +800,20 @@ def update_story_with_new_articles(
     # Extract credibility metadata from synthesis (v0.8.2 - Issue #198)
     cred_meta = synthesis_data.get("_credibility", {})
 
+    # Calculate confidence score and apply publish gate (#287)
+    _conf_score = calculate_confidence_score(
+        source_credibility=cred_meta.get("aggregate_score"),
+        article_count=len(merged_article_ids),
+        freshness_score=cluster_data.get("freshness_score", 0.5),
+        synthesis_quality=synthesis_data.get("_quality_score", 0.5),
+    )
+    _gate_fields = gate_result_to_story_fields(evaluate_confidence(_conf_score))
+    if _gate_fields["status"] == "held":
+        logger.warning(
+            f"Story update #{old_story_id} held by confidence gate "
+            f"(score={_conf_score:.3f})"
+        )
+
     # Create new version
     new_story = Story(
         title=synthesis_data.get("title")
@@ -814,6 +836,10 @@ def update_story_with_new_articles(
         quality_score=synthesis_data.get(
             "_quality_score", cluster_data.get("quality_score", 0.5)
         ),
+        # Confidence score: source reliability × breadth × recency × synthesis quality (#220)
+        confidence_score=_conf_score,
+        # Synthesis routing path: 'standard' or 'deep' (#282)
+        synthesis_path=synthesis_data.get("_synthesis_path", "standard"),
         # Quality metrics (v0.8.1 - Issue #105)
         quality_breakdown_json=serialize_story_json_field(
             synthesis_data.get("_quality_breakdown")
@@ -830,6 +856,9 @@ def update_story_with_new_articles(
         source_credibility_score=cred_meta.get("aggregate_score"),
         low_credibility_warning=cred_meta.get("low_credibility_warning", False),
         sources_excluded=cred_meta.get("sources_excluded", 0),
+        # Confidence gate fields (#287)
+        confidence_warning=_gate_fields["confidence_warning"],
+        failure_stage=_gate_fields["failure_stage"],
         cluster_method="incremental_update",
         story_hash=cluster_data.get("cluster_hash"),
         generated_at=datetime.now(UTC),
@@ -838,8 +867,8 @@ def update_story_with_new_articles(
         time_window_start=cluster_data.get("time_window_start"),
         time_window_end=cluster_data.get("time_window_end"),
         model=model,
-        status="active",
-        processing_state=StoryProcessingState.PUBLISHED.value,
+        status=_gate_fields["status"],
+        processing_state=_gate_fields["processing_state"],
         version=new_version,
         previous_version_id=old_story_id,
     )
@@ -1069,6 +1098,12 @@ def _story_db_to_model(  # type: ignore[misc]
         source_credibility_score=story.source_credibility_score,  # type: ignore[arg-type]
         low_credibility_warning=story.low_credibility_warning or False,  # type: ignore[arg-type]
         sources_excluded=story.sources_excluded or 0,  # type: ignore[arg-type]
+        # Confidence score (#220)
+        confidence_score=story.confidence_score,  # type: ignore[arg-type]
+        # Synthesis routing path (#282)
+        synthesis_path=story.synthesis_path,  # type: ignore[arg-type]
+        # Confidence gate warning (#287)
+        confidence_warning=story.confidence_warning or False,  # type: ignore[arg-type]
     )
     # fmt: on
 
@@ -1611,6 +1646,7 @@ def _run_llm_call(
     prompt: str,
     temperature: float = 0.3,
     max_tokens: int = 600,
+    think: bool = False,
 ) -> str:
     """
     Run a single LLM call with standard options.
@@ -1621,20 +1657,24 @@ def _run_llm_call(
         prompt: The prompt to send
         temperature: Generation temperature (0.0-1.0)
         max_tokens: Maximum tokens to generate
+        think: Enable chain-of-thought reasoning mode (#286, Ollama think param)
 
     Returns:
         Response text from LLM
     """
-    response = llm_service.client.generate(
-        model=model,
-        prompt=prompt,
-        options={
+    kwargs: dict = {
+        "model": model,
+        "prompt": prompt,
+        "options": {
             "temperature": temperature,
             "top_k": 40,
             "top_p": 0.9,
             "num_predict": max_tokens,
         },
-    )
+    }
+    if think:
+        kwargs["think"] = True
+    response = llm_service.client.generate(**kwargs)
     return response.get("response", "")
 
 
@@ -1725,6 +1765,7 @@ def _run_synthesis_pass(
     story_type: StoryType,
     analysis: AnalysisResult,
     article_summaries: list[dict[str, str]],
+    synthesis_path: str = "standard",
 ) -> Optional[dict[str, Any]]:
     """
     Generate the story synthesis using type-specific prompt.
@@ -1735,14 +1776,30 @@ def _run_synthesis_pass(
         story_type: Detected story type
         analysis: Results from analysis pass
         article_summaries: List of article dicts
+        synthesis_path: 'standard' or 'deep' routing path
 
     Returns:
         Draft synthesis dict or None if generation fails
     """
-    prompt = get_synthesis_prompt(story_type, analysis, article_summaries)
-    response = _run_llm_call(
-        llm_service, model, prompt, temperature=0.4, max_tokens=800
-    )
+    if synthesis_path == "deep":
+        prompt = get_deep_synthesis_prompt(story_type, analysis, article_summaries)
+        # Attempt reasoning mode for deep path (#286); fall back if unsupported
+        try:
+            response = _run_llm_call(
+                llm_service, model, prompt, temperature=0.4, max_tokens=800, think=True
+            )
+        except Exception as think_err:
+            logger.warning(
+                f"Deep synthesis think mode failed ({think_err}), falling back without think"
+            )
+            response = _run_llm_call(
+                llm_service, model, prompt, temperature=0.4, max_tokens=800
+            )
+    else:
+        prompt = get_synthesis_prompt(story_type, analysis, article_summaries)
+        response = _run_llm_call(
+            llm_service, model, prompt, temperature=0.4, max_tokens=800
+        )
 
     # Parse using our robust parser
     parsed_output, parse_metrics = parse_and_validate(
@@ -2142,6 +2199,7 @@ def _enhanced_synthesis_pipeline(
     article_ids: list[int],
     model: str,
     prepared_articles: List[ArticleForSynthesis],
+    synthesis_path: str = "standard",
 ) -> dict[str, Any]:
     """
     Run the enhanced multi-pass synthesis pipeline.
@@ -2160,6 +2218,7 @@ def _enhanced_synthesis_pipeline(
         article_ids: List of article IDs (for logging/credibility)
         model: LLM model to use
         prepared_articles: Pre-fetched ArticleForSynthesis from _prepare_articles_for_synthesis
+        synthesis_path: 'standard' or 'deep' routing path
 
     Returns:
         Synthesis result dict with title, synthesis, key_points, etc.
@@ -2284,6 +2343,7 @@ def _enhanced_synthesis_pipeline(
             story_type_result.story_type,
             analysis,
             article_summaries,
+            synthesis_path=synthesis_path,
         )
 
         if draft is None:
@@ -2312,6 +2372,7 @@ def _enhanced_synthesis_pipeline(
     result["_story_type"] = story_type_result.story_type.value
     result["_story_type_confidence"] = story_type_result.confidence
     result["_strategy"] = strategy
+    result["_synthesis_path"] = synthesis_path
     result["_context_metrics"] = {
         "cluster_size": context_metrics.cluster_size,
         "articles_used": context_metrics.articles_used,
@@ -2343,6 +2404,7 @@ def _generate_story_synthesis(
     model: str = "llama3.1:8b",
     articles_cache: Optional[Dict[int, Any]] = None,
     skip_cache: bool = False,
+    synthesis_path: str = "standard",
 ) -> Dict[str, Any]:
     """
     Generate story synthesis from multiple articles using LLM.
@@ -2356,6 +2418,7 @@ def _generate_story_synthesis(
         model: LLM model to use
         articles_cache: Optional cached article data to avoid DB queries
         skip_cache: If True, bypass cache lookup (but still stores result)
+        synthesis_path: 'standard' or 'deep' routing path
 
     Returns:
         Dict with synthesis, key_points, why_it_matters, topics, entities
@@ -2392,6 +2455,7 @@ def _generate_story_synthesis(
             article_ids=article_ids,
             model=model,
             prepared_articles=prepared_articles,
+            synthesis_path=synthesis_path,
         )
 
         # Process pipeline result
@@ -2471,6 +2535,9 @@ def _generate_story_synthesis(
         synthesis_result["_story_type"] = pipeline_result.get("_story_type")
         synthesis_result["_story_type_confidence"] = pipeline_result.get(
             "_story_type_confidence"
+        )
+        synthesis_result["_synthesis_path"] = pipeline_result.get(
+            "_synthesis_path", synthesis_path
         )
 
         # Log metrics to database for historical tracking
@@ -2949,16 +3016,24 @@ def generate_stories_simple(
     def generate_synthesis_for_cluster(cluster_data):
         """Helper function for parallel execution."""
         try:
+            cluster_articles = [
+                articles_cache[aid]
+                for aid in cluster_data["article_ids"]
+                if aid in articles_cache
+            ]
+            path = classify_cluster_path(cluster_articles)
             synthesis_data = _generate_story_synthesis(
                 session,
                 cluster_data["article_ids"],
                 model,
                 articles_cache=articles_cache,
+                synthesis_path=path,
             )
             return {
                 "success": True,
                 "cluster_data": cluster_data,
                 "synthesis_data": synthesis_data,
+                "synthesis_path": path,
             }
         except Exception as e:
             logger.error(f"Synthesis failed for cluster: {e}")
@@ -3080,8 +3155,18 @@ def generate_stories_simple(
             if new_article_count > 0:
                 try:
                     # Re-synthesize with merged articles
+                    merged_cluster_articles = [
+                        articles_cache[aid]
+                        for aid in merged_article_ids
+                        if aid in articles_cache
+                    ]
+                    merged_path = classify_cluster_path(merged_cluster_articles)
                     merged_synthesis = _generate_story_synthesis(
-                        session, merged_article_ids, model, skip_cache=True
+                        session,
+                        merged_article_ids,
+                        model,
+                        skip_cache=True,
+                        synthesis_path=merged_path,
                     )
 
                     # Create new version
@@ -3132,6 +3217,19 @@ def generate_stories_simple(
             # Extract credibility metadata from synthesis (v0.8.2 - Issue #198)
             cred_meta = synthesis_data.get("_credibility", {})
 
+            # Calculate confidence score and apply publish gate (#287)
+            _conf_score = calculate_confidence_score(
+                source_credibility=cred_meta.get("aggregate_score"),
+                article_count=len(cluster_data["article_ids"]),
+                freshness_score=cluster_data.get("freshness_score", 0.5),
+                synthesis_quality=synthesis_data.get("_quality_score", 0.5),
+            )
+            _gate_fields = gate_result_to_story_fields(evaluate_confidence(_conf_score))
+            if _gate_fields["status"] == "held":
+                logger.warning(
+                    f"New story held by confidence gate (score={_conf_score:.3f})"
+                )
+
             story = Story(
                 title=synthesis_data.get("title")
                 or _generate_fallback_title(
@@ -3153,6 +3251,10 @@ def generate_stories_simple(
                 quality_score=synthesis_data.get(
                     "_quality_score", cluster_data["quality_score"]
                 ),
+                # Confidence score: source reliability × breadth × recency × synthesis quality (#220)
+                confidence_score=_conf_score,
+                # Synthesis routing path: 'standard' or 'deep' (#282)
+                synthesis_path=synthesis_data.get("_synthesis_path", "standard"),
                 # Quality metrics (v0.8.1 - Issue #105)
                 quality_breakdown_json=serialize_story_json_field(
                     synthesis_data.get("_quality_breakdown")
@@ -3169,6 +3271,9 @@ def generate_stories_simple(
                 source_credibility_score=cred_meta.get("aggregate_score"),
                 low_credibility_warning=cred_meta.get("low_credibility_warning", False),
                 sources_excluded=cred_meta.get("sources_excluded", 0),
+                # Confidence gate fields (#287)
+                confidence_warning=_gate_fields["confidence_warning"],
+                failure_stage=_gate_fields["failure_stage"],
                 cluster_method="hybrid_topic_keywords_optimized",
                 story_hash=cluster_data["cluster_hash"],
                 generated_at=datetime.now(UTC),
@@ -3177,8 +3282,8 @@ def generate_stories_simple(
                 time_window_start=cluster_data["time_window_start"],
                 time_window_end=cluster_data["time_window_end"],
                 model=model,
-                status="active",
-                processing_state=StoryProcessingState.PUBLISHED.value,
+                status=_gate_fields["status"],
+                processing_state=_gate_fields["processing_state"],
                 version=1,
             )
             session.add(story)

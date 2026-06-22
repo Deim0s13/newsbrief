@@ -437,6 +437,12 @@ class StoryOut(BaseModel):
     source_credibility_score: Optional[float] = None  # Weighted average 0.0-1.0
     low_credibility_warning: bool = False  # True if all sources < 0.5 credibility
     sources_excluded: int = 0  # Ineligible sources filtered from synthesis
+    # Confidence score: source reliability × breadth × recency × synthesis quality (#220)
+    confidence_score: Optional[float] = None
+    # Synthesis routing path: 'standard' or 'deep' (#282)
+    synthesis_path: Optional[str] = None
+    # Confidence gate warning: score below warn threshold (#287)
+    confidence_warning: bool = False
 
     @property
     def credibility_label(self) -> str:

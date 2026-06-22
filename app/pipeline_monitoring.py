@@ -1,6 +1,7 @@
 """
-Stage-aware pipeline monitoring (#276): entity counts by processing state,
-run aggregates from ``pipeline_stage_runs``, and stuck in-flight runs.
+Stage-aware pipeline monitoring (#276, #291): entity counts by processing state,
+run aggregates from ``pipeline_stage_runs``, stuck in-flight runs, and unified
+health metrics with throughput (#291).
 """
 
 from __future__ import annotations
@@ -14,6 +15,28 @@ from sqlalchemy import case, func
 from app.db import session_scope
 from app.orm_models import Item, PipelineStageRun, Story
 from app.processing_states import ArticleProcessingState, StoryProcessingState
+
+# Non-terminal states where items/stories can become stuck
+_ARTICLE_STUCK_STATES: frozenset[str] = frozenset(
+    s.value
+    for s in (
+        ArticleProcessingState.DISCOVERED,
+        ArticleProcessingState.FETCHED,
+        ArticleProcessingState.EXTRACTED,
+        ArticleProcessingState.ENRICHED,
+        ArticleProcessingState.EMBEDDED,
+    )
+)
+
+_STORY_STUCK_STATES: frozenset[str] = frozenset(
+    s.value
+    for s in (
+        StoryProcessingState.CANDIDATE,
+        StoryProcessingState.SYNTHESIZING,
+        StoryProcessingState.CONTEXT_ENRICHED,
+        StoryProcessingState.QUALITY_CHECKED,
+    )
+)
 
 
 def pipeline_stuck_threshold_seconds(override: Optional[int] = None) -> int:
@@ -226,4 +249,130 @@ def list_stuck_pipeline_runs(
         "count": len(out),
         "runs": out,
         "generated_at": now.isoformat(),
+    }
+
+
+def get_stuck_items_by_processing_state(
+    *,
+    max_age_hours: float = 2.0,
+) -> Dict[str, Any]:
+    """
+    Counts of items/stories that have been in an intermediate processing state
+    longer than ``max_age_hours`` (#291).
+
+    Uses ``items.created_at`` for articles (always set) and
+    ``coalesce(stories.last_updated, stories.generated_at)`` for stories.
+    Rows with no usable timestamp are excluded — they represent brand-new
+    candidates not yet old enough to flag.
+    """
+    now = datetime.now(UTC)
+    threshold = now - timedelta(hours=max_age_hours)
+
+    with session_scope() as session:
+        article_rows = (
+            session.query(
+                Item.processing_state,
+                func.count(Item.id).label("count"),
+                func.min(Item.created_at).label("oldest"),
+            )
+            .filter(
+                Item.processing_state.in_(list(_ARTICLE_STUCK_STATES)),
+                Item.created_at < threshold,
+            )
+            .group_by(Item.processing_state)
+            .all()
+        )
+
+        story_ts = func.coalesce(Story.last_updated, Story.generated_at)
+        story_rows = (
+            session.query(
+                Story.processing_state,
+                func.count(Story.id).label("count"),
+                func.min(story_ts).label("oldest"),
+            )
+            .filter(
+                Story.processing_state.in_(list(_STORY_STUCK_STATES)),
+                story_ts.isnot(None),
+                story_ts < threshold,
+            )
+            .group_by(Story.processing_state)
+            .all()
+        )
+
+    def _age_hours(dt: Optional[datetime]) -> Optional[float]:
+        if dt is None:
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        return round((now - dt).total_seconds() / 3600, 1)
+
+    articles_out: List[Dict[str, Any]] = [
+        {
+            "state": state,
+            "count": int(count),
+            "oldest_at": _iso_utc(oldest),
+            "oldest_age_hours": _age_hours(oldest),
+        }
+        for state, count, oldest in article_rows
+    ]
+    stories_out: List[Dict[str, Any]] = [
+        {
+            "state": state,
+            "count": int(count),
+            "oldest_at": _iso_utc(oldest),
+            "oldest_age_hours": _age_hours(oldest),
+        }
+        for state, count, oldest in story_rows
+    ]
+
+    total = sum(r["count"] for r in articles_out) + sum(r["count"] for r in stories_out)
+    return {
+        "max_age_hours": max_age_hours,
+        "total_stuck": total,
+        "articles": articles_out,
+        "stories": stories_out,
+        "generated_at": now.isoformat(),
+    }
+
+
+def get_unified_pipeline_metrics(
+    *,
+    window_hours: float = 24.0,
+    stuck_max_age_hours: float = 2.0,
+) -> Dict[str, Any]:
+    """
+    Single-call summary combining snapshot, run metrics, throughput, and stuck
+    items by processing state (#291).
+
+    Throughput is derived from stories published within ``window_hours``.
+    """
+    snapshot = get_processing_stage_snapshot()
+    run_metrics = get_pipeline_run_metrics(window_hours=window_hours)
+    stuck = get_stuck_items_by_processing_state(max_age_hours=stuck_max_age_hours)
+
+    cutoff = datetime.now(UTC) - timedelta(hours=window_hours)
+    with session_scope() as session:
+        published_count = (
+            session.query(func.count(Story.id))
+            .filter(
+                Story.processing_state == StoryProcessingState.PUBLISHED.value,
+                Story.generated_at >= cutoff,
+            )
+            .scalar()
+        ) or 0
+
+    stories_per_hour = (
+        round(published_count / window_hours, 2) if window_hours > 0 else 0.0
+    )
+
+    return {
+        "window_hours": window_hours,
+        "throughput": {
+            "stories_published_in_window": int(published_count),
+            "stories_per_hour": stories_per_hour,
+        },
+        "snapshot": snapshot,
+        "run_metrics": run_metrics,
+        "stuck_items": stuck,
+        "generated_at": datetime.now(UTC).isoformat(),
     }

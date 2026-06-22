@@ -207,6 +207,30 @@ def admin_pipeline_stuck(
     return list_stuck_pipeline_runs(max_age_seconds=max_age_seconds, limit=limit)
 
 
+@router.get("/api/admin/pipeline/metrics")
+def admin_pipeline_unified_metrics(
+    window_hours: float = Query(
+        24.0,
+        ge=0.25,
+        le=720.0,
+        description="Rolling window hours for run metrics and throughput",
+    ),
+    stuck_max_age_hours: float = Query(
+        2.0,
+        ge=0.1,
+        le=168.0,
+        description="Age threshold (hours) for classifying items/stories as stuck",
+    ),
+):
+    """Unified pipeline health: snapshot + run metrics + throughput + stuck items (#291)."""
+    from ..pipeline_monitoring import get_unified_pipeline_metrics
+
+    return get_unified_pipeline_metrics(
+        window_hours=window_hours,
+        stuck_max_age_hours=stuck_max_age_hours,
+    )
+
+
 @router.get("/api/admin/pipeline/failed-entities")
 def admin_pipeline_failed_entities(
     limit_items: int = Query(50, ge=1, le=200),
@@ -837,3 +861,55 @@ def get_quality_trends_endpoint(
             status_code=500,
             detail=f"Failed to retrieve quality trends: {str(e)}",
         )
+
+
+# -----------------------------------------------------------------------------
+# Data retention (#178, #118)
+# -----------------------------------------------------------------------------
+
+
+@router.get("/api/admin/retention/status")
+def retention_status():
+    """Return current row counts and eligibility under each retention policy."""
+    from ..retention import get_retention_counts
+
+    try:
+        with session_scope() as s:
+            return get_retention_counts(s)
+    except Exception as e:
+        logger.error("Failed to get retention counts: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/admin/retention/run")
+def retention_run(
+    request: Request,
+    dry_run: bool = Query(True, description="Preview deletions without committing"),
+):
+    """
+    Run data retention policies.
+
+    With dry_run=true (default) returns eligible counts without deleting.
+    With dry_run=false commits the deletes and logs the operator action.
+    """
+    from ..retention import run_retention
+
+    try:
+        with session_scope() as s:
+            result = run_retention(s, dry_run=dry_run)
+
+        if not dry_run:
+            record_operator_action(
+                request=request,
+                action_type="retention_run",
+                details={
+                    "total_deleted": result["total_deleted"],
+                    "articles_deleted": result["articles"]["deleted"],
+                    "pipeline_logs_deleted": result["pipeline_logs"]["deleted"],
+                },
+            )
+
+        return result
+    except Exception as e:
+        logger.error("Retention run failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head>
+    <title>NewsBrief Dev Seed Feeds</title>
+  </head>
+  <body>
+    <outline text="Tech">
+      <outline type="rss" text="Ars Technica" xmlUrl="https://feeds.arstechnica.com/arstechnica/index"/>
+      <outline type="rss" text="The Verge" xmlUrl="https://www.theverge.com/rss/index.xml"/>
+      <outline type="rss" text="Wired" xmlUrl="https://www.wired.com/feed/rss"/>
+      <outline type="rss" text="Hacker News" xmlUrl="https://hnrss.org/frontpage"/>
+      <outline type="rss" text="MIT Technology Review" xmlUrl="https://www.technologyreview.com/topnews.rss"/>
+    </outline>
+    <outline text="World News">
+      <outline type="rss" text="BBC World News" xmlUrl="https://feeds.bbci.co.uk/news/world/rss.xml"/>
+      <outline type="rss" text="Reuters Top News" xmlUrl="https://feeds.reuters.com/reuters/topNews"/>
+      <outline type="rss" text="Al Jazeera" xmlUrl="https://www.aljazeera.com/xml/rss/all.xml"/>
+      <outline type="rss" text="The Guardian World" xmlUrl="https://www.theguardian.com/world/rss"/>
+      <outline type="rss" text="NPR News" xmlUrl="https://feeds.npr.org/1001/rss.xml"/>
+    </outline>
+    <outline text="Business">
+      <outline type="rss" text="Financial Times Tech" xmlUrl="https://www.ft.com/technology?format=rss"/>
+      <outline type="rss" text="Bloomberg Technology" xmlUrl="https://feeds.bloomberg.com/technology/news.rss"/>
+    </outline>
+    <outline text="Science">
+      <outline type="rss" text="NASA Breaking News" xmlUrl="https://www.nasa.gov/rss/dyn/breaking_news.rss"/>
+      <outline type="rss" text="New Scientist" xmlUrl="https://www.newscientist.com/feed/home/"/>
+      <outline type="rss" text="Science News" xmlUrl="https://www.sciencenews.org/feed"/>
+    </outline>
+  </body>
+</opml>
