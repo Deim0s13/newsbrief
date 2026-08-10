@@ -373,6 +373,24 @@
         </div>
         {% endif %}
 
+        <!-- Continues From Banner (#261) -->
+        {% if continues_from %}
+        <div class="mb-6 p-4 bg-teal-50 dark:bg-teal-900/20 border-l-4 border-teal-600 dark:border-teal-400 rounded-r-lg">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+                <p class="text-sm text-teal-800 dark:text-teal-200 flex items-center">
+                    <svg class="h-4 w-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16l-4-4m0 0l4-4m-4 4h18"></path>
+                    </svg>
+                    Continues from
+                    <a href="/story/{{ continues_from.id }}" class="font-medium underline hover:no-underline ml-1">{{ continues_from.title }}</a>
+                </p>
+                {% if story.continues_similarity %}
+                <span class="text-xs text-teal-700 dark:text-teal-300">{{ (story.continues_similarity * 100)|round|int }}% match</span>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Story Title -->
         <h1 class="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-6">
             {{ story.title }}
@@ -487,6 +505,31 @@
                         </div>
                     </div>
                 </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Related Stories (#260) -->
+        {% if related_stories and related_stories|length > 0 %}
+        <div class="mt-8 pt-8 border-t border-gray-200 dark:border-gray-700">
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
+                <svg class="h-5 w-5 mr-2 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path>
+                </svg>
+                Related Stories
+            </h2>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {% for related in related_stories %}
+                <a href="/story/{{ related.id }}" class="block p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600 hover:border-blue-300 dark:hover:border-blue-600 transition-colors">
+                    <div class="flex items-start justify-between gap-2">
+                        <span class="text-sm font-medium text-gray-900 dark:text-white line-clamp-2">{{ related.title }}</span>
+                        <span class="flex-shrink-0 text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">{{ (related.similarity * 100)|round|int }}%</span>
+                    </div>
+                    {% if related.published_at %}
+                    <span class="text-xs text-gray-500 dark:text-gray-400 mt-1 block">{{ related.published_at.strftime('%d %b %Y') }}</span>
+                    {% endif %}
+                </a>
                 {% endfor %}
             </div>
         </div>

@@ -48,6 +48,7 @@ from .context_manager import (
 from .credibility import canonicalize_domain
 from .datetime_utils import coerce_datetime
 from .entities import ExtractedEntities, extract_and_cache_entities, get_entity_overlap
+from .historical_linking import maybe_link_historical_context
 from .llm import get_llm_service
 from .llm_output import SynthesisOutput, get_circuit_breaker, parse_and_validate
 from .models import (
@@ -1104,6 +1105,9 @@ def _story_db_to_model(  # type: ignore[misc]
         synthesis_path=story.synthesis_path,  # type: ignore[arg-type]
         # Confidence gate warning (#287)
         confidence_warning=story.confidence_warning or False,  # type: ignore[arg-type]
+        # Historical story linking (#258, ADR-0026)
+        continues_story_id=story.continues_story_id,  # type: ignore[arg-type]
+        continues_similarity=story.continues_similarity,  # type: ignore[arg-type]
     )
     # fmt: on
 
@@ -3348,6 +3352,7 @@ def generate_stories_simple(
 
     for story, _article_ids in stories_to_create:
         maybe_embed_story_after_synthesis(session, story)
+        maybe_link_historical_context(session, story)
 
     # Single commit for ALL stories
     try:

@@ -14,11 +14,19 @@ from ..datetime_utils import coerce_datetime
 from ..deps import limiter, session_scope
 from ..models import (
     ItemOut,
+    RelatedStoriesOut,
+    SimilarityResultOut,
     StoriesListOut,
     StoryGenerationRequest,
     StoryGenerationResponse,
     StoryOut,
     StructuredSummary,
+)
+from ..retrieval import (
+    DEFAULT_MIN_SIMILARITY,
+    DEFAULT_TOP_K,
+    MAX_TOP_K,
+    RetrievalService,
 )
 from ..settings import get_settings_service
 from ..stories import generate_stories_simple, get_stories, get_story_by_id
@@ -384,3 +392,30 @@ def get_story_articles(story_id: int):
                 )
             )
         return items
+
+
+@router.get("/stories/{story_id}/related", response_model=RelatedStoriesOut)
+def get_related_stories(
+    story_id: int,
+    top_k: int = Query(DEFAULT_TOP_K, ge=1, le=MAX_TOP_K, description="Max results"),
+    min_similarity: float = Query(
+        DEFAULT_MIN_SIMILARITY, ge=0.0, le=1.0, description="Minimum cosine similarity"
+    ),
+):
+    """Semantically related stories, ranked by pgvector cosine similarity (#255)."""
+    with session_scope() as s:
+        exists = s.execute(
+            text("SELECT id FROM stories WHERE id = :sid"), {"sid": story_id}
+        ).first()
+        if not exists:
+            raise HTTPException(
+                status_code=404, detail=f"Story with ID {story_id} not found"
+            )
+
+        results = RetrievalService(s).find_related_stories(
+            story_id, top_k=top_k, min_similarity=min_similarity
+        )
+        return RelatedStoriesOut(
+            query_id=story_id,
+            results=[SimilarityResultOut(**r.__dict__) for r in results],
+        )

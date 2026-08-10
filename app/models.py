@@ -443,6 +443,9 @@ class StoryOut(BaseModel):
     synthesis_path: Optional[str] = None
     # Confidence gate warning: score below warn threshold (#287)
     confidence_warning: bool = False
+    # Historical story linking (#258, ADR-0026)
+    continues_story_id: Optional[int] = None
+    continues_similarity: Optional[float] = None
 
     @property
     def credibility_label(self) -> str:
@@ -715,6 +718,41 @@ class SourceCredibilityStatsOut(BaseModel):
     ineligible_for_synthesis: int
     providers: List[str]
     last_updated: Optional[datetime] = None
+
+
+# Semantic retrieval models (#255, ADR-0026)
+class SimilarityResultOut(BaseModel):
+    """One semantic retrieval hit."""
+
+    id: int
+    title: str
+    similarity: float = Field(
+        ..., description="Cosine similarity, 0.0-1.0", ge=0.0, le=1.0
+    )
+    published_at: Optional[datetime] = None
+    url: Optional[str] = None
+
+
+class SimilarArticlesOut(BaseModel):
+    """Response for GET /items/{id}/similar."""
+
+    query_id: int
+    results: List[SimilarityResultOut] = Field(default_factory=list)
+
+
+class RelatedStoriesOut(BaseModel):
+    """Response for GET /stories/{id}/related."""
+
+    query_id: int
+    results: List[SimilarityResultOut] = Field(default_factory=list)
+
+
+class SemanticSearchOut(BaseModel):
+    """Response for GET /search/semantic."""
+
+    query: str
+    content_type: str
+    results: List[SimilarityResultOut] = Field(default_factory=list)
 
 
 # Update forward references

@@ -229,6 +229,11 @@ class Story(Base):
     # Versioning (v0.6.3 - ADR 0004)
     version = Column(Integer, default=1)
     previous_version_id = Column(Integer, ForeignKey("stories.id"))
+    # Historical story linking (#258, ADR-0026): semantically related stories from
+    # the past N days, computed via pgvector cosine similarity after embedding.
+    historical_links_json = Column(Text, nullable=True)
+    continues_story_id = Column(Integer, ForeignKey("stories.id"), nullable=True)
+    continues_similarity = Column(Float, nullable=True)
 
     # Relationships
     story_articles = relationship(
@@ -242,6 +247,7 @@ class Story(Base):
         Index("idx_stories_previous_version", "previous_version_id"),
         Index("idx_stories_credibility", "source_credibility_score"),
         Index("idx_stories_low_cred_warning", "low_credibility_warning"),
+        Index("idx_stories_continues_story_id", "continues_story_id"),
     )
 
 
@@ -546,6 +552,37 @@ class OperatorAction(Base):
     client_ip = Column(String(64), nullable=True)
 
     __table_args__ = (Index("idx_operator_actions_created", "created_at"),)
+
+
+class RetrievalTrace(Base):
+    """
+    Audit row for semantic retrieval queries (#256, ADR-0026).
+
+    Logged for every completed similarity search (similar articles, related
+    stories, semantic search) to support debugging, evaluation, and quality
+    monitoring of the retrieval subsystem.
+    """
+
+    __tablename__ = "retrieval_traces"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    query_type = Column(String(50), nullable=False)
+    source_id = Column(Integer, nullable=True)
+    source_type = Column(String(20), nullable=True)
+    retrieved_ids_json = Column(Text, nullable=False, default="[]")
+    similarity_scores_json = Column(Text, nullable=False, default="[]")
+    filters_applied_json = Column(Text, nullable=True)
+    duration_ms = Column(Integer, nullable=True)
+
+    __table_args__ = (
+        Index("idx_retrieval_traces_type", "query_type"),
+        Index("idx_retrieval_traces_created", "created_at"),
+    )
 
 
 class ReclassifyJob(Base):

@@ -168,6 +168,22 @@ def admin_pipeline_audit(
     return {"actions": list_recent_operator_actions(limit=limit)}
 
 
+@router.get("/api/admin/retrieval-traces")
+def admin_retrieval_traces(
+    limit: int = Query(50, ge=1, le=200, description="Max trace rows"),
+):
+    """Recent semantic retrieval queries + aggregate stats (#256, ADR-0026)."""
+    from ..retrieval_tracing import (
+        get_retrieval_trace_stats,
+        list_recent_retrieval_traces,
+    )
+
+    with session_scope() as s:
+        traces = list_recent_retrieval_traces(s, limit=limit)
+        stats = get_retrieval_trace_stats(s)
+    return {"traces": traces, "stats": stats}
+
+
 @router.get("/api/admin/pipeline/stages")
 def admin_pipeline_stages():
     """Article/story counts by ``processing_state`` (#276)."""
