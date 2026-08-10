@@ -105,6 +105,28 @@ Before proceeding to implementation, validate:
 | Historical linking | ≥80% of proposed links judged accurate by human review |
 | No regression | Runtime/latency/quality acceptable for daily use |
 
+## Go/No-Go Evaluation Results (v0.8.6, August 2026)
+
+All four milestone phases (#278, #257/#259, #279/#281, #280) are implemented. `scripts/rag_evaluation.py` (#262) was built to check the gates above against live data and was run against the dev database (`DATABASE_URL=...localhost:5433/newsbrief`) with real Ollama embeddings (`nomic-embed-text`) and the `fast` synthesis profile (`mistral:7b`).
+
+**Data caveat:** the shared dev database only carries a handful of leftover smoke-test rows day-to-day (stories/items are periodically truncated during development — see `tests/pg_testutil.py`). To get a non-trivial sample, 16 synthetic articles across 4 topics (AI regulation, renewable energy, space exploration, a retail data breach — including one deliberately near-duplicate pair and two backdated "historical" stories) were seeded and run through the real pipeline (embedding → clustering → synthesis → historical linking). This is **far below** the ADR's target N=50 and below what a week of live feed ingestion would produce, so results below are **directional evidence that the mechanisms work correctly**, not a statistically powered validation at production scale.
+
+| Gate | Threshold | Result | Verdict |
+|------|-----------|--------|---------|
+| Relatedness precision | Top-5 retrieval ≥3 related items in ≥75% of cases | 0% (0/12 stories) | **FAIL at this sample size** — with only 12 embedded stories total, most synthetic topics are too small/fragmented for 3 same-topic neighbors to exist in the corpus at all. Not a defect in retrieval (see historical-linking gate below, which found the correct neighbor); it's an N-too-small artifact. |
+| Semantic dedupe | Reduction in duplicates without collapsing distinct stories | 1 flagged pair out of 16 embedded articles (6.25%), similarity 0.9526 | **PASS (qualitative)** — the one pair flagged was the deliberately-seeded near-duplicate (two wire reports of the same NASA launch); no distinct articles were incorrectly flagged. |
+| Historical linking | ≥80% of sampled links judged accurate by human review | 1 continuation link produced; reviewed manually: story *"Global Tech Giants Face Increasing Scrutiny..."* correctly linked as continuing *"EU Proposes Draft AI Act Risk Categories"* (similarity 0.7958) | **PASS (1/1 reviewed accurate)** — correct outcome, but N=1 is far short of the 50-sample target; needs re-validation once more historical stories accumulate. |
+| Latency | Acceptable for daily use, no regression | avg 1.8ms across 62 traced retrieval queries (live pgvector query against a small table) | **PASS** — well under the 500ms budget used as an absolute check (there is no prior retrieval implementation to regress against, since this is new functionality). Latency will grow with corpus size; the `ivfflat` index and top-k bounding are the intended mitigations per the Risks table above. |
+
+### Decision: **Go, with a follow-up re-evaluation condition**
+
+Rationale:
+- All four RAG mechanisms (embedding pipeline, semantic dedupe, retrieval hook + context anchors, historical linking) are implemented, integration-tested (`tests/test_context_retrieval.py`, `tests/test_historical_linking.py`, `tests/test_context_manager.py`, `tests/test_pipeline_monitoring.py`), and were smoke-tested end-to-end against live Ollama and a real Postgres instance during Phases 3-6.
+- The one gate that "failed" (relatedness precision) failed due to corpus size, not a correctness problem — the same retrieval code path is what produced the correct historical-linking match. There is no evidence of false positives or broken retrieval logic.
+- Given this is a local/self-hosted app with a single operator (not a scaled multi-tenant product), the cost of proceeding and re-checking after a normal week of production ingestion is low, versus the cost of blocking the milestone on an artificially small synthetic sample.
+
+**Condition:** re-run `python scripts/rag_evaluation.py` against the dev or prod database after ~1-2 weeks of normal feed ingestion (once the corpus naturally exceeds ~50 embedded stories) and confirm the relatedness-precision gate clears ≥75% under real data volume. If it doesn't, investigate before enabling `light_rag`/`retrieval_hook` more broadly (both already default-configurable via `data/model_config.json` and can be disabled per-environment without a code change).
+
 ## Implementation Outline
 
 ### Schema Changes
