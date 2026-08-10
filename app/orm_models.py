@@ -139,6 +139,13 @@ class Item(Base):
     embedding_model = Column(String(100), nullable=True)
     embedding_version = Column(String(50), nullable=True)
     embedded_at = Column(DateTime(timezone=True), nullable=True)
+    # Last embedding failure message, if any (#278); cleared on next success.
+    embedding_error = Column(Text, nullable=True)
+    # Post-hoc semantic duplicate flagging (#257, ADR-0026); distinct from the
+    # exact-match url_hash/content_hash dedup applied at ingest (app/feeds.py).
+    duplicate_of_id = Column(Integer, ForeignKey("items.id"), nullable=True)
+    duplicate_similarity = Column(Float, nullable=True)
+    duplicate_detection_method = Column(String(20), nullable=True)
     # Timestamps
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
 
@@ -164,6 +171,7 @@ class Item(Base):
         Index(
             "idx_items_extraction_quality", "extraction_method", "extraction_quality"
         ),
+        Index("idx_items_duplicate_of_id", "duplicate_of_id"),
     )
 
 
@@ -187,6 +195,9 @@ class Story(Base):
     confidence_score = Column(Float, nullable=True)
     # Synthesis routing path: 'standard' or 'deep' (#282)
     synthesis_path = Column(String(20), nullable=True)
+    # Numeric cluster complexity score (0.0-1.0), advisory-only (#280,
+    # ADR-0026); does not affect synthesis_path routing above.
+    complexity_score = Column(Float, nullable=True)
     # Quality metrics breakdown (v0.8.1 - Issue #105)
     quality_breakdown_json = Column(Text)  # JSON breakdown of score components
     title_source = Column(String(20))  # 'llm' or 'fallback'
@@ -229,6 +240,20 @@ class Story(Base):
     # Versioning (v0.6.3 - ADR 0004)
     version = Column(Integer, default=1)
     previous_version_id = Column(Integer, ForeignKey("stories.id"))
+    # Historical story linking (#258, ADR-0026): semantically related stories from
+    # the past N days, computed via pgvector cosine similarity after embedding.
+    historical_links_json = Column(Text, nullable=True)
+    continues_story_id = Column(Integer, ForeignKey("stories.id"), nullable=True)
+    continues_similarity = Column(Float, nullable=True)
+    # Light RAG: historical anchors injected into the synthesis prompt for
+    # continuity, if any (#259, ADR-0026); distinct from historical_links_json
+    # above, which is computed post-synthesis.
+    synthesis_anchors_json = Column(Text, nullable=True)
+    # Structured, UI-facing context anchors (#279, #281, ADR-0026): merges the
+    # pre-synthesis retrieval hook (#279) with historical_links_json (#258)
+    # into a single list of {story_id, title, similarity, published_at,
+    # kind: "current"|"background", rationale} entries.
+    context_anchors_json = Column(Text, nullable=True)
 
     # Relationships
     story_articles = relationship(
@@ -242,6 +267,7 @@ class Story(Base):
         Index("idx_stories_previous_version", "previous_version_id"),
         Index("idx_stories_credibility", "source_credibility_score"),
         Index("idx_stories_low_cred_warning", "low_credibility_warning"),
+        Index("idx_stories_continues_story_id", "continues_story_id"),
     )
 
 
@@ -546,6 +572,37 @@ class OperatorAction(Base):
     client_ip = Column(String(64), nullable=True)
 
     __table_args__ = (Index("idx_operator_actions_created", "created_at"),)
+
+
+class RetrievalTrace(Base):
+    """
+    Audit row for semantic retrieval queries (#256, ADR-0026).
+
+    Logged for every completed similarity search (similar articles, related
+    stories, semantic search) to support debugging, evaluation, and quality
+    monitoring of the retrieval subsystem.
+    """
+
+    __tablename__ = "retrieval_traces"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    query_type = Column(String(50), nullable=False)
+    source_id = Column(Integer, nullable=True)
+    source_type = Column(String(20), nullable=True)
+    retrieved_ids_json = Column(Text, nullable=False, default="[]")
+    similarity_scores_json = Column(Text, nullable=False, default="[]")
+    filters_applied_json = Column(Text, nullable=True)
+    duration_ms = Column(Integer, nullable=True)
+
+    __table_args__ = (
+        Index("idx_retrieval_traces_type", "query_type"),
+        Index("idx_retrieval_traces_created", "created_at"),
+    )
 
 
 class ReclassifyJob(Base):

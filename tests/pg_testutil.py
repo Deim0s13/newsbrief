@@ -27,3 +27,19 @@ def pg_session_truncate_synthesis_cache() -> Session:
     session.execute(text("TRUNCATE synthesis_cache RESTART IDENTITY CASCADE"))
     session.commit()
     return session
+
+
+def pg_session_truncate_retrieval_traces() -> Session:
+    """Fresh session; story graph + retrieval_traces truncated with identity reset."""
+    from app.db import SessionLocal, init_db
+
+    init_db()
+    session = SessionLocal()
+    session.execute(
+        text(
+            "TRUNCATE retrieval_traces, story_articles, stories, items, feeds "
+            "RESTART IDENTITY CASCADE"
+        )
+    )
+    session.commit()
+    return session

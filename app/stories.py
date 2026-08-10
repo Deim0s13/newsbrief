@@ -34,6 +34,7 @@ from .context_manager import (
     calculate_aggregate_credibility,
     calculate_context_metrics,
     classify_cluster_path,
+    compute_cluster_complexity_score,
     create_article_groups,
     determine_strategy,
     filter_eligible_articles,
@@ -45,9 +46,21 @@ from .context_manager import (
     prioritize_articles,
     select_articles_for_synthesis,
 )
+from .context_retrieval import retrieve_cluster_context, to_background_anchors
 from .credibility import canonicalize_domain
 from .datetime_utils import coerce_datetime
-from .entities import ExtractedEntities, extract_and_cache_entities, get_entity_overlap
+from .entities import (
+    ExtractedEntities,
+    extract_and_cache_entities,
+    get_cached_entities,
+    get_entity_overlap,
+)
+from .historical_linking import maybe_link_historical_context
+from .light_rag import (
+    SynthesisAnchor,
+    format_anchor_prompt_block,
+    select_synthesis_anchors,
+)
 from .llm import get_llm_service
 from .llm_output import SynthesisOutput, get_circuit_breaker, parse_and_validate
 from .models import (
@@ -114,7 +127,7 @@ SIMILARITY_TOPIC_WEIGHT = float(
 )  # Weight for same-topic bonus
 
 # Import ORM models from central location
-from .orm_models import Base, SourceCredibility, Story, StoryArticle
+from .orm_models import Base, Item, SourceCredibility, Story, StoryArticle
 
 
 def _parse_datetime(value: Any) -> Optional[datetime]:
@@ -760,6 +773,7 @@ def update_story_with_new_articles(
     synthesis_data: Dict[str, Any],
     model: str,
     cluster_data: Dict[str, Any],
+    complexity_score: Optional[float] = None,
 ) -> int:
     """
     Create a new version of an existing story with additional articles.
@@ -777,6 +791,7 @@ def update_story_with_new_articles(
         synthesis_data: New synthesis from LLM
         model: LLM model used
         cluster_data: Cluster metadata (scores, time window, etc.)
+        complexity_score: Numeric cluster complexity score, advisory-only (#280)
 
     Returns:
         New story ID
@@ -840,6 +855,8 @@ def update_story_with_new_articles(
         confidence_score=_conf_score,
         # Synthesis routing path: 'standard' or 'deep' (#282)
         synthesis_path=synthesis_data.get("_synthesis_path", "standard"),
+        # Numeric cluster complexity score, advisory-only (#280)
+        complexity_score=complexity_score,
         # Quality metrics (v0.8.1 - Issue #105)
         quality_breakdown_json=serialize_story_json_field(
             synthesis_data.get("_quality_breakdown")
@@ -851,6 +868,12 @@ def update_story_with_new_articles(
             json.dumps(cluster_data.get("clustering_metadata"))
             if cluster_data.get("clustering_metadata")
             else None
+        ),
+        # Light RAG anchors injected into the synthesis prompt, if any (#259)
+        synthesis_anchors_json=json.dumps(synthesis_data.get("_synthesis_anchors", [])),
+        # Structured context anchors from the pre-synthesis retrieval hook (#279, #281)
+        context_anchors_json=json.dumps(
+            to_background_anchors(synthesis_data.get("_retrieved_context", []))
         ),
         # Source credibility (v0.8.2 - Issue #198)
         source_credibility_score=cred_meta.get("aggregate_score"),
@@ -1031,6 +1054,57 @@ def cleanup_archived_stories(
 # Helper Functions
 
 
+def _compute_cluster_complexity(
+    session: Session,
+    article_ids: List[int],
+    cluster_articles: List[Dict[str, Any]],
+    model: str,
+) -> Optional[float]:
+    """
+    Numeric complexity score for a cluster (#280, ADR-0026), advisory-only —
+    does not influence ``classify_cluster_path``'s routing decision. Best
+    effort: returns ``None`` on any failure so callers can skip persisting it
+    rather than fail story creation.
+    """
+    try:
+        if not article_ids:
+            return None
+        rows = (
+            session.query(Item.id, Item.feed_id, Item.embedding)
+            .filter(Item.id.in_(article_ids))
+            .all()
+        )
+        feed_ids = [r[1] for r in rows if r[1] is not None]
+        embeddings = [list(r[2]) for r in rows if r[2] is not None]
+
+        entity_counts = []
+        for aid in article_ids:
+            cached = get_cached_entities(aid, session, model=model)
+            if cached is not None:
+                entity_counts.append(len(cached.all_entities()))
+
+        return compute_cluster_complexity_score(
+            cluster_articles,
+            feed_ids=feed_ids or None,
+            entity_counts=entity_counts or None,
+            embeddings=embeddings or None,
+        )
+    except Exception as e:
+        logger.debug("Cluster complexity scoring failed (non-fatal): %s", e)
+        return None
+
+
+def _safe_json_loads_list(raw: Optional[str]) -> List[Dict[str, Any]]:
+    """Best-effort JSON list parse; ``[]`` on missing/invalid input."""
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, list) else []
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+
 def _story_db_to_model(  # type: ignore[misc]
     story: Story,
     articles: List[ItemOut],
@@ -1102,8 +1176,21 @@ def _story_db_to_model(  # type: ignore[misc]
         confidence_score=story.confidence_score,  # type: ignore[arg-type]
         # Synthesis routing path (#282)
         synthesis_path=story.synthesis_path,  # type: ignore[arg-type]
+        # Numeric cluster complexity score, advisory-only (#280)
+        complexity_score=story.complexity_score,  # type: ignore[arg-type]
         # Confidence gate warning (#287)
         confidence_warning=story.confidence_warning or False,  # type: ignore[arg-type]
+        # Historical story linking (#258, ADR-0026)
+        continues_story_id=story.continues_story_id,  # type: ignore[arg-type]
+        continues_similarity=story.continues_similarity,  # type: ignore[arg-type]
+        # Light RAG anchors injected into the synthesis prompt, if any (#259)
+        synthesis_anchors=_safe_json_loads_list(
+            story.synthesis_anchors_json  # type: ignore[arg-type]
+        ),
+        # Structured context anchors: retrieval hook + historical linking (#279, #281)
+        context_anchors=_safe_json_loads_list(
+            story.context_anchors_json  # type: ignore[arg-type]
+        ),
     )
     # fmt: on
 
@@ -1766,6 +1853,7 @@ def _run_synthesis_pass(
     analysis: AnalysisResult,
     article_summaries: list[dict[str, str]],
     synthesis_path: str = "standard",
+    anchors: Optional[List[SynthesisAnchor]] = None,
 ) -> Optional[dict[str, Any]]:
     """
     Generate the story synthesis using type-specific prompt.
@@ -1777,12 +1865,16 @@ def _run_synthesis_pass(
         analysis: Results from analysis pass
         article_summaries: List of article dicts
         synthesis_path: 'standard' or 'deep' routing path
+        anchors: Optional light-RAG historical anchors appended to the
+            prompt for continuity (#259); empty/None means no anchor block.
 
     Returns:
         Draft synthesis dict or None if generation fails
     """
+    anchor_block = format_anchor_prompt_block(anchors or [])
     if synthesis_path == "deep":
         prompt = get_deep_synthesis_prompt(story_type, analysis, article_summaries)
+        prompt += anchor_block
         # Attempt reasoning mode for deep path (#286); fall back if unsupported
         try:
             response = _run_llm_call(
@@ -1797,6 +1889,7 @@ def _run_synthesis_pass(
             )
     else:
         prompt = get_synthesis_prompt(story_type, analysis, article_summaries)
+        prompt += anchor_block
         response = _run_llm_call(
             llm_service, model, prompt, temperature=0.4, max_tokens=800
         )
@@ -2266,6 +2359,12 @@ def _enhanced_synthesis_pipeline(
     selection_result = select_articles_for_synthesis(articles_for_synthesis, model)
     strategy = selection_result.strategy
 
+    # === Bounded retrieval hook: related prior stories for this cluster,
+    # regardless of synthesis strategy (#279). Supporting context only, not
+    # canonical fact; #259's light_rag anchors are a separate, tighter-gated
+    # lookup used specifically for direct-path prompt injection. ===
+    retrieved_context = retrieve_cluster_context(session, article_ids)
+
     # Calculate context metrics for logging
     context_metrics = calculate_context_metrics(cluster_size, selection_result, model)
     logger.info(get_context_summary(context_metrics))
@@ -2335,6 +2434,9 @@ def _enhanced_synthesis_pipeline(
             llm_service, model, article_summaries, story_type_result.story_type
         )
 
+        # === Light RAG: select historical anchors for continuity (#259) ===
+        anchors = select_synthesis_anchors(session, [a.id for a in selected_articles])
+
         # === PASS 3: Type-Specific Synthesis ===
         logger.debug("Pipeline: Running synthesis pass")
         draft = _run_synthesis_pass(
@@ -2344,6 +2446,7 @@ def _enhanced_synthesis_pipeline(
             analysis,
             article_summaries,
             synthesis_path=synthesis_path,
+            anchors=anchors,
         )
 
         if draft is None:
@@ -2365,6 +2468,30 @@ def _enhanced_synthesis_pipeline(
             "core_facts_count": len(analysis.core_facts),
             "tensions_count": len(analysis.tensions),
         }
+        # Light RAG anchors actually injected into this prompt (#259)
+        result["_synthesis_anchors"] = [
+            {
+                "story_id": a.story_id,
+                "title": a.title,
+                "similarity": a.similarity,
+                "used": True,
+            }
+            for a in anchors
+        ]
+
+    # Light RAG anchors default (only the "direct" strategy injects them today, #259)
+    result.setdefault("_synthesis_anchors", [])
+
+    # Bounded pre-synthesis retrieval context, for all strategies (#279)
+    result["_retrieved_context"] = [
+        {
+            "story_id": r.id,
+            "title": r.title,
+            "similarity": r.similarity,
+            "published_at": r.published_at.isoformat() if r.published_at else None,
+        }
+        for r in retrieved_context
+    ]
 
     # Add pipeline metadata
     pipeline_time_ms = int((time.time() - pipeline_start) * 1000)
@@ -2538,6 +2665,12 @@ def _generate_story_synthesis(
         )
         synthesis_result["_synthesis_path"] = pipeline_result.get(
             "_synthesis_path", synthesis_path
+        )
+        synthesis_result["_synthesis_anchors"] = pipeline_result.get(
+            "_synthesis_anchors", []
+        )
+        synthesis_result["_retrieved_context"] = pipeline_result.get(
+            "_retrieved_context", []
         )
 
         # Log metrics to database for historical tracking
@@ -3029,11 +3162,15 @@ def generate_stories_simple(
                 articles_cache=articles_cache,
                 synthesis_path=path,
             )
+            complexity_score = _compute_cluster_complexity(
+                session, cluster_data["article_ids"], cluster_articles, model
+            )
             return {
                 "success": True,
                 "cluster_data": cluster_data,
                 "synthesis_data": synthesis_data,
                 "synthesis_path": path,
+                "complexity_score": complexity_score,
             }
         except Exception as e:
             logger.error(f"Synthesis failed for cluster: {e}")
@@ -3132,6 +3269,7 @@ def generate_stories_simple(
         cluster_data = result["cluster_data"]
         synthesis_data = result["synthesis_data"]
         cluster_article_ids = cluster_data["article_ids"]
+        complexity_score = result.get("complexity_score")
 
         # Skip if exact story already exists (same hash)
         if cluster_data["cluster_hash"] in existing_hash_set:
@@ -3168,6 +3306,9 @@ def generate_stories_simple(
                         skip_cache=True,
                         synthesis_path=merged_path,
                     )
+                    merged_complexity_score = _compute_cluster_complexity(
+                        session, merged_article_ids, merged_cluster_articles, model
+                    )
 
                     # Create new version
                     new_story_id = update_story_with_new_articles(
@@ -3177,6 +3318,7 @@ def generate_stories_simple(
                         merged_article_ids=merged_article_ids,
                         synthesis_data=merged_synthesis,
                         model=model,
+                        complexity_score=merged_complexity_score,
                         cluster_data={
                             **cluster_data,
                             "cluster_hash": hashlib.md5(
@@ -3255,6 +3397,8 @@ def generate_stories_simple(
                 confidence_score=_conf_score,
                 # Synthesis routing path: 'standard' or 'deep' (#282)
                 synthesis_path=synthesis_data.get("_synthesis_path", "standard"),
+                # Numeric cluster complexity score, advisory-only (#280)
+                complexity_score=complexity_score,
                 # Quality metrics (v0.8.1 - Issue #105)
                 quality_breakdown_json=serialize_story_json_field(
                     synthesis_data.get("_quality_breakdown")
@@ -3266,6 +3410,14 @@ def generate_stories_simple(
                     json.dumps(cluster_data.get("clustering_metadata"))
                     if cluster_data.get("clustering_metadata")
                     else None
+                ),
+                # Light RAG anchors injected into the synthesis prompt, if any (#259)
+                synthesis_anchors_json=json.dumps(
+                    synthesis_data.get("_synthesis_anchors", [])
+                ),
+                # Structured context anchors from the pre-synthesis retrieval hook (#279, #281)
+                context_anchors_json=json.dumps(
+                    to_background_anchors(synthesis_data.get("_retrieved_context", []))
                 ),
                 # Source credibility (v0.8.2 - Issue #198)
                 source_credibility_score=cred_meta.get("aggregate_score"),
@@ -3348,6 +3500,7 @@ def generate_stories_simple(
 
     for story, _article_ids in stories_to_create:
         maybe_embed_story_after_synthesis(session, story)
+        maybe_link_historical_context(session, story)
 
     # Single commit for ALL stories
     try:

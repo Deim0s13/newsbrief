@@ -6,7 +6,40 @@ Quick reference for all NewsBrief releases. For detailed release notes, see [Git
 
 ## v0.8.x - Content Quality
 
-### v0.8.0 - Content Extraction Pipeline Upgrade (Current)
+### v0.8.5 - Pipeline Completion & Stability (Current)
+**June 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.8.5)
+
+Stability and trust improvements across the story pipeline.
+
+**Highlights:**
+- **Confidence Scoring & Publish Gate**: Calibrated confidence score per story; low-confidence stories are held back from publishing (`app/publish_gate.py`)
+- **Standard vs Deep Synthesis**: Stories route to a standard or deep reasoning path based on cluster complexity
+- **Data Retention**: Configurable per-type retention (articles, stories, pipeline logs) with a daily purge job, dry-run preview, and admin controls; story-linked articles always preserved (`app/retention.py`)
+- **Pipeline Observability**: Stuck-item detection, unified per-stage run metrics, and routing tests
+- **E2E Tests**: State-transition and recovery coverage (`tests/test_pipeline_e2e.py`, `tests/test_synthesis_routing.py`)
+- **Migrations**: `018_confidence_score`, `019_synthesis_path`, `020_confidence_warning`
+
+### v0.8.4.x - Cross-Platform CD
+**June 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.8.4.2)
+
+Hybrid CD strategy (ADR-0032): ArgoCD on macOS, Podman Compose + GHCR image polling on Windows. Native WSL2 dev PostgreSQL replaces the containerised dev DB; article date-fallback fixes (`COALESCE(published, created_at)`); prod pipeline version-check gate.
+
+### v0.8.3.1 - Embedding Persistence
+**April 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.8.3.1)
+
+Ollama embedding backfill CLI (`app/cli/`) and story embedding persistence into pgvector.
+
+### v0.8.2 - Source Credibility
+**March 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.8.2)
+
+MBFC-powered source credibility ratings with synthesis weighting, visual indicators, and a credibility admin dashboard (`/admin/credibility`). See ADR-0028.
+
+### v0.8.1 - Quality Metrics & Entity Extraction
+**March 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.8.1)
+
+LLM output quality metrics, enhanced entity extraction (confidence, roles, disambiguation), multi-topic classification, and the pipeline operator UI.
+
+### v0.8.0 - Content Extraction Pipeline Upgrade
 **February 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.8.0)
 
 Complete overhaul of content extraction with tiered fallback strategy for improved article quality.

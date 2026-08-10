@@ -6,7 +6,9 @@
 
 ## 🚀 Option 1: Production Deployment (Recommended)
 
-Deploy the full stack with PostgreSQL, Caddy reverse proxy, and auto-start:
+Deploy the full stack with PostgreSQL and auto-start. `make deploy` is idempotent and runs migrations automatically — no separate init step.
+
+**macOS** (Caddy reverse proxy + TLS):
 
 ```bash
 # Clone and configure
@@ -17,13 +19,19 @@ make env-init                     # Generate .env with secure password
 # Add newsbrief.local to hosts file
 make hostname-setup               # Or manually: echo "127.0.0.1 newsbrief.local" | sudo tee -a /etc/hosts
 
-# Start production stack
+# Start production stack (runs migrations)
 make deploy
 
-# Initialize database (first time only)
-make deploy-init
-
 # Access at https://newsbrief.local
+```
+
+**Windows** (Podman Compose + GHCR polling — no Caddy):
+
+```bash
+make env-init                     # Generate .env with secure password
+make compose-start                # Start the stack (runs migrations)
+
+# Access at http://localhost:8787
 ```
 
 ### Enhanced Security with Podman Secrets
@@ -100,6 +108,8 @@ make dev        # Start dev server
 ---
 
 ## 🎯 First Steps
+
+> The examples below use the macOS base URL `https://newsbrief.local`. On Windows, substitute `http://localhost:8787`.
 
 ### Add Some Feeds
 
@@ -228,7 +238,7 @@ make deploy-stop && make deploy
 # Reset production database (CAUTION: data loss)
 make deploy-stop
 podman volume rm newsbrief_postgres_data
-make deploy && make deploy-init
+make deploy                       # Recreates the DB and runs migrations
 ```
 
 ### Port Already in Use
@@ -241,7 +251,9 @@ lsof -i :8787
 uvicorn app.main:app --reload --port 8788
 ```
 
-### newsbrief.local Not Resolving
+### newsbrief.local Not Resolving (macOS)
+
+> `newsbrief.local` and Caddy TLS are macOS-only. On Windows, reach the app directly at `http://localhost:8787` — the steps below do not apply.
 
 ```bash
 # Verify hosts file entry

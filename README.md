@@ -19,6 +19,8 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 - **Source Credibility**: MBFC-powered credibility ratings with visual indicators and synthesis weighting
 - **Intelligent Clustering**: Hybrid topic grouping + keyword similarity for related article detection
 - **Multi-Pass Synthesis**: Story type detection → chain-of-thought analysis → synthesis → refinement
+- **Standard vs Deep Synthesis**: Stories route to a standard or deep reasoning path based on cluster complexity
+- **Confidence Scoring & Publish Gate**: Each story gets a calibrated confidence score; low-confidence stories are held back by a publish gate
 - **Large Cluster Handling**: Map-reduce and hierarchical synthesis for 9+ article clusters
 - **Story Transparency**: Quality breakdown panel + "Why Grouped Together" explanation
 - **Story-First UI**: Landing page shows stories with filters, sorting, and pagination
@@ -45,6 +47,7 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 - `/admin/topics` — bulk topic reclassification
 - `/admin/extraction` — content extraction metrics and failure analysis
 - `/admin/credibility` — MBFC data management and refresh
+- **Data Retention**: Configurable per-type retention (articles, stories, pipeline logs) with a daily purge job, dry-run preview, and admin controls — story-linked articles are always preserved
 
 ### **🚀 CI/CD & Deployment**
 - **GitHub Actions CI**: lint → test → multi-arch build → push to GHCR → update k8s manifest
@@ -76,13 +79,14 @@ NewsBrief runs as a production service on two machines simultaneously:
 | Concern | macOS MBP | Windows |
 |---|---|---|
 | Container runtime | Podman Desktop | Podman Desktop for Windows |
-| App deployment | Podman Compose + kind/ArgoCD | Same |
+| Prod CD | kind + ArgoCD (GitOps, auto-sync) | Podman Compose + GHCR image polling (daily 06:00) |
+| Prod access URL | `https://newsbrief.local` (Caddy TLS) | `http://localhost:8787` (no Caddy) |
 | Development (Python, tests) | macOS terminal | WSL2 (dev tooling only — not required to run the app) |
 | Ollama | Ollama.app (native) | Ollama.exe (native, GPU-accelerated) |
 | Ollama URL (containers) | `host.containers.internal:11434` | Same — identical |
 | Infra auto-start | launchd | Windows Task Scheduler |
 
-Both platforms use Podman Desktop, which means `host.containers.internal` resolves correctly on both — no platform-specific container configuration needed.
+Both platforms use Podman Desktop, which means `host.containers.internal` resolves correctly on both — no platform-specific container configuration needed. The Caddy reverse proxy and the `newsbrief.local` hostname are **macOS-only**; on Windows the app is reached directly at `http://localhost:8787`. See [ADR-0032](docs/adr/0032-cross-platform-cd-strategy.md) for the cross-platform CD strategy.
 
 ---
 
@@ -90,7 +94,9 @@ Both platforms use Podman Desktop, which means `host.containers.internal` resolv
 
 ### **Production Deployment (Recommended)**
 
-Deploy the full stack with PostgreSQL, Caddy reverse proxy, and auto-start:
+Deploy the full stack with PostgreSQL and auto-start. `make deploy` is idempotent — it creates the `db_password` secret if missing, brings the stack up, and runs migrations automatically (no separate init step).
+
+**macOS** (Podman Compose + Caddy TLS):
 
 ```bash
 # Clone repository
@@ -100,16 +106,24 @@ cd newsbrief
 # First-time setup
 make env-init                     # Generate .env with secure password
 make hostname-setup               # Add newsbrief.local to /etc/hosts (sudo)
-make deploy                       # Start production stack
-make deploy-init                  # Initialize database
+make deploy                       # Start production stack (runs migrations)
 
 # Access at https://newsbrief.local
 
-# Auto-start infrastructure on login (macOS)
+# Auto-start infrastructure on login (kind + ArgoCD)
 make infra-autostart-install
+```
 
-# Auto-start infrastructure on login (Windows — run from PowerShell, not WSL2)
-# powershell -ExecutionPolicy Bypass -File scripts\infra-task-install.ps1
+**Windows** (Podman Compose + GHCR polling — no Caddy):
+
+```bash
+make env-init                     # Generate .env with secure password
+make compose-start                # Start the stack (runs migrations)
+
+# Access at http://localhost:8787
+
+# Install auto-start + daily image-update tasks (run once from PowerShell, not WSL2)
+# powershell -ExecutionPolicy Bypass -File scripts\compose-task-install.ps1
 ```
 
 ### **Development Mode**
@@ -150,7 +164,7 @@ podman-compose up -d
 | Aspect | Development | Production |
 |--------|-------------|------------|
 | **Database** | PostgreSQL (`localhost:5433`) | PostgreSQL (container volume) |
-| **URL** | `http://localhost:8787` | `https://newsbrief.local` |
+| **URL** | `http://localhost:8787` | `https://newsbrief.local` (macOS) · `http://localhost:8787` (Windows) |
 | **Visual Indicator** | Orange "DEV" banner | Clean UI |
 | **Hot Reload** | Yes | No |
 | **Logs** | Human-readable with colours | JSON structured |
@@ -159,13 +173,14 @@ podman-compose up -d
 ### Production Commands
 
 ```bash
-make deploy              # Start production stack
+make deploy              # Start production stack (idempotent; runs migrations)
 make deploy-stop         # Stop stack (data preserved)
 make deploy-status       # Check running containers
-make deploy-init         # First-time database setup
+make compose-start       # Windows: start stack via compose.windows.yaml
+make compose-watch       # Windows: pull latest GHCR image and redeploy if newer
 
-make hostname-setup      # Add newsbrief.local to /etc/hosts
-make hostname-trust-cert # Trust Caddy local CA (macOS)
+make hostname-setup      # macOS only: add newsbrief.local to /etc/hosts
+make hostname-trust-cert # macOS only: trust Caddy local CA
 
 make db-backup           # Backup to ./backups/
 make db-restore FILE=... # Restore from backup
@@ -336,13 +351,14 @@ Push to dev  →  GitHub Actions (ci-dev.yml)
                   lint + test + build (linux/amd64,arm64)
                   push ghcr.io/deim0s13/newsbrief:sha-{SHA}
                   update k8s/overlays/dev/kustomization.yaml
-                  → ArgoCD on each machine auto-deploys
+                  → macOS: ArgoCD auto-deploys
 
 Push to main →  GitHub Actions (ci-prod.yml)
                   same + Trivy scan + Cosign sign + SBOM
-                  GitHub release created
+                  GitHub release created + push :latest tag
                   update k8s/overlays/prod/kustomization.yaml
-                  → ArgoCD on each machine auto-deploys
+                  → macOS:   ArgoCD auto-deploys (hourly poll)
+                  → Windows: compose-watch picks up :latest next morning (06:00)
 ```
 
 **Pre-commit hooks** run automatically on commit: black, isort, secrets detection, YAML validation.
@@ -370,8 +386,9 @@ make status         # Check status of all services
 | Service | URL |
 |---------|-----|
 | Dev app | http://localhost:8789 |
-| Prod app | https://newsbrief.local (https://localhost:8788) |
-| ArgoCD UI | https://localhost:8443 |
+| Prod app (macOS) | https://newsbrief.local (https://localhost:8788) |
+| Prod app (Windows) | http://localhost:8787 |
+| ArgoCD UI (macOS) | https://localhost:8443 |
 
 ### Troubleshooting
 
@@ -412,6 +429,8 @@ make hostname-trust-cert
 
 | Release | Summary |
 |---------|---------|
+| v0.8.5 | Pipeline completion & stability: confidence scoring + publish gate, standard/deep synthesis split, per-type data retention, E2E pipeline tests, stuck-item observability |
+| v0.8.4.x | Cross-platform CD (ArgoCD on macOS, Compose + GHCR polling on Windows), native WSL2 dev PostgreSQL, date-fallback fixes |
 | v0.8.3.1 | Ollama embedding backfill CLI, story embedding persistence |
 | v0.8.2 | Source credibility (MBFC integration), credibility admin dashboard |
 | v0.8.1 | LLM quality metrics, enhanced entity extraction, multi-topic classification, pipeline operator UI |
@@ -425,8 +444,8 @@ make hostname-trust-cert
 
 ### Upcoming
 
-- **RAG / Semantic Search**: pgvector embeddings already stored; semantic query interface planned (ADR-0026)
-- **Pipeline orchestration completion**: Explicit stage model for all processing states (ADR-0029)
+- **RAG / Semantic Search** (v0.8.6 — Semantic Foundation): pgvector embeddings already stored; semantic query interface next (ADR-0026)
+- **Entity Intelligence System** (v0.9.0): deeper entity linking and disambiguation
 - **Fine-tuning feasibility**: Deferred — better alternatives first (ADR-0027)
 
 ---

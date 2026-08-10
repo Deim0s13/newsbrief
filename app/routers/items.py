@@ -11,11 +11,16 @@ from sqlalchemy import text
 
 from ..datetime_utils import coerce_datetime
 from ..deps import session_scope
-from ..item_embeddings import maybe_embed_item_after_summary
+from ..item_embeddings import (
+    maybe_embed_item_after_summary,
+    maybe_embed_item_if_missing,
+)
 from ..llm import OLLAMA_BASE_URL, get_llm_service, is_llm_available
 from ..models import (
     ItemOut,
     LLMStatusOut,
+    SimilarArticlesOut,
+    SimilarityResultOut,
     StructuredSummary,
     SummaryRequest,
     SummaryResponse,
@@ -23,6 +28,12 @@ from ..models import (
     extract_first_sentences,
 )
 from ..ranking import get_topic_display_name
+from ..retrieval import (
+    DEFAULT_MIN_SIMILARITY,
+    DEFAULT_TOP_K,
+    MAX_TOP_K,
+    RetrievalService,
+)
 from ..settings import get_settings_service
 
 logger = logging.getLogger(__name__)
@@ -280,6 +291,12 @@ def generate_summaries(request: SummaryRequest):
                             structured_model,
                             coerce_datetime(row[11]) or datetime.now(timezone.utc),
                         )
+                        maybe_embed_item_if_missing(
+                            s,
+                            item_id,
+                            title,
+                            structured_summary=structured_summary,
+                        )
                         results.append(
                             SummaryResultOut(
                                 item_id=item_id,
@@ -301,6 +318,13 @@ def generate_summaries(request: SummaryRequest):
                     and row[5]
                     and not request.force_regenerate
                 ):
+                    maybe_embed_item_if_missing(
+                        s,
+                        item_id,
+                        title,
+                        ai_summary=row[5],
+                        feed_summary=feed_summary,
+                    )
                     results.append(
                         SummaryResultOut(
                             item_id=item_id,
@@ -454,6 +478,31 @@ def get_item(item_id: int):
             topic_confidence=float(row[16]) if row[16] is not None else 0.0,
             source_weight=float(row[17]) if row[17] is not None else 1.0,
             processing_state=row[18] or "fetched",
+        )
+
+
+@router.get("/items/{item_id}/similar", response_model=SimilarArticlesOut)
+def get_similar_articles(
+    item_id: int,
+    top_k: int = Query(DEFAULT_TOP_K, ge=1, le=MAX_TOP_K, description="Max results"),
+    min_similarity: float = Query(
+        DEFAULT_MIN_SIMILARITY, ge=0.0, le=1.0, description="Minimum cosine similarity"
+    ),
+):
+    """Semantically similar articles, ranked by pgvector cosine similarity (#255)."""
+    with session_scope() as s:
+        exists = s.execute(
+            text("SELECT id FROM items WHERE id = :item_id"), {"item_id": item_id}
+        ).first()
+        if not exists:
+            raise HTTPException(status_code=404, detail="Item not found")
+
+        results = RetrievalService(s).find_similar_articles(
+            item_id, top_k=top_k, min_similarity=min_similarity
+        )
+        return SimilarArticlesOut(
+            query_id=item_id,
+            results=[SimilarityResultOut(**r.__dict__) for r in results],
         )
 
 

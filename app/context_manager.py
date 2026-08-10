@@ -276,6 +276,87 @@ def classify_cluster_path(cluster_articles: List[Dict[str, Any]]) -> str:
     return "standard"
 
 
+# Complexity score component weights and normalization caps (#280, ADR-0026).
+# Advisory-only: does not affect classify_cluster_path's routing thresholds.
+_COMPLEXITY_SIZE_CAP = 15  # articles; score saturates at this count
+_COMPLEXITY_RECENCY_CAP_HOURS = 48.0  # publish-time spread; saturates here
+_COMPLEXITY_ENTITY_CAP = 8.0  # distinct entities/article; saturates here
+_COMPLEXITY_SEMANTIC_CAP = 0.5  # mean pairwise cosine distance; saturates here
+
+
+def compute_cluster_complexity_score(
+    cluster_articles: List[Dict[str, Any]],
+    *,
+    feed_ids: Optional[List[int]] = None,
+    entity_counts: Optional[List[int]] = None,
+    embeddings: Optional[List[List[float]]] = None,
+) -> float:
+    """
+    Numeric (0.0-1.0) complexity score for a cluster, extending the binary
+    ``classify_cluster_path`` with a finer-grained, advisory-only signal for
+    operator review (#280, ADR-0026). Does NOT change synthesis routing —
+    ``classify_cluster_path``'s thresholds remain the source of truth for
+    that.
+
+    Blends up to 4 normalized components (unweighted mean of whichever are
+    available, so callers can omit expensive-to-compute ones):
+      - size: article count, saturating at ``_COMPLEXITY_SIZE_CAP``
+      - source divergence: distinct ``feed_ids`` / article count
+      - recency spread: publish-time range, saturating at
+        ``_COMPLEXITY_RECENCY_CAP_HOURS``
+      - entity density: mean distinct entities/article (``entity_counts``),
+        saturating at ``_COMPLEXITY_ENTITY_CAP``
+      - semantic spread: mean pairwise cosine distance across ``embeddings``
+        (already computed post-Phase 3, #278), saturating at
+        ``_COMPLEXITY_SEMANTIC_CAP``
+
+    Returns 0.0 for an empty cluster.
+    """
+    if not cluster_articles:
+        return 0.0
+
+    article_count = len(cluster_articles)
+    components: List[float] = [min(article_count / _COMPLEXITY_SIZE_CAP, 1.0)]
+
+    if feed_ids:
+        components.append(min(len(set(feed_ids)) / article_count, 1.0))
+
+    published_times = [a["published"] for a in cluster_articles if a.get("published")]
+    if len(published_times) >= 2:
+        try:
+            spread_hours = (
+                max(published_times) - min(published_times)
+            ).total_seconds() / 3600.0
+            components.append(min(spread_hours / _COMPLEXITY_RECENCY_CAP_HOURS, 1.0))
+        except TypeError:
+            pass
+
+    if entity_counts:
+        mean_entities = sum(entity_counts) / len(entity_counts)
+        components.append(min(mean_entities / _COMPLEXITY_ENTITY_CAP, 1.0))
+
+    if embeddings and len(embeddings) >= 2:
+        distances = []
+        for i in range(len(embeddings)):
+            for j in range(i + 1, len(embeddings)):
+                distances.append(_cosine_distance(embeddings[i], embeddings[j]))
+        if distances:
+            mean_distance = sum(distances) / len(distances)
+            components.append(min(mean_distance / _COMPLEXITY_SEMANTIC_CAP, 1.0))
+
+    return round(sum(components) / len(components), 4)
+
+
+def _cosine_distance(a: List[float], b: List[float]) -> float:
+    """1 - cosine similarity; 0.0 for zero-length vectors."""
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = sum(x * x for x in a) ** 0.5
+    norm_b = sum(y * y for y in b) ** 0.5
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    return 1.0 - (dot / (norm_a * norm_b))
+
+
 def prioritize_articles(
     articles: List[ArticleForSynthesis],
 ) -> List[ArticleForSynthesis]:

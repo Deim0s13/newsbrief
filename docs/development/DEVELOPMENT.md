@@ -91,9 +91,8 @@ uvicorn app.main:app --reload --port 8787
 make dev
 
 # Method 3: Production containers
-make deploy        # Start PostgreSQL + API + Caddy
-make deploy-init   # Initialize database (first time)
-# Access at https://newsbrief.local
+make deploy        # Start PostgreSQL + API (+ Caddy on macOS); runs migrations automatically
+# Access at https://newsbrief.local (macOS) or http://localhost:8787 (Windows)
 ```
 
 ### **Development vs Production** ⭐ *v0.7.x*
@@ -102,7 +101,7 @@ NewsBrief supports separate development and production environments:
 
 | Aspect | Development | Production |
 |--------|-------------|------------|
-| **URL** | `http://localhost:8787` | `https://newsbrief.local` |
+| **URL** | `http://localhost:8787` | `https://newsbrief.local` (macOS) · `http://localhost:8787` (Windows) |
 | **Database** | PostgreSQL (`localhost:5433`) | PostgreSQL (Docker volume) |
 | **Command** | `make dev-full` | `make deploy` |
 | **Visual** | Orange DEV banner + tab prefix | Clean UI |
@@ -119,10 +118,9 @@ make dev-full
 # Or: make db-up && make migrate-dev && make dev
 # → DEV banner at http://localhost:8787 when using the dev configuration
 
-# Production-style stack (containers + PostgreSQL + Caddy)
-make deploy
-make deploy-init  # First time only — see Makefile / README
-# → https://newsbrief.local
+# Production-style stack (containers + PostgreSQL; + Caddy on macOS)
+make deploy       # Idempotent — runs migrations automatically
+# → https://newsbrief.local (macOS) or http://localhost:8787 (Windows)
 ```
 
 See [ADR-0022](../adr/0022-dev-prod-database-parity.md) for PostgreSQL parity. Historical note: [ADR-0007](../adr/0007-postgresql-database-migration.md).
@@ -137,10 +135,13 @@ See [ADR-0022](../adr/0022-dev-prod-database-parity.md) for PostgreSQL parity. H
 
 - **Extension:** Migrations enable `vector` via `CREATE EXTENSION`. Dev/prod Docker DB images use **`pgvector/pgvector:pg16`** (`compose.yaml`, `compose.dev.yaml`). External PostgreSQL hosts must have [pgvector](https://github.com/pgvector/pgvector) installed separately.
 - **Tables:** `items` and `stories` have nullable `embedding vector(768)`, plus `embedding_model`, `embedding_version`, and `embedded_at` (Alembic `016` + `017`). The embedding service (#251, `app/embedding_service.py`) uses Ollama and **`model_config.json`** (`embedding` section); output width must match the DB (see `NEWSBRIEF_EMBEDDING_MODEL` / `NEWSBRIEF_EMBEDDING_DIMENSIONS`).
-- **Article embeddings (#252):** After a **fresh** `POST /summarize` (not cache-hit shortcuts), the app calls **`app/item_embeddings.py`** to embed **title + summary** (structured or plain) and update the row. Disable with **`NEWSBRIEF_EMBEDDING_ENABLED=false`** or **`embedding.enabled: false`** in `model_config.json`. Failures are logged; the summary write still succeeds.
+- **Article embeddings (#252, #278):** After a **fresh** `POST /summarize` (not cache-hit shortcuts), the app calls **`app/item_embeddings.py`** to embed **title + summary** (structured or plain) and update the row, then advances `items.processing_state` to `embedded`. A cache-hit summarize response also triggers an embed **if the item still has no vector** (`maybe_embed_item_if_missing`), so items summarized before embeddings existed (or while disabled) get closed out automatically rather than staying unembedded until a manual backfill. Disable with **`NEWSBRIEF_EMBEDDING_ENABLED=false`** or **`embedding.enabled: false`** in `model_config.json`. Failures are logged **and** recorded on `items.embedding_error` (cleared on the next success) so they're distinguishable from "not embedded yet" — see `GET /api/admin/pipeline/embedding-failures` and the *Embedding failures* panel on `/admin/pipeline`. The summary write still succeeds either way.
 - **Story embeddings (#253):** After synthesis, **`app/story_embeddings.py`** embeds **title + synthesis** on the new or superseding story row (batch generation, incremental updates, targeted regeneration). Same enable/disable flags as articles; failures are logged; the story write still succeeds.
 - **Embedding backfill (#254):** ``python -m app.cli embed-backfill`` (see ``--help``). Requires **``DATABASE_URL``** (or ``--database-url …``, or ``--dev`` for the same default as ``make dev`` / port **5433**). Respects the same embedding enable flags; use ``--dry-run`` for counts only. Batching and ``--sleep-seconds`` limit load on Ollama; rows with no summary/synthesis text are skipped (logged). **Production:** ``k8s/overlays/prod/embed-backfill-job.yaml`` is an Argo CD **PostSync** Job (``newsbrief-embed-backfill``) so each prod GitOps sync runs backfill after the Deployment is healthy; dev overlay omits it (run the CLI manually against dev if needed).
+- **Re-embedding after a model change (#278):** Changing the active embedding profile/model in `data/model_config.json` (e.g. swapping `nomic-embed-text` for a different model, or bumping `embedding.model_version` after a meaningful prompt/preprocessing change) does **not** retroactively touch existing rows — they keep their old `embedding_model`/`embedding_version`. Run the backfill CLI with **`--reembed-outdated`** to also re-embed rows whose stored `embedding_model`/`embedding_version` no longer match the currently configured profile, in addition to rows with no embedding at all: ``python -m app.cli embed-backfill --reembed-outdated --dev``. Use `--dry-run` first to see the affected row counts, and `--batch-size`/`--sleep-seconds` to throttle load on Ollama for a large re-index.
 - **Indexes:** Partial **IVFFlat** indexes (`idx_items_embedding`, `idx_stories_embedding`) use cosine distance on non-null embeddings. Re-tune `lists` in Alembic migrations as row counts grow.
+- **Post-hoc semantic dedupe (#257):** After an item is embedded, `app/semantic_dedup.py` checks it against other embedded items published within the last `semantic_dedupe.window_days` (`data/model_config.json`, default 7). A match above `semantic_dedupe.threshold` (default 0.92) sets `items.duplicate_of_id` / `duplicate_similarity` / `duplicate_detection_method` for operator review (`GET /api/admin/semantic-duplicates`, and the *Flagged semantic duplicates* panel on `/admin/pipeline`) — nothing is auto-removed (`action: "flag"` only). This is separate from the exact-match `url_hash`/`content_hash` dedup in `app/feeds.py`, which still runs at ingest. Disable with `NEWSBRIEF_SEMANTIC_DEDUPE_ENABLED=false` or `semantic_dedupe.enabled: false`.
+- **Light RAG synthesis anchors (#259):** Just before the "direct" synthesis pass (clusters of roughly ≤8 articles — the common case), `app/light_rag.py` averages the cluster's existing article embeddings (no extra Ollama call) and looks up up to `light_rag.max_anchors` (default 3) previously-published stories above `light_rag.threshold` (default 0.78) within `light_rag.window_days` (default 30). Matches are appended to the synthesis prompt as a "## Historical Context" block for continuity, and recorded on `stories.synthesis_anchors_json` (exposed as `synthesis_anchors` on `StoryOut`) for evaluation (#262). Map-reduce/hierarchical synthesis paths don't inject anchors yet. Disable with `NEWSBRIEF_LIGHT_RAG_ENABLED=false` or `light_rag.enabled: false`.
 
 ### **Pipeline operator controls (#277)** ⭐
 

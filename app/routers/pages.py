@@ -10,6 +10,7 @@ from sqlalchemy import text
 
 from ..deps import session_scope, templates
 from ..models import StructuredSummary, extract_first_sentences
+from ..retrieval import RetrievalService
 from ..stories import get_story_by_id
 
 router = APIRouter(prefix="", tags=["pages"])
@@ -44,10 +45,26 @@ def story_detail_page(request: Request, story_id: int):
         if not story:
             raise HTTPException(status_code=404, detail="Story not found")
 
+        # Related stories panel (#260)
+        related_stories = RetrievalService(s).find_related_stories(story_id, top_k=5)
+
+        # "Continues from..." banner (#261): only set when historical linking
+        # (#258) found a match above threshold at generation time.
+        continues_from = None
+        if story.continues_story_id:
+            continues_from = get_story_by_id(
+                session=s, story_id=story.continues_story_id
+            )
+
     return templates.TemplateResponse(
         request,
         "story_detail.html",
-        {"story": story, "current_page": "stories"},
+        {
+            "story": story,
+            "related_stories": related_stories,
+            "continues_from": continues_from,
+            "current_page": "stories",
+        },
     )
 
 

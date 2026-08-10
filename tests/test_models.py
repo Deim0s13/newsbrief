@@ -145,6 +145,24 @@ def test_key_points_too_few():
         return False, f"Unexpected error: {e}"
 
 
+def test_key_points_empty_list_does_not_hang():
+    """Zero key points must still terminate padding, not loop forever (regression)."""
+    try:
+        story = StoryOut(
+            id=1,
+            title="Valid Title Here",
+            synthesis="A" * 100,
+            key_points=[],
+            article_count=1,
+            generated_at=datetime.now(),
+        )
+        if len(story.key_points) == 3:
+            return True, "Key points empty-list padding (auto-padded, no hang)"
+        return False, f"Expected 3 key points (padded), got {len(story.key_points)}"
+    except Exception as e:
+        return False, f"Unexpected error: {e}"
+
+
 def test_key_points_too_many():
     """Test that > 8 key points gets auto-truncated (lenient for LLM inconsistency)."""
     try:
@@ -312,6 +330,7 @@ def main():
         test_synthesis_long_quality_output,
         test_synthesis_too_long,
         test_key_points_too_few,
+        test_key_points_empty_list_does_not_hang,
         test_key_points_too_many,
         test_importance_score_out_of_range,
         test_freshness_score_negative,

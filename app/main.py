@@ -21,7 +21,7 @@ from .feeds import (
     update_feed_health_scores,
 )
 from .logging_config import configure_logging
-from .routers import admin, config, feeds, health, items, pages, stories
+from .routers import admin, config, feeds, health, items, pages, search, stories
 from .topics import migrate_article_topics_v062
 
 # Configure structured logging (must be after imports, before app initialization)
@@ -47,6 +47,7 @@ app.include_router(stories.router)
 app.include_router(items.router)
 app.include_router(admin.router)
 app.include_router(config.router)
+app.include_router(search.router)
 app.include_router(pages.router)
 
 

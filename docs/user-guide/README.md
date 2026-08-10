@@ -37,9 +37,14 @@ LLM model configuration guide:
 git clone https://github.com/Deim0s13/newsbrief.git
 cd newsbrief
 cp .env.example .env
+
+# macOS — Caddy TLS at newsbrief.local:
 echo "127.0.0.1 newsbrief.local" | sudo tee -a /etc/hosts
-make deploy && make deploy-init
+make deploy                 # Idempotent; runs migrations automatically
 # Access at https://newsbrief.local
+
+# Windows — Podman Compose, no Caddy:
+#   make compose-start       → access at http://localhost:8787
 ```
 
 **Development**:

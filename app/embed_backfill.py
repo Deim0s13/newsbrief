@@ -14,6 +14,7 @@ import sys
 from datetime import UTC, datetime
 from typing import Callable, List, Optional, Sequence, Tuple
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from .embedding_service import EmbeddingService, create_embedding_service_from_settings
@@ -134,6 +135,15 @@ def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         help="Max successfully embedded rows per entity type (for testing)",
     )
     b.add_argument(
+        "--reembed-outdated",
+        action="store_true",
+        help=(
+            "Also re-embed rows whose embedding_model/embedding_version don't "
+            "match the currently configured embedding profile (#278 re-embed "
+            "strategy for a model change), in addition to rows with no embedding"
+        ),
+    )
+    b.add_argument(
         "--database-url",
         type=str,
         default=None,
@@ -162,6 +172,29 @@ async def _embed_batch_or_fallback(
         return out
 
 
+def _pending_filter(
+    model_col,
+    version_col,
+    embedding_col,
+    *,
+    reembed_outdated: bool,
+    current_model: str,
+    current_version: str,
+):
+    """
+    Rows needing an embed: always those with no vector; additionally rows
+    whose stored ``embedding_model``/``embedding_version`` don't match the
+    currently configured profile, when ``reembed_outdated`` is set (#278).
+    """
+    missing = embedding_col.is_(None)
+    if not reembed_outdated:
+        return missing
+    outdated = embedding_col.isnot(None) & or_(
+        model_col != current_model, version_col != current_version
+    )
+    return or_(missing, outdated)
+
+
 async def _run_article_backfill(
     session_factory: Callable[[], Session],
     svc: EmbeddingService,
@@ -170,11 +203,24 @@ async def _run_article_backfill(
     sleep_s: float,
     limit: Optional[int],
     total_pending: int,
+    reembed_outdated: bool = False,
 ) -> Tuple[int, int, int]:
     """Returns (embedded_ok, skipped_no_text, batch_errors)."""
     done = skipped = errors = 0
     batch_size = max(1, batch_size)
     last_id = 0
+    info0 = svc.get_model_info()
+    current_model, current_version = str(info0.get("model", "")), str(
+        info0.get("version", "")
+    )
+    pending_filter = _pending_filter(
+        Item.embedding_model,
+        Item.embedding_version,
+        Item.embedding,
+        reembed_outdated=reembed_outdated,
+        current_model=current_model,
+        current_version=current_version,
+    )
 
     while True:
         if limit is not None and done >= limit:
@@ -183,7 +229,7 @@ async def _run_article_backfill(
         try:
             q = (
                 session.query(Item)
-                .filter(Item.embedding.is_(None), Item.id > last_id)
+                .filter(pending_filter, Item.id > last_id)
                 .order_by(Item.id)
                 .limit(batch_size)
             )
@@ -258,10 +304,23 @@ async def _run_story_backfill(
     sleep_s: float,
     limit: Optional[int],
     total_pending: int,
+    reembed_outdated: bool = False,
 ) -> Tuple[int, int, int]:
     done = skipped = errors = 0
     batch_size = max(1, batch_size)
     last_id = 0
+    info0 = svc.get_model_info()
+    current_model, current_version = str(info0.get("model", "")), str(
+        info0.get("version", "")
+    )
+    pending_filter = _pending_filter(
+        Story.embedding_model,
+        Story.embedding_version,
+        Story.embedding,
+        reembed_outdated=reembed_outdated,
+        current_model=current_model,
+        current_version=current_version,
+    )
 
     while True:
         if limit is not None and done >= limit:
@@ -270,7 +329,7 @@ async def _run_story_backfill(
         try:
             q = (
                 session.query(Story)
-                .filter(Story.embedding.is_(None), Story.id > last_id)
+                .filter(pending_filter, Story.id > last_id)
                 .order_by(Story.id)
                 .limit(batch_size)
             )
@@ -352,31 +411,49 @@ async def async_main_embed_backfill(args: argparse.Namespace) -> int:
 
     from .db import SessionLocal
 
+    reembed_outdated = bool(getattr(args, "reembed_outdated", False))
+    svc = create_embedding_service_from_settings()
+    info0 = svc.get_model_info()
+    current_model, current_version = str(info0.get("model", "")), str(
+        info0.get("version", "")
+    )
+
     session = SessionLocal()
     try:
-        ap = (
-            session.query(Item).filter(Item.embedding.is_(None)).count()
-            if do_articles
-            else 0
+        item_filter = _pending_filter(
+            Item.embedding_model,
+            Item.embedding_version,
+            Item.embedding,
+            reembed_outdated=reembed_outdated,
+            current_model=current_model,
+            current_version=current_version,
         )
-        sp = (
-            session.query(Story).filter(Story.embedding.is_(None)).count()
-            if do_stories
-            else 0
+        story_filter = _pending_filter(
+            Story.embedding_model,
+            Story.embedding_version,
+            Story.embedding,
+            reembed_outdated=reembed_outdated,
+            current_model=current_model,
+            current_version=current_version,
         )
+        ap = session.query(Item).filter(item_filter).count() if do_articles else 0
+        sp = session.query(Story).filter(story_filter).count() if do_stories else 0
     finally:
         session.close()
 
     logger.info("embed-backfill pending: articles=%s stories=%s", ap, sp)
 
     if args.dry_run:
+        suffix = (
+            " (embedding IS NULL or outdated model/version)"
+            if reembed_outdated
+            else " rows with embedding IS NULL"
+        )
         if do_articles:
-            print(f"articles: {ap} rows with embedding IS NULL")
+            print(f"articles: {ap}{suffix}")
         if do_stories:
-            print(f"stories: {sp} rows with embedding IS NULL")
+            print(f"stories: {sp}{suffix}")
         return 0
-
-    svc = create_embedding_service_from_settings()
 
     def factory() -> Session:
         return SessionLocal()
@@ -390,6 +467,7 @@ async def async_main_embed_backfill(args: argparse.Namespace) -> int:
             sleep_s=args.sleep_seconds,
             limit=args.limit,
             total_pending=ap,
+            reembed_outdated=reembed_outdated,
         )
         logger.info(
             "Articles finished: embedded=%s skipped_no_text=%s batch_errors=%s",
@@ -408,6 +486,7 @@ async def async_main_embed_backfill(args: argparse.Namespace) -> int:
             sleep_s=args.sleep_seconds,
             limit=args.limit,
             total_pending=sp,
+            reembed_outdated=reembed_outdated,
         )
         logger.info(
             "Stories finished: embedded=%s skipped_no_text=%s batch_errors=%s",

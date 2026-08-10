@@ -5,7 +5,7 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field, HttpUrl, validator
 
@@ -441,8 +441,19 @@ class StoryOut(BaseModel):
     confidence_score: Optional[float] = None
     # Synthesis routing path: 'standard' or 'deep' (#282)
     synthesis_path: Optional[str] = None
+    # Numeric cluster complexity score (0.0-1.0), advisory-only (#280)
+    complexity_score: Optional[float] = None
     # Confidence gate warning: score below warn threshold (#287)
     confidence_warning: bool = False
+    # Historical story linking (#258, ADR-0026)
+    continues_story_id: Optional[int] = None
+    continues_similarity: Optional[float] = None
+    # Light RAG: historical anchors injected into the synthesis prompt, if any (#259)
+    synthesis_anchors: List[Dict[str, Any]] = Field(default_factory=list)
+    # Structured context anchors: pre-synthesis retrieval hook (#279) merged
+    # with post-synthesis historical linking (#258), each tagged
+    # kind="current"|"background" with a rationale string (#281)
+    context_anchors: List[Dict[str, Any]] = Field(default_factory=list)
 
     @property
     def credibility_label(self) -> str:
@@ -487,9 +498,11 @@ class StoryOut(BaseModel):
             logger.info(f"[VALIDATOR] Padding key_points from {len(v)} to 3")
             v = list(v)  # Make a copy
             while len(v) < 3:
-                if len(v) == 1:
+                if len(v) == 0:
+                    v.append("See synthesis above for details")
+                elif len(v) == 1:
                     v.append("Additional details in supporting articles")
-                elif len(v) == 2:
+                else:
                     v.append("See full article details below")
 
         if len(v) > 8:
@@ -713,6 +726,41 @@ class SourceCredibilityStatsOut(BaseModel):
     ineligible_for_synthesis: int
     providers: List[str]
     last_updated: Optional[datetime] = None
+
+
+# Semantic retrieval models (#255, ADR-0026)
+class SimilarityResultOut(BaseModel):
+    """One semantic retrieval hit."""
+
+    id: int
+    title: str
+    similarity: float = Field(
+        ..., description="Cosine similarity, 0.0-1.0", ge=0.0, le=1.0
+    )
+    published_at: Optional[datetime] = None
+    url: Optional[str] = None
+
+
+class SimilarArticlesOut(BaseModel):
+    """Response for GET /items/{id}/similar."""
+
+    query_id: int
+    results: List[SimilarityResultOut] = Field(default_factory=list)
+
+
+class RelatedStoriesOut(BaseModel):
+    """Response for GET /stories/{id}/related."""
+
+    query_id: int
+    results: List[SimilarityResultOut] = Field(default_factory=list)
+
+
+class SemanticSearchOut(BaseModel):
+    """Response for GET /search/semantic."""
+
+    query: str
+    content_type: str
+    results: List[SimilarityResultOut] = Field(default_factory=list)
 
 
 # Update forward references

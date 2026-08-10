@@ -18,6 +18,13 @@
     <key>KeepAlive</key>
     <false/>
 
+    <!-- infra-start.sh backgrounds long-lived children (kubectl port-forward) and
+         exits itself once they're launched. Without this, launchd's default
+         behavior kills the whole process group — including those port-forwards —
+         the moment the script process exits, silently undoing step 8 of the script. -->
+    <key>AbandonProcessGroup</key>
+    <true/>
+
     <!-- Give Podman Desktop time to start its VM before we try to use kind -->
     <key>ThrottleInterval</key>
     <integer>30</integer>

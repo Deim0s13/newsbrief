@@ -3,7 +3,9 @@ kind: ConfigMap
 metadata:
   name: argocd-cm
   namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-cm
+    app.kubernetes.io/part-of: argocd
 data:
-  # Poll git every hour instead of the default 3 minutes.
-  # This is a personal app with infrequent releases — hourly is more than enough.
-  timeout.reconciliation: 3600s
+  # Poll git every 5 minutes. Hourly lag is too long for a daily release cadence.
+  timeout.reconciliation: 300s
