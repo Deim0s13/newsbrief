@@ -12,17 +12,37 @@ LOG_PREFIX="[newsbrief-infra]"
 log() { echo "${LOG_PREFIX} $*"; }
 
 # 1. Ensure Podman Compose prod stack is running (DB required by kind pods)
+#
+# NOTE: use `podman-compose` (standalone tool), not `podman compose` (Podman's
+# built-in dispatcher) — the latter can auto-select an external provider such
+# as Docker Compose v2 if one is on PATH, which doesn't understand Podman
+# secrets ("unsupported external secret db_password"). `make deploy`/`make up`
+# use the same standalone `podman-compose` for this reason.
 log "Starting Podman Compose prod stack (DB)..."
 cd "${PROJECT_ROOT}"
-podman compose -f compose.yaml -f compose.prod.yaml up -d 2>&1 | sed "s/^/${LOG_PREFIX} /" || \
-    log "Warning: podman compose up failed — API pods may not reach the DB"
+podman-compose -f compose.yaml -f compose.prod.yaml up -d 2>&1 | sed "s/^/${LOG_PREFIX} /" || \
+    log "Warning: podman-compose up failed — API pods may not reach the DB"
 cd - >/dev/null
 
 # 2. Ensure kind cluster exists (create if not)
-if kind get clusters 2>/dev/null | grep -q "^${CLUSTER_NAME}$"; then
+#
+# NOTE: `kind get clusters` is used here via a direct podman query rather than
+# the `kind get clusters` CLI subcommand. Podman >=6.0.0 changed `podman ps
+# --format` to render .Labels as a slice instead of a map, which breaks kind's
+# podman-provider ListClusters/create-cluster existence check
+# (https://github.com/kubernetes-sigs/kind/issues/4201, fixed upstream on
+# kind's main branch but not yet in a tagged release). Other kind subcommands
+# (export kubeconfig, get nodes) are unaffected, so we only need to work
+# around cluster *detection* here.
+if podman ps -a --filter "label=io.x-k8s.kind.cluster=${CLUSTER_NAME}" --format '{{.Names}}' 2>/dev/null | grep -q .; then
     log "Kind cluster '${CLUSTER_NAME}' already exists"
+    podman start "${CLUSTER_NAME}-control-plane" >/dev/null 2>&1 || true
 else
     log "Creating kind cluster '${CLUSTER_NAME}'..."
+    log "(if this fails with 'cannot index slice/array with type string', see" \
+        "https://github.com/kubernetes-sigs/kind/issues/4201 — you'll need a" \
+        "kind build newer than v0.32.0, or a podman <6.0.0 client, to create a" \
+        "brand-new cluster until kind ships a fixed release)"
     kind create cluster --name "${CLUSTER_NAME}" --config "${CLUSTER_CONFIG}"
 fi
 
