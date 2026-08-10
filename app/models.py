@@ -487,9 +487,11 @@ class StoryOut(BaseModel):
             logger.info(f"[VALIDATOR] Padding key_points from {len(v)} to 3")
             v = list(v)  # Make a copy
             while len(v) < 3:
-                if len(v) == 1:
+                if len(v) == 0:
+                    v.append("See synthesis above for details")
+                elif len(v) == 1:
                     v.append("Additional details in supporting articles")
-                elif len(v) == 2:
+                else:
                     v.append("See full article details below")
 
         if len(v) > 8:
