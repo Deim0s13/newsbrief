@@ -1,7 +1,13 @@
 """
-Persist article embeddings after summarization (#252).
+Persist article embeddings after summarization (#252), made a first-class,
+observable part of article processing rather than a side effect that can
+silently be skipped (#278).
 
-Shared helpers for #278 (pipeline enrichment): move the call site only.
+Covers: embedding on every fresh summarize (existing), embedding on a
+cache-hit summary if the item still has no vector (closes a gap where
+never-embedded items stay that way until a manual backfill), advancing
+``ArticleProcessingState.EMBEDDED`` on success, and recording the last
+failure message on ``items.embedding_error`` for operator visibility.
 """
 
 from __future__ import annotations
@@ -17,6 +23,7 @@ from sqlalchemy.orm import Session
 from .embedding_service import create_embedding_service_from_settings
 from .models import StructuredSummary
 from .orm_models import Item
+from .processing_states import ArticleProcessingState, apply_article_processing_state
 from .settings import get_settings_service
 
 if TYPE_CHECKING:
@@ -84,6 +91,38 @@ def persist_item_embedding(
     item.embedding_model = (embedding_model or "")[:100]  # type: ignore[assignment]
     item.embedding_version = (embedding_version or "")[:50]  # type: ignore[assignment]
     item.embedded_at = datetime.now(UTC)  # type: ignore[assignment]
+    item.embedding_error = None  # type: ignore[assignment]
+
+
+def record_item_embedding_failure(
+    session: Session,
+    item_id: int,
+    message: str,
+) -> None:
+    """Best-effort: record the last embedding failure for operator visibility (#278)."""
+    try:
+        item = session.get(Item, item_id)
+        if item is None:
+            return
+        item.embedding_error = (message or "unknown error")[:2000]  # type: ignore[assignment]
+    except Exception as e:
+        logger.debug("Failed to record embedding_error for item %s: %s", item_id, e)
+
+
+def _after_embed_success(session: Session, item_id: int, *, context: str) -> None:
+    """Shared post-embed hooks: state transition + semantic dedupe check (#257)."""
+    apply_article_processing_state(
+        session,
+        item_id,
+        ArticleProcessingState.EMBEDDED,
+        context=context,
+    )
+    try:
+        from .semantic_dedup import maybe_flag_semantic_duplicate
+
+        maybe_flag_semantic_duplicate(session, item_id)
+    except Exception as e:
+        logger.debug("Semantic dedupe hook skipped for item %s: %s", item_id, e)
 
 
 def maybe_embed_item_after_summary(
@@ -145,6 +184,7 @@ def maybe_embed_item_after_summary(
             embedding_model=str(info.get("model", "")),
             embedding_version=str(info.get("version", "")),
         )
+        _after_embed_success(session, item_id, context="maybe_embed_item_after_summary")
     except Exception as e:
         logger.warning(
             "Embedding failed for item %s (article still saved): %s",
@@ -152,3 +192,67 @@ def maybe_embed_item_after_summary(
             e,
             exc_info=True,
         )
+        record_item_embedding_failure(session, item_id, str(e))
+
+
+def maybe_embed_item_if_missing(
+    session: Session,
+    item_id: int,
+    title: Optional[str],
+    *,
+    structured_summary: Optional[StructuredSummary] = None,
+    ai_summary: Optional[str] = None,
+    feed_summary: Optional[str] = None,
+) -> None:
+    """
+    Embed an item from already-available (cached) summary text if it has no
+    embedding yet (#278).
+
+    Closes a gap where a cache-hit ``/summarize`` response never calls
+    :func:`maybe_embed_item_after_summary` at all, so an item summarized
+    before embeddings existed (or while disabled) could stay unembedded
+    forever without a manual backfill. Cheap no-op once embedded.
+    """
+    if not is_embedding_generation_enabled():
+        return
+    try:
+        item = session.get(Item, item_id)
+        if item is None or item.embedding is not None:
+            return
+    except Exception as e:
+        logger.debug("maybe_embed_item_if_missing lookup failed for %s: %s", item_id, e)
+        return
+
+    embed_text = build_item_embed_text(
+        title,
+        structured_summary=structured_summary,
+        ai_summary=ai_summary,
+        feed_summary=feed_summary,
+    )
+    if not embed_text:
+        return
+
+    try:
+
+        async def _embed() -> tuple[list[float], dict]:
+            svc = create_embedding_service_from_settings()
+            vec = await svc.embed_text(embed_text)
+            return vec, svc.get_model_info()
+
+        vector, info = asyncio.run(_embed())
+        persist_item_embedding(
+            session,
+            item_id,
+            vector,
+            embedding_model=str(info.get("model", "")),
+            embedding_version=str(info.get("version", "")),
+        )
+        _after_embed_success(session, item_id, context="maybe_embed_item_if_missing")
+    except Exception as e:
+        logger.warning(
+            "Cache-hit backfill embedding failed for item %s: %s",
+            item_id,
+            e,
+            exc_info=True,
+        )
+        record_item_embedding_failure(session, item_id, str(e))

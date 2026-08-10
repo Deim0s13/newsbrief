@@ -138,6 +138,27 @@
     "deep_min_topic_diversity": 0.6,
     "description": "Thresholds for classifying clusters as standard vs deep processing path"
   },
+  "semantic_dedupe": {
+    "enabled": true,
+    "threshold": 0.92,
+    "window_days": 7,
+    "action": "flag",
+    "description": "Post-hoc semantic duplicate detection after item embedding (#257, ADR-0026). action: 'flag' marks items.duplicate_of_id/similarity for operator review; other values are reserved for future use."
+  },
+  "light_rag": {
+    "enabled": true,
+    "threshold": 0.78,
+    "max_anchors": 3,
+    "window_days": 30,
+    "description": "Inject up to max_anchors high-confidence historical story anchors into synthesis prompts for continuity (#259, ADR-0026)."
+  },
+  "retrieval_hook": {
+    "enabled": true,
+    "threshold": 0.65,
+    "top_k": 5,
+    "window_days": 30,
+    "description": "Bounded, traced retrieval of related prior stories for every cluster (all synthesis strategies) between clustering and synthesis, for observability and the #281 context_anchors payload (#279, ADR-0026). Looser threshold than light_rag since results are supporting context, not necessarily prompt-injected."
+  },
   "synthesis_strategies": {
     "direct": {
       "max_articles": 8,

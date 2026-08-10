@@ -192,6 +192,38 @@ def admin_pipeline_stages():
     return get_processing_stage_snapshot()
 
 
+@router.get("/api/admin/semantic-duplicates")
+def admin_semantic_duplicates(
+    limit: int = Query(50, ge=1, le=200, description="Max flagged rows"),
+):
+    """Items flagged as likely semantic duplicates for operator review (#257)."""
+    from ..semantic_dedup import list_flagged_semantic_duplicates
+
+    with session_scope() as s:
+        duplicates = list_flagged_semantic_duplicates(s, limit=limit)
+    return {"duplicates": duplicates}
+
+
+@router.get("/api/admin/pipeline/embedding-failures")
+def admin_pipeline_embedding_failures(
+    limit: int = Query(20, ge=1, le=200, description="Max sample rows"),
+):
+    """Items with a recorded embedding failure, distinct from not-yet-embedded (#278)."""
+    from ..pipeline_monitoring import get_embedding_failure_summary
+
+    return get_embedding_failure_summary(limit=limit)
+
+
+@router.get("/api/admin/pipeline/complexity-scores")
+def admin_pipeline_complexity_scores(
+    limit: int = Query(20, ge=1, le=200, description="Max sample rows"),
+):
+    """Distribution of numeric cluster complexity scores, advisory-only (#280)."""
+    from ..pipeline_monitoring import get_cluster_complexity_summary
+
+    return get_cluster_complexity_summary(limit=limit)
+
+
 @router.get("/api/admin/pipeline/run-metrics")
 def admin_pipeline_run_metrics(
     window_hours: float = Query(

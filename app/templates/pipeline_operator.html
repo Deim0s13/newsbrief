@@ -131,6 +131,73 @@
                         <tbody id="snapshot-stories-body"></tbody>
                     </table>
                 </div>
+                <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2 mt-4">
+                    Embedding failures
+                    <span id="embedding-failures-count" class="ml-1 text-amber-600 dark:text-amber-400 font-mono text-xs">—</span>
+                </h3>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                    Articles where an embed attempt errored (#278) — distinct from articles simply not yet embedded.
+                </p>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead>
+                            <tr class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-600">
+                                <th class="pb-2 pr-3">item</th>
+                                <th class="pb-2">error</th>
+                            </tr>
+                        </thead>
+                        <tbody id="embedding-failures-body"></tbody>
+                    </table>
+                </div>
+                <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2 mt-4">
+                    Flagged semantic duplicates
+                    <span id="semantic-duplicates-count" class="ml-1 text-amber-600 dark:text-amber-400 font-mono text-xs">—</span>
+                </h3>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                    Articles flagged as likely duplicates of an earlier article via embedding similarity (#257), for review only — nothing is auto-removed.
+                </p>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead>
+                            <tr class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-600">
+                                <th class="pb-2 pr-3">item</th>
+                                <th class="pb-2 pr-3">duplicate of</th>
+                                <th class="pb-2">similarity</th>
+                            </tr>
+                        </thead>
+                        <tbody id="semantic-duplicates-body"></tbody>
+                    </table>
+                </div>
+                <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2 mt-4">
+                    Cluster complexity scores
+                    <span id="complexity-scores-count" class="ml-1 text-gray-500 dark:text-gray-400 font-mono text-xs">—</span>
+                </h3>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                    Numeric 0.0-1.0 cluster complexity signal (#280), advisory-only — does not affect
+                    the standard/deep synthesis routing decision.
+                </p>
+                <div class="flex flex-wrap gap-6 mb-3">
+                    <div>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">avg score</p>
+                        <p id="complexity-avg-score" class="text-xl font-bold text-gray-900 dark:text-white">—</p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">low / medium / high</p>
+                        <p id="complexity-buckets" class="text-xl font-bold text-gray-900 dark:text-white">—</p>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead>
+                            <tr class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-600">
+                                <th class="pb-2 pr-3">story</th>
+                                <th class="pb-2 pr-3">score</th>
+                                <th class="pb-2">path</th>
+                            </tr>
+                        </thead>
+                        <tbody id="complexity-scores-body"></tbody>
+                    </table>
+                </div>
             </div>
             <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
                 <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -450,6 +517,9 @@ function escAttr(s) {
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('operator-label').value = localStorage.getItem('operatorLabel') || '';
     loadStageSnapshot();
+    loadEmbeddingFailures();
+    loadSemanticDuplicates();
+    loadComplexityScores();
     loadRunMetrics();
     loadPipelineHealth();
     loadStuckRuns();
@@ -501,6 +571,74 @@ async function loadStageSnapshot() {
         renderSnapshotTable('snapshot-stories-body', data.stories || {});
     } catch (e) {
         showToast('Failed to load stage snapshot: ' + e.message, true);
+    }
+}
+
+async function loadEmbeddingFailures() {
+    try {
+        const res = await fetch('/api/admin/pipeline/embedding-failures');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || res.statusText);
+        document.getElementById('embedding-failures-count').textContent = `(${data.count ?? 0})`;
+        const tb = document.getElementById('embedding-failures-body');
+        tb.innerHTML = '';
+        for (const row of (data.sample || [])) {
+            const tr = document.createElement('tr');
+            tr.className = 'border-b border-gray-100 dark:border-gray-700';
+            tr.innerHTML = `<td class="py-2 pr-3 whitespace-nowrap">#${row.item_id} ${escHtml(row.title || '')}</td>
+                <td class="py-2 text-xs text-red-600 dark:text-red-400">${escHtml(row.error || '')}</td>`;
+            tb.appendChild(tr);
+        }
+    } catch (e) {
+        showToast('Failed to load embedding failures: ' + e.message, true);
+    }
+}
+
+async function loadSemanticDuplicates() {
+    try {
+        const res = await fetch('/api/admin/semantic-duplicates');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || res.statusText);
+        const rows = data.duplicates || [];
+        document.getElementById('semantic-duplicates-count').textContent = `(${rows.length})`;
+        const tb = document.getElementById('semantic-duplicates-body');
+        tb.innerHTML = '';
+        for (const row of rows) {
+            const tr = document.createElement('tr');
+            tr.className = 'border-b border-gray-100 dark:border-gray-700';
+            const sim = row.duplicate_similarity != null ? row.duplicate_similarity.toFixed(3) : '—';
+            tr.innerHTML = `<td class="py-2 pr-3 whitespace-nowrap">#${row.item_id} ${escHtml(row.title || '')}</td>
+                <td class="py-2 pr-3 whitespace-nowrap">#${row.duplicate_of_id}</td>
+                <td class="py-2">${sim}</td>`;
+            tb.appendChild(tr);
+        }
+    } catch (e) {
+        showToast('Failed to load semantic duplicates: ' + e.message, true);
+    }
+}
+
+async function loadComplexityScores() {
+    try {
+        const res = await fetch('/api/admin/pipeline/complexity-scores');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || res.statusText);
+        document.getElementById('complexity-scores-count').textContent = `(${data.count ?? 0})`;
+        document.getElementById('complexity-avg-score').textContent = data.avg_score != null ? data.avg_score.toFixed(3) : '—';
+        const buckets = data.buckets || {};
+        document.getElementById('complexity-buckets').textContent = `${buckets.low ?? 0} / ${buckets.medium ?? 0} / ${buckets.high ?? 0}`;
+        const tb = document.getElementById('complexity-scores-body');
+        tb.innerHTML = '';
+        for (const row of (data.top_complex || [])) {
+            const tr = document.createElement('tr');
+            tr.className = 'border-b border-gray-100 dark:border-gray-700';
+            const score = row.complexity_score != null ? row.complexity_score.toFixed(3) : '—';
+            tr.innerHTML = `<td class="py-2 pr-3 whitespace-nowrap">#${row.story_id} ${escHtml(row.title || '')}</td>
+                <td class="py-2 pr-3">${score}</td>
+                <td class="py-2">${escHtml(row.synthesis_path || '')}</td>`;
+            tb.appendChild(tr);
+        }
+    } catch (e) {
+        showToast('Failed to load complexity scores: ' + e.message, true);
     }
 }
 

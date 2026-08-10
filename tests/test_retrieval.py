@@ -104,6 +104,80 @@ class TestFindSimilarArticles:
         finally:
             session.close()
 
+    def test_date_range_filters_results(self):
+        session = pg_session_truncate_story_graph()
+        try:
+            _seed_feed(session)
+            now = datetime.now(UTC)
+            session.add_all(
+                [
+                    Item(
+                        id=1,
+                        feed_id=1,
+                        title="Source",
+                        url="http://x/1",
+                        url_hash="h1",
+                        embedding=_vec(1.0),
+                        published=now,
+                    ),
+                    Item(
+                        id=2,
+                        feed_id=1,
+                        title="Old close match",
+                        url="http://x/2",
+                        url_hash="h2",
+                        embedding=_vec(1.0001),
+                        published=now - timedelta(days=30),
+                    ),
+                ]
+            )
+            session.commit()
+
+            results = RetrievalService(session).find_similar_articles(
+                1,
+                min_similarity=0.5,
+                date_range=(now - timedelta(days=7), now),
+            )
+            assert results == []
+        finally:
+            session.close()
+
+    def test_query_type_override_is_traced(self):
+        session = pg_session_truncate_story_graph()
+        try:
+            _seed_feed(session)
+            session.add_all(
+                [
+                    Item(
+                        id=1,
+                        feed_id=1,
+                        title="Source",
+                        url="http://x/1",
+                        url_hash="h1",
+                        embedding=_vec(1.0),
+                    ),
+                    Item(
+                        id=2,
+                        feed_id=1,
+                        title="Close match",
+                        url="http://x/2",
+                        url_hash="h2",
+                        embedding=_vec(1.0001),
+                    ),
+                ]
+            )
+            session.commit()
+
+            RetrievalService(session).find_similar_articles(
+                1, min_similarity=0.5, query_type="semantic_dedupe"
+            )
+            row = session.execute(
+                text("SELECT query_type FROM retrieval_traces ORDER BY id DESC LIMIT 1")
+            ).first()
+            assert row[0] == "semantic_dedupe"
+        finally:
+            session.close()
+
     def test_top_k_limits_results(self):
         session = pg_session_truncate_story_graph()
         try:

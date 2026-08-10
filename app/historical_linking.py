@@ -12,12 +12,12 @@ import json
 import logging
 import os
 from datetime import UTC, datetime, timedelta
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
 from .orm_models import Story
-from .retrieval import RetrievalService
+from .retrieval import RetrievalService, SimilarityResult
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,9 @@ def maybe_link_historical_context(
 
     Sets ``historical_links_json`` (top ``max_links`` matches) and, if the
     closest match is above ``threshold``, ``continues_story_id`` /
-    ``continues_similarity`` for the "Continues from..." UI (#261).
+    ``continues_similarity`` for the "Continues from..." UI (#261). Also
+    merges these results into the structured ``context_anchors_json``
+    payload (#281), promoting the continuation match to ``kind="current"``.
     """
     if not is_historical_linking_enabled():
         return
@@ -75,16 +77,20 @@ def maybe_link_historical_context(
         ]
         story.historical_links_json = json.dumps(links)  # type: ignore[assignment]
 
+        continues_id = None
         if results:
             top = results[0]
             story.continues_story_id = top.id  # type: ignore[assignment]
             story.continues_similarity = top.similarity  # type: ignore[assignment]
+            continues_id = top.id
             logger.info(
                 "Story %s linked as continuation of story %s (similarity=%.3f)",
                 story.id,
                 top.id,
                 top.similarity,
             )
+
+        _merge_context_anchors(story, results, continues_id)
     except Exception as e:
         logger.warning(
             "Historical linking failed for story %s (story row still saved): %s",
@@ -92,3 +98,44 @@ def maybe_link_historical_context(
             e,
             exc_info=True,
         )
+
+
+def _merge_context_anchors(
+    story: Story, results: List[SimilarityResult], continues_id: Optional[int]
+) -> None:
+    """
+    Formalize retrieval output into the structured ``context_anchors``
+    payload (#281): merges this function's own post-synthesis links with
+    the pre-synthesis retrieval hook's ``background`` anchors (#279,
+    already set on ``story.context_anchors_json`` at story-creation time),
+    promoting the continuation match (if any) to ``kind="current"``.
+    """
+    try:
+        existing_raw = str(story.context_anchors_json or "[]")
+        by_id: Dict[int, Dict[str, Any]] = {
+            a["story_id"]: a for a in json.loads(existing_raw) if a.get("story_id")
+        }
+    except Exception:
+        by_id = {}
+
+    for r in results:
+        is_current = r.id == continues_id
+        by_id[r.id] = {
+            "story_id": r.id,
+            "title": r.title,
+            "similarity": r.similarity,
+            "published_at": r.published_at.isoformat() if r.published_at else None,
+            "kind": "current" if is_current else "background",
+            "rationale": (
+                f"Directly continues this story's prior coverage "
+                f"(similarity {r.similarity:.0%})"
+                if is_current
+                else f"Related prior coverage (similarity {r.similarity:.0%})"
+            ),
+        }
+
+    merged = sorted(
+        by_id.values(),
+        key=lambda a: (a["kind"] != "current", -(a.get("similarity") or 0.0)),
+    )
+    story.context_anchors_json = json.dumps(merged[:6])  # type: ignore[assignment]

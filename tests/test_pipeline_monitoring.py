@@ -7,6 +7,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.pipeline_monitoring import (
+    get_cluster_complexity_summary,
+    get_embedding_failure_summary,
     get_pipeline_run_metrics,
     get_processing_stage_snapshot,
     list_stuck_pipeline_runs,
@@ -50,6 +52,78 @@ def test_get_processing_stage_snapshot_shape(mock_scope) -> None:
     assert out["articles"]["oldest_waiting_at_by_state"]["fetched"] == ts.isoformat()
     assert out["stories"]["by_state"]["candidate"] == 1
     assert "generated_at" in out
+
+
+@patch("app.pipeline_monitoring.session_scope")
+def test_get_embedding_failure_summary_shape(mock_scope) -> None:
+    mock_session = MagicMock()
+    mock_scope.return_value.__enter__.return_value = mock_session
+    mock_scope.return_value.__exit__.return_value = None
+
+    count_query = MagicMock()
+    count_query.filter.return_value.scalar.return_value = 2
+    sample_query = MagicMock()
+    sample_query.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [
+        (1, "Title A", "ollama unreachable"),
+    ]
+    mock_session.query.side_effect = [count_query, sample_query]
+
+    out = get_embedding_failure_summary(limit=5)
+    assert out["count"] == 2
+    assert out["sample"] == [
+        {"item_id": 1, "title": "Title A", "error": "ollama unreachable"}
+    ]
+    assert "generated_at" in out
+
+
+@patch("app.pipeline_monitoring.session_scope")
+def test_get_cluster_complexity_summary_shape(mock_scope) -> None:
+    mock_session = MagicMock()
+    mock_scope.return_value.__enter__.return_value = mock_session
+    mock_scope.return_value.__exit__.return_value = None
+
+    agg_query = MagicMock()
+    agg_query.filter.return_value.one.return_value = (5, 0.42, 2, 2, 1)
+    rows_query = MagicMock()
+    rows_query.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [
+        (1, "Complex story", 0.9, "deep"),
+    ]
+    mock_session.query.side_effect = [agg_query, rows_query]
+
+    out = get_cluster_complexity_summary(limit=5)
+    assert out["count"] == 5
+    assert out["avg_score"] == 0.42
+    assert out["buckets"] == {"low": 2, "medium": 2, "high": 1}
+    assert out["top_complex"] == [
+        {
+            "story_id": 1,
+            "title": "Complex story",
+            "complexity_score": 0.9,
+            "synthesis_path": "deep",
+        }
+    ]
+    assert "generated_at" in out
+
+
+@patch("app.pipeline_monitoring.session_scope")
+def test_get_cluster_complexity_summary_empty(mock_scope) -> None:
+    mock_session = MagicMock()
+    mock_scope.return_value.__enter__.return_value = mock_session
+    mock_scope.return_value.__exit__.return_value = None
+
+    agg_query = MagicMock()
+    agg_query.filter.return_value.one.return_value = (0, None, 0, 0, 0)
+    rows_query = MagicMock()
+    rows_query.filter.return_value.order_by.return_value.limit.return_value.all.return_value = (
+        []
+    )
+    mock_session.query.side_effect = [agg_query, rows_query]
+
+    out = get_cluster_complexity_summary()
+    assert out["count"] == 0
+    assert out["avg_score"] is None
+    assert out["buckets"] == {"low": 0, "medium": 0, "high": 0}
+    assert out["top_complex"] == []
 
 
 @patch("app.pipeline_monitoring.session_scope")

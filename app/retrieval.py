@@ -53,8 +53,17 @@ class RetrievalService:
         *,
         top_k: int = DEFAULT_TOP_K,
         min_similarity: float = DEFAULT_MIN_SIMILARITY,
+        date_range: Optional[Tuple[datetime, datetime]] = None,
+        query_type: str = "similar_articles",
     ) -> List[SimilarityResult]:
-        """Articles semantically similar to ``article_id``. Empty if it has no embedding."""
+        """
+        Articles semantically similar to ``article_id``. Empty if it has no embedding.
+
+        ``date_range`` restricts candidates by ``published`` (falling back to
+        ``created_at``); ``query_type`` lets callers (e.g. semantic dedupe,
+        #257) tag the resulting :mod:`app.retrieval_tracing` row distinctly
+        from a plain "similar articles" lookup.
+        """
         source = self.session.get(Item, article_id)
         if source is None or source.embedding is None:
             return []
@@ -64,13 +73,17 @@ class RetrievalService:
             exclude_id=article_id,
             top_k=top_k,
             min_similarity=min_similarity,
+            date_range=date_range,
         )
+        filters: Dict[str, Any] = {"top_k": top_k, "min_similarity": min_similarity}
+        if date_range is not None:
+            filters["date_range"] = [d.isoformat() for d in date_range]
         self._trace(
-            query_type="similar_articles",
+            query_type=query_type,
             source_id=article_id,
             source_type="article",
             results=results,
-            filters_applied={"top_k": top_k, "min_similarity": min_similarity},
+            filters_applied=filters,
             started=started,
         )
         return results
@@ -87,10 +100,33 @@ class RetrievalService:
         source = self.session.get(Story, story_id)
         if source is None or source.embedding is None:
             return []
-        started = time.monotonic()
-        results = self._search_stories(
+        return self.find_related_stories_by_embedding(
             source.embedding,  # type: ignore[arg-type]
             exclude_id=story_id,
+            top_k=top_k,
+            min_similarity=min_similarity,
+            date_range=date_range,
+        )
+
+    def find_related_stories_by_embedding(
+        self,
+        embedding: List[float],
+        *,
+        exclude_id: Optional[int] = None,
+        top_k: int = DEFAULT_TOP_K,
+        min_similarity: float = DEFAULT_MIN_SIMILARITY,
+        date_range: Optional[Tuple[datetime, datetime]] = None,
+        query_type: str = "related_stories",
+    ) -> List[SimilarityResult]:
+        """
+        Stories semantically related to a raw embedding vector rather than an
+        existing story row — used to look up anchors for a cluster that
+        hasn't been synthesized into a story yet (#259, #279).
+        """
+        started = time.monotonic()
+        results = self._search_stories(
+            embedding,
+            exclude_id=exclude_id,
             top_k=top_k,
             min_similarity=min_similarity,
             date_range=date_range,
@@ -99,8 +135,8 @@ class RetrievalService:
         if date_range is not None:
             filters["date_range"] = [d.isoformat() for d in date_range]
         self._trace(
-            query_type="related_stories",
-            source_id=story_id,
+            query_type=query_type,
+            source_id=exclude_id,
             source_type="story",
             results=results,
             filters_applied=filters,
@@ -186,6 +222,7 @@ class RetrievalService:
         exclude_id: Optional[int],
         top_k: int,
         min_similarity: float,
+        date_range: Optional[Tuple[datetime, datetime]] = None,
     ) -> List[SimilarityResult]:
         top_k = max(1, min(top_k, MAX_TOP_K))
         max_distance = 1.0 - min_similarity
@@ -205,6 +242,9 @@ class RetrievalService:
         )
         if exclude_id is not None:
             q = q.filter(Item.id != exclude_id)
+        if date_range is not None:
+            start, end = date_range
+            q = q.filter(published_at >= start, published_at <= end)
         rows = q.order_by(distance).limit(top_k).all()
 
         return [

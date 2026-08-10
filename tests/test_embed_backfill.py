@@ -14,10 +14,12 @@ from app.embed_backfill import (
     DEFAULT_DEV_DATABASE_URL,
     _embed_batch_or_fallback,
     _parse_args,
+    _pending_filter,
     async_main_embed_backfill,
     item_embed_text_from_orm,
     resolve_database_url_for_cli,
 )
+from app.orm_models import Item
 
 
 def test_item_embed_text_ai_summary() -> None:
@@ -66,6 +68,42 @@ def test_parse_args_embed_backfill() -> None:
     assert args.command == "embed-backfill"
     assert args.dry_run is True
     assert args.batch_size == 10
+    assert args.reembed_outdated is False
+
+
+def test_parse_args_reembed_outdated_flag() -> None:
+    args = _parse_args(["embed-backfill", "--dry-run", "--reembed-outdated"])
+    assert args.reembed_outdated is True
+
+
+def test_pending_filter_missing_only_ignores_outdated() -> None:
+    # reembed_outdated=False -> filter is just "embedding IS NULL"; compile to SQL
+    # and confirm the outdated model/version columns are not referenced.
+    cond = _pending_filter(
+        Item.embedding_model,
+        Item.embedding_version,
+        Item.embedding,
+        reembed_outdated=False,
+        current_model="nomic-embed-text",
+        current_version="2.0",
+    )
+    compiled = str(cond)
+    assert "embedding" in compiled
+    assert "embedding_model" not in compiled
+
+
+def test_pending_filter_reembed_outdated_includes_version_mismatch() -> None:
+    cond = _pending_filter(
+        Item.embedding_model,
+        Item.embedding_version,
+        Item.embedding,
+        reembed_outdated=True,
+        current_model="nomic-embed-text",
+        current_version="2.0",
+    )
+    compiled = str(cond)
+    assert "embedding_model" in compiled
+    assert "embedding_version" in compiled
 
 
 def test_resolve_database_url_prefers_flag(

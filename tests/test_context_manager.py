@@ -486,3 +486,78 @@ class TestMapReducePrompts:
         assert result["summary"] == "A test summary"
         assert len(result["key_facts"]) == 2
         assert "Entity A" in result["entities"]
+
+
+class TestComputeClusterComplexityScore:
+    """Tests for the advisory-only numeric complexity score (#280)."""
+
+    def test_empty_cluster_returns_zero(self):
+        from app.context_manager import compute_cluster_complexity_score
+
+        assert compute_cluster_complexity_score([]) == 0.0
+
+    def test_size_only_scales_with_article_count(self):
+        from app.context_manager import compute_cluster_complexity_score
+
+        small = compute_cluster_complexity_score([{"id": 1}, {"id": 2}])
+        large = compute_cluster_complexity_score([{"id": i} for i in range(15)])
+        assert 0.0 < small < large <= 1.0
+
+    def test_source_divergence_increases_score(self):
+        from app.context_manager import compute_cluster_complexity_score
+
+        articles = [{"id": 1}, {"id": 2}]
+        same_source = compute_cluster_complexity_score(articles, feed_ids=[1, 1])
+        diverse_source = compute_cluster_complexity_score(articles, feed_ids=[1, 2])
+        assert diverse_source > same_source
+
+    def test_recency_spread_increases_score(self):
+        from datetime import UTC, datetime, timedelta
+
+        from app.context_manager import compute_cluster_complexity_score
+
+        now = datetime.now(UTC)
+        tight = compute_cluster_complexity_score(
+            [
+                {"id": 1, "published": now},
+                {"id": 2, "published": now + timedelta(minutes=5)},
+            ]
+        )
+        spread = compute_cluster_complexity_score(
+            [
+                {"id": 1, "published": now},
+                {"id": 2, "published": now + timedelta(hours=48)},
+            ]
+        )
+        assert spread > tight
+
+    def test_entity_density_increases_score(self):
+        from app.context_manager import compute_cluster_complexity_score
+
+        articles = [{"id": 1}, {"id": 2}]
+        low = compute_cluster_complexity_score(articles, entity_counts=[1, 1])
+        high = compute_cluster_complexity_score(articles, entity_counts=[8, 8])
+        assert high > low
+
+    def test_semantic_spread_increases_score(self):
+        from app.context_manager import compute_cluster_complexity_score
+
+        articles = [{"id": 1}, {"id": 2}]
+        identical = compute_cluster_complexity_score(
+            articles, embeddings=[[1.0, 0.0, 0.0], [1.0, 0.0, 0.0]]
+        )
+        divergent = compute_cluster_complexity_score(
+            articles, embeddings=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
+        )
+        assert divergent > identical
+
+    def test_score_bounded_between_zero_and_one(self):
+        from app.context_manager import compute_cluster_complexity_score
+
+        score = compute_cluster_complexity_score(
+            [{"id": i} for i in range(50)],
+            feed_ids=list(range(50)),
+            entity_counts=[20] * 50,
+            embeddings=[[float(i), 0.0] for i in range(50)],
+        )
+        assert 0.0 <= score <= 1.0

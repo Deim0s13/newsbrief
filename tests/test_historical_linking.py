@@ -141,6 +141,89 @@ class TestMaybeLinkHistoricalContext:
         finally:
             session.close()
 
+    def test_merges_continuation_into_context_anchors(self):
+        session = pg_session_truncate_story_graph()
+        try:
+            now = datetime.now(UTC)
+            old_story = Story(
+                id=1,
+                title="Old related story",
+                synthesis="x" * 60,
+                embedding=_vec(1.0),
+                generated_at=now - timedelta(days=5),
+            )
+            new_story = Story(
+                id=2,
+                title="New story",
+                synthesis="x" * 60,
+                embedding=_vec(1.0001),
+                generated_at=now,
+                # Pre-synthesis retrieval hook (#279) already flagged story 1
+                # as background context before this story was synthesized.
+                context_anchors_json=json.dumps(
+                    [
+                        {
+                            "story_id": 1,
+                            "title": "Old related story",
+                            "similarity": 0.7,
+                            "published_at": None,
+                            "kind": "background",
+                            "rationale": "Related prior coverage identified "
+                            "before synthesis (similarity 70%)",
+                        }
+                    ]
+                ),
+            )
+            session.add_all([old_story, new_story])
+            session.commit()
+
+            maybe_link_historical_context(session, new_story, threshold=0.5)
+            session.commit()
+
+            refreshed = session.get(Story, 2)
+            anchors = json.loads(refreshed.context_anchors_json)
+            assert len(anchors) == 1
+            assert anchors[0]["story_id"] == 1
+            # Promoted from "background" (#279) to "current" since it's the
+            # closest post-synthesis match (#258).
+            assert anchors[0]["kind"] == "current"
+            assert "rationale" in anchors[0]
+        finally:
+            session.close()
+
+    def test_context_anchors_empty_when_no_matches(self):
+        session = pg_session_truncate_story_graph()
+        try:
+            now = datetime.now(UTC)
+            session.add_all(
+                [
+                    Story(
+                        id=1,
+                        title="Unrelated old story",
+                        synthesis="x" * 60,
+                        embedding=_vec(-1.0),
+                        generated_at=now - timedelta(days=5),
+                    ),
+                    Story(
+                        id=2,
+                        title="New story",
+                        synthesis="x" * 60,
+                        embedding=_vec(1.0),
+                        generated_at=now,
+                    ),
+                ]
+            )
+            session.commit()
+            new_story = session.get(Story, 2)
+
+            maybe_link_historical_context(session, new_story, threshold=0.75)
+            session.commit()
+
+            refreshed = session.get(Story, 2)
+            assert json.loads(refreshed.context_anchors_json) == []
+        finally:
+            session.close()
+
     def test_disabled_via_env_is_noop(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setenv("NEWSBRIEF_HISTORICAL_LINKING_ENABLED", "false")
         session = pg_session_truncate_story_graph()

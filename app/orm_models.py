@@ -139,6 +139,13 @@ class Item(Base):
     embedding_model = Column(String(100), nullable=True)
     embedding_version = Column(String(50), nullable=True)
     embedded_at = Column(DateTime(timezone=True), nullable=True)
+    # Last embedding failure message, if any (#278); cleared on next success.
+    embedding_error = Column(Text, nullable=True)
+    # Post-hoc semantic duplicate flagging (#257, ADR-0026); distinct from the
+    # exact-match url_hash/content_hash dedup applied at ingest (app/feeds.py).
+    duplicate_of_id = Column(Integer, ForeignKey("items.id"), nullable=True)
+    duplicate_similarity = Column(Float, nullable=True)
+    duplicate_detection_method = Column(String(20), nullable=True)
     # Timestamps
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
 
@@ -164,6 +171,7 @@ class Item(Base):
         Index(
             "idx_items_extraction_quality", "extraction_method", "extraction_quality"
         ),
+        Index("idx_items_duplicate_of_id", "duplicate_of_id"),
     )
 
 
@@ -187,6 +195,9 @@ class Story(Base):
     confidence_score = Column(Float, nullable=True)
     # Synthesis routing path: 'standard' or 'deep' (#282)
     synthesis_path = Column(String(20), nullable=True)
+    # Numeric cluster complexity score (0.0-1.0), advisory-only (#280,
+    # ADR-0026); does not affect synthesis_path routing above.
+    complexity_score = Column(Float, nullable=True)
     # Quality metrics breakdown (v0.8.1 - Issue #105)
     quality_breakdown_json = Column(Text)  # JSON breakdown of score components
     title_source = Column(String(20))  # 'llm' or 'fallback'
@@ -234,6 +245,15 @@ class Story(Base):
     historical_links_json = Column(Text, nullable=True)
     continues_story_id = Column(Integer, ForeignKey("stories.id"), nullable=True)
     continues_similarity = Column(Float, nullable=True)
+    # Light RAG: historical anchors injected into the synthesis prompt for
+    # continuity, if any (#259, ADR-0026); distinct from historical_links_json
+    # above, which is computed post-synthesis.
+    synthesis_anchors_json = Column(Text, nullable=True)
+    # Structured, UI-facing context anchors (#279, #281, ADR-0026): merges the
+    # pre-synthesis retrieval hook (#279) with historical_links_json (#258)
+    # into a single list of {story_id, title, similarity, published_at,
+    # kind: "current"|"background", rationale} entries.
+    context_anchors_json = Column(Text, nullable=True)
 
     # Relationships
     story_articles = relationship(

@@ -123,6 +123,91 @@ def get_processing_stage_snapshot() -> Dict[str, Any]:
     }
 
 
+def get_embedding_failure_summary(*, limit: int = 20) -> Dict[str, Any]:
+    """
+    Items with a recorded ``embedding_error`` (#278): a distinct signal from
+    "not embedded yet" (which shows up in the stage snapshot as items stuck
+    below ``embedded``) — this is "embedding was attempted and failed".
+    """
+    with session_scope() as session:
+        count = (
+            session.query(func.count(Item.id))
+            .filter(Item.embedding_error.isnot(None))
+            .scalar()
+        ) or 0
+        rows = (
+            session.query(Item.id, Item.title, Item.embedding_error)
+            .filter(Item.embedding_error.isnot(None))
+            .order_by(Item.id.desc())
+            .limit(limit)
+            .all()
+        )
+
+    return {
+        "count": int(count),
+        "sample": [{"item_id": r[0], "title": r[1], "error": r[2]} for r in rows],
+        "generated_at": datetime.now(UTC).isoformat(),
+    }
+
+
+def get_cluster_complexity_summary(*, limit: int = 20) -> Dict[str, Any]:
+    """
+    Distribution of ``stories.complexity_score`` (#280): advisory-only signal,
+    not used for synthesis routing (see ``classify_cluster_path``). Buckets
+    scores into low/medium/high thirds for a quick operator overview.
+    """
+    has_score = Story.complexity_score.isnot(None)
+    with session_scope() as session:
+        count, avg_score, low, medium, high = (
+            session.query(
+                func.count(Story.id),
+                func.avg(Story.complexity_score),
+                func.sum(case((Story.complexity_score < 0.34, 1), else_=0)),
+                func.sum(
+                    case(
+                        (
+                            Story.complexity_score.between(0.34, 0.6699999),
+                            1,
+                        ),
+                        else_=0,
+                    )
+                ),
+                func.sum(case((Story.complexity_score >= 0.67, 1), else_=0)),
+            )
+            .filter(has_score)
+            .one()
+        )
+        rows = (
+            session.query(
+                Story.id, Story.title, Story.complexity_score, Story.synthesis_path
+            )
+            .filter(has_score)
+            .order_by(Story.complexity_score.desc())
+            .limit(limit)
+            .all()
+        )
+
+    return {
+        "count": int(count or 0),
+        "avg_score": round(float(avg_score), 4) if avg_score is not None else None,
+        "buckets": {
+            "low": int(low or 0),
+            "medium": int(medium or 0),
+            "high": int(high or 0),
+        },
+        "top_complex": [
+            {
+                "story_id": r[0],
+                "title": r[1],
+                "complexity_score": r[2],
+                "synthesis_path": r[3],
+            }
+            for r in rows
+        ],
+        "generated_at": datetime.now(UTC).isoformat(),
+    }
+
+
 def get_pipeline_run_metrics(window_hours: float = 24.0) -> Dict[str, Any]:
     """Aggregate ``pipeline_stage_runs`` by ``stage`` for rows started in the window."""
     cutoff = datetime.now(UTC) - timedelta(hours=window_hours)

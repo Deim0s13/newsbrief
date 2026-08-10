@@ -5,7 +5,7 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field, HttpUrl, validator
 
@@ -441,11 +441,19 @@ class StoryOut(BaseModel):
     confidence_score: Optional[float] = None
     # Synthesis routing path: 'standard' or 'deep' (#282)
     synthesis_path: Optional[str] = None
+    # Numeric cluster complexity score (0.0-1.0), advisory-only (#280)
+    complexity_score: Optional[float] = None
     # Confidence gate warning: score below warn threshold (#287)
     confidence_warning: bool = False
     # Historical story linking (#258, ADR-0026)
     continues_story_id: Optional[int] = None
     continues_similarity: Optional[float] = None
+    # Light RAG: historical anchors injected into the synthesis prompt, if any (#259)
+    synthesis_anchors: List[Dict[str, Any]] = Field(default_factory=list)
+    # Structured context anchors: pre-synthesis retrieval hook (#279) merged
+    # with post-synthesis historical linking (#258), each tagged
+    # kind="current"|"background" with a rationale string (#281)
+    context_anchors: List[Dict[str, Any]] = Field(default_factory=list)
 
     @property
     def credibility_label(self) -> str:

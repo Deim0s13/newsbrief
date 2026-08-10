@@ -11,7 +11,10 @@ from sqlalchemy import text
 
 from ..datetime_utils import coerce_datetime
 from ..deps import session_scope
-from ..item_embeddings import maybe_embed_item_after_summary
+from ..item_embeddings import (
+    maybe_embed_item_after_summary,
+    maybe_embed_item_if_missing,
+)
 from ..llm import OLLAMA_BASE_URL, get_llm_service, is_llm_available
 from ..models import (
     ItemOut,
@@ -288,6 +291,12 @@ def generate_summaries(request: SummaryRequest):
                             structured_model,
                             coerce_datetime(row[11]) or datetime.now(timezone.utc),
                         )
+                        maybe_embed_item_if_missing(
+                            s,
+                            item_id,
+                            title,
+                            structured_summary=structured_summary,
+                        )
                         results.append(
                             SummaryResultOut(
                                 item_id=item_id,
@@ -309,6 +318,13 @@ def generate_summaries(request: SummaryRequest):
                     and row[5]
                     and not request.force_regenerate
                 ):
+                    maybe_embed_item_if_missing(
+                        s,
+                        item_id,
+                        title,
+                        ai_summary=row[5],
+                        feed_summary=feed_summary,
+                    )
                     results.append(
                         SummaryResultOut(
                             item_id=item_id,
