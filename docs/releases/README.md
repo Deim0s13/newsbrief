@@ -6,7 +6,22 @@ Quick reference for all NewsBrief releases. For detailed release notes, see [Git
 
 ## v0.8.x - Content Quality
 
-### v0.8.5 - Pipeline Completion & Stability (Current)
+### v0.8.6 - RAG Milestone Completion (Current)
+**August 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.8.6)
+
+Completes the semantic retrieval / RAG milestone started in v0.8.5.
+
+**Highlights:**
+- **Embeddings as a Pipeline Stage**: `embedding_error` tracking, automatic re-embedding of outdated vectors, admin observability (#278)
+- **Semantic Deduplication**: Post-hoc detection of paraphrased duplicate articles via embedding similarity, with an admin review view (#257)
+- **Light RAG Context Injection**: Structured historical context anchors injected into synthesis prompts for evolving stories (#259, #281)
+- **Bounded Retrieval Hook**: `app/retrieval.py` + `app/context_retrieval.py` power `/search/semantic`, `/stories/{id}/related`, and `/items/{id}/similar` (#279)
+- **Historical Linking**: Stories automatically detect and link to the story they continue (`app/historical_linking.py`)
+- **Cluster Complexity Scoring**: Numeric 0.0-1.0 score routes clusters between standard and deep synthesis (#280)
+- **RAG Evaluation Harness**: `scripts/rag_evaluation.py` checks the four go/no-go gates from ADR-0026; results and a conditional "go" decision are documented in the ADR (#262)
+- **Migrations**: `021_historical_story_links`, `022_retrieval_traces`, `023_item_embedding_error`, `024_semantic_dedup`, `025_synthesis_anchors`, `026_context_anchors`, `027_cluster_complexity_score`
+
+### v0.8.5 - Pipeline Completion & Stability
 **June 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.8.5)
 
 Stability and trust improvements across the story pipeline.
@@ -162,4 +177,4 @@ NewsBrief follows [Semantic Versioning](https://semver.org/):
 
 - [GitHub Releases](https://github.com/Deim0s13/newsbrief/releases) - Full release notes
 - [Milestones](https://github.com/Deim0s13/newsbrief/milestones) - Planned work
-- [Project Board](https://github.com/users/Deim0s13/projects/2) - Current status
+- [Project Board](https://github.com/users/Deim0s13/projects/8) - Current status

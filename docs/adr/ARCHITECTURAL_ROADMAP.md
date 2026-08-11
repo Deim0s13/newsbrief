@@ -1,16 +1,16 @@
 # NewsBrief Architectural Roadmap
 
-> **Living Document** - Last Updated: June 2026
+> **Living Document** - Last Updated: August 2026
 
 This document outlines the architectural evolution of NewsBrief, from its current state through planned enhancements. It serves as a technical compass for development decisions and helps contributors understand where the project is heading.
 
 > **Strategic Vision**: See [ADR-0023: Intelligence Platform Strategy](0023-intelligence-platform-strategy.md) for the comprehensive plan to transform NewsBrief from a news aggregator into an intelligence platform.
 
-**Pipeline orchestration**: Story processing has been implemented as an orchestrated pipeline (explicit state, stages, retries, retrieval hooks, confidence gates, stage-aware observability). Core workstream issues #273–#291 closed April 2026. Remaining extension points — retrieval hook, confidence gate, synthesis routing — are tracked in v0.8.4–v0.8.5. See [ADR-0029: Pipeline-oriented orchestration](0029-pipeline-oriented-orchestration.md) and [ADR-0031: Pipeline idempotency and article re-ingest](0031-pipeline-idempotency-and-reingest.md).
+**Pipeline orchestration**: Story processing is implemented as an orchestrated pipeline (explicit state, stages, retries, retrieval hooks, confidence gates, stage-aware observability). Core workstream issues #273–#291 closed April 2026. The extension points originally tracked for v0.8.4–v0.8.5 — retrieval hook, confidence gate, synthesis routing — are now all complete, and the RAG milestone (v0.8.4–v0.8.6) has also shipped semantic dedup, light RAG anchors, and historical linking. See [ADR-0029: Pipeline-oriented orchestration](0029-pipeline-oriented-orchestration.md), [ADR-0031: Pipeline idempotency and article re-ingest](0031-pipeline-idempotency-and-reingest.md), and [ADR-0026: RAG integration strategy](0026-rag-integration-strategy.md).
 
 ---
 
-## 1. Current Architecture (v0.8.4)
+## 1. Current Architecture (v0.8.6)
 
 ### Overview
 
@@ -116,15 +116,23 @@ NewsBrief is a **local-first, story-based news aggregator** that synthesizes mul
 | Pipeline orchestration + state model | ✅ Complete | [ADR-0029](0029-pipeline-oriented-orchestration.md) / [ADR-0030](0030-article-story-processing-states.md) / [ADR-0031](0031-pipeline-idempotency-and-reingest.md) |
 | pgvector embeddings (items + stories) | ✅ Complete | [ADR-0026](0026-rag-integration-strategy.md) |
 | Cross-platform CD (GitHub Actions + GHCR) | ✅ Complete | [ADR-0032](0032-cross-platform-cd-strategy.md) |
+| Confidence scoring + publish gate | ✅ Complete | v0.8.5 |
+| Standard vs deep synthesis routing | ✅ Complete | v0.8.5 |
+| Data retention (per-type, dry-run, purge job) | ✅ Complete | v0.8.5 |
+| Semantic search (`/search/semantic`) + related/similar endpoints | ✅ Complete | [ADR-0026](0026-rag-integration-strategy.md) — v0.8.6 |
+| Semantic deduplication of paraphrased articles | ✅ Complete | [ADR-0026](0026-rag-integration-strategy.md) — v0.8.6 |
+| Historical linking (story continuation detection) | ✅ Complete | [ADR-0026](0026-rag-integration-strategy.md) — v0.8.6 |
+| Light RAG context anchors in synthesis prompts | ✅ Complete | [ADR-0026](0026-rag-integration-strategy.md) — v0.8.6 |
+| Numeric cluster complexity scoring | ✅ Complete | [ADR-0026](0026-rag-integration-strategy.md) — v0.8.6 |
 
 ### Remaining Limitations
 
 | Limitation | Impact | Future Solution | Milestone |
 |------------|--------|-----------------|-----------|
-| No semantic retrieval | Embeddings stored but not queried | RAG retrieval API | v0.8.4 |
-| No confidence gate | Stories publish without quality gate | Confidence scoring + publish gate | v0.8.5 |
+| Relatedness-precision gate not yet validated at scale | ADR-0026 go/no-go run against a small (16-article) synthetic seed, not real corpus volume | Re-run `scripts/rag_evaluation.py` after ~1-2 weeks of normal ingestion | Follow-up (unscheduled) |
 | No user accounts | Single-user only | Auth layer | v1.0.x |
 | No full-text search | Limited article discovery | PostgreSQL FTS | v1.0.x |
+| No deeper entity linking/disambiguation | Entities extracted per-article, not linked across stories over time | Entity Intelligence System | v0.9.0 |
 
 ---
 
@@ -178,10 +186,30 @@ NewsBrief is a **local-first, story-based news aggregator** that synthesizes mul
 - Pipeline orchestration: article + story state machines, stage runner, retries, dead-letter ([ADR-0029](0029-pipeline-oriented-orchestration.md) / [ADR-0030](0030-article-story-processing-states.md) / [ADR-0031](0031-pipeline-idempotency-and-reingest.md))
 - Cross-platform CD: GitHub Actions + GHCR → ArgoCD (macOS) + Compose polling (Windows) ([ADR-0032](0032-cross-platform-cd-strategy.md))
 
-### v0.8.4 - Semantic Foundation (RAG) 🔶 In Progress
+### v0.8.4 - Semantic Foundation (RAG, part 1) ✅ Complete
 
-- pgvector embeddings for articles and stories at ingestion — **done**
-- Semantic similarity search API, retrieval hook, light RAG injection — **in progress** (see [ADR-0026](0026-rag-integration-strategy.md))
+- pgvector embeddings for articles and stories at ingestion
+- Cross-platform CD hardening (native WSL2 dev PostgreSQL, ArgoCD 5-minute reconciliation)
+
+### v0.8.5 - Pipeline Completion & Stability ✅ Complete
+
+- Confidence scoring + publish gate — low-confidence stories held or flagged before publish (`app/publish_gate.py`)
+- Standard vs deep synthesis routing based on cluster complexity
+- Per-type data retention (articles, stories, pipeline logs) with dry-run preview and daily purge job (`app/retention.py`)
+- Pipeline observability: stuck-item detection, per-stage run metrics
+- E2E state-transition and recovery test coverage
+
+### v0.8.6 - RAG Milestone Completion ✅ Complete
+
+Completes the RAG integration strategy started in v0.8.4 (see [ADR-0026](0026-rag-integration-strategy.md)):
+
+- Embeddings promoted to a first-class pipeline step: `embedding_error` tracking, automatic re-embedding of outdated vectors, admin observability (#278)
+- Post-hoc semantic deduplication of paraphrased articles via embedding similarity (#257)
+- Light RAG: structured historical context anchors injected into synthesis prompts (#259, #281)
+- Bounded retrieval hook powering `/search/semantic`, `/stories/{id}/related`, `/items/{id}/similar` (#279)
+- Historical linking — stories detect and link to the story they continue (`app/historical_linking.py`)
+- Numeric cluster complexity scoring (0.0-1.0) routing standard vs deep synthesis (#280)
+- `scripts/rag_evaluation.py` — go/no-go evaluation harness against ADR-0026's four gates; results documented in the ADR with a conditional "go" decision and a follow-up re-evaluation condition at larger corpus scale (#262)
 
 ---
 
@@ -291,9 +319,10 @@ Before introducing new dependencies, evaluate:
 | **v0.7.1–0.7.4** | Infrastructure & Security | PostgreSQL, Caddy, structured logging, HTTPS, Podman secrets, rate limiting |
 | **v0.7.5** | GitOps & Kubernetes | kind cluster, Tekton CI/CD (now superseded), ArgoCD, secure supply chain |
 | **v0.8.0–0.8.3** | Foundation (complete) | Tiered extraction, LLM quality, model profiles, credibility, pipeline orchestration, cross-platform CD |
-| **v0.8.4** (active) | Semantic Foundation | pgvector retrieval, semantic search API, light RAG injection |
-| **v0.8.5** (next) | Pipeline Completion | Confidence gate, synthesis routing, pipeline tests, data retention |
-| **v0.9.x** | Intelligence Layer | Entity intelligence, multi-perspective synthesis, story evolution, smart extraction |
+| **v0.8.4** | Semantic Foundation (RAG, part 1) | pgvector embeddings for items + stories |
+| **v0.8.5** | Pipeline Completion | Confidence gate, synthesis routing, pipeline tests, data retention |
+| **v0.8.6** (current) | RAG Milestone Completion | Semantic search/related/similar, semantic dedup, light RAG anchors, historical linking, complexity scoring, go/no-go evaluation |
+| **v0.9.x** (next) | Intelligence Layer | Entity intelligence, multi-perspective synthesis, story evolution, smart extraction |
 | **v0.10.x** | Context Layer | Why this matters, trend detection, confidence & transparency UI |
 | **v0.11.x** | Experience Layer | Reading tiers, audio/TTS, enhanced visualizations |
 | **v1.0.x** | Production Ready | Auth, multi-user capability, data portability |
@@ -316,7 +345,7 @@ See `docs/adr/0001-architecture.md` for format reference.
 
 ## References
 
-- [GitHub Project Board](https://github.com/users/Deim0s13/projects/2)
+- [GitHub Project Board](https://github.com/users/Deim0s13/projects/8)
 - [Milestones](https://github.com/Deim0s13/newsbrief/milestones)
 - [All ADRs](./README.md)
 

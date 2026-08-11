@@ -50,7 +50,7 @@ make deploy                       # Automatically uses secrets
 | `make deploy` | Start all containers |
 | `make deploy-stop` | Stop all containers |
 | `make deploy-status` | Check container status |
-| `make deploy-logs` | View container logs |
+| `make logs` | View container logs (follows compose logs) |
 | `make db-backup` | Backup database |
 | `make db-restore` | Restore database |
 | `make secrets-create` | Create encrypted secret |
@@ -72,11 +72,10 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 # Install dependencies
-pip install -r requirements.txt
+pip install -r requirements.txt -r requirements-dev.txt
 npm install
 
 # Setup pre-commit hooks
-pip install pre-commit
 pre-commit install
 
 # Start PostgreSQL + dev server together
@@ -101,8 +100,8 @@ make dev        # Start dev server
 | `make refresh` | Refresh all feeds (fetch new articles) |
 | `make stories-generate` | Generate stories from recent articles |
 | `make api-health` | Check API health status |
-| `make test` | Run test suite |
-| `make lint` | Run linters |
+| `pytest tests/ -v -m "not requires_ollama"` | Run test suite (what CI runs) |
+| `pre-commit run --all-files` | Run all linters/formatters |
 | `npm run build:css` | Rebuild Tailwind CSS |
 
 ---

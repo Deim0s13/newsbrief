@@ -1,6 +1,6 @@
 # Project Management
 
-Setup guides for project management tooling. For active planning and tracking, see the [GitHub Project Board](https://github.com/users/Deim0s13/projects/2).
+Setup guides for project management tooling. For active planning and tracking, see the [GitHub Project Board](https://github.com/users/Deim0s13/projects/8).
 
 ---
 
@@ -17,7 +17,7 @@ Setup guides for project management tooling. For active planning and tracking, s
 
 | Resource | Link |
 |----------|------|
-| **Project Board** | [github.com/users/Deim0s13/projects/2](https://github.com/users/Deim0s13/projects/2) |
+| **Project Board** | [github.com/users/Deim0s13/projects/8](https://github.com/users/Deim0s13/projects/8) |
 | **Issues** | [github.com/Deim0s13/newsbrief/issues](https://github.com/Deim0s13/newsbrief/issues) |
 | **Milestones** | [github.com/Deim0s13/newsbrief/milestones](https://github.com/Deim0s13/newsbrief/milestones) |
 

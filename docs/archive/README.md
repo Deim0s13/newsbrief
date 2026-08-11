@@ -12,17 +12,20 @@ Issue tracking documents now superseded by GitHub Issues:
 - `UI_POLISH_*.md/json` - UI issues now in GitHub
 - `llm_improvements_v0.7.md` - LLM backlog (now in milestones)
 
-### planning/ (Archived Jan 2026)
+### planning/ (Archived Jan 2026; +2 files Aug 2026)
 Planning documents superseded by GitHub Project Board:
 - `STORY_ARCHITECTURE_BACKLOG.md` - Story feature backlog
 - `UI_IMPROVEMENTS_BACKLOG.md` - UI backlog
 - `PERFORMANCE_*.md` - Performance analysis and optimizations
+- `CODE_IMPROVEMENT_PLAN.md` - Feb 2026 code-review tracking doc; all items resolved or superseded by later refactors
+- `CODE_REVIEW_RECOMMENDATIONS.md` - Feb 2026 one-time code review findings
 
-### project-management/ (Archived Jan 2026)
+### project-management/ (Archived Jan 2026; +1 file Aug 2026)
 Project management docs superseded by GitHub:
 - `V0.6.*_*.md` - Version-specific implementation plans
 - `backlog.md` - Product backlog (now in GitHub Issues)
 - `IMPLEMENTATION_PLAN.md` - Story architecture plan (completed v0.5.5)
+- `GITHUB_PROJECT_BOARD_SETUP.md` - One-time project board setup instructions (completed Nov 2025; board is now at [projects/8](https://github.com/users/Deim0s13/projects/8))
 
 ### sessions/ (Archived Jan 2026)
 Development session notes (Nov 2025):
@@ -48,7 +51,7 @@ Testing documentation with outdated results:
 ## 🔗 Current Documentation
 
 For current documentation, see:
-- **Project Board**: [GitHub Projects](https://github.com/users/Deim0s13/projects/2)
+- **Project Board**: [GitHub Projects](https://github.com/users/Deim0s13/projects/8)
 - **Issues**: [GitHub Issues](https://github.com/Deim0s13/newsbrief/issues)
 - **Releases**: [GitHub Releases](https://github.com/Deim0s13/newsbrief/releases)
 - **Active Docs**: [../](../)

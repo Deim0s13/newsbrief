@@ -140,7 +140,7 @@ Port map after `make infra-start`:
 - `localhost:8789` — dev app (newsbrief-dev namespace)
 - `localhost:8443` — ArgoCD UI
 
-ArgoCD polls Git every hour (`timeout.reconciliation: 3600s` in `k8s/argocd/argocd-cm.yaml`). `infra-start.sh` auto-applies Application CRs from `k8s/argocd/` if they're missing after cluster recreation — the script is idempotent.
+ArgoCD polls Git every 5 minutes (`timeout.reconciliation: 300s` in `k8s/argocd/argocd-cm.yaml`). `infra-start.sh` auto-applies Application CRs from `k8s/argocd/` if they're missing after cluster recreation — the script is idempotent.
 
 ### Infrastructure Auto-Start
 ```bash
@@ -190,7 +190,7 @@ powershell -ExecutionPolicy Bypass -File scripts\compose-task-install.ps1
 | Reverse Proxy | Caddy (TLS termination; `newsbrief.local` in production) |
 | Container Runtime | Podman Desktop (macOS + Windows) |
 | CI | GitHub Actions (hosted runners, `.github/workflows/`) |
-| CD (macOS) | ArgoCD on local kind cluster (GitOps, hourly poll, auto-sync) |
+| CD (macOS) | ArgoCD on local kind cluster (GitOps, 5-minute poll, auto-sync) |
 | CD (Windows) | Podman Compose + GHCR polling via Task Scheduler (daily 06:00) |
 | Image Registry | `ghcr.io/deim0s13/newsbrief` (public) |
 
@@ -216,12 +216,25 @@ app/
 ├── pipeline_monitoring.py # Stage-run metrics and stuck-item detection
 ├── processing_states.py # ArticleProcessingState / StoryProcessingState enums + transitions
 ├── operator_audit.py    # Audit log for manual admin actions
+├── publish_gate.py      # Confidence-based publish/warn/hold decision (v0.8.5)
+├── retention.py         # Per-type data retention, dry-run preview, purge job (v0.8.5)
 ├── embedding_service.py # Async Ollama embedding generation
 ├── item_embeddings.py   # Embed article title+summary after summarize
 ├── story_embeddings.py  # Embed story title+synthesis after synthesis
 ├── embed_backfill.py    # CLI: backfill embeddings for existing rows
+├── retrieval.py         # Bounded pgvector similarity search (semantic search, related/similar) (v0.8.6)
+├── context_retrieval.py # Retrieval-stage hook: fetches context anchors for a cluster (v0.8.6)
+├── semantic_dedup.py    # Post-hoc paraphrase-duplicate detection via embeddings (v0.8.6)
+├── light_rag.py         # Structured historical context anchors injected into synthesis prompts (v0.8.6)
+├── historical_linking.py # Detects/links a story to the story it continues (v0.8.6)
+├── retrieval_tracing.py # Records retrieval query latency/results (RetrievalTrace) (v0.8.6)
 ├── ingest_idempotency.py # url_hash / content_hash dedup (ADR-0031)
-├── orm_models.py        # SQLAlchemy models (Feed, Item, Story, StoryArticle, ...)
+├── synthesis_cache.py   # Hash+model based LLM response caching
+├── topics.py            # Topic classification (multi-topic, confidence calibration)
+├── interests.py         # Per-topic interest weight loading (data/interests.json)
+├── source_weights.py    # Per-feed/domain quality weight loading
+├── credibility_import.py # MBFC credibility data import/refresh
+├── orm_models.py        # SQLAlchemy models (Feed, Item, Story, StoryArticle, RetrievalTrace, ...)
 ├── db.py                # Engine, session factory, init_db
 ├── models.py            # Pydantic schemas (request/response + helpers)
 ├── prompts/             # Prompt templates: synthesis, map_reduce, refinement, analysis
@@ -231,14 +244,16 @@ app/
 ### Data Flow
 
 1. **Ingest**: APScheduler calls `feeds.py` → fetches RSS → `extraction.py` extracts article text → stored as `Item` rows with `processing_state = enriched`.
-2. **Summarize**: `llm.py` summarizes each article; `item_embeddings.py` embeds title+summary via Ollama; `synthesis_cache.py` caches LLM responses.
-3. **Cluster → Synthesize**: `stories.py` clusters `Item`s by similarity → `context_manager.py` selects/chunks articles → `llm.py` synthesizes a narrative (direct / map-reduce / hierarchical based on cluster size in `model_config.json`) → `story_embeddings.py` embeds result.
-4. **Rank**: `ranking.py` blends importance + freshness + source credibility + user interest weights (`data/interests.json`, `data/source_weights.json`).
-5. **Serve**: FastAPI routers return JSON or Jinja2 HTML; Caddy terminates TLS in production.
+2. **Summarize + embed**: `llm.py` summarizes each article; `item_embeddings.py` embeds title+summary via Ollama and persists the vector; `synthesis_cache.py` caches LLM responses; `semantic_dedup.py` flags paraphrased duplicates by embedding similarity (`duplicate_of_id`).
+3. **Cluster → Retrieve → Synthesize**: `stories.py` clusters `Item`s by similarity and computes a numeric complexity score (routes standard vs deep synthesis) → `context_retrieval.py` fetches bounded historical context via `retrieval.py`, and `light_rag.py` builds structured context anchors → `context_manager.py` selects/chunks articles → `llm.py` synthesizes a narrative (direct / map-reduce / hierarchical based on cluster size in `model_config.json`) → `historical_linking.py` checks whether the story continues an earlier one → `story_embeddings.py` embeds the result.
+4. **Publish gate**: `publish_gate.py` uses the story's confidence score to decide publish / publish-with-warning / hold.
+5. **Rank**: `ranking.py` blends importance + freshness + source credibility + user interest weights (`data/interests.json`, `data/source_weights.json`).
+6. **Serve**: FastAPI routers return JSON or Jinja2 HTML (including `/search/semantic`, `/stories/{id}/related`, `/items/{id}/similar` via `retrieval.py`); Caddy terminates TLS in production.
+7. **Retain**: `retention.py` runs a daily purge job per data type (articles, stories, pipeline logs), always preserving story-linked articles.
 
-### Pipeline Orchestration (ADR-0029, in progress)
+### Pipeline Orchestration (ADR-0029) & RAG (ADR-0026) — complete
 
-Story processing is moving toward explicit staged orchestration. `pipeline_runner.py` wraps coarse stages (`ingest`, `story_generation`); `processing_states.py` defines canonical `ArticleProcessingState` / `StoryProcessingState` enums with valid transitions. Pipeline runs are persisted to `pipeline_stage_runs`; the admin dashboard at `/admin/pipeline` exposes run lists, dead-letter retry/discard, and operator audit logs.
+Story processing uses explicit staged orchestration. `pipeline_runner.py` wraps coarse stages (`ingest`, `story_generation`); `processing_states.py` defines canonical `ArticleProcessingState` / `StoryProcessingState` enums with valid transitions. Pipeline runs are persisted to `pipeline_stage_runs`; the admin dashboard at `/admin/pipeline` exposes run lists, dead-letter retry/discard, and operator audit logs. The RAG milestone (embeddings as a pipeline stage, semantic dedup, light RAG, retrieval hook, historical linking, complexity scoring) shipped in v0.8.6 — see [ADR-0026](docs/adr/0026-rag-integration-strategy.md) for the go/no-go evaluation and its follow-up re-evaluation condition (`scripts/rag_evaluation.py`).
 
 ### LLM Model Profiles
 
@@ -268,8 +283,8 @@ The embedding model (`nomic-embed-text`, 768 dimensions) is separate and configu
 
 - **`dev`** — daily development. Push triggers `ci-dev.yml`: lint → test → build → push `ghcr.io/deim0s13/newsbrief:sha-{SHA}` → update `k8s/overlays/dev/kustomization.yaml`.
 - **`main`** — releases only (merge from `dev`). Push triggers `ci-prod.yml`: same + Trivy scan → Cosign sign → SBOM → GitHub release → update `k8s/overlays/prod/kustomization.yaml` + push `:latest` tag to GHCR.
-- **macOS CD**: ArgoCD polls Git hourly, detects new tag in kustomization, runs `newsbrief-db-migrate` Job (sync wave 0) then rolls the API Deployment — fully automatic.
-- **Windows CD**: `compose-watch.sh` runs once daily at 06:00 via Task Scheduler, compares running container SHA against `ghcr.io/deim0s13/newsbrief:latest`, redeploys + migrates if changed.
+- **macOS CD**: ArgoCD polls Git every 5 minutes, detects new tag in kustomization, runs `newsbrief-db-migrate` Job (sync wave 1) then rolls the API Deployment — fully automatic.
+- **Windows CD**: `compose-watch.ps1` (native PowerShell) runs once daily at 06:00 via Task Scheduler, compares the running image digest against `ghcr.io/deim0s13/newsbrief:latest`, redeploys + migrates if changed.
 - Dev DB (`compose.dev.yaml`) runs on `newsbrief_dev_network`; prod DB runs on `newsbrief_default` — isolated to prevent DNS round-robin.
 - `make env-init` generates a single random password and substitutes it into both `POSTGRES_PASSWORD` and `DATABASE_URL` in `.env` — credentials are always in sync.
 - Pipeline CI notifications go to ntfy.sh topic set in `NTFY_TOPIC` env/secret. Deploy notifications sent by `compose-watch.sh` (Windows) use the same topic from `.env`.

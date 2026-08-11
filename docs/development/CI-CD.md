@@ -2,473 +2,140 @@
 
 ## Overview
 
-NewsBrief uses a comprehensive CI/CD pipeline with GitOps practices to ensure reliable, secure, and automated deployments.
+NewsBrief's CI/CD pipeline runs entirely on **GitHub Actions** and delivers signed, scanned container images to GHCR. Deployment ("CD") is split by platform per [ADR-0032](../adr/0032-cross-platform-cd-strategy.md): **ArgoCD** (GitOps) on macOS, **Podman Compose + GHCR polling** on Windows.
 
-**CI/CD Systems:**
-- **Tekton Pipelines** - Kubernetes-native CI running locally (primary, v0.7.5+)
-- **GitHub Actions** - Disabled (only `project-automation.yml` remains for GitHub Project sync)
+> **History:** NewsBrief briefly ran CI on a local Tekton-in-kind stack (see [ADR-0016](../adr/0016-cicd-platform-migration.md)). That was replaced by the current GitHub Actions workflows — there is no Tekton, Smee webhook relay, or in-cluster registry in the live pipeline today. Ignore any lingering references elsewhere to `tkn`, `kind-registry:5000`, or webhook-triggered pipelines; they describe a retired setup.
 
-## 🆕 Tekton Pipelines (v0.7.5+)
+## CI: GitHub Actions
 
-NewsBrief v0.7.5 introduces Kubernetes-native CI/CD using Tekton Pipelines running in a local kind cluster.
+Two workflows in `.github/workflows/`, both triggered by `push`:
 
-### Why Tekton?
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| `ci-dev.yml` | push to `dev` | Lint, test, build & push `:dev-latest` + `:sha-{sha}`, update `k8s/overlays/dev/kustomization.yaml` |
+| `ci-prod.yml` | push to `main` | Same + version-tag guard, Trivy scan, Cosign sign, SBOM, GitHub release, update `k8s/overlays/prod/kustomization.yaml` |
 
-| Aspect | GitHub Actions | Tekton |
-|--------|---------------|--------|
-| **Runtime** | GitHub cloud | Local Kubernetes |
-| **Portability** | GitHub-only | Any K8s cluster |
-| **Customization** | YAML workflows | K8s-native resources |
-| **Learning** | CI/CD basics | Enterprise patterns |
-| **Cost** | Free tier limits | Free (local) |
-
-### Pipeline Architecture
+### `ci-dev.yml` jobs
 
 ```
-┌─────────────┐   ┌─────────┐   ┌─────────────┐   ┌───────────────┐
-│ fetch-source│──►│  lint   │──►│ build-image │──►│ security-scan │
-└─────────────┘   │  test   │   └─────────────┘   └───────────────┘
-                  └─────────┘
-                   (parallel)
+lint ──┐
+       ├──► build-and-push ──► update-manifest ──► notify
+test ──┘
 ```
 
-**Production adds:**
-```
-security-scan ──► sign-image ──► generate-sbom
-```
+1. **Lint** — `black --check`, `isort --check-only`
+2. **Test** — `pytest` against a `pgvector/pgvector:pg16` service container, then `alembic upgrade head`; `mypy` runs but is non-blocking (`continue-on-error: true`)
+3. **Build & Push** — multi-arch (`linux/amd64,linux/arm64`) build, pushes `ghcr.io/deim0s13/newsbrief:dev-latest` and `:sha-{short-sha}`
+4. **Update k8s Manifest** — commits the new `sha-{short-sha}` tag into `k8s/overlays/dev/kustomization.yaml` with `[skip ci]`, so ArgoCD's dev Application picks it up
+5. **Notify** — ntfy.sh push (`NTFY_TOPIC` secret)
 
-### Pipelines
-
-| Pipeline | Branch | Features |
-|----------|--------|----------|
-| `ci-dev` | `dev` | lint, test, build, scan |
-| `ci-prod` | `main` | + Cosign signing + SBOM |
-
-### Running Pipelines
-
-```bash
-# Development pipeline (repo root or absolute path to workspace-template.yaml)
-tkn pipeline start ci-dev -n default \
-  --workspace name=source,volumeClaimTemplateFile=tekton/pipelineruns/workspace-template.yaml \
-  --param repo-url=https://github.com/Deim0s13/newsbrief.git \
-  --param revision=dev \
-  --showlog
-
-# Production pipeline (release tag = v`project.version` from pyproject.toml on the cloned branch)
-tkn pipeline start ci-prod \
-  --workspace name=source,volumeClaimTemplateFile=tekton/pipelineruns/workspace-template.yaml \
-  --workspace name=sbom-output,volumeClaimTemplateFile=tekton/pipelineruns/workspace-template.yaml \
-  --serviceaccount=tekton-pipeline \
-  --param revision=main \
-  --param build-tag=latest \
-  --showlog
-```
-
-### Security Features
-
-| Feature | Tool | Pipeline |
-|---------|------|----------|
-| Vulnerability scanning | Trivy | Both |
-| Block on CRITICAL | Trivy exit code | Both |
-| Image signing | Cosign (key-based) | Prod only |
-| SBOM generation | Trivy CycloneDX | Prod only |
-
-### Automated Versioning (Semantic Release)
-
-NewsBrief uses **conventional commits** to automatically determine version bumps:
-
-| Commit Prefix | Example | Version Bump |
-|--------------|---------|--------------|
-| `feat:` | `feat: add dark mode` | Minor (0.X.0) |
-| `fix:` | `fix: resolve crash on startup` | Patch (0.0.X) |
-| `feat!:` | `feat!: redesign API` | Major (X.0.0) |
-| `BREAKING CHANGE:` | In commit body | Major (X.0.0) |
-| `docs:`, `chore:`, `ci:` | Documentation/maintenance | No bump |
-
-**How it works (Tekton `ci-prod`):**
-1. Push to `main` triggers `ci-prod` (or start it manually).
-2. The pipeline clones `revision` and builds/scans an image tagged `build-tag` (default `latest`).
-3. **`create-release`** reads **`[project].version`** from the cloned `pyproject.toml`, prefixes `v`, creates the Git tag / GitHub release when needed, then **`update-manifest`** sets the prod overlay image to that version.
-4. Bump **`version`** in `pyproject.toml` on the branch you ship before expecting a new release number; optional **`version-override`** skips reading pyproject (emergency only).
-
-**Manual version override (skip pyproject / use sparingly):**
-```bash
-tkn pipeline start ci-prod \
-  ... \
-  --param version-override=v0.8.4 \
-  ...
-```
-
-**Single source of truth:** bump **`[project].version`** in `pyproject.toml` on the branch you build (`revision`). GitHub release + image tag + app `get_version()` all follow that value (unless `version-override` is set).
-
-### Setup Guide
-
-See **[KUBERNETES.md](KUBERNETES.md)** for complete local cluster setup instructions.
-
-### Container Registry
-
-The local Kind cluster uses a container registry accessible at `kind-registry:5000` from within pods.
-
-**Important:** Use `kind-registry:5000` (not `localhost:5000`) in pipeline configurations because:
-- `localhost` inside a pod refers to the pod itself, not the host
-- `kind-registry` is the Docker container name on the Kind network
-- Both the Kind nodes and pods can resolve this address
-
-### GitHub Webhook Integration (Smee)
-
-GitHub webhooks are relayed to the local Tekton EventListener via [Smee.io](https://smee.io):
+### `ci-prod.yml` jobs
 
 ```
-GitHub Push → smee.io/cddqBCYHwHG3ZcUY → localhost:8080 → Tekton EventListener
+check-version ──► lint ──┐
+                 test ────┼──► build-and-push ──► security-scan ──► sign-image ──┐
+                                                                  └► generate-sbom─┤
+                                                                                    ├──► create-release ──► update-manifest ──► notify
 ```
 
-**Setup:**
-1. Configure GitHub webhook to use the Smee URL
-2. Run `make recover` to start the Smee relay automatically
-3. Or manually: `npx smee-client --url "https://smee.io/cddqBCYHwHG3ZcUY" --target "http://localhost:8080"`
+1. **Version check** — fails fast if `git tag` already contains `v{pyproject.toml version}`. **You must bump `[project].version` in `pyproject.toml` before merging to `main`, or this job blocks the whole pipeline.**
+2. **Lint / Test** — same as `ci-dev.yml`
+3. **Build & Push** — pushes `:v{version}`, `:latest`, and `:sha-{sha}`
+4. **Security Scan** — Trivy: a non-blocking table scan for visibility, plus a SARIF scan that **fails the pipeline on CRITICAL CVEs with a known fix** (uploaded to GitHub Code Scanning)
+5. **Sign Image** — Cosign key-based signing (`COSIGN_PRIVATE_KEY`/`COSIGN_PASSWORD` secrets), verified in the same job
+6. **Generate SBOM** — Trivy CycloneDX SBOM, uploaded as a build artifact and attached to the release
+7. **Create Release** — generates release notes from `git log {last_tag}..HEAD` and publishes a GitHub release tagged `v{version}` (checkout uses `fetch-depth: 0` — required for this history walk to see anything)
+8. **Update k8s Manifest** — bumps `k8s/overlays/prod/kustomization.yaml` to `v{version}` with `[skip ci]`
+9. **Notify** — ntfy.sh push, `urgent` priority + ❌ on any job failure
 
-**Logs:** `/tmp/smee.log`
+### Versioning
 
----
+There is **no automated semantic-release step** in either workflow — `[tool.semantic_release]` exists in `pyproject.toml` as future intent but isn't wired into CI. Versioning today is **manual**:
 
-## Workflow Architecture
+1. On `dev`, edit `version` in `pyproject.toml` and commit (`chore(release): bump version to X.Y.Z`)
+2. `git checkout main && git merge dev --no-ff -m "chore(release): merge dev into main for vX.Y.Z"`
+3. `git push origin main` — this triggers `ci-prod.yml`, which creates the tag, GitHub release, and signed image
 
-### 📋 Main CI/CD Pipeline (`ci-cd.yml`)
+See [BRANCHING_STRATEGY.md](BRANCHING_STRATEGY.md) for the full release flow (this repo uses a direct merge, not a PR, for `dev` → `main`).
 
-**Triggers:**
-- Push to `main` or `dev` branches
-- Pull requests to `main`
-- Published releases
+## CD: Two platforms, two mechanisms (ADR-0032)
 
-**Jobs:**
-1. **🧪 Test & Quality** - Code quality, linting, security scanning
-2. **🔨 Build Container** - Multi-arch container builds with caching
-3. **🔒 Security Scan** - Vulnerability scanning with Trivy
-4. **🚀 Deploy** - Environment-specific deployments
-5. **📦 Release Assets** - Automated release creation
+| | macOS | Windows |
+|---|---|---|
+| Mechanism | ArgoCD (GitOps) in a local `kind` cluster | `podman-compose` + GHCR digest polling |
+| Watches | Git (`k8s/overlays/{dev,prod}/kustomization.yaml`) | `ghcr.io/deim0s13/newsbrief:latest` |
+| Poll interval | 5 minutes (`timeout.reconciliation: 300s` in `k8s/argocd/argocd-cm.yaml`) | Daily at 06:00 (Task Scheduler → `compose-watch.ps1`) |
+| Migrations | Argo CD sync-wave `Job` (`newsbrief-db-migrate`), runs before the API `Deployment` rolls | `alembic upgrade head` inside `compose-watch.ps1` before restart |
+| Auto-start on boot | launchd → `scripts/infra-start.sh` (idempotent: creates cluster, waits for ArgoCD, re-applies `k8s/argocd/` Application CRs if missing) | Task Scheduler → `scripts/compose-start.ps1` |
 
-### 🔄 Dependency Management (`dependencies.yml`)
+Both platforms deploy from the **same GHCR image** — there's no separate build path per platform. See [KUBERNETES.md](KUBERNETES.md) for the macOS/ArgoCD side in detail, and `CLAUDE.md` → "Windows CD" for the Compose/PowerShell side.
 
-**Schedule:** Weekly (Mondays at 09:00 UTC)
+### Database migrations
 
-**Features:**
-- Automated Python dependency updates
-- Security vulnerability scanning
-- Base Docker image updates
-- Automated PR creation for updates
+Schema changes live in `alembic/versions/` and are applied with `alembic upgrade head`.
 
-### 🎯 Project Automation (`project-automation.yml`)
+| Context | How migrations run |
+|---------|---------------------|
+| **Local / Makefile** | `make migrate` or `make migrate-dev` (requires `DATABASE_URL`). See [DEVELOPMENT.md](DEVELOPMENT.md). |
+| **CI (both workflows)** | The `test` job runs `alembic upgrade head` against the Postgres service container, so the revision chain is validated before merge. |
+| **macOS / ArgoCD** | Sync-wave 1 `Job` (`newsbrief-db-migrate`) runs before the `Deployment` (wave 2) rolls. A failed migration blocks the rollout. |
+| **Windows / Compose** | `compose-watch.ps1` runs `alembic upgrade head` after pulling a new image, before restarting the stack. |
 
-**Triggers:**
-- Issue lifecycle events (opened, closed, labeled, assigned)
-- Pull request events (opened, ready_for_review, closed)
-
-**Features:**
-- Automatic project board synchronization
-- Status field updates based on issue/PR state
-- Epic assignment from labels (`epic:*`)
-- Graceful error handling
-
-### 🚀 GitOps Deployment (`gitops-deploy.yml`)
-
-**Triggers:**
-- Manual dispatch
-- Called by other workflows
-
-**Features:**
-- Environment-specific configurations
-- Kubernetes manifest generation
-- Health checks and validation
-- Deployment tracking
-
-## Environment Configuration
-
-### Development (`dev`)
-- **Replicas:** 1
-- **Resources:** 100m CPU, 256Mi Memory
-- **Database:** 1Gi storage
-- **Domain:** `newsbrief-dev.internal`
-- **Backup:** Disabled
-
-### Staging (`staging`)
-- **Replicas:** 2
-- **Resources:** 200m CPU, 512Mi Memory
-- **Database:** 5Gi storage
-- **Domain:** `newsbrief-staging.internal`
-- **Backup:** Enabled
-
-### Production (`prod`)
-- **Replicas:** 3
-- **Resources:** 500m CPU, 1Gi Memory
-- **Database:** 20Gi storage
-- **Domain:** `newsbrief.example.com`
-- **Backup:** Enabled
-
-## Security Features
-
-### 🔒 Security Scanning
-- **Trivy** vulnerability scanning for containers
-- **Safety** dependency security auditing
-- **Super-Linter** code quality scanning
-- SARIF upload to GitHub Security tab
-
-### 🛡️ Security Best Practices
-- Multi-stage Docker builds
-- Non-root container execution
-- Minimal base images
-- Secrets management via GitHub Secrets
-- GITHUB_TOKEN permission restrictions
+**Authors:** create revisions with `make migrate-new MSG="short description"` and commit the new file alongside the code that needs the schema change.
 
 ## Container Registry
 
 Images are published to GitHub Container Registry (GHCR):
 - **Registry:** `ghcr.io`
 - **Repository:** `ghcr.io/deim0s13/newsbrief`
-- **Supported Platforms:** `linux/amd64`, `linux/arm64`
+- **Platforms:** `linux/amd64`, `linux/arm64`
 
-### Image Tags
-- `main` - Latest stable from main branch
-- `dev` - Latest development from dev branch
-- `v1.2.3` - Semantic version tags
-- `pr-123` - Pull request builds
-- `main-abc1234` - Commit-based tags
+| Tag | Produced by | Consumed by |
+|-----|-------------|-------------|
+| `dev-latest`, `sha-{sha}` | `ci-dev.yml` (push to `dev`) | ArgoCD dev Application (macOS) |
+| `v{version}` | `ci-prod.yml` (push to `main`) | ArgoCD prod Application (macOS) |
+| `latest` | `ci-prod.yml` (push to `main`) | Windows `compose-watch.ps1` |
 
-## Deployment Process
+## Security
 
-### Automatic Deployments
-1. **Development:** Auto-deploy on push to `dev`
-2. **Staging:** Auto-deploy on push to `main`
-3. **Production:** Auto-deploy on published release
+| Feature | Tool | Where |
+|---------|------|-------|
+| Vulnerability scanning | Trivy | Both workflows can scan; `ci-prod.yml` also blocks on CRITICAL+fixable via SARIF |
+| Image signing | Cosign (key-based, `COSIGN_PRIVATE_KEY`/`COSIGN_PASSWORD`) | `ci-prod.yml` only |
+| SBOM generation | Trivy CycloneDX | `ci-prod.yml` only, attached to the GitHub release |
+| Secrets | GitHub Actions secrets (`COSIGN_PRIVATE_KEY`, `COSIGN_PASSWORD`, `NTFY_TOPIC`, `GITHUB_TOKEN`) | Repo Settings → Secrets |
 
-### Manual Deployments
-```bash
-# Deploy specific version to environment
-gh workflow run gitops-deploy.yml \
-  -f environment=prod \
-  -f image_tag=ghcr.io/deim0s13/newsbrief:v0.3.4 \
-  -f version=v0.3.4
-```
+There is no in-cluster secret manager (no Bitwarden/Vault integration) — Cosign keys live only as GitHub Actions secrets, used purely at build time.
 
-### Database migrations (Alembic)
+## Notifications
 
-Schema changes live in `alembic/versions/` and are applied with **`alembic upgrade head`**.
-
-| Context | How migrations run |
-|---------|---------------------|
-| **Local / Makefile** | `make migrate` or `make migrate-dev` (requires PostgreSQL and `DATABASE_URL` where applicable). See the [README](../../README.md#database-configuration) and [DEVELOPMENT.md](DEVELOPMENT.md). |
-| **Tekton CI** | The test task runs `alembic upgrade head` so the revision chain is validated against a database before merge. |
-| **Kubernetes / Argo CD** | Each sync applies the **`newsbrief-db-migrate` Job** (same container image as the API) **before** the API `Deployment` updates, using [Argo CD sync waves](KUBERNETES.md#sync-waves). A failed migration blocks the rollout. |
-| **Plain `kubectl apply -k`** | Kubernetes does not enforce sync-wave ordering; prefer Argo CD, or apply the ConfigMap and Job first and `kubectl wait` for Job completion before applying the Deployment. See [KUBERNETES.md](KUBERNETES.md#sync-waves). |
-
-**Authors:** create revisions with `make migrate-new MSG="short description"` and ship the new file in the same PR as the code that needs the schema.
-
-## Monitoring & Observability
-
-### Health Checks
-- **Liveness Probe:** HTTP GET `/` (30s delay)
-- **Readiness Probe:** HTTP GET `/` (5s delay)
-- **Prometheus Metrics:** Exposed on port 8787
-
-### Deployment Tracking
-- Deployment records in JSON format
-- Timestamp, version, and configuration tracking
-- Integration with GitHub Deployments API
-
-## Development Workflow
-
-### Branch Strategy
-```
-main (production)
- ├── staging (pre-production)
- └── dev (development)
-     ├── feature/new-feature
-     └── bugfix/fix-issue
-```
-
-### Pull Request Process
-1. Create feature branch from `dev`
-2. Implement changes and tests
-3. Open PR to `dev` branch
-4. Automated CI/CD runs:
-   - Code quality checks
-   - Security scanning
-   - Container build
-5. Review and merge
-6. Auto-deploy to development environment
-
-### Release Process
-1. Merge `dev` → `main` when ready for release
-2. Create and publish GitHub release
-3. Automated deployment to staging and production
-4. Monitor deployment health
-
-## Environment Variables
-
-### Core Application
-```yaml
-ENVIRONMENT: dev|staging|prod
-DATABASE_URL: postgresql://user:pass@db:5432/newsbrief
-OLLAMA_BASE_URL: http://ollama:11434
-```
-
-### AI Configuration
-```yaml
-NEWSBRIEF_LLM_MODEL: llama3.2:3b
-NEWSBRIEF_CHUNKING_THRESHOLD: 3000
-NEWSBRIEF_CHUNK_SIZE: 1500
-NEWSBRIEF_MAX_CHUNK_SIZE: 2000
-NEWSBRIEF_CHUNK_OVERLAP: 200
-```
-
-### Feed Processing
-```yaml
-NEWSBRIEF_MAX_ITEMS_PER_REFRESH: 150
-NEWSBRIEF_MAX_ITEMS_PER_FEED: 20
-NEWSBRIEF_MAX_REFRESH_TIME: 300
-```
+Both workflows post to an [ntfy.sh](https://ntfy.sh) topic (`NTFY_TOPIC` secret) on every run — success or failure — via a plain `curl` step, no separate notification workflow.
 
 ## Troubleshooting
 
-### Common Issues
-
-**Workflow Failures:**
 ```bash
 # Check workflow status
-gh run list --workflow=ci-cd.yml --limit 5
+gh run list --branch dev --limit 5
+gh run list --branch main --limit 5
 
-# View specific run logs
-gh run view <run-id> --log
+# View logs for a specific run (add --log-failed for just the failing steps)
+gh run view <run-id>
+gh run view <run-id> --log-failed
+
+# Re-run a failed workflow
+gh run rerun <run-id>
 ```
 
-**Project Automation Issues:**
-- Verify project number in workflow environment
-- Check GITHUB_TOKEN permissions
-- Ensure project fields exist (Status, Epic)
+**`check-version` fails on push to `main`:** you forgot to bump `version` in `pyproject.toml` before merging — see [Versioning](#versioning) above.
 
-**Deployment Issues:**
-- Validate image exists in registry
-- Check environment configuration
-- Review resource quotas and limits
+**Empty "Changes in vX.Y.Z" section on a release:** the `create-release` job's checkout needs `fetch-depth: 0` to walk commit history; if this regresses, check that step still sets it.
 
-### Debug Commands
+**Cosign sign/verify fails:** confirm `COSIGN_PRIVATE_KEY`/`COSIGN_PASSWORD` secrets are current and `cosign.pub` in the repo root matches the key pair.
 
-```bash
-# Test container locally
-podman run --rm -p 8787:8787 ghcr.io/deim0s13/newsbrief:latest
+## Related Documentation
 
-# Check deployment status
-kubectl get deployments -n newsbrief-prod
-
-# View pod logs
-kubectl logs -f deployment/newsbrief-prod -n newsbrief-prod
-```
-
-## Contributing to CI/CD
-
-### Adding New Workflows
-1. Create workflow file in `.github/workflows/`
-2. Follow naming convention: `purpose-description.yml`
-3. Add comprehensive documentation
-4. Test with workflow_dispatch trigger
-5. Update this documentation
-
-### Modifying Existing Workflows
-1. Test changes in feature branch
-2. Use `workflow_dispatch` for manual testing
-3. Monitor run results carefully
-4. Update documentation accordingly
-
-### Best Practices
-- Use `continue-on-error` for non-critical steps
-- Add comprehensive logging and error messages
-- Cache dependencies when possible
-- Use secrets for sensitive data
-- Follow principle of least privilege
-
-## Security Considerations
-
-### Secret Management
-
-NewsBrief uses Kubernetes secrets for sensitive data, with Bitwarden integration for secure storage.
-
-**Required Secrets:**
-
-| Secret | Purpose | Creation |
-|--------|---------|----------|
-| `cosign-keys` | Image signing | Auto-created via Bitwarden during `make recover` |
-| `github-release-token` | GitHub releases & `update-manifest` git push | Pat (classic: **`repo`** scope, or fine-grained: **Contents** read/write on this repo). Create/update: `kubectl create secret generic github-release-token -n default --from-literal=token='ghp_...' --dry-run=client -o yaml \| kubectl apply -f -`. A **401** from `create-release` almost always means rotate this token. |
-| `github-webhook-secret` | Webhook validation | Manual: Match GitHub webhook secret |
-
-**Bitwarden Integration:**
-
-Cosign keys are stored in Bitwarden and automatically retrieved during recovery:
-
-```bash
-# Unlock Bitwarden and set session
-export BW_SESSION=$(bw unlock --raw)
-
-# Run recovery (creates cosign-keys secret automatically)
-make recover
-```
-
-Bitwarden items required:
-- `newsbrief-cosign-key` - Secure Note with private key contents
-- `newsbrief-cosign-password` - Login with key password
-
-### Legacy Secret Management
-- Store sensitive values in GitHub Secrets
-- Use environment-specific secrets
-- Rotate secrets regularly
-- Limit secret access scope
-
-### Container Security
-- Scan images for vulnerabilities
-- Use official base images
-- Run as non-root user
-- Minimize attack surface
-
-### Access Control
-- Restrict workflow permissions
-- Use environment protection rules
-- Require reviews for production deployments
-- Audit deployment activities
-
-## Future Improvements
-
-### ✅ Completed (v0.7.5)
-- **Tekton Pipelines** - Kubernetes-native CI/CD
-- **Local Registry** - In-cluster container registry
-- **Trivy Scanning** - Vulnerability detection with blocking
-- **Cosign Signing** - Key-based image signatures
-- **SBOM Generation** - CycloneDX software bill of materials
-
-### ✅ Completed (v0.7.6)
-- **ArgoCD Integration** - GitOps deployment with auto-sync
-- **Tekton Triggers** - GitHub webhook-triggered pipelines
-- **Tekton Dashboard** - Visual pipeline monitoring (localhost:9097)
-- **Pipeline Notifications** - ntfy.sh (subscribe to topic `newsbrief-ci` in the ntfy app)
-- **Persistent Storage** - PVC for prod data persistence
-- **Smee Webhook Relay** - GitHub webhook forwarding to local cluster
-- **Bitwarden Secrets** - Automated cosign key management via `bw` CLI
-- **Registry URL Fix** - Standardized to `kind-registry:5000` for pod access
-- **Ansible Recovery** - `make recover` automates full environment setup
-
-### Planned Features
-- **Registry TLS** - HTTPS for local registry (Issue #157)
-
-### Future Enhancements
-- **Helm Charts** - Kubernetes package management
-- **Istio Service Mesh** - Advanced traffic management
-- **Grafana Dashboards** - Enhanced observability
-- **Blue/Green Deployments** - Zero-downtime updates
-- **Canary Releases** - Gradual rollout strategy
-
-### Monitoring Enhancements
-- Application performance monitoring (APM)
-- Error tracking and alerting
-- Log aggregation and analysis
-- Custom business metrics
-
----
-
-For questions or support, please open an issue or contact the development team.
+- [ADR-0016: CI/CD Platform Migration](../adr/0016-cicd-platform-migration.md) — history (Tekton → GitHub Actions)
+- [ADR-0018: Secure Supply Chain](../adr/0018-secure-supply-chain.md) — Trivy, Cosign, SBOM rationale
+- [ADR-0032: Cross-Platform CD Strategy](../adr/0032-cross-platform-cd-strategy.md) — why macOS and Windows use different CD mechanisms
+- [KUBERNETES.md](KUBERNETES.md) — kind/ArgoCD setup detail (macOS)
+- [BRANCHING_STRATEGY.md](BRANCHING_STRATEGY.md) — branch model and release process

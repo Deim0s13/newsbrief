@@ -27,6 +27,15 @@ Replace reading 50+ article summaries with 5-10 AI-synthesized story briefs. **T
 - **Supporting Articles**: Each story links to source articles with structured summaries
 - **Performance Optimised**: Parallel LLM synthesis (3 workers), caching, batching — 80% faster
 
+### **🔎 Semantic Retrieval & RAG** *(v0.8.6)*
+- **Semantic Search**: `/search/semantic` finds articles/stories by meaning via pgvector cosine similarity, not just keywords
+- **Related Content**: `GET /stories/{id}/related` and `GET /items/{id}/similar` surface semantically related items
+- **Semantic Deduplication**: Post-hoc detection of paraphrased duplicate articles (embedding similarity, not just URL/content hash)
+- **Historical Linking**: Stories automatically detect when they continue an earlier story and link to it
+- **Light RAG Context Injection**: Bounded, structured historical context anchors injected into synthesis prompts for evolving stories
+- **Cluster Complexity Scoring**: Numeric 0.0-1.0 score (article count, source divergence, recency spread, entity density) routes clusters between standard and deep synthesis
+- See [ADR-0026](docs/adr/0026-rag-integration-strategy.md) for the integration strategy and go/no-go evaluation
+
 ### **📰 RSS Feed Management**
 - **OPML Import/Export**: Bulk feed management with category preservation
 - **Feed Health Monitoring**: Multi-factor scoring (response time, success rate, failure tracking)
@@ -357,7 +366,7 @@ Push to main →  GitHub Actions (ci-prod.yml)
                   same + Trivy scan + Cosign sign + SBOM
                   GitHub release created + push :latest tag
                   update k8s/overlays/prod/kustomization.yaml
-                  → macOS:   ArgoCD auto-deploys (hourly poll)
+                  → macOS:   ArgoCD auto-deploys (5-minute poll)
                   → Windows: compose-watch picks up :latest next morning (06:00)
 ```
 
@@ -429,6 +438,7 @@ make hostname-trust-cert
 
 | Release | Summary |
 |---------|---------|
+| v0.8.6 | RAG milestone completion: embeddings as a pipeline stage, semantic dedup, light RAG context anchors, bounded retrieval hook, historical linking, cluster complexity scoring, go/no-go evaluation harness |
 | v0.8.5 | Pipeline completion & stability: confidence scoring + publish gate, standard/deep synthesis split, per-type data retention, E2E pipeline tests, stuck-item observability |
 | v0.8.4.x | Cross-platform CD (ArgoCD on macOS, Compose + GHCR polling on Windows), native WSL2 dev PostgreSQL, date-fallback fixes |
 | v0.8.3.1 | Ollama embedding backfill CLI, story embedding persistence |
@@ -444,8 +454,8 @@ make hostname-trust-cert
 
 ### Upcoming
 
-- **RAG / Semantic Search** (v0.8.6 — Semantic Foundation): pgvector embeddings already stored; semantic query interface next (ADR-0026)
 - **Entity Intelligence System** (v0.9.0): deeper entity linking and disambiguation
+- **RAG re-evaluation**: re-run `scripts/rag_evaluation.py` after a normal week of production ingestion to validate the relatedness-precision gate at realistic corpus size (ADR-0026 follow-up condition)
 - **Fine-tuning feasibility**: Deferred — better alternatives first (ADR-0027)
 
 ---

@@ -1,7 +1,7 @@
 # NewsBrief Architecture Document
 
-> **Version**: 1.5
-> **Last Updated**: June 2026 (v0.8.4)
+> **Version**: 1.6
+> **Last Updated**: August 2026 (v0.8.6)
 > **Status**: Living Document
 
 ---
@@ -74,8 +74,11 @@ NewsBrief is a **self-hosted, privacy-focused** application designed to:
 | **FR-12a** | Integrate external source credibility ratings (MBFC) | Should | ✅ Complete |
 | **FR-13** | Archive old stories automatically | Should | ✅ Complete |
 | **FR-14** | Full-text search across articles | Could | 🔜 Planned |
-| **FR-15** | Semantic search using embeddings | Could | 🔜 Planned |
+| **FR-15** | Semantic search using embeddings | Could | ✅ Complete (v0.8.6, `/search/semantic`) |
 | **FR-16** | User accounts and authentication | Won't (v1.0) | 📋 Future |
+| **FR-17** | Post-hoc semantic deduplication of paraphrased articles | Should | ✅ Complete (v0.8.6, ADR-0026) |
+| **FR-18** | Historical linking between a story and the story it continues | Should | ✅ Complete (v0.8.6, ADR-0026) |
+| **FR-19** | Bounded retrieval context injected into synthesis (light RAG) | Could | ✅ Complete (v0.8.6, ADR-0026) |
 
 ### 2.2 User Stories
 
@@ -463,6 +466,17 @@ flowchart TB
         end
     end
 
+    subgraph RAGSvc["RAG / Retrieval Services (v0.8.6)"]
+        Retrieval["Retrieval Service (retrieval.py)"]
+        CtxRetrieval["Context Retrieval Hook (context_retrieval.py)"]
+        SemDedup["Semantic Dedup (semantic_dedup.py)"]
+        LightRAG["Light RAG Anchors (light_rag.py)"]
+        HistLink["Historical Linking (historical_linking.py)"]
+        RetrTrace["Retrieval Tracing (retrieval_tracing.py)"]
+        PubGate["Publish Gate (publish_gate.py)"]
+        EmbedSvc["Embedding Service (embedding_service.py)"]
+    end
+
     subgraph Support["Support Services"]
         LLMSvc["LLM Service (llm.py)"]
         LLMOutput["LLM Output Validation (llm_output.py)"]
@@ -473,6 +487,8 @@ flowchart TB
         CtxMgr["Context Manager (context_manager.py)"]
         Settings["Settings Service (settings.py)"]
         Prompts["Prompt Templates (prompts/)"]
+        PipelineRunner["Pipeline Runner (pipeline_runner.py)"]
+        Retention["Retention Service (retention.py)"]
     end
 
     subgraph Data["Data Access"]
@@ -483,6 +499,7 @@ flowchart TB
     Routes --> StorySvc
     Routes --> FeedSvc
     Routes --> EntitySvc
+    Routes --> Retrieval
     StorySvc --> LLMSvc
     StorySvc --> LLMOutput
     StorySvc --> Cluster
@@ -495,10 +512,21 @@ flowchart TB
     LLMSvc --> Prompts
     StorySvc --> QualityMet
     StorySvc --> CtxMgr
+    StorySvc --> CtxRetrieval
+    StorySvc --> HistLink
+    StorySvc --> PubGate
+    CtxRetrieval --> Retrieval
+    CtxRetrieval --> LightRAG
+    Retrieval --> RetrTrace
+    EmbedSvc --> SemDedup
     SchedSvc --> FeedSvc
     SchedSvc --> StorySvc
+    SchedSvc --> Retention
+    PipelineRunner --> FeedSvc
+    PipelineRunner --> StorySvc
 
     Core --> ORM
+    RAGSvc --> ORM
     ORM --> DB
 ```
 
@@ -521,6 +549,19 @@ flowchart TB
 | **Context Manager** | Large article cluster handling with chunking (v0.8.1) | `context_manager.py` |
 | **Settings Service** | Model profiles and runtime configuration (v0.8.1) | `settings.py` |
 | **Prompt Templates** | Multi-pass synthesis prompts (v0.8.1) | `prompts/` |
+| **Embedding Service** | Async Ollama embedding generation | `embedding_service.py`, `item_embeddings.py`, `story_embeddings.py`, `embed_backfill.py` |
+| **Retrieval Service** | Bounded pgvector similarity search powering semantic search + related/similar endpoints (v0.8.6) | `retrieval.py` |
+| **Context Retrieval Hook** | Fetches retrieval context for a cluster during the pipeline's retrieval stage (v0.8.6) | `context_retrieval.py` |
+| **Semantic Dedup** | Post-hoc detection of paraphrased duplicate articles via embedding similarity (v0.8.6) | `semantic_dedup.py` |
+| **Light RAG** | Structured historical context anchors injected into synthesis prompts (v0.8.6) | `light_rag.py` |
+| **Historical Linking** | Detects and links a story to the story it continues (v0.8.6) | `historical_linking.py` |
+| **Retrieval Tracing** | Records retrieval query latency/results for observability and evaluation (v0.8.6) | `retrieval_tracing.py` |
+| **Cluster Complexity Scoring** | Numeric 0.0-1.0 score routing clusters to standard vs deep synthesis (v0.8.6) | `stories.py` (`compute_cluster_complexity`) |
+| **Publish Gate** | Confidence-based publish/warn/hold decision before a story becomes visible (v0.8.5) | `publish_gate.py` |
+| **Pipeline Runner** | Orchestrates stage execution across ingest/enrich/story-generation (ADR-0029) | `pipeline_runner.py`, `pipeline_monitoring.py`, `processing_states.py` |
+| **Retention Service** | Per-type data retention with dry-run preview and daily purge job | `retention.py` |
+| **Ingest Idempotency** | Stable article identity (`url_hash`) and `content_hash`-gated updates (ADR-0031) | `ingest_idempotency.py` |
+| **Operator Audit** | Audit log for manual admin actions (retries, discards) | `operator_audit.py` |
 
 ### 7.5 Story Processing Pipeline (orchestration)
 
@@ -591,6 +632,9 @@ erDiagram
     Story ||--o{ StoryArticle : has
     Item ||--o{ StoryArticle : references
     Story ||--o{ Entity : mentions
+    Item }o--o| Item : "duplicate_of (semantic dedup)"
+    Story }o--o| Story : "continues_story (historical linking)"
+    Story ||--o{ RetrievalTrace : "retrieval queries"
 
     Feed {
         int id PK
@@ -612,6 +656,11 @@ erDiagram
         string topic
         datetime published
         datetime fetched
+        vector(768) embedding "nomic-embed-text"
+        string embedding_model
+        string embedding_error "v0.8.6"
+        int duplicate_of_id FK "semantic dedup, v0.8.6"
+        float duplicate_similarity "v0.8.6"
     }
 
     Story {
@@ -626,6 +675,14 @@ erDiagram
         float source_credibility_score
         boolean low_credibility_warning
         int sources_excluded
+        float confidence_score "v0.8.5"
+        string synthesis_path "standard|deep, v0.8.5"
+        float complexity_score "v0.8.6"
+        json context_anchors_json "light RAG, v0.8.6"
+        json synthesis_anchors_json "v0.8.6"
+        int continues_story_id FK "historical linking, v0.8.6"
+        float continues_similarity "v0.8.6"
+        vector(768) embedding "nomic-embed-text"
         datetime generated
         boolean is_archived
     }
@@ -657,6 +714,17 @@ erDiagram
         string provider
         datetime last_updated
     }
+
+    RetrievalTrace {
+        int id PK
+        string query_type "similar_articles|related_stories|semantic_search"
+        int source_id
+        string source_type
+        json retrieved_ids_json
+        json similarity_scores_json
+        int duration_ms
+        datetime created_at
+    }
 ```
 
 ### 8.2 Data Flow
@@ -672,15 +740,20 @@ flowchart LR
         Fetch["Fetch & Parse"]
         Extract["Content Extraction"]
         Summarize["AI Summarization"]
+        Embed["Embedding (Ollama, v0.8.6)"]
+        Dedup["Semantic Dedup (v0.8.6)"]
         Cluster["Article Clustering"]
+        Retrieve["Retrieval Hook + Light RAG Anchors (v0.8.6)"]
         Synthesize["Story Synthesis"]
+        HistLink["Historical Linking (v0.8.6)"]
         Rank["Ranking & Scoring"]
     end
 
     subgraph Store["Storage"]
-        Items["Items Table"]
-        Stories["Stories Table"]
+        Items["Items Table<br/>(+ embedding, duplicate_of_id)"]
+        Stories["Stories Table<br/>(+ embedding, context_anchors, continues_story_id)"]
         Cache["Synthesis Cache"]
+        Traces["Retrieval Traces"]
     end
 
     subgraph Output["Presentation"]
@@ -692,10 +765,15 @@ flowchart LR
     Fetch --> Extract
     Web --> Extract
     Extract --> Summarize
-    Summarize --> Items
+    Summarize --> Embed
+    Embed --> Dedup
+    Dedup --> Items
     Items --> Cluster
-    Cluster --> Synthesize
-    Synthesize --> Stories
+    Cluster --> Retrieve
+    Retrieve --> Traces
+    Retrieve --> Synthesize
+    Synthesize --> HistLink
+    HistLink --> Stories
     Synthesize --> Cache
     Stories --> Rank
     Rank --> API
@@ -772,7 +850,7 @@ flowchart TB
     GHCR["ghcr.io/deim0s13/newsbrief\n:sha-{SHA} / :latest"]
 
     subgraph macOS["macOS — ArgoCD (GitOps)"]
-        Argo["ArgoCD polls Git hourly"]
+        Argo["ArgoCD polls Git every 5 min"]
         MigrateJob["newsbrief-db-migrate Job\n(sync wave 0)"]
         KubeApp["API Deployment\n(sync wave 1)"]
         Argo --> MigrateJob --> KubeApp
