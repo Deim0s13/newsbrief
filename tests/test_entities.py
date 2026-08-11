@@ -379,6 +379,53 @@ class TestEntityExtraction:
         assert entities.is_empty()
 
     @patch("app.entities.get_llm_service")
+    def test_extract_entities_ensures_model_before_generating(self, mock_get_llm):
+        """
+        Regression test for #333: extract_entities() must call ensure_model()
+        before generating, mirroring the synthesis path in stories.py. Without
+        this, a not-yet-pulled model returns a 404 that looks identical to "no
+        entities found" downstream, silently poisoning the entity cache.
+        """
+        mock_service = MagicMock()
+        mock_service.is_available.return_value = True
+        mock_service.ensure_model.return_value = True
+        mock_client = MagicMock()
+        mock_client.generate.return_value = {
+            "response": json.dumps(
+                {
+                    "companies": [],
+                    "products": [],
+                    "people": [],
+                    "technologies": [],
+                    "locations": [],
+                }
+            )
+        }
+        mock_service.client = mock_client
+        mock_get_llm.return_value = mock_service
+
+        extract_entities("Test Title", "Test summary", model="qwen2.5:14b")
+
+        mock_service.ensure_model.assert_called_once_with("qwen2.5:14b")
+
+    @patch("app.entities.get_llm_service")
+    def test_extract_entities_model_not_ensurable_returns_empty(self, mock_get_llm):
+        """
+        If the model can't be pulled/ensured (e.g. Ollama 404, network issue),
+        extraction should gracefully return empty entities rather than raising
+        or attempting to generate against an unavailable model.
+        """
+        mock_service = MagicMock()
+        mock_service.is_available.return_value = True
+        mock_service.ensure_model.return_value = False
+        mock_get_llm.return_value = mock_service
+
+        entities = extract_entities("Test Title", "Test summary", model="qwen2.5:14b")
+
+        assert entities.is_empty()
+        mock_service.client.generate.assert_not_called()
+
+    @patch("app.entities.get_llm_service")
     def test_extract_entities_success_legacy_format(self, mock_get_llm):
         """Test successful entity extraction with legacy format response."""
         # Mock LLM service

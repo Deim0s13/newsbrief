@@ -330,6 +330,109 @@ class TestCombinedSimilarity:
         assert similarity == 0.0
 
 
+class TestEmptyEntitiesFallback:
+    """
+    Regression tests for the entity-weight redistribution bug: an
+    ExtractedEntities object with every field empty (e.g. after a failed
+    or unavailable extraction) is truthy, so a naive `entities1 and
+    entities2` check would still pay the full entity_weight for zero
+    signal instead of redistributing it to keywords (see #333).
+    """
+
+    def test_both_entities_empty_falls_back_to_keywords(self):
+        """Empty-but-not-None entities on both sides should redistribute weight."""
+        keywords1 = {"google", "ai", "gemini"}
+        keywords2 = {"google", "openai", "gpt"}
+        empty1 = ExtractedEntities(
+            companies=[], products=[], people=[], technologies=[], locations=[]
+        )
+        empty2 = ExtractedEntities(
+            companies=[], products=[], people=[], technologies=[], locations=[]
+        )
+
+        with_empty_entities = _calculate_combined_similarity(
+            keywords1,
+            keywords2,
+            entities1=empty1,
+            entities2=empty2,
+            topic1=None,
+            topic2=None,
+        )
+        with_none_entities = _calculate_combined_similarity(
+            keywords1,
+            keywords2,
+            entities1=None,
+            entities2=None,
+            topic1=None,
+            topic2=None,
+        )
+
+        # Empty ExtractedEntities objects must behave identically to None -
+        # both should redistribute the full entity_weight to keywords.
+        assert with_empty_entities == with_none_entities
+
+    def test_one_side_empty_falls_back_to_keywords(self):
+        """Only one side having empty entities should also redistribute weight."""
+        keywords1 = {"google", "ai"}
+        keywords2 = {"google", "openai"}
+        empty_entities = ExtractedEntities(
+            companies=[], products=[], people=[], technologies=[], locations=[]
+        )
+        populated_entities = ExtractedEntities(
+            companies=["Google"], products=[], people=[], technologies=[], locations=[]
+        )
+
+        similarity = _calculate_combined_similarity(
+            keywords1,
+            keywords2,
+            entities1=empty_entities,
+            entities2=populated_entities,
+            topic1=None,
+            topic2=None,
+        )
+        keywords_only = _calculate_combined_similarity(
+            keywords1,
+            keywords2,
+            entities1=None,
+            entities2=None,
+            topic1=None,
+            topic2=None,
+        )
+
+        assert similarity == keywords_only
+
+    def test_populated_entities_still_score_normally(self):
+        """Sanity check: this fix must not affect the populated-entities path."""
+        keywords1 = {"google", "ai"}
+        keywords2 = {"google", "openai"}
+        entities1 = ExtractedEntities(
+            companies=["Google"], products=[], people=[], technologies=[], locations=[]
+        )
+        entities2 = ExtractedEntities(
+            companies=["Google"], products=[], people=[], technologies=[], locations=[]
+        )
+
+        with_entities = _calculate_combined_similarity(
+            keywords1,
+            keywords2,
+            entities1=entities1,
+            entities2=entities2,
+            topic1=None,
+            topic2=None,
+        )
+        keywords_only = _calculate_combined_similarity(
+            keywords1,
+            keywords2,
+            entities1=None,
+            entities2=None,
+            topic1=None,
+            topic2=None,
+        )
+
+        # Matching entities should score higher than the pure-keyword fallback
+        assert with_entities > keywords_only
+
+
 class TestIntegrationScenarios:
     """Integration tests for realistic article comparison scenarios."""
 

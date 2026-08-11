@@ -50,6 +50,36 @@ class TestStoryGenerationRequestModel:
         assert req.model == "mistral:7b"
 
 
+class TestStoryGenerationRequestMinArticles:
+    """
+    Regression tests for #333: the API/function default for
+    min_articles_per_story must match the scheduler/UI convention (2), not
+    silently allow single-article "stories" unless explicitly requested.
+    """
+
+    def test_min_articles_per_story_defaults_to_two(self):
+        from app.models import StoryGenerationRequest
+
+        req = StoryGenerationRequest()
+        assert req.min_articles_per_story == 2
+
+    def test_min_articles_per_story_explicit_one_still_allowed(self):
+        from app.models import StoryGenerationRequest
+
+        req = StoryGenerationRequest(min_articles_per_story=1)
+        assert req.min_articles_per_story == 1
+
+    def test_generate_stories_simple_default_matches_scheduler(self):
+        """generate_stories_simple()'s own default must match STORY_MIN_ARTICLES."""
+        import inspect
+
+        from app.scheduler import STORY_MIN_ARTICLES
+        from app.stories import generate_stories_simple
+
+        sig = inspect.signature(generate_stories_simple)
+        assert sig.parameters["min_articles_per_story"].default == STORY_MIN_ARTICLES
+
+
 # ---------------------------------------------------------------------------
 # /stories/generate endpoint — model resolution
 # ---------------------------------------------------------------------------
