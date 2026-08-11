@@ -32,7 +32,7 @@
                 <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
                     <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Active Model</div>
                     <div id="current-model" class="text-xl font-bold text-gray-900 dark:text-white mt-1">
-                        {{ active_profile.model }}
+                        {{ effective_model }}
                     </div>
                 </div>
                 <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
@@ -42,6 +42,10 @@
                     </div>
                 </div>
             </div>
+            <p id="resolution-label" class="mt-4 text-sm text-gray-500 dark:text-gray-400">
+                <span class="font-medium">Active model:</span> {{ resolution_label }}
+                <span class="text-gray-400 dark:text-gray-500">(detected device: {{ device_platform_name }})</span>
+            </p>
         </div>
 
         <!-- Profile Selection -->
@@ -190,11 +194,11 @@
                     </thead>
                     <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                         {% for model in models %}
-                        <tr class="{% if model.name == active_profile.model %}bg-blue-50 dark:bg-blue-900/20{% endif %}">
+                        <tr class="{% if model.name == effective_model %}bg-blue-50 dark:bg-blue-900/20{% endif %}">
                             <td class="px-4 py-3 whitespace-nowrap">
                                 <div class="flex items-center">
                                     <span class="text-sm font-medium text-gray-900 dark:text-white">{{ model.name }}</span>
-                                    {% if model.name == active_profile.model %}
+                                    {% if model.name == effective_model %}
                                     <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
                                         Active
                                     </span>

@@ -57,7 +57,9 @@ Introduce a `device_profiles` top-level block (config version bumped to `"2.1"`)
 }
 ```
 
-macOS model tags are subject to confirmation during Issue #318 (MBP verification). If `qwen3.6:35b` is not available as an Ollama tag, `qwen3:14b` serves as the quality fallback on macOS.
+macOS model tags are subject to confirmation during Issue #331 (MBP verification). If `qwen3.6:35b` is not available as an Ollama tag, `qwen3:14b` serves as the quality fallback on macOS.
+
+**Update (2026-08-11):** all three macOS tags (`qwen3:4b`, `qwen3:14b`, `qwen3.6:35b`) and the Windows tags were confirmed to exist on the Ollama registry. Live pull/benchmark verification is tracked in #331 (macOS) and #332 (Windows) — the latter also covers a newly identified risk: `deepseek-r1:14b` emits `<think>...</think>` reasoning blocks by default, which `app/llm_output.py` does not currently handle before JSON parsing.
 
 ### 2. Model assignments
 
@@ -118,12 +120,14 @@ LLMfit analysis should be re-run when hardware changes meaningfully (new GPU, VR
 
 ## References
 
-- GitHub milestone: [v0.9.4 — Model Optimisation & Platform Intelligence](https://github.com/Deim0s13/newsbrief/milestone/46)
-- Issue #315 — Write ADR-0033
+- GitHub milestone: [v0.8.7 — Model Optimisation & Platform Intelligence](https://github.com/Deim0s13/newsbrief/milestone/46)
+- Issue #315 — Write ADR-0033 (closed — this document)
 - Issue #316 — Add model specs to model_config.json
 - Issue #317 — Add device_profiles block
-- Issue #318 — Verify macOS models on MBP
 - Issue #319 — Implement device-aware model resolution in SettingsService
 - Issue #320 — Surface effective model in /config UI
 - Issue #321 — Unit tests for device-aware model resolution
 - Issue #322 — Update MODEL-PROFILES.md and ARCHITECTURE.md
+- Issue #329 — Verify Ollama's native MLX backend on macOS
+- Issue #331 — Verify macOS candidate model tags
+- Issue #332 — Validate Windows model swap (incl. deepseek-r1 thinking-block risk)

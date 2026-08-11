@@ -135,10 +135,15 @@ def ollamaz() -> dict:
         except Exception:
             models = []
 
+        resolution = get_settings_service().get_model_resolution_info()
+
         return {
             "status": "healthy",
             "url": OLLAMA_BASE_URL,
-            "default_model": get_settings_service().get_active_model(),
+            "default_model": resolution.model,
+            "effective_model": resolution.model,
+            "detected_platform": resolution.platform,
+            "resolution_source": resolution.source,
             "models_available": len(models),
             "models": models[:10],
         }

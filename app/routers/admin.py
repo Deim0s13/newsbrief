@@ -641,6 +641,30 @@ def topics_management_page(request: Request):
     )
 
 
+_PLATFORM_DISPLAY_NAMES = {
+    "windows": "Windows",
+    "darwin": "macOS",
+    "linux": "Linux",
+}
+
+
+def _resolution_label(resolution, active_profile) -> str:
+    """Human-readable summary of why a given model is active (#320, ADR-0033)."""
+    platform_name = _PLATFORM_DISPLAY_NAMES.get(
+        resolution.platform, resolution.platform
+    )
+    if resolution.source == "override":
+        return f"{resolution.model} — manual override"
+    if resolution.source == "device_profile":
+        return (
+            f"{resolution.model} — {active_profile.name} profile "
+            f"via {platform_name} device default"
+        )
+    if resolution.source == "generic_profile":
+        return f"{resolution.model} — {active_profile.name} profile (generic default)"
+    return f"{resolution.model} — environment default"
+
+
 @router.get("/admin/models", response_class=HTMLResponse)
 def models_management_page(request: Request):
     """Model configuration dashboard for LLM profile management."""
@@ -649,6 +673,7 @@ def models_management_page(request: Request):
     active_profile_id = settings.get_active_profile()
     active_profile = settings.get_profile_info(active_profile_id)
     models = settings.get_available_models()
+    resolution = settings.get_model_resolution_info()
     return templates.TemplateResponse(
         request,
         "models_management.html",
@@ -658,6 +683,13 @@ def models_management_page(request: Request):
             "profiles": profiles,
             "active_profile": active_profile,
             "models": models,
+            "effective_model": resolution.model,
+            "device_platform": resolution.platform,
+            "device_platform_name": _PLATFORM_DISPLAY_NAMES.get(
+                resolution.platform, resolution.platform
+            ),
+            "resolution_source": resolution.source,
+            "resolution_label": _resolution_label(resolution, active_profile),
         },
     )
 

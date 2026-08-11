@@ -1,6 +1,6 @@
 {
-  "version": "2.0",
-  "description": "LLM model configuration with profile support",
+  "version": "2.1",
+  "description": "LLM model configuration with profile support and hardware-informed device profiles (ADR-0033)",
   "embedding": {
     "enabled": true,
     "model_version": "1.0",
@@ -53,13 +53,31 @@
       "vram_required_gb": 20
     },
     "llama3.1:8b": {
-      "context_window": 8192,
+      "context_window": 131072,
       "synthesis_budget": 6000,
       "output_reserved": 1000,
-      "description": "Llama 3.1 8B - previous default",
+      "description": "Llama 3.1 8B - LLMfit Windows fast profile (score 79.4, 92.1 tok/s). Native context is 128K but synthesis_budget is kept conservative for fast-profile latency; raise if larger clusters need more room (ADR-0033)",
       "family": "llama",
       "parameters": "8B",
-      "vram_required_gb": 5
+      "vram_required_gb": 10
+    },
+    "qwen3:14b": {
+      "context_window": 40960,
+      "synthesis_budget": 28000,
+      "output_reserved": 2000,
+      "description": "Qwen 3 14B - LLMfit balanced profile for both Windows and macOS (score 72.2, ~50 tok/s on Windows). Newer generation than qwen2.5:14b (ADR-0033)",
+      "family": "qwen",
+      "parameters": "14B",
+      "vram_required_gb": 14
+    },
+    "deepseek-r1:14b": {
+      "context_window": 131072,
+      "synthesis_budget": 24000,
+      "output_reserved": 4000,
+      "description": "DeepSeek R1 14B - LLMfit Windows quality profile (highest score, 84.9, 51.2 tok/s). Reasoning model - emits <think> blocks by default; output_reserved increased to absorb chain-of-thought tokens. JSON-output compliance not yet validated against llm_output.py - see #332 before enabling as default (ADR-0033)",
+      "family": "deepseek",
+      "parameters": "14B",
+      "vram_required_gb": 14
     },
     "llama3.2:3b": {
       "context_window": 8192,
@@ -97,6 +115,19 @@
       "parameters": "9B",
       "vram_required_gb": 6
     }
+  },
+  "device_profiles": {
+    "windows": {
+      "fast": "llama3.1:8b",
+      "balanced": "qwen3:14b",
+      "quality": "deepseek-r1:14b"
+    },
+    "darwin": {
+      "fast": "qwen3:4b",
+      "balanced": "qwen3:14b",
+      "quality": "qwen3.6:35b"
+    },
+    "_description": "Platform key -> profile name -> Ollama model tag (ADR-0033). Consulted by SettingsService.get_active_model() before the generic 'profiles' fallback below (#319). Windows values pending live validation (#332, incl. deepseek-r1:14b JSON-output risk); darwin values pending live validation (#331). NOT YET WIRED IN as of #316/#317 - generic 'profiles' below still drives production until #319 lands and each platform's models are confirmed."
   },
   "profiles": {
     "fast": {

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -26,6 +27,28 @@ DEFAULT_SETTINGS = {
     "active_profile": "balanced",
     "model_override": None,  # Optional: override profile model
 }
+
+# sys.platform -> canonical device_profiles key (ADR-0033, #319)
+_PLATFORM_KEY_MAP = {
+    "win32": "windows",
+    "cygwin": "windows",
+    "darwin": "darwin",
+}
+
+
+def _get_platform_key() -> str:
+    """
+    Resolve the canonical device platform key used to look up ``device_profiles``
+    in model_config.json.
+
+    Checks ``NEWSBRIEF_DEVICE_TYPE`` first (required in containers, where
+    ``sys.platform`` is always ``linux`` regardless of the host OS), then falls
+    back to ``sys.platform``. Unrecognised platforms map to ``"linux"``.
+    """
+    override = os.environ.get("NEWSBRIEF_DEVICE_TYPE")
+    if override:
+        return override.strip().lower()
+    return _PLATFORM_KEY_MAP.get(sys.platform, "linux")
 
 
 @dataclass
@@ -54,6 +77,18 @@ class ProfileInfo:
     expected_time_per_story: str
     quality_level: str
     use_cases: List[str]
+
+
+@dataclass
+class ModelResolutionInfo:
+    """
+    Result of resolving the active model, including which resolution path
+    produced it (ADR-0033, #319/#320).
+    """
+
+    model: str
+    source: str  # "override" | "device_profile" | "generic_profile" | "env_default"
+    platform: str  # resolved device_profiles platform key, e.g. "darwin", "windows"
 
 
 class SettingsService:
@@ -240,39 +275,71 @@ class SettingsService:
             vram_required_gb=model_data.get("vram_required_gb", 0),
         )
 
-    def get_active_model(self) -> str:
+    def get_device_platform(self) -> str:
         """
-        Get the model name to use based on current settings.
+        Public accessor for the resolved device platform key (ADR-0033, #319).
+
+        Used by the /config UI (#320) and health/admin endpoints to show which
+        device_profiles entry (if any) is influencing model resolution.
+        """
+        return _get_platform_key()
+
+    def get_model_resolution_info(self) -> "ModelResolutionInfo":
+        """
+        Resolve the active model and report which resolution path produced it
+        (ADR-0033, #319/#320).
 
         Resolution order:
-        1. Model override (if set)
-        2. Active profile's model
-        3. Environment variable NEWSBRIEF_LLM_MODEL
-        4. Fallback to llama3.1:8b
+        1. Model override (if set) - highest precedence -> source="override"
+        2. device_profiles[platform_key][active_profile] -> source="device_profile"
+        3. profiles[active_profile].model (generic fallback) -> source="generic_profile"
+        4. NEWSBRIEF_LLM_MODEL env var / hardcoded default -> source="env_default"
         """
         settings = self._load_settings()
+        platform_key = _get_platform_key()
 
-        # Check for explicit override
         model_override = settings.get("model_override")
         if model_override:
             logger.debug(f"Using model override: {model_override}")
-            return model_override
+            return ModelResolutionInfo(
+                model=model_override, source="override", platform=platform_key
+            )
 
-        # Get from active profile
         profile_id = settings.get("active_profile", "balanced")
         config = self._load_model_config()
-        profile_data = config.get("profiles", {}).get(profile_id)
 
+        device_profiles = config.get("device_profiles", {})
+        device_model = device_profiles.get(platform_key, {}).get(profile_id)
+        if device_model:
+            logger.debug(
+                f"Device profile [{platform_key}]: {profile_id} -> {device_model}"
+            )
+            return ModelResolutionInfo(
+                model=device_model, source="device_profile", platform=platform_key
+            )
+
+        profile_data = config.get("profiles", {}).get(profile_id)
         if profile_data:
             model = profile_data.get("model")
             if model:
                 logger.debug(f"Using model from profile '{profile_id}': {model}")
-                return model
+                return ModelResolutionInfo(
+                    model=model, source="generic_profile", platform=platform_key
+                )
 
-        # Fallback to environment variable or default
         env_model = os.getenv("NEWSBRIEF_LLM_MODEL", "llama3.1:8b")
         logger.debug(f"Using fallback model: {env_model}")
-        return env_model
+        return ModelResolutionInfo(
+            model=env_model, source="env_default", platform=platform_key
+        )
+
+    def get_active_model(self) -> str:
+        """
+        Get the model name to use based on current settings.
+
+        See get_model_resolution_info() for the full resolution order (ADR-0033).
+        """
+        return self.get_model_resolution_info().model
 
     def set_model_override(self, model_name: Optional[str]) -> bool:
         """

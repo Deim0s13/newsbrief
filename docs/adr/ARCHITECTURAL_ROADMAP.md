@@ -321,8 +321,9 @@ Before introducing new dependencies, evaluate:
 | **v0.8.0–0.8.3** | Foundation (complete) | Tiered extraction, LLM quality, model profiles, credibility, pipeline orchestration, cross-platform CD |
 | **v0.8.4** | Semantic Foundation (RAG, part 1) | pgvector embeddings for items + stories |
 | **v0.8.5** | Pipeline Completion | Confidence gate, synthesis routing, pipeline tests, data retention |
-| **v0.8.6** (current) | RAG Milestone Completion | Semantic search/related/similar, semantic dedup, light RAG anchors, historical linking, complexity scoring, go/no-go evaluation |
-| **v0.9.x** (next) | Intelligence Layer | Entity intelligence, multi-perspective synthesis, story evolution, smart extraction |
+| **v0.8.6** | RAG Milestone Completion | Semantic search/related/similar, semantic dedup, light RAG anchors, historical linking, complexity scoring, go/no-go evaluation |
+| **v0.8.7** (next) | Model Optimisation & Platform Intelligence | Hardware-informed, device-aware model profiles ([ADR-0033](0033-hardware-informed-model-selection.md)); MLX backend verification on macOS; embedding model re-evaluation |
+| **v0.9.x** | Intelligence Layer | Entity intelligence, multi-perspective synthesis, story evolution, smart extraction |
 | **v0.10.x** | Context Layer | Why this matters, trend detection, confidence & transparency UI |
 | **v0.11.x** | Experience Layer | Reading tiers, audio/TTS, enhanced visualizations |
 | **v1.0.x** | Production Ready | Auth, multi-user capability, data portability |
