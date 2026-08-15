@@ -127,7 +127,7 @@
       "balanced": "qwen3:14b",
       "quality": "qwen3.6:35b"
     },
-    "_description": "Platform key -> profile name -> Ollama model tag (ADR-0033). Consulted by SettingsService.get_active_model() before the generic 'profiles' fallback below (#319). Windows values pending live validation (#332, incl. deepseek-r1:14b JSON-output risk); darwin values pending live validation (#331). NOT YET WIRED IN as of #316/#317 - generic 'profiles' below still drives production until #319 lands and each platform's models are confirmed."
+    "_description": "Platform key -> profile name -> model tag (ADR-0033). Consulted by SettingsService.get_active_model()/get_backend_type() before the generic 'profiles' fallback below (wired in via #319/#335). Windows values pending live validation (#332, incl. deepseek-r1:14b JSON-output risk). Darwin values are Ollama-tag placeholders being replaced by MLX model IDs served via oMLX (#336) - do not treat as final. An optional 'backend' key per platform (default 'ollama') selects the inference backend (#335); darwin will set this to 'mlx' in #336."
   },
   "profiles": {
     "fast": {

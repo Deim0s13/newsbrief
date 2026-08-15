@@ -12,6 +12,7 @@ from sqlalchemy import text
 
 from .datetime_utils import coerce_datetime
 from .db import session_scope
+from .llm_backends import LLMBackend, get_backend
 from .models import (
     ChunkSummary,
     StructuredSummary,
@@ -76,10 +77,15 @@ class SummaryResult:
 class LLMService:
     """Service for LLM-based content summarization using Ollama."""
 
-    def __init__(self, base_url: str = OLLAMA_BASE_URL, model: Optional[str] = None):
+    def __init__(
+        self,
+        base_url: str = OLLAMA_BASE_URL,
+        model: Optional[str] = None,
+        backend: Optional[LLMBackend] = None,
+    ):
         self.base_url = base_url
         self._model_override = model  # Explicit model override
-        self._client = None
+        self._backend = backend  # Injected/lazy-resolved LLMBackend (#335)
 
     @property
     def model(self) -> str:
@@ -94,54 +100,38 @@ class LLMService:
         self._model_override = value
 
     @property
-    def client(self):
-        """Lazy initialization of Ollama client."""
-        if self._client is None:
-            try:
-                import ollama
+    def backend(self) -> LLMBackend:
+        """
+        Resolve the LLM backend for the current platform (ADR-0025/ADR-0033, #335).
 
-                self._client = ollama.Client(host=self.base_url)
-            except ImportError:
-                logger.error("Ollama package not installed. Run: pip install ollama")
-                raise
-            except Exception as e:
-                logger.error(f"Failed to initialize Ollama client: {e}")
-                raise
-        return self._client
+        Defaults to `OllamaBackend` everywhere today; a platform's
+        `device_profiles.<platform>.backend` in model_config.json can select
+        an alternative (e.g. `"mlx"` on macOS, #336).
+        """
+        if self._backend is None:
+            self._backend = get_backend(self.base_url)
+        return self._backend
+
+    @property
+    def client(self):
+        """
+        Raw underlying client for the resolved backend (Ollama today).
+
+        Kept for backward compatibility with call sites that reach through
+        this directly (`stories.py`, `entities.py`, `topics.py`,
+        `routers/health.py`, `routers/items.py`) -- migrated to call through
+        `self.backend` directly in #337.
+        """
+        return self.backend.raw_client
 
     def is_available(self) -> bool:
-        """Check if Ollama service is available."""
-        try:
-            import httpx
-
-            response = httpx.get(f"{self.base_url}/api/tags", timeout=3.0)
-            return response.status_code == 200
-        except Exception as e:
-            logger.warning(f"Ollama service not available: {e}")
-            return False
+        """Check if the LLM backend service is available."""
+        return self.backend.is_available()
 
     def ensure_model(self, model: Optional[str] = None) -> bool:
         """Ensure the specified model is available, pull if necessary."""
         model = model or self.model
-        try:
-            models = self.client.list()
-            # Handle different response formats
-            if isinstance(models, dict) and "models" in models:
-                model_names = [
-                    m.get("name", m.get("model", "")) for m in models["models"] if m
-                ]
-            else:
-                model_names = []
-
-            if model not in model_names:
-                logger.info(f"Pulling model {model}...")
-                self.client.pull(model)
-                logger.info(f"Successfully pulled model {model}")
-
-            return True
-        except Exception as e:
-            logger.error(f"Failed to ensure model {model}: {e}")
-            return False
+        return self.backend.ensure_model(model)
 
     def _count_tokens(self, text: str, model: str = "cl100k_base") -> int:
         """Count tokens in text using tiktoken."""
@@ -387,7 +377,7 @@ JSON Response:"""
                 title, chunk.content, chunk.chunk_index, 1
             )  # Will be updated with actual total
 
-            response = self.client.generate(
+            response = self.backend.generate(
                 model=model,
                 prompt=prompt,
                 options={
@@ -450,7 +440,7 @@ JSON Response:"""
         try:
             prompt = self._create_merge_summary_prompt(title, chunk_summaries)
 
-            response = self.client.generate(
+            response = self.backend.generate(
                 model=model,
                 prompt=prompt,
                 options={
@@ -817,7 +807,7 @@ JSON Response:"""
         prompt = self._create_structured_summary_prompt(title, content)
 
         logger.info(f"Generating direct structured summary with model {model}")
-        response = self.client.generate(
+        response = self.backend.generate(
             model=model,
             prompt=prompt,
             options={
@@ -996,7 +986,7 @@ Article:
 Summary:"""
 
         logger.info(f"Generating legacy summary with model {model}")
-        response = self.client.generate(
+        response = self.backend.generate(
             model=model,
             prompt=prompt,
             options={

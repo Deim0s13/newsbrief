@@ -284,6 +284,20 @@ class SettingsService:
         """
         return _get_platform_key()
 
+    def get_backend_type(self) -> str:
+        """
+        Resolve which LLM inference backend to use for the current platform
+        (ADR-0025/ADR-0033, #335).
+
+        Reads `device_profiles[platform_key].backend` from model_config.json.
+        Defaults to `"ollama"` when absent -- every platform runs Ollama today;
+        macOS gains an `"mlx"` option once #336 lands.
+        """
+        platform_key = _get_platform_key()
+        config = self._load_model_config()
+        device_profiles = config.get("device_profiles", {})
+        return device_profiles.get(platform_key, {}).get("backend", "ollama")
+
     def get_model_resolution_info(self) -> "ModelResolutionInfo":
         """
         Resolve the active model and report which resolution path produced it

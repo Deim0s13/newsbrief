@@ -183,6 +183,60 @@ class TestGetDevicePlatform:
 
 
 # ---------------------------------------------------------------------------
+# get_backend_type() - LLM backend selection (#335)
+# ---------------------------------------------------------------------------
+
+
+class TestGetBackendType:
+    def test_defaults_to_ollama_when_backend_key_absent(self, monkeypatch):
+        """Neither windows nor darwin set a 'backend' key yet - both default to ollama."""
+        monkeypatch.setenv("NEWSBRIEF_DEVICE_TYPE", "darwin")
+        svc = _service(SAMPLE_MODEL_CONFIG)
+        assert svc.get_backend_type() == "ollama"
+
+    def test_defaults_to_ollama_when_device_profiles_absent(self, monkeypatch):
+        monkeypatch.setenv("NEWSBRIEF_DEVICE_TYPE", "darwin")
+        svc = _service(SAMPLE_MODEL_CONFIG_NO_DEVICE_PROFILES)
+        assert svc.get_backend_type() == "ollama"
+
+    def test_defaults_to_ollama_when_platform_not_in_device_profiles(self, monkeypatch):
+        monkeypatch.setenv("NEWSBRIEF_DEVICE_TYPE", "linux")
+        svc = _service(SAMPLE_MODEL_CONFIG)
+        assert svc.get_backend_type() == "ollama"
+
+    def test_returns_explicit_backend_when_configured(self, monkeypatch):
+        """Forward-looking: once #336 sets darwin.backend = "mlx", it should resolve."""
+        monkeypatch.setenv("NEWSBRIEF_DEVICE_TYPE", "darwin")
+        config = {
+            **SAMPLE_MODEL_CONFIG,
+            "device_profiles": {
+                **SAMPLE_MODEL_CONFIG["device_profiles"],
+                "darwin": {
+                    **SAMPLE_MODEL_CONFIG["device_profiles"]["darwin"],
+                    "backend": "mlx",
+                },
+            },
+        }
+        svc = _service(config)
+        assert svc.get_backend_type() == "mlx"
+
+    def test_windows_backend_unaffected_by_darwin_backend_override(self, monkeypatch):
+        monkeypatch.setenv("NEWSBRIEF_DEVICE_TYPE", "windows")
+        config = {
+            **SAMPLE_MODEL_CONFIG,
+            "device_profiles": {
+                **SAMPLE_MODEL_CONFIG["device_profiles"],
+                "darwin": {
+                    **SAMPLE_MODEL_CONFIG["device_profiles"]["darwin"],
+                    "backend": "mlx",
+                },
+            },
+        }
+        svc = _service(config)
+        assert svc.get_backend_type() == "ollama"
+
+
+# ---------------------------------------------------------------------------
 # get_model_resolution_info() - resolution source reporting (#320)
 # ---------------------------------------------------------------------------
 
