@@ -115,12 +115,14 @@ class LLMService:
     @property
     def client(self):
         """
-        Raw underlying client for the resolved backend (Ollama today).
+        Raw underlying `ollama.Client` for the resolved backend.
 
-        Kept for backward compatibility with call sites that reach through
-        this directly (`stories.py`, `entities.py`, `topics.py`,
-        `routers/health.py`, `routers/items.py`) -- migrated to call through
-        `self.backend` directly in #337.
+        Legacy passthrough kept for any remaining external callers; internal
+        call sites (`stories.py`, `entities.py`, `topics.py`,
+        `routers/health.py`, `routers/items.py`) were migrated to call
+        through `self.backend` directly in #337. Only meaningful when the
+        resolved backend is `OllamaBackend` -- raises if the platform is on
+        `OMLXBackend` (macOS + `mlx`), which has no `ollama.Client`.
         """
         return self.backend.raw_client
 

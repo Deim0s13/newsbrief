@@ -114,6 +114,33 @@
       "family": "gemma",
       "parameters": "9B",
       "vram_required_gb": 6
+    },
+    "mlx-community--Llama-3.2-3B-Instruct-4bit": {
+      "context_window": 32768,
+      "synthesis_budget": 24000,
+      "output_reserved": 2000,
+      "description": "Llama 3.2 3B (MLX 4-bit) - macOS fast profile, served via oMLX (device_profiles.darwin.backend = 'mlx'). Native context 131K per /v1/models, capped to oMLX's configured max_context_window (32768). Validated against llm_output.py on real synthesis/entity prompts: PARSE_OK via brace-matching repair (trailing chat-template noise after JSON closes on raw /v1/completions, not a parsing failure) (#336)",
+      "family": "llama",
+      "parameters": "3B",
+      "vram_required_gb": 2
+    },
+    "lmstudio-community--Qwen3-30B-A3B-Instruct-2507-MLX-4bit": {
+      "context_window": 32768,
+      "synthesis_budget": 24000,
+      "output_reserved": 2000,
+      "description": "Qwen 3 30B-A3B MoE (MLX 4-bit) - macOS balanced profile, served via oMLX (device_profiles.darwin.backend = 'mlx'). ~3B active params per token keeps latency low despite the 30B total size. Native context 262K per /v1/models, capped to oMLX's configured max_context_window (32768). Validated against llm_output.py: PARSE_OK, no repairs, faster than the qwen2.5:14b Ollama baseline on both synthesis and entity-extraction prompts (#336)",
+      "family": "qwen",
+      "parameters": "30B-A3B",
+      "vram_required_gb": 18
+    },
+    "unsloth--Qwen3.6-35B-A3B-UD-MLX-4bit": {
+      "context_window": 32768,
+      "synthesis_budget": 24000,
+      "output_reserved": 4000,
+      "description": "Qwen 3.6 35B-A3B MoE (MLX 4-bit, unsloth dynamic quant) - macOS quality profile, served via oMLX (device_profiles.darwin.backend = 'mlx'). Native context 262K per /v1/models, capped to oMLX's configured max_context_window (32768). Occasionally emits an empty <think></think> wrapper (unlike deepseek-r1:14b's verbose chain-of-thought flagged in #332) plus trailing chat-template noise after the JSON closes on raw /v1/completions - both handled by llm_output.py's brace-matching repair (validated PARSE_OK on real synthesis/entity prompts, #336). The unquantized bfloat16 Qwen3.5-35B-A3B build was rejected separately during fitness testing (507 insufficient-storage on load, unrelated silent JSON failures)",
+      "family": "qwen",
+      "parameters": "35B-A3B",
+      "vram_required_gb": 20
     }
   },
   "device_profiles": {
@@ -123,11 +150,12 @@
       "quality": "deepseek-r1:14b"
     },
     "darwin": {
-      "fast": "qwen3:4b",
-      "balanced": "qwen3:14b",
-      "quality": "qwen3.6:35b"
+      "backend": "mlx",
+      "fast": "mlx-community--Llama-3.2-3B-Instruct-4bit",
+      "balanced": "lmstudio-community--Qwen3-30B-A3B-Instruct-2507-MLX-4bit",
+      "quality": "unsloth--Qwen3.6-35B-A3B-UD-MLX-4bit"
     },
-    "_description": "Platform key -> profile name -> model tag (ADR-0033). Consulted by SettingsService.get_active_model()/get_backend_type() before the generic 'profiles' fallback below (wired in via #319/#335). Windows values pending live validation (#332, incl. deepseek-r1:14b JSON-output risk). Darwin values are Ollama-tag placeholders being replaced by MLX model IDs served via oMLX (#336) - do not treat as final. An optional 'backend' key per platform (default 'ollama') selects the inference backend (#335); darwin will set this to 'mlx' in #336."
+    "_description": "Platform key -> profile name -> model tag (ADR-0033). Consulted by SettingsService.get_active_model()/get_backend_type() before the generic 'profiles' fallback below (wired in via #319/#335). Windows values pending live validation (#332, incl. deepseek-r1:14b JSON-output risk). Darwin runs the 'mlx' backend (#335/#336) served by a shared oMLX instance (OMLX_BASE_URL/OMLX_API_KEY env vars) instead of Ollama; model IDs are oMLX/HuggingFace-style, not Ollama tags. An optional 'backend' key per platform (default 'ollama') selects the inference backend; stories.py/entities.py/topics.py and the health/status routers all resolve it via LLMService.backend (#337) rather than talking to ollama.Client directly."
   },
   "profiles": {
     "fast": {

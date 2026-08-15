@@ -401,7 +401,7 @@ class TestEntityExtraction:
                 }
             )
         }
-        mock_service.client = mock_client
+        mock_service.backend = mock_client
         mock_get_llm.return_value = mock_service
 
         extract_entities("Test Title", "Test summary", model="qwen2.5:14b")
@@ -423,7 +423,7 @@ class TestEntityExtraction:
         entities = extract_entities("Test Title", "Test summary", model="qwen2.5:14b")
 
         assert entities.is_empty()
-        mock_service.client.generate.assert_not_called()
+        mock_service.backend.generate.assert_not_called()
 
     @patch("app.entities.get_llm_service")
     def test_extract_entities_success_legacy_format(self, mock_get_llm):
@@ -444,7 +444,7 @@ class TestEntityExtraction:
                 }
             )
         }
-        mock_service.client = mock_client
+        mock_service.backend = mock_client
         mock_get_llm.return_value = mock_service
 
         entities = extract_entities(
@@ -514,7 +514,7 @@ class TestEntityExtraction:
                 }
             )
         }
-        mock_service.client = mock_client
+        mock_service.backend = mock_client
         mock_get_llm.return_value = mock_service
 
         entities = extract_entities(
@@ -540,7 +540,7 @@ class TestEntityExtraction:
         mock_service.is_available.return_value = True
         mock_client = MagicMock()
         mock_client.generate.return_value = {"response": "not valid json"}
-        mock_service.client = mock_client
+        mock_service.backend = mock_client
         mock_get_llm.return_value = mock_service
 
         entities = extract_entities("Test Title", "Test summary")
@@ -574,7 +574,7 @@ class TestEntityExtraction:
                 }
             )
         }
-        mock_service.client = mock_client
+        mock_service.backend = mock_client
         mock_get_llm.return_value = mock_service
 
         entities = extract_entities("Test Title", "Test summary", enhanced=False)

@@ -237,7 +237,7 @@ def _call_llm(prompt: str, model: Optional[str] = None) -> Optional[str]:
         if not llm_service.is_available():
             return None
 
-        response = llm_service.client.generate(
+        response = llm_service.backend.generate(
             model=model or llm_service.model,
             prompt=prompt,
             options={"temperature": 0.1, "num_predict": 150},
@@ -671,7 +671,7 @@ def classify_topic_enhanced(
         prompt = _create_enhanced_classification_prompt(title, summary or "", topics)
 
         # Call LLM with slightly higher token limit for detailed response
-        response = llm_service.client.generate(
+        response = llm_service.backend.generate(
             model=model or llm_service.model,
             prompt=prompt,
             options={"temperature": 0.1, "num_predict": 350},

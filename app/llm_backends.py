@@ -1,31 +1,41 @@
 """
-Pluggable LLM backend abstraction (#335, ADR-0025/ADR-0033).
+Pluggable LLM backend abstraction (#335/#336, ADR-0025/ADR-0033).
 
 `app/llm.py` and several call sites (`stories.py`, `entities.py`, `topics.py`,
 `routers/health.py`, `routers/items.py`) were tightly coupled to `ollama.Client`.
 This module introduces a small backend interface so the underlying inference
 server can be selected per platform via `device_profiles[<platform>].backend`
-in `data/model_config.json` (Ollama everywhere by default; MLX-based serving
-on macOS, see #336) without changing call-site code.
+in `data/model_config.json`: `OllamaBackend` (default, all platforms) or
+`OMLXBackend` (macOS, shared oMLX instance -- ADR-0033 addendum for the
+throughput rationale) -- without changing call-site code.
 
-This issue (#335) is a pure refactor: `LLMService` now routes its own calls
-through `OllamaBackend` instead of talking to `ollama.Client` directly, but
-observable behavior is unchanged. `LLMService.client` still returns the raw
-`ollama.Client` instance for the external call sites listed above -- they are
-migrated to call through the abstraction directly in #337.
+#335 was a pure refactor: `LLMService` routes its own calls through the
+resolved backend instead of talking to `ollama.Client` directly, but
+observable behavior is unchanged while `device_profiles.<platform>.backend`
+stays `"ollama"` everywhere. #337 migrated the external call sites listed
+above to call through `LLMService.backend` directly; `LLMService.client`
+remains only as a legacy passthrough to the raw `ollama.Client`.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
+import os
+from typing import Any, Callable, Dict, List, Optional, Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
+
+# oMLX connection config (#336). Same shared instance also used by the
+# separate ai-lab project -- see #334 for the reachability/contention notes.
+OMLX_BASE_URL = os.getenv("OMLX_BASE_URL", "http://localhost:8000")
+OMLX_API_KEY = os.getenv("OMLX_API_KEY", "")
 
 
 @runtime_checkable
 class LLMBackend(Protocol):
     """Common interface for a local LLM inference backend."""
+
+    base_url: str
 
     def generate(
         self,
@@ -55,8 +65,8 @@ class OllamaBackend:
     """
     LLMBackend implementation wrapping the `ollama` Python client.
 
-    Default backend on all platforms today; Windows stays on this
-    permanently, macOS may switch to `OMLXBackend` once #336 lands.
+    Default backend on all platforms; Windows stays on this permanently.
+    macOS can switch to `OMLXBackend` via `device_profiles.darwin.backend`.
     """
 
     def __init__(self, base_url: str):
@@ -126,9 +136,131 @@ class OllamaBackend:
             return False
 
 
-# Registry of implemented backend types. "mlx" is added in #336.
-_BACKEND_TYPES = {
-    "ollama": OllamaBackend,
+# Ollama `options` keys that have a direct equivalent in oMLX's OpenAI-compatible
+# `/v1/completions` API. `top_k` and `repeat_penalty` have no equivalent there
+# and are dropped (logged at debug) rather than raising -- call sites build
+# these dicts assuming Ollama and are migrated to the abstraction in #337, not
+# rewritten to be backend-aware.
+_OMLX_OPTION_MAP = {
+    "temperature": "temperature",
+    "top_p": "top_p",
+    "num_predict": "max_tokens",
+    "max_tokens": "max_tokens",
+}
+_OMLX_DEFAULT_MAX_TOKENS = 900
+
+
+def _translate_options_for_omlx(options: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Map an Ollama-style `options` dict onto oMLX's OpenAI-compatible params."""
+    translated: Dict[str, Any] = {}
+    dropped = []
+    for key, value in (options or {}).items():
+        mapped_key = _OMLX_OPTION_MAP.get(key)
+        if mapped_key:
+            translated[mapped_key] = value
+        else:
+            dropped.append(key)
+    if dropped:
+        logger.debug(f"oMLX backend: dropping unsupported options {dropped}")
+    translated.setdefault("max_tokens", _OMLX_DEFAULT_MAX_TOKENS)
+    return translated
+
+
+class OMLXBackend:
+    """
+    LLMBackend implementation targeting a shared oMLX instance's
+    OpenAI-compatible API (ADR-0025/ADR-0033 amendment, #336).
+
+    macOS-only today. Models must already be present in oMLX's local model
+    directory (`~/.omlx/models`) -- unlike Ollama, this backend does not pull
+    models on demand; `ensure_model()` only checks availability.
+    """
+
+    def __init__(
+        self,
+        base_url: str = OMLX_BASE_URL,
+        api_key: str = OMLX_API_KEY,
+    ):
+        self.base_url = base_url
+        self.api_key = api_key
+
+    def _headers(self) -> Dict[str, str]:
+        return {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+
+    def generate(
+        self,
+        model: str,
+        prompt: str,
+        options: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        import httpx
+
+        if kwargs:
+            # e.g. `think=True` (#286, stories.py chain-of-thought mode) has no
+            # equivalent in oMLX's completions API and is silently dropped.
+            logger.debug(f"oMLX backend: ignoring unsupported kwargs {sorted(kwargs)}")
+
+        payload = {"model": model, "prompt": prompt}
+        payload.update(_translate_options_for_omlx(options))
+
+        response = httpx.post(
+            f"{self.base_url}/v1/completions",
+            headers=self._headers(),
+            json=payload,
+            timeout=300.0,
+        )
+        response.raise_for_status()
+        data = response.json()
+        text = data["choices"][0]["text"]
+        # Shaped like ollama.Client().generate()'s return value so callers
+        # that read response["response"] work unchanged once migrated (#337).
+        return {"response": text, "raw": data}
+
+    def list_models(self) -> List[str]:
+        import httpx
+
+        try:
+            response = httpx.get(
+                f"{self.base_url}/v1/models", headers=self._headers(), timeout=5.0
+            )
+            response.raise_for_status()
+            data = response.json()
+        except Exception as e:
+            logger.error(f"Failed to list oMLX models: {e}")
+            return []
+
+        return [m.get("id", "") for m in data.get("data", []) if m]
+
+    def ensure_model(self, model: str) -> bool:
+        available = self.list_models()
+        if model in available:
+            return True
+        logger.error(
+            f"Model '{model}' not found on oMLX instance ({self.base_url}). "
+            "oMLX does not auto-download models -- it must already be present "
+            "in ~/.omlx/models. Available: "
+            f"{available}"
+        )
+        return False
+
+    def is_available(self) -> bool:
+        import httpx
+
+        try:
+            response = httpx.get(
+                f"{self.base_url}/v1/models", headers=self._headers(), timeout=3.0
+            )
+            return response.status_code == 200
+        except Exception as e:
+            logger.warning(f"oMLX service not available: {e}")
+            return False
+
+
+# Registry of implemented backend types, keyed by `device_profiles.<platform>.backend`.
+_BACKEND_TYPES: Dict[str, Callable[[str], LLMBackend]] = {
+    "ollama": lambda base_url: OllamaBackend(base_url),
+    "mlx": lambda base_url: OMLXBackend(),
 }
 
 
@@ -137,8 +269,10 @@ def get_backend(base_url: str, backend_type: Optional[str] = None) -> LLMBackend
     Resolve an `LLMBackend` instance.
 
     Args:
-        base_url: Base URL for the backend service (e.g. `OLLAMA_BASE_URL`).
-        backend_type: Explicit backend type (currently only `"ollama"`). If
+        base_url: Base URL for the Ollama backend (e.g. `OLLAMA_BASE_URL`).
+            Ignored for the `"mlx"` backend, which reads its own connection
+            config from `OMLX_BASE_URL`/`OMLX_API_KEY`.
+        backend_type: Explicit backend type (`"ollama"` or `"mlx"`). If
             omitted, resolved from the current platform's `device_profiles`
             config (`SettingsService.get_backend_type()`, ADR-0033/#335).
     """
@@ -156,11 +290,11 @@ def get_backend(base_url: str, backend_type: Optional[str] = None) -> LLMBackend
 
     backend_type = (backend_type or "ollama").lower()
 
-    backend_cls = _BACKEND_TYPES.get(backend_type)
-    if backend_cls is None:
+    backend_factory = _BACKEND_TYPES.get(backend_type)
+    if backend_factory is None:
         raise ValueError(
             f"Unsupported LLM backend '{backend_type}'. Implemented backends: "
-            f"{sorted(_BACKEND_TYPES)}. MLX support lands in #336."
+            f"{sorted(_BACKEND_TYPES)}."
         )
 
-    return backend_cls(base_url)
+    return backend_factory(base_url)

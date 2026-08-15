@@ -448,7 +448,7 @@ def extract_entities(
         )
 
         # Call LLM
-        response = llm_service.client.generate(
+        response = llm_service.backend.generate(
             model=model,
             prompt=prompt,
             options={

@@ -1769,7 +1769,7 @@ def _run_llm_call(
     }
     if think:
         kwargs["think"] = True
-    response = llm_service.client.generate(**kwargs)
+    response = llm_service.backend.generate(**kwargs)
     return response.get("response", "")
 
 
