@@ -416,7 +416,7 @@ sequenceDiagram
 | **Database** | PostgreSQL 16 (+ pgvector in app images) | ACID, dev/prod parity (ADR-0022) |
 | **ORM** | SQLAlchemy 2.0 | Database abstraction |
 | **Migrations** | Alembic | Schema versioning |
-| **LLM** | Ollama (Qwen 2.5 14B default) | Local, private, configurable profiles (see ADR-0025) |
+| **LLM** | Platform-selectable: Ollama (Windows) / oMLX (macOS) | Local, private, configurable fast/balanced/quality profiles; backend and model chosen per-host via `device_profiles` (see ADR-0025, ADR-0033) |
 | **Scheduler** | APScheduler | Python-native background jobs |
 | **Content Extraction** | Trafilatura + Readability | Tiered extraction with fallback (see ADR-0024) |
 | **Reverse Proxy** | Caddy | Auto TLS, simple config |
@@ -1078,7 +1078,7 @@ All significant architectural decisions are documented as ADRs (Architecture Dec
 | [ADR-0022](adr/0022-dev-prod-database-parity.md) | Dev/Prod Database Parity | Accepted |
 | [ADR-0023](adr/0023-intelligence-platform-strategy.md) | Intelligence Platform Strategy | Accepted |
 | [ADR-0024](adr/0024-content-extraction-libraries.md) | Content Extraction Libraries | Accepted |
-| [ADR-0025](adr/0025-llm-model-selection.md) | LLM Model Selection (Qwen 2.5) | Accepted |
+| [ADR-0025](adr/0025-llm-model-selection.md) | LLM Model Selection (Qwen 2.5) | Accepted (amended Aug 2026 — platform-selectable backend) |
 | [ADR-0026](adr/0026-rag-integration-strategy.md) | RAG Integration Strategy | Accepted |
 | [ADR-0027](adr/0027-fine-tuning-deferral.md) | Fine-Tuning Deferral | Accepted |
 | [ADR-0028](adr/0028-source-credibility-architecture.md) | Source Credibility Architecture | Accepted |
@@ -1086,6 +1086,7 @@ All significant architectural decisions are documented as ADRs (Architecture Dec
 | [ADR-0030](adr/0030-article-story-processing-states.md) | Article and story processing states | Accepted |
 | [ADR-0031](adr/0031-pipeline-idempotency-and-reingest.md) | Pipeline idempotency and article re-ingest | Accepted |
 | [ADR-0032](adr/0032-cross-platform-cd-strategy.md) | Cross-Platform CD Strategy | Accepted |
+| [ADR-0033](adr/0033-hardware-informed-model-selection.md) | Hardware-Informed Model Selection (+ Aug 2026 oMLX addendum) | Accepted |
 
 ---
 

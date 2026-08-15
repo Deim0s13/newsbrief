@@ -7,7 +7,7 @@
 
 ADR-0025 established the three-profile model strategy (fast / balanced / quality) with Qwen 2.5 variants as the primary model family, validated against a single machine (MacBook Pro M4, 48 GB unified memory). ADR-0032 formalised the two-machine deployment reality: a macOS MBP and a Windows laptop, each with meaningfully different hardware.
 
-No hardware analysis had been performed against the **Windows laptop** to verify whether the chosen models were appropriate for its constraints, and the macOS models had not been revisited since the M4 evaluation. The result was a single set of model profiles applied uniformly to both hosts, despite one having 36 GB unified memory (macOS M3 Pro) and the other having a discrete 16 GB VRAM GPU (Windows RTX 4090 Laptop).
+No hardware analysis had been performed against the **Windows laptop** to verify whether the chosen models were appropriate for its constraints, and the macOS models had not been revisited since the M4 evaluation. The result was a single set of model profiles applied uniformly to both hosts, despite one having 48 GB unified memory (macOS M4 Pro) and the other having a discrete 16 GB VRAM GPU (Windows RTX 4090 Laptop).
 
 ### LLMfit Analysis
 
@@ -30,9 +30,11 @@ LLMfit (container `ghcr.io/alexsjones/llmfit`) was run on both hosts to evaluate
 
 `qwen2.5:32b` requires a minimum of 16.8 GB VRAM at Q4_K_M; with only 16 GB available it can only run at Q2_K (the lossiest available quantisation), giving a score of 59.0 — the lowest of any installed model. It is not viable as the quality profile on this hardware.
 
-**macOS (M3 Pro, 36 GB unified memory):**
+**macOS (M4 Pro, 48 GB unified memory):**
 
 Unified memory means VRAM and RAM are shared. Models up to ~30 GB fit comfortably. The MoE architecture of Qwen3.6-35B-A3B (active parameters ~3B, total 36B) loads all experts in unified memory and is Perfect fit through 128K context. Model tags on macOS to be confirmed during implementation (Issue #318).
+
+**Correction (August 2026):** the hardware description above (M3 Pro, 36 GB) was inaccurate — this ADR's own June 2026 acceptance was already validated against the M4 Pro / 48 GB machine referenced in ADR-0025's Context section, not a separate M3 Pro. No LLMfit re-run was needed for this correction; see the [addendum](#addendum-august-2026-omlx-adoption-on-macos) below for the actual macOS re-evaluation this session (which used the correct M4 Pro / 48 GB spec throughout).
 
 ---
 
@@ -131,3 +133,69 @@ LLMfit analysis should be re-run when hardware changes meaningfully (new GPU, VR
 - Issue #329 — Verify Ollama's native MLX backend on macOS
 - Issue #331 — Verify macOS candidate model tags
 - Issue #332 — Validate Windows model swap (incl. deepseek-r1 thinking-block risk)
+
+---
+
+## Addendum (August 2026): oMLX Adoption on macOS
+
+**Status: GO — adopted.** This addendum documents the evaluation and evidence behind switching the macOS backend from Ollama to [oMLX](https://github.com/omlx-org/omlx) (a standalone MLX-based inference server with an OpenAI-compatible API), which is the piece of "Issue #329 — Verify Ollama's native MLX backend on macOS" this ADR originally deferred. Windows is unaffected — it stays on Ollama with the `deepseek-r1:14b`/`qwen3:14b`/`llama3.1:8b` assignments above.
+
+### Trigger
+
+A real end-to-end story-generation run on the M4 Pro macOS host (753 backlog articles clustering into 227 groups, `qwen2.5:14b` balanced profile via Ollama) took **~3h19m wall-clock**, confirmed by profiling to be **99.98% LLM call time** (DB writes were ~16 seconds of the total). This is the exact condition ADR-0025's Risks table flagged as the trigger to revisit MLX ("Ollama performance becomes bottleneck → MLX migration path documented; can revisit if needed").
+
+### Ruling out the obvious hypothesis first
+
+Before concluding raw model throughput was the bottleneck, "is `max_workers=3` in `app/stories.py` actually running in parallel, or is Ollama serialising requests via `OLLAMA_NUM_PARALLEL`?" was tested directly — same model, same host, single call vs. 3-concurrent:
+
+| Backend / Model | Single call | 3 concurrent (total) | Notes |
+|---|---|---|---|
+| Ollama, `qwen2.5:14b` (then-current baseline) | 31.4s | 37.9s | Real concurrency confirmed — not a serialization bug |
+| MLX (`mlx_lm.server`), `qwen2.5:14b`-4bit (same model, different runtime) | 16.1s | 13.8s | ~2x faster single-call; concurrent batch adds almost no extra cost |
+| MLX, `Qwen3-30B-A3B` (MoE) | 15.7s | 7.5s | **5x faster than Ollama** on the exact 3-concurrent pattern the pipeline uses |
+
+Ollama's own concurrency was genuine (1.20x total time for 3 concurrent vs. single, i.e. real parallel scheduling — not the ~3x a naive serialization bug would show). This ruled out a quick fix and confirmed the bottleneck was raw per-call throughput plus runtime overhead, making the MLX/oMLX comparison the right next step rather than a distraction.
+
+### Newsbrief-specific model-fitness methodology
+
+Rather than trusting borrowed model picks from other projects (`ai-lab`) or generic leaderboards, each macOS profile candidate was run through Newsbrief's **actual** synthesis and entity-extraction prompts, parsed with the **actual** `app/llm_output.py` validator (including its repair/circuit-breaker logic), and cross-checked against `llmfit` (an independent hardware-fit scoring tool) as a second signal — not a replacement for the task-specific test.
+
+**Baseline (Ollama, current production model):**
+
+| Candidate | Synthesis | Entities | Total | JSON quality |
+|---|---|---|---|---|
+| Ollama `qwen2.5:14b` | 21.4s | 16.8s | 38.2s | Clean, direct parse |
+
+**Rejected candidates** (surfaced real, silent failure modes newer-generation models don't automatically avoid):
+
+| Candidate | Total | Result |
+|---|---|---|
+| oMLX `Qwen3.5-9B` | 148.9s (3.9x **slower**) | Needed JSON repair on both calls; one "parse OK" was only salvaged via regex extraction, not a clean model output |
+| oMLX `Qwen3.5-35B-A3B` (unquantized bf16) | — | 507 Insufficient Storage — exceeded available memory alongside other resident models |
+
+**Final validated candidates, all three profile tiers, via oMLX:**
+
+| Tier | Candidate | Total time | JSON quality | llmfit corroboration |
+|---|---|---|---|---|
+| fast | `Llama-3.2-3B-Instruct-4bit` | 24.6s | Parse OK, minor repair needed | Top "Chat" category score (87.4), ~100 tok/s estimated |
+| balanced | `Qwen3-30B-A3B-Instruct-2507` (MoE, ~3B active/30B total params) | 26.5s | Parse OK, **clean, no repair** — best result of all candidates tested | Tied top "Chat" category score (87.4), ~94 tok/s estimated |
+| quality | `Qwen3.6-35B-A3B` (unsloth dynamic quant, MoE) | 35.3s | Parse OK, minor repair needed | "Perfect fit" (score 74.7 base model / 77.3 for the actually-deployed MLX-4bit build) |
+
+All three beat the Ollama baseline (38.2s) individually on a single call, and the earlier concurrency test showed the gap widens sharply (up to 5x) under the pipeline's real 3-concurrent workload pattern.
+
+### End-to-end validation (#339)
+
+A full production run using the balanced-tier oMLX model against the real backlog (753 articles, 113 clusters, 14-day window) completed in **24.9 minutes**, directly comparable to the ~3h+ Ollama baseline for a similarly-sized batch — an order-of-magnitude improvement, consistent with the per-call and concurrency benchmarks above. 89 of 113 clusters (~79%) synthesized successfully; the remaining ~21% hit a distinct bug (`'NoneType' object has no attribute 'strip'`) tracked separately in [#340](https://github.com/Deim0s13/newsbrief/issues/340) — not a backend-fitness issue, and not blocking this go/no-go decision.
+
+A blocking schema bug was found and fixed during this run: `stories.model`/`synthesis_cache.model`/`llm_metrics.model` were `VARCHAR(50)`, sized for short Ollama tags (`qwen2.5:14b`), but oMLX model IDs are much longer (e.g. `lmstudio-community--Qwen3-30B-A3B-Instruct-2507-MLX-4bit`, 56 chars) — every insert failed silently until this was caught. Fixed via migration `028_widen_model_columns.py` (widened to `Text`, matching the existing convention for `items.ai_model` etc.).
+
+### Decision
+
+**Go.** macOS switches to oMLX as its default backend (`device_profiles.darwin.backend = "mlx"`), implemented via the pluggable backend abstraction in `app/llm_backends.py` (#335/#336/#337). Windows is unaffected. See ADR-0025's amendment for how this changes that ADR's original "Ollama only" recommendation.
+
+### Operational notes carried into implementation
+
+- oMLX has no pull-on-demand — new models need a full oMLX restart to be discovered, unlike Ollama's on-demand pull. Handled with clear errors rather than mid-run 404s.
+- oMLX binds to loopback by default; container reachability via `host.containers.internal` needed verification before this could proceed (#334) — confirmed reachable.
+- Shared oMLX instance with the separate `ai-lab` project: memory headroom is workable (largest three Newsbrief models ≈ 35GB against ~37-42GB available) but relies on oMLX's LRU eviction under simultaneous load rather than manual coordination — worth revisiting if contention becomes a real problem.
+- Embedding model (`nomic-embed-text` via Ollama) is untouched by this addendum — tracked separately in [#330](https://github.com/Deim0s13/newsbrief/issues/330).
