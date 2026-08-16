@@ -33,7 +33,17 @@ Usage:
     python scripts/model_fitness.py --backend ollama --model qwen3:14b --json
 
 Notes:
-- Read-only: never touches the database; DATABASE_URL is not required.
+- Read-only: never touches the database. DATABASE_URL still must be set in
+  the environment though -- `app.entities`/`app.llm` import `app.db` at
+  module level (unconditionally requires it, ADR-0022), so it needs to be
+  set even though this script issues no queries.
+  Do NOT `source .env` for this -- that file holds container-facing values
+  (`db:5432`, `host.containers.internal`) that only resolve *inside*
+  Podman, and sourcing it will also clobber OLLAMA_BASE_URL and break
+  connectivity to a host-native Ollama. Instead export the dev-DB URL
+  directly, e.g.:
+    export DATABASE_URL="postgresql://newsbrief:newsbrief_dev@localhost:5433/newsbrief"
+  and leave OLLAMA_BASE_URL unset so it defaults to localhost:11434.
 - `--think` defaults to False, matching the #332 default in
   `OllamaBackend.generate()` -- pass it to explicitly test a model's
   chain-of-thought output instead of the fast direct-answer path.
@@ -54,16 +64,34 @@ from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from app.entities import _create_entity_extraction_prompt  # noqa: E402
-from app.llm import OLLAMA_BASE_URL  # noqa: E402
-from app.llm_backends import get_backend  # noqa: E402
-from app.llm_output import (  # noqa: E402
-    EnhancedEntityOutput,
-    SynthesisOutput,
-    parse_and_validate,
-)
-from app.prompts import AnalysisResult, StoryType  # noqa: E402
-from app.prompts.synthesis import get_synthesis_prompt  # noqa: E402
+try:
+    from app.entities import _create_entity_extraction_prompt  # noqa: E402
+    from app.llm import OLLAMA_BASE_URL  # noqa: E402
+    from app.llm_backends import get_backend  # noqa: E402
+    from app.llm_output import (  # noqa: E402
+        EnhancedEntityOutput,
+        SynthesisOutput,
+        parse_and_validate,
+    )
+    from app.prompts import AnalysisResult, StoryType  # noqa: E402
+    from app.prompts.synthesis import get_synthesis_prompt  # noqa: E402
+except RuntimeError as e:
+    if "DATABASE_URL" in str(e):
+        print(
+            "ERROR: DATABASE_URL is not set.\n\n"
+            "This script never queries the database, but app.entities and "
+            "app.llm import app.db at module level (unconditional, "
+            "ADR-0022), so DATABASE_URL must still be set for the import "
+            "to succeed.\n\n"
+            "Do NOT `source .env` for this -- it holds container-facing "
+            "values (db:5432, host.containers.internal) that break "
+            "host-native Ollama connectivity too. Instead:\n"
+            '  export DATABASE_URL="postgresql://newsbrief:newsbrief_dev@localhost:5433/newsbrief"\n'
+            "  python scripts/model_fitness.py ...",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    raise
 
 # ---------------------------------------------------------------------------
 # Representative fixture data -- same shape as real pipeline inputs, not a
