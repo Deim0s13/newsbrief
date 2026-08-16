@@ -132,7 +132,8 @@ LLMfit analysis should be re-run when hardware changes meaningfully (new GPU, VR
 - Issue #322 — Update MODEL-PROFILES.md and ARCHITECTURE.md
 - Issue #329 — Verify Ollama's native MLX backend on macOS
 - Issue #331 — Verify macOS candidate model tags
-- Issue #332 — Validate Windows model swap (incl. deepseek-r1 thinking-block risk)
+- Issue #332 — Validate Windows model swap (incl. deepseek-r1 thinking-block risk) (closed — see [Windows Live Validation addendum](#addendum-august-2026-windows-live-validation-332) below)
+- Issue #341 — Formalize the model-fitness harness (`scripts/model_fitness.py`), used for this validation
 
 ---
 
@@ -199,3 +200,29 @@ A blocking schema bug was found and fixed during this run: `stories.model`/`synt
 - oMLX binds to loopback by default; container reachability via `host.containers.internal` needed verification before this could proceed (#334) — confirmed reachable.
 - Shared oMLX instance with the separate `ai-lab` project: memory headroom is workable (largest three Newsbrief models ≈ 35GB against ~37-42GB available) but relies on oMLX's LRU eviction under simultaneous load rather than manual coordination — worth revisiting if contention becomes a real problem.
 - Embedding model (`nomic-embed-text` via Ollama) is untouched by this addendum — tracked separately in [#330](https://github.com/Deim0s13/newsbrief/issues/330).
+
+## Addendum (August 2026): Windows Live Validation (#332)
+
+**Status: Confirmed — no model swap needed.** `device_profiles.windows` (`fast=llama3.1:8b`, `balanced=qwen3:14b`, `quality=deepseek-r1:14b`) is validated against live inference on the actual Windows host (RTX 4090 Laptop, Ollama 0.24.0), closing out the risk flagged in the "Update (2026-08-11)" note above.
+
+### `deepseek-r1:14b` thinking-block risk: resolved
+
+The concern was that `deepseek-r1:14b` emits `<think>...</think>` reasoning blocks by default, which `app/llm_output.py` had no explicit handling for before JSON parsing. Investigation found:
+
+- Ollama's thinking-block *separation* into a dedicated `thinking` response field is opt-in via the `think` parameter, not automatic — omitting `think` entirely (the prior behavior across every LLM call site: `stories.py`, `entities.py`, `topics.py`, `llm.py`) risked the raw `<think>` tags leaking directly into the parsed `response` text for any Ollama "thinking" model, not just `deepseek-r1:14b` — this also applies to `qwen3:14b`, the Windows *balanced* model.
+- Fixed centrally in `OllamaBackend.generate()` (`app/llm_backends.py`): `think` now defaults to `False` unless a caller explicitly opts in (`stories.py`'s deep-synthesis chain-of-thought mode, #286, still does, unaffected).
+- Live-verified on the Windows host post-fix using `scripts/model_fitness.py` (#341) against all three models' real synthesis + entity-extraction prompts: zero `<think>` leakage across all six calls (3 models × 2 tasks), all `parse_ok: true`. `deepseek-r1:14b` does wrap its JSON in a ` ```json ` markdown fence (unlike the other two, which output bare JSON) — a distinct, pre-existing, already-handled quirk (`llm_output.py`'s `markdown_block` extraction strategy), unrelated to thinking blocks.
+
+### Real tok/s vs. LLMfit's live benchmark
+
+| Model | Task | Real tok/s (end-to-end, incl. prefill) | LLMfit `llmfit bench` | Ratio |
+|---|---|---|---|---|
+| `llama3.1:8b` | entities (short prompt) | ~74 | 92.1 | 80% |
+| `qwen3:14b` | entities (short prompt) | ~40 | 49.7 | 80% |
+| `deepseek-r1:14b` | entities (short prompt) | ~43 | 51.2 | 84% |
+
+Entity-extraction (short prompt) tok/s is the fairer comparison to LLMfit's pure-decode benchmark; the synthesis task's much longer prompt (full analysis + 3 articles) dilutes the naive tokens/wall-time ratio with prefill time, understating true decode speed for that task specifically — this is a measurement artifact, not a throughput regression. All three models preserve LLMfit's relative ranking (`llama3.1:8b` roughly 2x faster than the other two; `deepseek-r1:14b` marginally ahead of `qwen3:14b`), with a consistent ~80% calibration gap versus LLMfit's benchmark — expected, since real production prompts carry JSON-formatting/instruction overhead that a generic benchmark prompt doesn't.
+
+### Decision
+
+Confirmed final — no changes to `device_profiles.windows`. [#332](https://github.com/Deim0s13/newsbrief/issues/332) closed.
