@@ -99,6 +99,18 @@ class OllamaBackend:
         options: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
+        # Ollama defaults `think` to enabled for supported reasoning models
+        # (Qwen 3, DeepSeek R1/v3.1, GPT-OSS) whenever the caller doesn't
+        # specify it (docs.ollama.com/capabilities/thinking, #332) -- costing
+        # latency/tokens on every structured-JSON call site (stories.py,
+        # entities.py, topics.py, llm.py) that never asked for chain-of-
+        # thought. Default it off here so those call sites get the fast,
+        # direct-answer path without each needing to know about `think`;
+        # stories.py's deliberate deep-synthesis chain-of-thought mode (#286)
+        # still opts back in by passing think=True explicitly, which wins
+        # over this default. No-op for non-thinking models and for oMLX
+        # (OMLXBackend drops unsupported kwargs).
+        kwargs.setdefault("think", False)
         return self.raw_client.generate(
             model=model, prompt=prompt, options=options or {}, **kwargs
         )

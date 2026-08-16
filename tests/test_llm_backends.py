@@ -31,7 +31,10 @@ class TestOllamaBackendGenerate:
 
         assert result == {"response": "hello"}
         mock_client.generate.assert_called_once_with(
-            model="qwen2.5:14b", prompt="hi", options={"temperature": 0.2}
+            model="qwen2.5:14b",
+            prompt="hi",
+            options={"temperature": 0.2},
+            think=False,
         )
 
     def test_generate_defaults_options_to_empty_dict(self):
@@ -43,7 +46,7 @@ class TestOllamaBackendGenerate:
         backend.generate(model="qwen2.5:14b", prompt="hi")
 
         mock_client.generate.assert_called_once_with(
-            model="qwen2.5:14b", prompt="hi", options={}
+            model="qwen2.5:14b", prompt="hi", options={}, think=False
         )
 
     def test_generate_passes_through_extra_kwargs(self):
@@ -58,6 +61,47 @@ class TestOllamaBackendGenerate:
         mock_client.generate.assert_called_once_with(
             model="deepseek-r1:14b", prompt="hi", options={}, think=True
         )
+
+
+class TestOllamaBackendThinkDefault:
+    """
+    Regression tests for #332: Ollama defaults `think` to enabled for
+    supported reasoning models (Qwen 3, DeepSeek R1/v3.1, GPT-OSS) whenever
+    the caller doesn't specify it, costing latency/tokens on every
+    structured-JSON call site that never asked for chain-of-thought.
+    `OllamaBackend.generate()` now defaults `think=False` unless the caller
+    explicitly overrides it.
+    """
+
+    def test_think_defaults_to_false_when_not_specified(self):
+        backend = OllamaBackend(base_url="http://localhost:11434")
+        mock_client = MagicMock()
+        mock_client.generate.return_value = {"response": "hello"}
+        backend._client = mock_client
+
+        backend.generate(model="qwen3:14b", prompt="hi")
+
+        assert mock_client.generate.call_args.kwargs["think"] is False
+
+    def test_explicit_think_true_overrides_default(self):
+        backend = OllamaBackend(base_url="http://localhost:11434")
+        mock_client = MagicMock()
+        mock_client.generate.return_value = {"response": "hello"}
+        backend._client = mock_client
+
+        backend.generate(model="deepseek-r1:14b", prompt="hi", think=True)
+
+        assert mock_client.generate.call_args.kwargs["think"] is True
+
+    def test_explicit_think_false_is_respected(self):
+        backend = OllamaBackend(base_url="http://localhost:11434")
+        mock_client = MagicMock()
+        mock_client.generate.return_value = {"response": "hello"}
+        backend._client = mock_client
+
+        backend.generate(model="qwen3:14b", prompt="hi", think=False)
+
+        assert mock_client.generate.call_args.kwargs["think"] is False
 
 
 class TestOllamaBackendListModels:
