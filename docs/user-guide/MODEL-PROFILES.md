@@ -8,7 +8,35 @@
 
 NewsBrief supports multiple LLM model profiles to balance speed and quality for different use cases. Each profile is optimized for specific scenarios.
 
-## Available Profiles
+## Device-Aware Defaults
+
+Since v0.8.7, the model (and inference backend) used for each profile is **resolved per-host** rather than being a single global choice — see [ADR-0033](../adr/0033-hardware-informed-model-selection.md) and its [oMLX addendum](../adr/0033-hardware-informed-model-selection.md#addendum-august-2026-omlx-adoption-on-macos).
+
+### Resolution order
+
+`SettingsService.get_active_model()` resolves the model for the active profile in this order:
+
+1. **Model override** (`data/settings.json` → `model_override`) — highest precedence, if set
+2. **Device profile** (`data/model_config.json` → `device_profiles.<platform>.<profile>`) — the host-specific model for the detected platform
+3. **Generic profile** (`data/model_config.json` → `profiles.<profile>.model`) — fallback used when no device profile matches the platform (e.g. Linux)
+4. **Env var / hardcoded default** (`NEWSBRIEF_LLM_MODEL`) — last resort
+
+The platform is detected via the `NEWSBRIEF_DEVICE_TYPE` env var if set (required in containers, where `sys.platform` is always `linux` regardless of the host OS), otherwise via `sys.platform` (`darwin` → macOS, `win32` → Windows).
+
+### Per-platform model & backend
+
+| Platform | Backend | Fast | Balanced | Quality |
+|---|---|---|---|---|
+| **Windows** | Ollama | `llama3.1:8b` | `qwen3:14b` | `deepseek-r1:14b` |
+| **macOS** | oMLX | `Llama-3.2-3B-Instruct-4bit` | `Qwen3-30B-A3B-Instruct-2507` (MoE) | `Qwen3.6-35B-A3B` (unsloth dynamic quant, MoE) |
+
+The **backend** — which inference runtime actually serves the request, not just which model — is also platform-selectable, via `device_profiles.<platform>.backend` in `data/model_config.json` (defaults to `"ollama"` when absent). Windows runs every profile through Ollama; macOS runs through [oMLX](https://github.com/omlx-org/omlx), a standalone MLX-based server with an OpenAI-compatible API, adopted after real benchmarks on this hardware showed a 2-5x throughput win over Ollama depending on concurrency. See [ADR-0025's amendment](../adr/0025-llm-model-selection.md#amendment-august-2026-platform-selectable-backend) for the full rationale and numbers. The backend is set once per host — you can't currently mix backends across fast/balanced/quality on the same machine.
+
+The effective model, backend, detected platform, and resolution source are all surfaced via `GET /api/models/profiles/active` and the `/config` UI.
+
+## Available Profiles (Generic / Fallback)
+
+The tables below describe the **generic fallback profile** — used only when no `device_profiles` entry matches the detected platform (e.g. Linux, or `NEWSBRIEF_DEVICE_TYPE` set to an unrecognised value). On Windows and macOS, the model in use is the one from the per-platform table above, not necessarily the model shown here; speed/quality characteristics below are indicative for the generic model, not the device-specific ones.
 
 ### Fast Profile
 | Setting | Value |
@@ -236,4 +264,4 @@ Each block above can be set to `"enabled": false` independently in `data/model_c
 
 ---
 
-*Last updated: v0.8.6*
+*Last updated: v0.8.7*

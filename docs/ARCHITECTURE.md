@@ -292,11 +292,11 @@ C4Context
     System(newsbrief, "NewsBrief", "AI-powered news aggregator that synthesizes RSS feeds into story briefs")
 
     System_Ext(rss_feeds, "RSS/Atom Feeds", "External news sources (tech blogs, news sites)")
-    System_Ext(ollama, "Ollama", "Local LLM server running Qwen 2.5 (configurable profiles)")
+    System_Ext(llm_backend, "LLM Backend", "Local LLM server - Ollama or oMLX, platform-dependent (fast/balanced/quality profiles)")
 
     Rel(user, newsbrief, "Browses stories, manages feeds", "HTTPS")
     Rel(newsbrief, rss_feeds, "Fetches articles", "HTTP/HTTPS")
-    Rel(newsbrief, ollama, "Requests summaries, synthesis", "HTTP")
+    Rel(newsbrief, llm_backend, "Requests summaries, synthesis", "HTTP")
 ```
 
 ### 5.2 External Dependencies
@@ -304,7 +304,7 @@ C4Context
 | System | Purpose | Required | Local |
 |--------|---------|----------|-------|
 | **RSS/Atom Feeds** | News sources | Yes | No (external) |
-| **Ollama** | LLM inference | No (graceful fallback) | Yes |
+| **LLM Backend** (Ollama / oMLX, platform-dependent — see ADR-0025, ADR-0033) | LLM inference | No (graceful fallback) | Yes |
 | **PostgreSQL** | Application database (all environments) | Yes | Yes |
 | **Caddy** | Reverse proxy, TLS | No (direct access fallback) | Yes |
 
@@ -349,8 +349,8 @@ flowchart TB
     end
 
     subgraph AI["AI Layer"]
-        Ollama["Ollama Server"]
-        LLM["Qwen 2.5 (Fast/Balanced/Quality)"]
+        LLMBackend["LLM Backend<br/>Ollama (Windows) / oMLX (macOS)"]
+        LLM["Fast/Balanced/Quality profiles<br/>(device-specific models, ADR-0033)"]
     end
 
     subgraph Data["Data Layer"]
@@ -362,8 +362,8 @@ flowchart TB
     Caddy --> FastAPI
     FastAPI --> Services
     FastAPI --> Background
-    Services --> Ollama
-    Ollama --> LLM
+    Services --> LLMBackend
+    LLMBackend --> LLM
     Services --> PostgreSQL
     Scheduler --> Services
 ```
@@ -377,7 +377,7 @@ sequenceDiagram
     participant F as FastAPI
     participant S as Story Service
     participant D as Database
-    participant O as Ollama
+    participant O as LLM Backend
 
     U->>C: GET /stories
     C->>F: Forward (TLS terminated)
@@ -422,6 +422,17 @@ sequenceDiagram
 | **Reverse Proxy** | Caddy | Auto TLS, simple config |
 | **Container Runtime** | Podman/Docker | OCI-compliant |
 | **Orchestration** | Podman Compose | Multi-container |
+
+### 6.3.1 Device-Aware LLM Backend and Model Selection
+
+The LLM backend and model for each profile (fast/balanced/quality) are resolved **per-host** rather than globally, via `data/model_config.json` → `device_profiles.<platform>` and `SettingsService.get_active_model()`/`get_backend_type()` (`settings.py`). Full resolution order and rationale: [ADR-0033](adr/0033-hardware-informed-model-selection.md) and [MODEL-PROFILES.md](user-guide/MODEL-PROFILES.md#device-aware-defaults).
+
+| Platform | Backend | Fast | Balanced | Quality |
+|---|---|---|---|---|
+| **Windows** | Ollama | `llama3.1:8b` | `qwen3:14b` | `deepseek-r1:14b` |
+| **macOS** | oMLX | `Llama-3.2-3B-Instruct-4bit` | `Qwen3-30B-A3B-Instruct-2507` (MoE) | `Qwen3.6-35B-A3B` (unsloth dynamic quant, MoE) |
+
+macOS runs on [oMLX](https://github.com/omlx-org/omlx) rather than Ollama — a decision reversing ADR-0025's original "Ollama is the sole inference backend," made after real benchmarks showed a 2-5x throughput win depending on concurrency. See [ADR-0025's amendment](adr/0025-llm-model-selection.md#amendment-august-2026-platform-selectable-backend) for the full evidence. The backend is implemented behind a pluggable abstraction (`app/llm_backends.py`: `OllamaBackend` / `OMLXBackend`) so `stories.py`/`entities.py`/`topics.py` and the health/status routers call through `LLMService.backend` without knowing which runtime is active.
 
 ### 6.4 Story processing: pipeline orchestration
 
@@ -540,14 +551,14 @@ flowchart TB
 | **Topic Classifier** | Categorization (Security, AI/ML, etc.) | `topics.py` |
 | **Ranking Engine** | Interest matching, source weighting | `ranking.py` |
 | **Credibility Service** | Source credibility lookup, MBFC data import | `credibility.py`, `credibility_import.py` |
-| **LLM Service** | Ollama integration, prompt management | `llm.py` |
+| **LLM Service** | LLM backend integration (Ollama/oMLX via pluggable `app/llm_backends.py`, ADR-0025/ADR-0033), prompt management | `llm.py`, `llm_backends.py` |
 | **LLM Output Validation** | JSON parsing, repair, schema validation, circuit breaker | `llm_output.py` |
 | **Content Extraction** | Tiered article extraction with quality scoring | `extraction.py` |
 | **Scheduler** | Background job orchestration | `scheduler.py` |
 | **Synthesis Cache** | LLM response caching | `synthesis_cache.py` |
 | **Quality Metrics** | Output quality tracking and scoring (v0.8.1) | `quality_metrics.py` |
 | **Context Manager** | Large article cluster handling with chunking (v0.8.1) | `context_manager.py` |
-| **Settings Service** | Model profiles and runtime configuration (v0.8.1) | `settings.py` |
+| **Settings Service** | Model profiles, device-aware model/backend resolution (v0.8.1, extended v0.8.7 per ADR-0033), runtime configuration | `settings.py` |
 | **Prompt Templates** | Multi-pass synthesis prompts (v0.8.1) | `prompts/` |
 | **Embedding Service** | Async Ollama embedding generation | `embedding_service.py`, `item_embeddings.py`, `story_embeddings.py`, `embed_backfill.py` |
 | **Retrieval Service** | Bounded pgvector similarity search powering semantic search + related/similar endpoints (v0.8.6) | `retrieval.py` |

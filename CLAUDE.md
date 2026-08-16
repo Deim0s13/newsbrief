@@ -272,7 +272,10 @@ The embedding model (`nomic-embed-text`, 768 dimensions) is separate and configu
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `DATABASE_URL` | — | PostgreSQL connection string (required) |
-| `OLLAMA_BASE_URL` | `http://host.containers.internal:11434` | Ollama server — same URL on macOS and Windows |
+| `OLLAMA_BASE_URL` | `http://host.containers.internal:11434` | Ollama server URL (Windows backend; also used as fallback on macOS) |
+| `NEWSBRIEF_DEVICE_TYPE` | detected from `sys.platform` | Override platform detection for `device_profiles` model/backend resolution (ADR-0033) — required in containers, where `sys.platform` is always `linux` |
+| `OMLX_BASE_URL` | `http://localhost:8000` | oMLX server URL (macOS backend, ADR-0025 amendment/ADR-0033 addendum) |
+| `OMLX_API_KEY` | — | oMLX API key (macOS backend) |
 | `NEWSBRIEF_LLM_MODEL` | from settings | Override active model |
 | `NEWSBRIEF_EMBEDDING_ENABLED` | `true` | Disable embeddings |
 | `ENVIRONMENT` | `development` | `development` shows DEV banner; `production` uses JSON logging |
