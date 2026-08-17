@@ -459,7 +459,7 @@ def extract_entities(
             },
         )
 
-        raw_response = response.get("response", "").strip()
+        raw_response = (response.get("response") or "").strip()
 
         if not raw_response:
             logger.warning("Empty response from LLM for entity extraction")

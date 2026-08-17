@@ -296,6 +296,27 @@ class TestOMLXBackendGenerate:
         with pytest.raises(httpx.HTTPStatusError):
             backend.generate(model="m", prompt="p")
 
+    @patch("httpx.post")
+    def test_generate_coerces_null_completion_text_to_empty_string(self, mock_post):
+        """
+        Regression test for #340: oMLX can return `"text": null` for a
+        completion (observed under concurrent load during #339's
+        end-to-end run), which previously slipped past
+        `response.get("response", "")` in every caller (that fallback
+        only applies when the key is *absent*, not when its value is
+        `None`) and crashed downstream `.strip()` calls with an
+        uncaught AttributeError.
+        """
+        mock_post.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {"choices": [{"text": None}]},
+        )
+        backend = OMLXBackend(base_url="http://localhost:8000", api_key="k")
+
+        result = backend.generate(model="m", prompt="p")
+
+        assert result["response"] == ""
+
 
 class TestOMLXBackendListModels:
     @patch("httpx.get")
@@ -539,3 +560,20 @@ class TestStoriesRunLLMCallWiring:
 
         call_kwargs = mock_service.backend.generate.call_args.kwargs
         assert "think" not in call_kwargs
+
+    def test_run_llm_call_coerces_none_response_to_empty_string(self):
+        """
+        Regression test for #340: a backend returning
+        {"response": None} (key present, value None -- e.g. oMLX's null
+        completion text) must not propagate a bare None out of
+        _run_llm_call, since every caller (parse_detection_response,
+        parse_analysis_response, parse_group_summary_response, etc.)
+        unconditionally calls .strip() on the result and only catches
+        JSON/value errors, not AttributeError.
+        """
+        mock_service = MagicMock()
+        mock_service.backend.generate.return_value = {"response": None}
+
+        result = _run_llm_call(mock_service, model="qwen2.5:14b", prompt="hi")
+
+        assert result == ""

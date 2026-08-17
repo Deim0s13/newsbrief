@@ -390,7 +390,7 @@ JSON Response:"""
                 },
             )
 
-            raw_response = response.get("response", "").strip()
+            raw_response = (response.get("response") or "").strip()
 
             # Clean markdown formatting if present
             if raw_response.startswith("```json"):
@@ -453,7 +453,7 @@ JSON Response:"""
                 },
             )
 
-            raw_response = response.get("response", "").strip()
+            raw_response = (response.get("response") or "").strip()
 
             # Clean markdown formatting if present
             if raw_response.startswith("```json"):
@@ -820,7 +820,7 @@ JSON Response:"""
             },
         )
 
-        raw_response = response.get("response", "").strip()
+        raw_response = (response.get("response") or "").strip()
         if not raw_response:
             return self._fallback_summary(
                 title, content, "Empty response from LLM", True, content_hash
@@ -1000,7 +1000,7 @@ Summary:"""
             },
         )
 
-        summary = response.get("response", "").strip()
+        summary = (response.get("response") or "").strip()
         if not summary:
             return self._fallback_summary(
                 title, content, "Empty response from LLM", False, content_hash

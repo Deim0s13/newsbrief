@@ -1770,7 +1770,12 @@ def _run_llm_call(
     if think:
         kwargs["think"] = True
     response = llm_service.backend.generate(**kwargs)
-    return response.get("response", "")
+    # `.get("response", "")` only falls back to "" when the key is
+    # *absent* -- a backend returning an explicit `None` value (#340,
+    # oMLX under load) would otherwise slip a bare None past this and
+    # crash every downstream `.strip()` call with an uncaught
+    # AttributeError. `or ""` coalesces both cases.
+    return response.get("response") or ""
 
 
 def _detect_story_type(
@@ -3193,7 +3198,10 @@ def generate_stories_simple(
                 "complexity_score": complexity_score,
             }
         except Exception as e:
-            logger.error(f"Synthesis failed for cluster: {e}")
+            # exc_info=True (#340): the bare message alone previously gave
+            # no traceback, making root-causing failures like the #340
+            # NoneType bug much harder than it needed to be.
+            logger.error(f"Synthesis failed for cluster: {e}", exc_info=True)
             return {
                 "success": False,
                 "cluster_data": cluster_data,

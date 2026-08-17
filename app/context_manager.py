@@ -261,10 +261,15 @@ def classify_cluster_path(cluster_articles: List[Dict[str, Any]]) -> str:
     if article_count >= deep_min_articles:
         return "deep"
 
+    # `.get("topic", "")` only falls back to "" when the key is *absent* --
+    # articles without a classified topic have the key present with an
+    # explicit `None` value, which would otherwise crash `.strip()` here
+    # (#340: same root-cause class as the OMLXBackend/_run_llm_call fix,
+    # hit live during real-backlog verification of that fix).
     topics = [
-        a.get("topic", "").strip().lower()
+        (a.get("topic") or "").strip().lower()
         for a in cluster_articles
-        if a.get("topic", "").strip()
+        if (a.get("topic") or "").strip()
     ]
     # Diversity is only meaningful with ≥2 articles; a single article trivially has 1.0
     if len(topics) >= 2:

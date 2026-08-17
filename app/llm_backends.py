@@ -225,6 +225,21 @@ class OMLXBackend:
         response.raise_for_status()
         data = response.json()
         text = data["choices"][0]["text"]
+        if text is None:
+            # Observed under concurrent load (#340): oMLX can return an
+            # explicit `null` completion text rather than omitting the
+            # field or returning "". Coalesce here so every caller can
+            # keep assuming response["response"] is always a string --
+            # `dict.get("response", "")` only applies the default when
+            # the key is *absent*, not when its value is `None`, so a
+            # bare null here would otherwise silently poison every
+            # downstream `.strip()` call with an uncaught AttributeError.
+            logger.warning(
+                f"oMLX returned null completion text for model '{model}' "
+                "(request likely timed out/was dropped under load); "
+                "treating as empty response"
+            )
+            text = ""
         # Shaped like ollama.Client().generate()'s return value so callers
         # that read response["response"] work unchanged once migrated (#337).
         return {"response": text, "raw": data}

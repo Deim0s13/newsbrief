@@ -243,7 +243,7 @@ def _call_llm(prompt: str, model: Optional[str] = None) -> Optional[str]:
             options={"temperature": 0.1, "num_predict": 150},
         )
 
-        response_text = response.get("response", "").strip()
+        response_text = (response.get("response") or "").strip()
 
         # Handle markdown code blocks
         if "```" in response_text:
@@ -677,7 +677,7 @@ def classify_topic_enhanced(
             options={"temperature": 0.1, "num_predict": 350},
         )
 
-        raw_response = response.get("response", "").strip()
+        raw_response = (response.get("response") or "").strip()
         if not raw_response:
             logger.warning("Empty response from enhanced topic classification")
             return None
