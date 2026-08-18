@@ -6,7 +6,22 @@ Quick reference for all NewsBrief releases. For detailed release notes, see [Git
 
 ## v0.8.x - Content Quality
 
-### v0.8.6 - RAG Milestone Completion (Current)
+### v0.8.7 - Model Optimisation & Platform Intelligence (Current)
+**August 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.8.7)
+
+Hardware-informed, device-aware model selection so each machine runs the right model automatically — see [ADR-0033](../adr/0033-hardware-informed-model-selection.md).
+
+**Highlights:**
+- **Device-Aware Model Resolution**: `SettingsService` resolves the active model per-platform via `data/model_config.json`'s `device_profiles` block, surfaced in the `/config` UI (#317, #319-322)
+- **oMLX Backend on macOS**: Pluggable LLM backend abstraction (`app/llm_backends.py`); macOS switches from Ollama to oMLX — up to 5x faster under the pipeline's real concurrency pattern, validated end-to-end on production data (24.9 min vs ~3h+ baseline) (#335-339)
+- **Windows Live Validation**: Confirmed `llama3.1:8b`/`qwen3:14b`/`deepseek-r1:14b` on the actual RTX 4090 host; fixed a `<think>` reasoning-block leak affecting any Ollama thinking model (#332)
+- **Automatic Per-Article Enrichment**: New `summarize` pipeline stage closes the gap where AI summaries + embeddings were never generated automatically, starving v0.8.6's RAG features (#328)
+- **Synthesis Crash Fix**: Guarded against `None` LLM/field responses crashing ~21% of clusters (#340)
+- **Embedding Model Re-evaluation**: `nomic-embed-text` retained after benchmarking `qwen3-embedding:0.6b` and `mxbai-embed-large` against real production data — no meaningful precision gain (#330)
+- **Model-Fitness Harness**: `scripts/model_fitness.py` formalizes model-swap validation into reusable dev tooling, run against NewsBrief's real prompts and JSON parser (#341)
+- **Migrations**: `028_widen_model_columns` (oMLX model IDs are longer than Ollama tags)
+
+### v0.8.6 - RAG Milestone Completion
 **August 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.8.6)
 
 Completes the semantic retrieval / RAG milestone started in v0.8.5.
