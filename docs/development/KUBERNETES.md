@@ -57,7 +57,7 @@ make infra-autostart-status    # verify the launchd plist is loaded
 ### `make infra-start` (`scripts/infra-start.sh`)
 
 1. Starts the Podman Compose prod stack (the Postgres DB the kind pods connect to via `host.containers.internal`)
-2. Creates the `newsbrief-dev` kind cluster if it doesn't already exist (config: `kind/cluster-config.yaml`), otherwise starts the existing container
+2. Creates the `newsbrief-dev` kind cluster if it doesn't already exist (config: `k8s/kind/cluster-config.yaml`), otherwise starts the existing container
 3. Exports kubeconfig (`kind export kubeconfig --name newsbrief-dev`)
 4. Waits for the ArgoCD `argocd-server` Deployment to become available
 5. **Re-applies `k8s/argocd/` Application CRs if missing** — cluster recreation wipes ArgoCD's own state, so this makes the script safe to re-run after a full cluster rebuild

@@ -1,7 +1,7 @@
 # Prod only: embedding backfill for items/stories with embedding IS NULL (#254).
 # PostSync: runs after the main sync (Deployment healthy), so schema + app image are
 # already in place; uses same ConfigMap as the API (DATABASE_URL, OLLAMA_BASE_URL, etc.).
-# Tekton ci-prod updates Git; Argo CD applies this hook when syncing newsbrief-prod.
+# GitHub Actions (ci-prod.yml) updates Git; Argo CD applies this hook when syncing newsbrief-prod.
 # Dev overlay omits this Job — use `python -m app.cli embed-backfill --dev` locally if needed.
 #
 # Hook delete policy: replace Job on next sync (Job spec is immutable) and after success.

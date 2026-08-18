@@ -6,7 +6,7 @@
 $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $ClusterName = "newsbrief-dev"
-$ClusterConfig = Join-Path $ProjectRoot "kind\cluster-config.yaml"
+$ClusterConfig = Join-Path $ProjectRoot "k8s\kind\cluster-config.yaml"
 $LogDir = Join-Path $ProjectRoot "logs"
 
 function Log { param($msg); Write-Host "[newsbrief-infra] $msg" }
@@ -73,13 +73,9 @@ Start-Process kubectl `
 Start-Process kubectl `
     -ArgumentList "port-forward svc/argocd-server -n argocd 8443:443" `
     -RedirectStandardOutput $portForwardLog -WindowStyle Hidden
-Start-Process kubectl `
-    -ArgumentList "port-forward svc/tekton-dashboard -n tekton-pipelines 9097:9097" `
-    -RedirectStandardOutput $portForwardLog -WindowStyle Hidden
 
 Log "Port-forwards started:"
 Log "  Prod app:   http://localhost:8788"
 Log "  Dev app:    http://localhost:8789"
 Log "  ArgoCD UI:  https://localhost:8443"
-Log "  Tekton UI:  http://localhost:9097"
 Log "NewsBrief infrastructure ready."

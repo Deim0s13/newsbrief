@@ -6,7 +6,7 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CLUSTER_NAME="newsbrief-dev"
-CLUSTER_CONFIG="${PROJECT_ROOT}/kind/cluster-config.yaml"
+CLUSTER_CONFIG="${PROJECT_ROOT}/k8s/kind/cluster-config.yaml"
 LOG_PREFIX="[newsbrief-infra]"
 
 log() { echo "${LOG_PREFIX} $*"; }
@@ -93,12 +93,9 @@ kubectl port-forward svc/newsbrief -n newsbrief-dev --address 0.0.0.0 8789:8787 
     >> "${PROJECT_ROOT}/logs/port-forward.log" 2>&1 &
 kubectl port-forward svc/argocd-server -n argocd 8443:443 \
     >> "${PROJECT_ROOT}/logs/port-forward.log" 2>&1 &
-kubectl port-forward svc/tekton-dashboard -n tekton-pipelines 9097:9097 \
-    >> "${PROJECT_ROOT}/logs/port-forward.log" 2>&1 &
 
 log "Port-forwards started:"
 log "  Prod app:     http://localhost:8788"
 log "  Dev app:      http://localhost:8789"
 log "  ArgoCD UI:    https://localhost:8443"
-log "  Tekton UI:    http://localhost:9097"
 log "NewsBrief infrastructure ready."

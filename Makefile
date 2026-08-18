@@ -497,19 +497,17 @@ recover:                          ## Recover all services after reboot/sleep
 status:                           ## Check status of all services
 	cd ansible && ansible-playbook -i inventory/localhost.yml playbooks/status.yml
 
-port-forwards:                    ## Restart kubectl port-forwards (prod:8788, dev:8789, ArgoCD:8443, Tekton:9097)
+port-forwards:                    ## Restart kubectl port-forwards (prod:8788, dev:8789, ArgoCD:8443)
 	@echo "🔌 Restarting port forwards..."
 	@pkill -f "kubectl port-forward" 2>/dev/null || true
 	@kubectl port-forward svc/newsbrief -n newsbrief-prod --address 0.0.0.0 8788:8787 &
 	@kubectl port-forward svc/newsbrief -n newsbrief-dev --address 0.0.0.0 8789:8787 &
 	@kubectl port-forward svc/argocd-server -n argocd 8443:443 &
-	@kubectl port-forward svc/tekton-dashboard -n tekton-pipelines 9097:9097 &
 	@sleep 2
 	@echo "✅ Port forwards active"
 	@echo "   Prod (K8s): http://localhost:8788 — https://newsbrief.local via Caddy"
 	@echo "   Dev  (K8s): http://localhost:8789"
 	@echo "   ArgoCD UI:  https://localhost:8443"
-	@echo "   Tekton UI:  http://localhost:9097"
 
 argo-ui:  ## Port-forward Argo CD UI on 8443
 	@echo "Open https://localhost:8443"

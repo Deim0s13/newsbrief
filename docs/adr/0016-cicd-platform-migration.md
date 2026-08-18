@@ -5,6 +5,8 @@
 
 > The decision to adopt Tekton as the CI/CD platform has been reversed. GitHub Actions (the previous platform) was reinstated as the CI runtime in June 2026, with ArgoCD retained for CD on macOS and Podman Compose polling added for Windows. See ADR-0032.
 
+> **Housekeeping (August 2026):** the `tekton/` directory (29 manifest files), `k8s/infrastructure/tekton-rbac.yaml`, and the `ansible/roles/tekton/` and `ansible/roles/smee/` roles (Smee's only purpose was relaying GitHub webhooks to Tekton's now-removed EventListener) were deleted — dead code that had sat unused since this ADR's reversal, discovered while tidying the repo root. `ansible/playbooks/recover.yml`/`status.yml`, `Makefile`'s `port-forwards` target, and `scripts/infra-start.sh`/`infra-start.ps1` were updated to drop the corresponding dead port-forwards and status checks. The code excerpts elsewhere in this document remain as the historical record of what was actually built; they no longer correspond to files in the repo.
+
 ## Context
 
 We currently use GitHub Actions for CI/CD. As part of our cloud-native learning journey, we're evaluating whether to migrate to Tekton Pipelines running on our local Kubernetes cluster.
