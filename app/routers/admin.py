@@ -29,7 +29,19 @@ class PipelineRunBody(BaseModel):
 
     from_stage: str = Field(
         default="full",
-        description="full (ingest then stories), ingest, or story_generation",
+        description=(
+            "full (ingest then summarize then stories, #328), ingest, "
+            "summarize, or story_generation"
+        ),
+    )
+    batch_size: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Override BULK_ENRICH_BATCH_SIZE for this run's summarize stage "
+            "(#328) -- e.g. a large one-off value to catch up an existing "
+            "backlog. Ignored for from_stage=ingest/story_generation."
+        ),
     )
 
 
@@ -38,7 +50,7 @@ class PipelineReplayBody(BaseModel):
 
     target_type: Literal["item", "story"]
     target_id: int = Field(..., ge=1)
-    from_stage: Literal["enrich", "story_generation"]
+    from_stage: Literal["enrich", "summarize", "story_generation"]
     model: Optional[str] = Field(
         default=None,
         description="LLM model (defaults to active profile from settings)",
@@ -60,12 +72,12 @@ def admin_pipeline_run(request: Request, body: Optional[PipelineRunBody] = None)
     fs = (payload.from_stage or "full").strip().lower()
     if fs == "full":
         mapped = None
-    elif fs in ("ingest", "story_generation"):
+    elif fs in ("ingest", "summarize", "story_generation"):
         mapped = fs
     else:
         raise HTTPException(
             status_code=400,
-            detail="from_stage must be one of: full, ingest, story_generation",
+            detail="from_stage must be one of: full, ingest, summarize, story_generation",
         )
     try:
         result = run_pipeline(
@@ -75,6 +87,11 @@ def admin_pipeline_run(request: Request, body: Optional[PipelineRunBody] = None)
             min_articles_per_story=scheduler_mod.STORY_MIN_ARTICLES,
             model=get_settings_service().get_active_model(),
             max_workers=3,
+            summarize_batch_size=(
+                payload.batch_size
+                if payload.batch_size is not None
+                else scheduler_mod.BULK_ENRICH_BATCH_SIZE
+            ),
         )
         record_operator_action(
             request=request,
@@ -105,7 +122,7 @@ def admin_pipeline_run(request: Request, body: Optional[PipelineRunBody] = None)
 
 @router.post("/api/admin/pipeline/replay")
 def admin_pipeline_replay(request: Request, body: PipelineReplayBody):
-    """Re-run one stage for a single item (enrich) or story (regenerate synthesis)."""
+    """Re-run one stage for a single item (enrich or summarize, #328) or story (regenerate synthesis)."""
     from .. import scheduler as scheduler_mod
     from ..pipeline_runner import run_targeted_replay
 

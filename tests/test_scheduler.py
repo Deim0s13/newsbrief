@@ -193,6 +193,48 @@ class TestScheduledStoryGeneration:
         assert "Database error" in result["error"]
 
 
+class TestScheduledBulkEnrich:
+    """Tests for scheduled_bulk_enrich function (#328)."""
+
+    @patch("app.pipeline_runner.execute_summarize_stage")
+    def test_scheduled_bulk_enrich_success(self, mock_exec):
+        """Test successful scheduled bulk enrichment."""
+        from app.pipeline_runner import StageResult
+        from app.scheduler import scheduled_bulk_enrich
+
+        mock_exec.return_value = StageResult(
+            stage="summarize",
+            success=True,
+            stats={
+                "articles_found": 10,
+                "summaries_generated": 9,
+                "errors": 1,
+                "model": "qwen2.5:14b",
+            },
+            error=None,
+        )
+
+        result = scheduled_bulk_enrich()
+
+        assert result["success"] is True
+        assert result["stats"]["summaries_generated"] == 9
+        assert result["stats"]["errors"] == 1
+        assert "elapsed_seconds" in result
+        mock_exec.assert_called_once()
+
+    @patch("app.pipeline_runner.execute_summarize_stage")
+    def test_scheduled_bulk_enrich_exception(self, mock_exec):
+        """Test exception handling in scheduled bulk enrichment."""
+        from app.scheduler import scheduled_bulk_enrich
+
+        mock_exec.side_effect = Exception("LLM unavailable")
+
+        result = scheduled_bulk_enrich()
+
+        assert result["success"] is False
+        assert "LLM unavailable" in result["error"]
+
+
 class TestSchedulerLifecycle:
     """Tests for scheduler start/stop functions."""
 
@@ -267,6 +309,7 @@ class TestGetSchedulerStatus:
 
         assert status["running"] is False
         assert status["feed_refresh"] is None
+        assert status["bulk_enrich"] is None
         assert status["story_generation"] is None
 
     def test_get_status_when_running(self):
@@ -318,6 +361,28 @@ class TestGetSchedulerStatus:
         assert status["running"] is True
         assert status["feed_refresh"]["next_run"] is None
 
+    def test_get_status_includes_bulk_enrich(self):
+        """Test status includes the bulk_enrich job (#328)."""
+        from app import scheduler as scheduler_module
+        from app.scheduler import get_scheduler_status
+
+        mock_scheduler = MagicMock()
+        mock_scheduler.running = True
+
+        mock_enrich_job = MagicMock()
+        mock_enrich_job.id = "bulk_enrich"
+        mock_enrich_job.next_run_time = datetime.now(UTC) + timedelta(hours=1)
+
+        mock_scheduler.get_jobs.return_value = [mock_enrich_job]
+        scheduler_module.scheduler = mock_scheduler
+
+        status = get_scheduler_status()
+
+        assert status["running"] is True
+        assert status["bulk_enrich"] is not None
+        assert status["bulk_enrich"]["next_run"] is not None
+        assert "batch_size" in status["bulk_enrich"]["configuration"]
+
 
 class TestConfigurationEnvironmentVariables:
     """Tests for configuration from environment variables."""
@@ -340,3 +405,17 @@ class TestConfigurationEnvironmentVariables:
         assert STORY_ARCHIVE_DAYS == 7
         assert STORY_TIME_WINDOW_HOURS == 24
         assert STORY_MIN_ARTICLES == 2
+
+    def test_bulk_enrich_default_configuration_values(self):
+        """Test bulk enrichment defaults (#328)."""
+        from app.scheduler import (
+            BULK_ENRICH_BATCH_SIZE,
+            BULK_ENRICH_ENABLED,
+            BULK_ENRICH_MAX_WORKERS,
+            BULK_ENRICH_SCHEDULE,
+        )
+
+        assert BULK_ENRICH_ENABLED is True
+        assert BULK_ENRICH_SCHEDULE == "45 5 * * *"
+        assert BULK_ENRICH_BATCH_SIZE == 100
+        assert BULK_ENRICH_MAX_WORKERS == 3

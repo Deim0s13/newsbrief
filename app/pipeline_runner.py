@@ -3,9 +3,14 @@ Pipeline runner: orchestrated stages with persisted metadata (ADR-0029, #274).
 
 Maps today's jobs to coarse stages:
 - ``ingest`` — RSS fetch + store (``fetch_and_store``)
+- ``summarize`` — bulk per-article AI summary + embedding (#328); closes the gap
+  where item-level enrichment was never invoked automatically
 - ``story_generation`` — archive + cluster/synthesize/publish (``generate_stories_simple``)
 
-Finer stages (extract, enrich, quality-check as separate runners) can split out later.
+Finer stages (extract, quality-check as separate runners) can split out later.
+Note: ``enrich`` (below) is the pre-existing *per-item entity extraction* stage,
+distinct from the ``summarize`` bulk stage above — kept separate to avoid
+renaming an existing, already-wired stage.
 """
 
 from __future__ import annotations
@@ -15,6 +20,7 @@ import logging
 import os
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum
@@ -29,8 +35,8 @@ from app.stories import generate_stories_simple
 logger = logging.getLogger(__name__)
 
 TriggerKind = Literal["scheduled", "manual"]
-StageName = Literal["ingest", "story_generation"]
-ReplayStage = Literal["enrich", "story_generation"]
+StageName = Literal["ingest", "summarize", "story_generation"]
+ReplayStage = Literal["enrich", "summarize", "story_generation"]
 TargetType = Literal["item", "story"]
 
 
@@ -39,6 +45,7 @@ class PipelineStage(str, Enum):
 
     INGEST = "ingest"
     ENRICH = "enrich"
+    SUMMARIZE = "summarize"
     STORY_GENERATION = "story_generation"
 
 
@@ -170,6 +177,244 @@ def execute_ingest_stage(*, trigger: TriggerKind, run_group_id: str) -> StageRes
 
     return StageResult(
         stage=PipelineStage.INGEST.value, success=ok, stats=stats, error=err
+    )
+
+
+def _run_summarize_batch(
+    *, batch_size: int, model: str, max_workers: int, run_group_id: str
+) -> Dict[str, Any]:
+    """
+    One bulk summarize+embed pass over items still missing a summary (#328).
+
+    The LLM summarize call is parallelized across ``max_workers`` threads --
+    the same concurrency level already validated for oMLX in story synthesis
+    (#339/#340). Each worker does pure LLM work only (no DB session); the
+    main thread persists results and computes/stores the embedding
+    sequentially as each future completes, mirroring how story-level
+    embedding is already done post-synthesis in ``generate_stories_simple``.
+    """
+    from sqlalchemy import text
+
+    from app.item_embeddings import maybe_embed_item_after_summary
+    from app.llm import get_llm_service
+    from app.processing_states import mark_article_failed
+
+    stats: Dict[str, Any] = {
+        "articles_found": 0,
+        "summaries_generated": 0,
+        "errors": 0,
+        "model": model,
+    }
+
+    with session_scope() as session:
+        rows = session.execute(
+            text(
+                """
+                SELECT id, title, content, summary, content_hash
+                FROM items
+                WHERE ai_summary IS NULL
+                  AND structured_summary_json IS NULL
+                  AND processing_state != 'failed'
+                ORDER BY created_at ASC
+                LIMIT :batch_size
+                """
+            ),
+            {"batch_size": batch_size},
+        ).all()
+
+        stats["articles_found"] = len(rows)
+        if not rows:
+            return stats
+
+        service = get_llm_service()
+        articles = [
+            {
+                "id": r[0],
+                "title": r[1] or "",
+                "content": r[2] or "",
+                "feed_summary": r[3],
+                "content_hash": r[4],
+            }
+            for r in rows
+        ]
+
+        def _summarize_one(article: Dict[str, Any]):
+            result = service.summarize_article(
+                title=article["title"],
+                content=article["content"],
+                model=model,
+                use_structured=True,
+            )
+            return article, result
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(_summarize_one, article): article["id"]
+                for article in articles
+            }
+            for future in as_completed(futures):
+                item_id = futures[future]
+                try:
+                    article, result = future.result()
+                except Exception as e:
+                    stats["errors"] += 1
+                    logger.warning("Bulk summarize failed for item %s: %s", item_id, e)
+                    mark_article_failed(
+                        session,
+                        item_id,
+                        str(e),
+                        failure_stage="summarize",
+                        run_group_id=run_group_id,
+                        context="execute_summarize_stage",
+                    )
+                    continue
+
+                if not result.success:
+                    stats["errors"] += 1
+                    mark_article_failed(
+                        session,
+                        item_id,
+                        result.error or "summarize failed",
+                        failure_stage="summarize",
+                        run_group_id=run_group_id,
+                        context="execute_summarize_stage",
+                    )
+                    continue
+
+                try:
+                    if not article["content_hash"] and result.content_hash:
+                        session.execute(
+                            text("UPDATE items SET content_hash = :h WHERE id = :id"),
+                            {"h": result.content_hash, "id": item_id},
+                        )
+                    if result.structured_summary:
+                        session.execute(
+                            text(
+                                """
+                                UPDATE items
+                                SET structured_summary_json = :json_data,
+                                    structured_summary_model = :model,
+                                    structured_summary_content_hash = :content_hash,
+                                    structured_summary_generated_at = :generated_at
+                                WHERE id = :id
+                                """
+                            ),
+                            {
+                                "json_data": result.structured_summary.to_json_string(),
+                                "model": result.model,
+                                "content_hash": result.content_hash,
+                                "generated_at": (
+                                    result.structured_summary.generated_at.isoformat()
+                                ),
+                                "id": item_id,
+                            },
+                        )
+                    else:
+                        session.execute(
+                            text(
+                                """
+                                UPDATE items
+                                SET ai_summary = :summary, ai_model = :model,
+                                    ai_generated_at = :generated_at
+                                WHERE id = :id
+                                """
+                            ),
+                            {
+                                "summary": result.summary,
+                                "model": result.model,
+                                "generated_at": datetime.now(UTC).isoformat(),
+                                "id": item_id,
+                            },
+                        )
+                    stats["summaries_generated"] += 1
+                    maybe_embed_item_after_summary(
+                        session,
+                        item_id,
+                        article["title"],
+                        result,
+                        use_structured=True,
+                        feed_summary=article["feed_summary"],
+                    )
+                except Exception as e:
+                    stats["errors"] += 1
+                    logger.warning(
+                        "Failed to persist bulk summary for item %s: %s",
+                        item_id,
+                        e,
+                        exc_info=True,
+                    )
+                    mark_article_failed(
+                        session,
+                        item_id,
+                        str(e),
+                        failure_stage="summarize",
+                        run_group_id=run_group_id,
+                        context="execute_summarize_stage:persist",
+                    )
+                    continue
+
+    return stats
+
+
+def execute_summarize_stage(
+    *,
+    trigger: TriggerKind,
+    run_group_id: str,
+    batch_size: int,
+    model: str,
+    max_workers: int = 3,
+) -> StageResult:
+    """Bulk per-article AI summary + embedding for items still missing one (#328)."""
+    row_id: Optional[int] = None
+    with session_scope() as session:
+        row_id = _insert_stage_start(
+            session, run_group_id, PipelineStage.SUMMARIZE.value, trigger
+        )
+
+    max_auto, base, cap = _stage_retry_settings()
+    stats: Dict[str, Any] = {}
+    ok = False
+    err: Optional[str] = None
+    attempts = 0
+    for attempt in range(max_auto + 1):
+        attempts = attempt + 1
+        try:
+            stats = _run_summarize_batch(
+                batch_size=batch_size,
+                model=model,
+                max_workers=max_workers,
+                run_group_id=run_group_id,
+            )
+            ok = True
+            err = None
+            break
+        except Exception as e:
+            err = str(e)
+            logger.error(
+                "Pipeline summarize stage failed (attempt %s/%s): %s",
+                attempts,
+                max_auto + 1,
+                e,
+                exc_info=True,
+            )
+            if attempt < max_auto:
+                _sleep_before_retry(attempt, base, cap)
+            else:
+                ok = False
+
+    with session_scope() as session:
+        assert row_id is not None
+        _finalize_stage_row(
+            session,
+            row_id,
+            success=ok,
+            error_message=err,
+            stats=stats,
+            attempts=attempts,
+        )
+
+    return StageResult(
+        stage=PipelineStage.SUMMARIZE.value, success=ok, stats=stats, error=err
     )
 
 
@@ -378,6 +623,173 @@ def execute_enrich_item_stage(
     )
 
 
+def execute_summarize_item_stage(
+    *,
+    trigger: TriggerKind,
+    run_group_id: str,
+    item_id: int,
+    model: str,
+) -> StageResult:
+    """
+    Re-run summarize+embed for one article (#328 targeted replay), regardless
+    of its current summary state -- used to retry a single dead-lettered
+    ``summarize`` batch failure without re-running the whole batch.
+    """
+    from sqlalchemy import text
+
+    from app.item_embeddings import maybe_embed_item_after_summary
+    from app.llm import get_llm_service
+
+    row_id: Optional[int] = None
+    with session_scope() as session:
+        row_id = _insert_stage_start(
+            session,
+            run_group_id,
+            PipelineStage.SUMMARIZE.value,
+            trigger,
+            target_type="item",
+            target_id=item_id,
+        )
+
+    max_auto, base, cap = _stage_retry_settings()
+    stats: Dict[str, Any] = {"item_id": item_id}
+    ok = False
+    err: Optional[str] = None
+    attempts = 0
+    for attempt in range(max_auto + 1):
+        attempts = attempt + 1
+        try:
+            with session_scope() as session:
+                row = session.execute(
+                    text(
+                        """
+                        SELECT id, title, content, summary, content_hash
+                        FROM items WHERE id = :id
+                        """
+                    ),
+                    {"id": item_id},
+                ).fetchone()
+                if not row:
+                    raise ValueError(f"Item {item_id} not found")
+                title = row[1] or ""
+                content = row[2] or ""
+                feed_summary = row[3]
+                content_hash = row[4]
+
+                service = get_llm_service()
+                result = service.summarize_article(
+                    title=title, content=content, model=model, use_structured=True
+                )
+                if not result.success:
+                    raise ValueError(result.error or "summarize failed")
+
+                if not content_hash and result.content_hash:
+                    session.execute(
+                        text("UPDATE items SET content_hash = :h WHERE id = :id"),
+                        {"h": result.content_hash, "id": item_id},
+                    )
+                if result.structured_summary:
+                    session.execute(
+                        text(
+                            """
+                            UPDATE items
+                            SET structured_summary_json = :json_data,
+                                structured_summary_model = :model,
+                                structured_summary_content_hash = :content_hash,
+                                structured_summary_generated_at = :generated_at
+                            WHERE id = :id
+                            """
+                        ),
+                        {
+                            "json_data": result.structured_summary.to_json_string(),
+                            "model": result.model,
+                            "content_hash": result.content_hash,
+                            "generated_at": (
+                                result.structured_summary.generated_at.isoformat()
+                            ),
+                            "id": item_id,
+                        },
+                    )
+                else:
+                    session.execute(
+                        text(
+                            """
+                            UPDATE items
+                            SET ai_summary = :summary, ai_model = :model,
+                                ai_generated_at = :generated_at
+                            WHERE id = :id
+                            """
+                        ),
+                        {
+                            "summary": result.summary,
+                            "model": result.model,
+                            "generated_at": datetime.now(UTC).isoformat(),
+                            "id": item_id,
+                        },
+                    )
+                maybe_embed_item_after_summary(
+                    session,
+                    item_id,
+                    title,
+                    result,
+                    use_structured=True,
+                    feed_summary=feed_summary,
+                )
+            stats["model"] = model
+            ok = True
+            err = None
+            break
+        except Exception as e:
+            err = str(e)
+            logger.error(
+                "Pipeline summarize item stage failed for item %s (attempt %s/%s): %s",
+                item_id,
+                attempts,
+                max_auto + 1,
+                e,
+                exc_info=True,
+            )
+            if attempt < max_auto:
+                _sleep_before_retry(attempt, base, cap)
+            else:
+                ok = False
+
+    if not ok and err:
+        try:
+            from app.processing_states import mark_article_failed
+
+            with session_scope() as session:
+                mark_article_failed(
+                    session,
+                    item_id,
+                    err,
+                    failure_stage="summarize",
+                    run_group_id=run_group_id,
+                    context="execute_summarize_item_stage",
+                )
+        except Exception as mark_exc:
+            logger.warning(
+                "Could not mark item %s failed after summarize: %s",
+                item_id,
+                mark_exc,
+            )
+
+    with session_scope() as session:
+        assert row_id is not None
+        _finalize_stage_row(
+            session,
+            row_id,
+            success=ok,
+            error_message=err,
+            stats=stats,
+            attempts=attempts,
+        )
+
+    return StageResult(
+        stage=PipelineStage.SUMMARIZE.value, success=ok, stats=stats, error=err
+    )
+
+
 def execute_story_targeted_regeneration_stage(
     *,
     trigger: TriggerKind,
@@ -477,16 +889,24 @@ def run_targeted_replay(
     model: str,
 ) -> Dict[str, Any]:
     """
-    Run a single targeted stage (#274): item+enrich or story+story_generation.
+    Run a single targeted stage (#274): item+enrich, item+summarize, or
+    story+story_generation.
     """
-    if target_type == "item" and from_stage != "enrich":
-        raise ValueError("target_type=item requires from_stage=enrich")
+    if target_type == "item" and from_stage not in ("enrich", "summarize"):
+        raise ValueError("target_type=item requires from_stage=enrich or summarize")
     if target_type == "story" and from_stage != "story_generation":
         raise ValueError("target_type=story requires from_stage=story_generation")
 
     run_group_id = str(uuid.uuid4())
-    if target_type == "item":
+    if target_type == "item" and from_stage == "enrich":
         r = execute_enrich_item_stage(
+            trigger=trigger,
+            run_group_id=run_group_id,
+            item_id=target_id,
+            model=model,
+        )
+    elif target_type == "item" and from_stage == "summarize":
+        r = execute_summarize_item_stage(
             trigger=trigger,
             run_group_id=run_group_id,
             item_id=target_id,
@@ -522,24 +942,28 @@ def run_pipeline(
     min_articles_per_story: int = 2,
     model: str = "llama3.1:8b",
     max_workers: int = 3,
+    summarize_batch_size: int = 100,
 ) -> Dict[str, Any]:
     """
     Run one or more stages in order.
 
     ``from_stage``:
-    - ``None`` — run full default chain (ingest → story_generation)
+    - ``None`` — run full default chain (ingest → summarize → story_generation, #328)
     - ``ingest`` — only ingest
-    - ``story_generation`` — only story generation (skips ingest)
+    - ``summarize`` — only bulk summarize+embed
+    - ``story_generation`` — only story generation (skips ingest/summarize)
     """
     run_group_id = str(uuid.uuid4())
     results: List[StageResult] = []
 
     if from_stage is None:
-        run_ingest, run_story = True, True
+        run_ingest, run_summarize, run_story = True, True, True
     elif from_stage == "ingest":
-        run_ingest, run_story = True, False
+        run_ingest, run_summarize, run_story = True, False, False
+    elif from_stage == "summarize":
+        run_ingest, run_summarize, run_story = False, True, False
     elif from_stage == "story_generation":
-        run_ingest, run_story = False, True
+        run_ingest, run_summarize, run_story = False, False, True
     else:
         raise ValueError(f"Unknown from_stage: {from_stage!r}")
 
@@ -556,6 +980,23 @@ def run_pipeline(
 
     if run_ingest:
         results.append(execute_ingest_stage(trigger=trigger, run_group_id=run_group_id))
+        if not results[-1].success:
+            return {
+                "run_group_id": run_group_id,
+                "success": False,
+                "stages": _stage_payload(),
+            }
+
+    if run_summarize:
+        results.append(
+            execute_summarize_stage(
+                trigger=trigger,
+                run_group_id=run_group_id,
+                batch_size=summarize_batch_size,
+                model=model,
+                max_workers=max_workers,
+            )
+        )
         if not results[-1].success:
             return {
                 "run_group_id": run_group_id,
@@ -663,6 +1104,12 @@ def retry_pipeline_stage_run(run_id: int) -> Dict[str, Any]:
     """
     from app import scheduler as scheduler_mod
 
+    # Pre-existing gap fixed in passing (#328): every branch below already
+    # called get_settings_service() without it ever being imported in this
+    # module -- a latent NameError on any coarse story/enrich retry via the
+    # admin dead-letter UI, never hit before because it's untested.
+    from app.settings import get_settings_service
+
     with session_scope() as session:
         row = session.get(PipelineStageRun, run_id)
         if row is None:
@@ -712,6 +1159,24 @@ def retry_pipeline_stage_run(run_id: int) -> Dict[str, Any]:
             item_id=int(tgt_id),
             model=get_settings_service().get_active_model(),
         )
+    elif stage == PipelineStage.SUMMARIZE.value:
+        if tgt_type == "item" and tgt_id:
+            r = execute_summarize_item_stage(
+                trigger=trigger,
+                run_group_id=new_group,
+                item_id=int(tgt_id),
+                model=get_settings_service().get_active_model(),
+            )
+        elif tgt_type is None:
+            r = execute_summarize_stage(
+                trigger=trigger,
+                run_group_id=new_group,
+                batch_size=scheduler_mod.BULK_ENRICH_BATCH_SIZE,
+                model=get_settings_service().get_active_model(),
+                max_workers=3,
+            )
+        else:
+            raise ValueError(f"cannot retry summarize with target_type={tgt_type!r}")
     else:
         raise ValueError(f"unknown stage: {stage!r}")
 

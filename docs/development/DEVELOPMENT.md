@@ -186,6 +186,15 @@ export DATA_DIR=/path/to/your/data
 export FEED_REFRESH_ENABLED=true           # Enable/disable scheduled refresh
 export FEED_REFRESH_SCHEDULE="30 5 * * *"  # Cron: 5:30 AM daily
 
+# Bulk Enrichment: summarize + embed (#328, v0.8.7) -- runs between feed
+# refresh and story generation so newly-ingested articles get an AI summary
+# and embedding automatically; previously only available via a manual,
+# single-item admin/API call.
+export BULK_ENRICH_ENABLED=true            # Enable/disable scheduled enrichment
+export BULK_ENRICH_SCHEDULE="45 5 * * *"   # Cron: 5:45 AM daily
+export BULK_ENRICH_BATCH_SIZE=100          # Max articles summarized+embedded per run
+export BULK_ENRICH_MAX_WORKERS=3           # Parallel LLM summarize calls
+
 # Story Generation
 export STORY_GENERATION_SCHEDULE="0 6 * * *"  # Cron: 6:00 AM daily
 export STORY_GENERATION_TIMEZONE="Pacific/Auckland"

@@ -669,6 +669,10 @@ Get background scheduler status including feed refresh and story generation jobs
 |----------|---------|-------------|
 | `FEED_REFRESH_ENABLED` | `true` | Enable/disable scheduled feed refresh |
 | `FEED_REFRESH_SCHEDULE` | `30 5 * * *` | Cron schedule for feed refresh (default: 5:30 AM) |
+| `BULK_ENRICH_ENABLED` | `true` | Enable/disable scheduled bulk enrichment (summarize + embed, #328) |
+| `BULK_ENRICH_SCHEDULE` | `45 5 * * *` | Cron schedule for bulk enrichment (default: 5:45 AM, between feed refresh and story generation) |
+| `BULK_ENRICH_BATCH_SIZE` | `100` | Max articles summarized + embedded per scheduled run |
+| `BULK_ENRICH_MAX_WORKERS` | `3` | Parallel LLM summarize calls per run |
 | `STORY_GENERATION_SCHEDULE` | `0 6 * * *` | Cron schedule for story generation (default: 6:00 AM) |
 | `STORY_GENERATION_TIMEZONE` | `Pacific/Auckland` | Timezone for all scheduled jobs |
 
@@ -2400,9 +2404,9 @@ Manually trigger pipeline stages.
 
 **Request Body**
 ```json
-{"from_stage": "full"}
+{"from_stage": "full", "batch_size": 500}
 ```
-`from_stage`: `full` (ingest then story generation), `ingest`, or `story_generation`. Defaults to `full` if body omitted.
+`from_stage`: `full` (ingest → summarize → story generation, #328), `ingest`, `summarize`, or `story_generation`. Defaults to `full` if body omitted. `batch_size` (optional): overrides `BULK_ENRICH_BATCH_SIZE` for this run's `summarize` stage only — e.g. a large one-off value to catch up an existing backlog of un-summarized articles; ignored for `ingest`/`story_generation`.
 
 #### **POST /api/admin/pipeline/replay**
 
@@ -2417,7 +2421,7 @@ Re-run one stage for a single item or story (targeted repair, not a full pipelin
   "model": "qwen2.5:14b"
 }
 ```
-`target_type`: `item` or `story`. `from_stage`: `enrich` (item) or `story_generation` (story). `model` optional — defaults to the active profile.
+`target_type`: `item` or `story`. `from_stage`: `enrich` or `summarize` (item) or `story_generation` (story). `model` optional — defaults to the active profile.
 
 ### Observability
 

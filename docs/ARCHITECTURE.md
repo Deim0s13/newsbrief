@@ -569,7 +569,7 @@ flowchart TB
 | **Retrieval Tracing** | Records retrieval query latency/results for observability and evaluation (v0.8.6) | `retrieval_tracing.py` |
 | **Cluster Complexity Scoring** | Numeric 0.0-1.0 score routing clusters to standard vs deep synthesis (v0.8.6) | `stories.py` (`compute_cluster_complexity`) |
 | **Publish Gate** | Confidence-based publish/warn/hold decision before a story becomes visible (v0.8.5) | `publish_gate.py` |
-| **Pipeline Runner** | Orchestrates stage execution across ingest/enrich/story-generation (ADR-0029) | `pipeline_runner.py`, `pipeline_monitoring.py`, `processing_states.py` |
+| **Pipeline Runner** | Orchestrates stage execution across ingest/summarize/enrich/story-generation (ADR-0029, #328) | `pipeline_runner.py`, `pipeline_monitoring.py`, `processing_states.py` |
 | **Retention Service** | Per-type data retention with dry-run preview and daily purge job | `retention.py` |
 | **Ingest Idempotency** | Stable article identity (`url_hash`) and `content_hash`-gated updates (ADR-0031) | `ingest_idempotency.py` |
 | **Operator Audit** | Audit log for manual admin actions (retries, discards) | `operator_audit.py` |
@@ -600,6 +600,8 @@ Items move through a default sequence of stages. Order and insertion points are 
 - **Story states** (e.g. candidate, synthesizing, context_enriched, quality_checked, published, archived, failed) drive visibility and which operator actions are valid. Failed items are queryable and can be retried, inspected, or discarded.
 
 **Canonical enums, transition rules, and mapping to existing `Story.status` (`active` / `archived`)** are specified in [ADR-0030: Article and story processing states](adr/0030-article-story-processing-states.md) (subordinate to [ADR-0029](adr/0029-pipeline-oriented-orchestration.md)).
+
+**Implementation note (#328, v0.8.7):** `pipeline_runner.py`'s coarse, scheduled/tracked stages are `ingest` → `summarize` → `story_generation` (each recorded as a `PipelineStageRun`, retryable via `/admin/pipeline`). The `summarize` stage covers the **Enrich** row's summarize + embed work above as a real automatic step (bulk, scheduled between feed refresh and story generation) — previously this only existed as a manual, single-item `/summarize` API call, so real production traffic silently never populated item-level summaries or embeddings, starving every RAG feature that depends on them (semantic dedup, retrieval hook, light RAG, `/search/semantic`). Per-article **entity** extraction remains a separate `enrich` stage, run at cluster time during story generation (and individually replayable per item).
 
 **Feed ingest idempotency** (stable article identity via `url_hash`, bounded re-ingest, and `content_hash`-gated row updates) is specified in [ADR-0031: Pipeline idempotency and article re-ingest](adr/0031-pipeline-idempotency-and-reingest.md).
 

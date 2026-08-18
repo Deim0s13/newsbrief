@@ -4,6 +4,7 @@ Background scheduler for automated feed refresh and story generation.
 Uses APScheduler to run background tasks on configurable schedules.
 Default schedules:
 - Feed refresh: 5:30 AM daily
+- Bulk enrichment (summarize + embed, #328): 5:45 AM daily
 - Story generation: 6:00 AM daily
 """
 
@@ -46,6 +47,18 @@ STORY_TIME_WINDOW_HOURS = int(
 STORY_MIN_ARTICLES = int(
     os.getenv("STORY_MIN_ARTICLES", "2")
 )  # Minimum articles per story
+
+# Bulk item enrichment (summarize + embed) configuration (#328)
+BULK_ENRICH_ENABLED = os.getenv("BULK_ENRICH_ENABLED", "true").lower() == "true"
+BULK_ENRICH_SCHEDULE = os.getenv(
+    "BULK_ENRICH_SCHEDULE", "45 5 * * *"
+)  # Default: 5:45 AM daily (between feed refresh and story generation)
+BULK_ENRICH_BATCH_SIZE = int(
+    os.getenv("BULK_ENRICH_BATCH_SIZE", "100")
+)  # Summarize+embed up to 100 articles per run
+BULK_ENRICH_MAX_WORKERS = int(
+    os.getenv("BULK_ENRICH_MAX_WORKERS", "3")
+)  # Parallel LLM summarize calls (same level validated for oMLX, #339/#340)
 
 # Topic reclassification configuration (v0.7.6)
 TOPIC_RECLASSIFY_ENABLED = (
@@ -213,6 +226,65 @@ def scheduled_feed_refresh() -> dict:
     finally:
         _feed_refresh_in_progress = False
         _feed_refresh_lock.release()
+
+
+def scheduled_bulk_enrich() -> dict:
+    """
+    Bulk summarize + embed articles still missing a summary, on schedule (#328).
+
+    Closes the gap where per-article enrichment (AI summary + embedding) was
+    never invoked automatically anywhere in the running system -- it only
+    existed as a manual, single-item admin/API endpoint. Runs between feed
+    refresh and story generation so newly-ingested articles are enriched
+    (and thus available to v0.8.6 RAG features: semantic dedup, retrieval
+    hook, light RAG, /search/semantic) before story generation runs.
+    """
+    logger.info("Starting scheduled bulk enrichment (summarize + embed)")
+    start_time = datetime.now(UTC)
+
+    try:
+        from app.pipeline_runner import execute_summarize_stage
+        from app.settings import get_settings_service
+
+        run_group_id = str(uuid.uuid4())
+        active_model = get_settings_service().get_active_model()
+        res = execute_summarize_stage(
+            trigger="scheduled",
+            run_group_id=run_group_id,
+            batch_size=BULK_ENRICH_BATCH_SIZE,
+            model=active_model,
+            max_workers=BULK_ENRICH_MAX_WORKERS,
+        )
+
+        elapsed = (datetime.now(UTC) - start_time).total_seconds()
+        stats = dict(res.stats)
+
+        logger.info(
+            f"Scheduled bulk enrichment complete: "
+            f"{stats.get('summaries_generated', 0)} summarized, "
+            f"{stats.get('errors', 0)} errors, "
+            f"took {elapsed:.1f}s"
+        )
+
+        return {
+            "success": res.success,
+            "elapsed_seconds": elapsed,
+            "stats": stats,
+            "run_group_id": run_group_id,
+            "error": res.error,
+        }
+
+    except Exception as e:
+        elapsed = (datetime.now(UTC) - start_time).total_seconds()
+        logger.error(
+            f"Scheduled bulk enrichment failed after {elapsed:.1f}s: {e}",
+            exc_info=True,
+        )
+        return {
+            "success": False,
+            "error": str(e),
+            "elapsed_seconds": elapsed,
+        }
 
 
 def scheduled_story_generation():
@@ -501,6 +573,7 @@ def start_scheduler():
     - Credibility data refresh (if enabled)
     - Topic reclassification (if enabled)
     - Feed refresh (if enabled)
+    - Bulk enrichment: summarize + embed (if enabled, #328)
     - Story generation
 
     Should be called once during application startup.
@@ -594,6 +667,25 @@ def start_scheduler():
         else:
             logger.info("Feed refresh disabled (FEED_REFRESH_ENABLED=false)")
 
+        # Add scheduled bulk enrichment job (#328)
+        if BULK_ENRICH_ENABLED:
+            enrich_trigger = CronTrigger.from_crontab(
+                BULK_ENRICH_SCHEDULE, timezone=STORY_GENERATION_TIMEZONE
+            )
+            scheduler.add_job(
+                scheduled_bulk_enrich,
+                trigger=enrich_trigger,
+                id="bulk_enrich",
+                name="Scheduled Bulk Enrichment (summarize + embed)",
+                replace_existing=True,
+                max_instances=1,
+            )
+            logger.info(
+                f"Bulk enrichment scheduled: {BULK_ENRICH_SCHEDULE} {STORY_GENERATION_TIMEZONE}"
+            )
+        else:
+            logger.info("Bulk enrichment disabled (BULK_ENRICH_ENABLED=false)")
+
         # Add scheduled story generation job
         story_trigger = CronTrigger.from_crontab(
             STORY_GENERATION_SCHEDULE, timezone=STORY_GENERATION_TIMEZONE
@@ -661,12 +753,14 @@ def get_scheduler_status() -> dict:
             "running": False,
             "topic_reclassification": None,
             "feed_refresh": None,
+            "bulk_enrich": None,
             "story_generation": None,
         }
 
     jobs = scheduler.get_jobs()
     story_job = next((j for j in jobs if j.id == "story_generation"), None)
     feed_job = next((j for j in jobs if j.id == "feed_refresh"), None)
+    enrich_job = next((j for j in jobs if j.id == "bulk_enrich"), None)
     topic_job = next((j for j in jobs if j.id == "topic_reclassification"), None)
     retention_job = next((j for j in jobs if j.id == "data_retention"), None)
 
@@ -688,6 +782,16 @@ def get_scheduler_status() -> dict:
             "schedule": FEED_REFRESH_SCHEDULE if FEED_REFRESH_ENABLED else None,
             "next_run": feed_job.next_run_time.isoformat() if feed_job else None,
             "in_progress": _feed_refresh_in_progress,
+        },
+        "bulk_enrich": {
+            "enabled": BULK_ENRICH_ENABLED,
+            "schedule": BULK_ENRICH_SCHEDULE if BULK_ENRICH_ENABLED else None,
+            "next_run": enrich_job.next_run_time.isoformat() if enrich_job else None,
+            "configuration": {
+                "batch_size": BULK_ENRICH_BATCH_SIZE,
+                "max_workers": BULK_ENRICH_MAX_WORKERS,
+                "model": "active-profile",
+            },
         },
         "story_generation": {
             "schedule": STORY_GENERATION_SCHEDULE,
