@@ -454,7 +454,7 @@ make hostname-trust-cert
 
 ### Upcoming
 
-- **Model Optimisation & Platform Intelligence** (v0.8.7): hardware-informed, device-aware model profiles ([ADR-0033](docs/adr/0033-hardware-informed-model-selection.md)); MLX backend verification on macOS; embedding model re-evaluation
+- **Model Optimisation & Platform Intelligence** (v0.8.7, in progress): hardware-informed, device-aware model profiles ([ADR-0033](docs/adr/0033-hardware-informed-model-selection.md)); oMLX backend adopted on macOS; embedding model re-evaluated (no change)
 - **Entity Intelligence System** (v0.9.0): deeper entity linking and disambiguation
 - **RAG re-evaluation**: re-run `scripts/rag_evaluation.py` after a normal week of production ingestion to validate the relatedness-precision gate at realistic corpus size (ADR-0026 follow-up condition)
 - **Fine-tuning feasibility**: Deferred — better alternatives first (ADR-0027)

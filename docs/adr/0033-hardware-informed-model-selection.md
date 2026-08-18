@@ -133,6 +133,7 @@ LLMfit analysis should be re-run when hardware changes meaningfully (new GPU, VR
 - Issue #329 — Verify Ollama's native MLX backend on macOS
 - Issue #331 — Verify macOS candidate model tags
 - Issue #332 — Validate Windows model swap (incl. deepseek-r1 thinking-block risk) (closed — see [Windows Live Validation addendum](#addendum-august-2026-windows-live-validation-332) below)
+- Issue #330 — Re-evaluate embedding model for item/story embeddings (closed — see [Embedding Model Re-evaluation addendum](#addendum-august-2026-embedding-model-re-evaluation-330) below)
 - Issue #341 — Formalize the model-fitness harness (`scripts/model_fitness.py`), used for this validation
 
 ---
@@ -226,3 +227,39 @@ Entity-extraction (short prompt) tok/s is the fairer comparison to LLMfit's pure
 ### Decision
 
 Confirmed final — no changes to `device_profiles.windows`. [#332](https://github.com/Deim0s13/newsbrief/issues/332) closed.
+
+## Addendum (August 2026): Embedding Model Re-evaluation (#330)
+
+**Status: No change — `nomic-embed-text` retained.** This addendum closes out [#330](https://github.com/Deim0s13/newsbrief/issues/330), the embedding-model re-evaluation this ADR deferred (see the "Operational notes" note above). Unlike the synthesis-model work above, this evaluation concluded the current choice is still correct — a negative result worth documenting so the question isn't re-litigated without new evidence.
+
+### Trigger and prerequisite
+
+`nomic-embed-text` (768-dim) is what all v0.8.6 RAG features (semantic dedup, retrieval hook, light RAG, historical linking, `/search/semantic`) are built on, and it hadn't been reassessed since it was first chosen. Evaluation was blocked until [#328](https://github.com/Deim0s13/newsbrief/issues/328) (automatic per-article enrichment) closed, since item-level embeddings were not being populated in production before that fix — there was nothing meaningful to benchmark against.
+
+### Methodology
+
+A reusable benchmark script (`scripts/embedding_benchmark.py`) was built to compare candidates against real NewsBrief data rather than published MTEB scores, using a domain-specific retrieval-precision proxy: articles the pipeline's own clustering already grouped into the same multi-article story are ground-truth "related" pairs. For each embedding model, every sampled item's title+summary text is embedded, and the script checks whether at least one same-story sibling appears in that item's top-5 nearest neighbours by cosine similarity.
+
+An initial run at `--sample-size 200` (a ~17% subsample of the eligible population) showed `qwen3-embedding:0.6b` beating the baseline by ~2pp — but a second 200-item run (different random subsample) showed it *losing* to the baseline by ~4pp. That swing, larger than the effect being measured, made small subsamples untrustworthy for this decision; the benchmark was re-run against the (near-)full multi-article population instead (781 of ~1186 eligible items, 238 stories) for a stable result.
+
+### Candidates evaluated
+
+| Model | Dims | Hit-rate (top-5) | Mean embed latency |
+|---|---|---|---|
+| `nomic-embed-text` (baseline) | 768 | 49.4% | — (existing production embeddings reused) |
+| `qwen3-embedding:0.6b` (native) | 1024 | 48.7% | 115.7ms |
+| `qwen3-embedding:0.6b` (MRL-truncated to 768) | 768 | 47.8% | 115.7ms |
+| `mxbai-embed-large` (native) | 1024 | 49.8% | 46.1ms |
+| `mxbai-embed-large` (naive-truncated to 768)† | 768 | 48.9% | 46.1ms |
+
+† `mxbai-embed-large` is not MRL-trained, so its truncated row is a naive dimension slice, not a principled operation — included for completeness only.
+
+`bge-m3` (multilingual + hybrid dense/sparse) was not evaluated — the issue itself flagged it as likely overkill for an English-only corpus, and the two candidates tested already showed no meaningful gain, so there was no signal to chase further.
+
+### Decision
+
+**No change.** All four candidate variants land within ~1.6pp of the baseline — within noise, not a real improvement. `qwen3-embedding:0.6b`'s published MTEB advantage over `nomic-embed-text` does not carry over to this corpus/task. `mxbai-embed-large` embeds ~2.5x faster, but a latency win alone doesn't justify a schema-adjacent migration (re-embed backfill + re-tuning `semantic_dedupe.threshold`/`light_rag.threshold`/`retrieval_hook.threshold` in `data/model_config.json`) for zero precision gain. MRL truncation to 768-dim was confirmed to work as advertised for the one MRL-trained candidate tested (`qwen3-embedding:0.6b`: 48.7% native vs. 47.8% truncated) — i.e. the no-schema-migration path is viable *if* a future candidate ever justifies adopting it.
+
+### Re-evaluation trigger
+
+Revisit when a genuinely newer-generation embedding model becomes available (this evaluation is a point-in-time comparison against 2026-era candidates, same caveat as the synthesis-model addendum above), or when the corpus grows enough that low sample sizes stop being the limiting factor. `scripts/embedding_benchmark.py` is kept in the repo for that future re-run rather than being a one-off script.
