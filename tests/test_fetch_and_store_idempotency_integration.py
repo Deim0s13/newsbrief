@@ -137,7 +137,7 @@ def idempotency_feed():
         )
         s.execute(text("DELETE FROM feeds WHERE url = :u"), {"u": feed_url})
         # Other tests insert feeds with explicit ids (e.g. id=1) without advancing the
-        # PostgreSQL sequence; realign so SERIAL allocates a free id (CI Tekton runs full suite).
+        # PostgreSQL sequence; realign so SERIAL allocates a free id (CI runs full suite).
         s.execute(
             text(
                 """

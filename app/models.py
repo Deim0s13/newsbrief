@@ -552,7 +552,7 @@ class StoryGenerationRequest(BaseModel):
         24, description="Look back window in hours", ge=1, le=168
     )
     min_articles_per_story: int = Field(
-        1, description="Minimum articles to form a story", ge=1
+        2, description="Minimum articles to form a story", ge=1
     )
     similarity_threshold: float = Field(
         0.25,

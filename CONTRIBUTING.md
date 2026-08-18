@@ -13,16 +13,18 @@ Thank you for your interest in contributing to NewsBrief! This guide will help y
 ### 1. Clone and Install
 
 ```bash
-git clone https://github.com/your-org/newsbrief.git
+git clone https://github.com/Deim0s13/newsbrief.git
 cd newsbrief
 
 # Create virtual environment
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+source .venv/bin/activate  # Windows: run this inside WSL2, not PowerShell
 
 # Install dependencies
 pip install -r requirements.txt -r requirements-dev.txt
 ```
+
+On Windows, development tooling (this venv, tests, migrations) runs in **WSL2** — production containers run natively under Podman Desktop for Windows and don't need WSL2 at runtime. See `CLAUDE.md` → "Platform Overview".
 
 ### 2. Set Up Pre-commit Hooks
 
@@ -47,22 +49,26 @@ The hooks will automatically:
 ### 3. Start Ollama
 
 ```bash
-# Start the Ollama service
+# Start the Ollama service (or use the native Ollama.app / Ollama.exe)
 ollama serve
 
-# Pull the default model
-ollama pull llama3.1:8b
+# Pull the default (balanced profile) model
+ollama pull qwen2.5:14b
 ```
 
 ### 4. Run the Application
 
 ```bash
-# Start development server
-make run
+make env-init      # generate .env
+make db-up         # start PostgreSQL (native pg_isready check on WSL2; container on macOS)
+make migrate-dev    # apply migrations
+make dev            # run uvicorn with reload
 
-# Or with Docker Compose
-make dev
+# Or in one step:
+make dev-full       # db-up + wait + dev
 ```
+
+`make run` builds and runs the **production container image** directly (Podman/Docker) — useful for a quick smoke test of a built image, not for day-to-day development.
 
 ## Code Style
 
@@ -102,19 +108,21 @@ pytest tests/ --cov=app --cov-report=term
 # Specific test file
 pytest tests/test_stories.py -v
 
-# Skip LLM-dependent tests
-CI=true pytest tests/ -v
+# Skip LLM-dependent tests (what CI runs)
+pytest tests/ -v -m "not requires_ollama"
 ```
+
+Non-LLM tests require a dev PostgreSQL database at `localhost:5433` (`make db-up`); DB-dependent tests skip automatically if `DATABASE_URL` isn't set.
 
 ### Test Categories
 
 | Category | Requires Ollama | Description |
 |----------|-----------------|-------------|
-| Unit tests | No | Core logic, utilities |
-| Integration tests | No | Database, API endpoints |
-| LLM tests | Yes | Story generation, synthesis |
+| Unit / mocked | No | Core logic, utilities — always safe |
+| Integration tests | No | Real PostgreSQL (`DATABASE_URL`); skip automatically without it |
+| LLM tests (`@pytest.mark.requires_ollama`) | Yes | Story generation, synthesis; excluded from CI |
 
-LLM-dependent tests automatically skip when Ollama is not available.
+Coverage threshold in CI is 34% (`pytest tests/ --cov=app --cov-report=term`).
 
 ## Database
 
@@ -149,37 +157,20 @@ When a PR **adds or changes** files under `alembic/versions/`, every environment
 
 ## Branching Strategy
 
-Single-maintainer workflow: **work on `dev`**, **cut releases from `main`**.
+Single-maintainer workflow: **work on `dev`**, **cut releases with a direct merge to `main`**. There's no PR gate or branch protection — see [BRANCHING_STRATEGY.md](docs/development/BRANCHING_STRATEGY.md) for the full rationale and release checklist.
 
 | Branch | Purpose |
 |--------|---------|
-| `dev` | Day-to-day development; push here. Tekton `ci-dev` runs on **`push` to `dev`** (when the [webhook relay](docs/development/KUBERNETES.md) path is up). |
-| `main` | Production releases only — merge or promote from `dev` when you ship. Tekton `ci-prod` runs on **`push` to `main`**. |
+| `dev` | Day-to-day development; push here (directly, or via a short-lived `feature/*`/`fix/*` branch). GitHub Actions runs `.github/workflows/ci-dev.yml` automatically on push — no local trigger needed. |
+| `main` | Production releases only — cut with `git merge dev --no-ff` when you ship (after bumping `pyproject.toml` version). Push triggers `.github/workflows/ci-prod.yml` automatically. |
 
-Long-lived `feature/*` / `fix/*` branches are optional; avoid them unless you truly need isolation, since they add merge overhead for a solo setup.
-
-### Tekton `ci-dev` after you push (recommended)
-
-Git has **no post-push hook**, and the **GitHub → Smee → laptop** path only runs `ci-dev` when **port-forward + smee-client** are up. For reliable checks before you later merge to `main`, use:
+CI runs entirely on GitHub Actions hosted runners — there's nothing to start locally, port-forward, or relay. Check pipeline status with:
 
 ```bash
-make push-dev
+gh run list --branch dev --limit 5
+gh run list --branch main --limit 5
+gh run view <run-id> --log-failed
 ```
-
-That **`git push origin dev`** and then starts **`ci-dev`** on your cluster (same workload as the webhook: clone `dev`, lint, pytest). Push only without the pipeline: `SKIP_CI_DEV=1 make push-dev`. To re-run CI without pushing: `make ci-dev`.
-
-### GitHub webhook → Tekton (automatic `ci-dev` / `ci-prod`)
-
-After a reboot or when pipelines stop firing on push, bring up **all** kubectl forwards **and** Smee in one step:
-
-```bash
-make port-forwards          # prod 8788, dev 8789, EventListener 8080, dashboard 9097, + smee-client
-make webhook-relay-status   # optional: port 8080 + smee + github-webhook-secret
-```
-
-`make webhook-relay-start` is the same as `make port-forwards`. Stop **only** Smee with `make webhook-relay-stop`; use `pkill -f "kubectl port-forward"` if you need to tear down forwards too.
-
-Logs: `logs/smee-client.log` (gitignored). Config: `tekton/triggers/smee-config.yaml`. **GitHub “Delivery: OK”** only means Smee received the POST; Tekton still needs this relay and a **`github-webhook-secret`** in `default` matching GitHub’s hook secret. Details: [KUBERNETES.md — Webhooks](docs/development/KUBERNETES.md).
 
 ## Pull Request Checklist
 
@@ -224,7 +215,7 @@ Ensure Ollama is running with the correct model:
 curl http://localhost:11434/api/tags
 
 # Pull model if missing
-ollama pull llama3.1:8b
+ollama pull qwen2.5:14b
 ```
 
 ## Getting Help

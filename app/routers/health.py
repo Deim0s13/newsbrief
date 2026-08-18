@@ -54,7 +54,7 @@ def health_check() -> dict:
         llm_available = is_llm_available()
         health_status["components"]["llm"] = {
             "status": "healthy" if llm_available else "unavailable",
-            "url": OLLAMA_BASE_URL,
+            "url": get_llm_service().backend.base_url,
         }
     except Exception as e:
         health_status["components"]["llm"] = {
@@ -102,11 +102,14 @@ def readyz() -> dict:
 @router.get("/ollamaz")
 def ollamaz() -> dict:
     """
-    Ollama LLM service health probe.
-    Returns 503 if Ollama is not available.
+    LLM backend health probe (Ollama, or oMLX on macOS -- #336/#337).
+    Returns 503 if the resolved backend is not available.
     """
+    base_url = OLLAMA_BASE_URL
     try:
         llm_service = get_llm_service()
+        backend_type = get_settings_service().get_backend_type()
+        base_url = llm_service.backend.base_url
         available = llm_service.is_available()
 
         if not available:
@@ -114,31 +117,27 @@ def ollamaz() -> dict:
                 status_code=503,
                 detail={
                     "status": "unavailable",
-                    "url": OLLAMA_BASE_URL,
-                    "message": "Ollama service is not responding",
+                    "url": base_url,
+                    "backend": backend_type,
+                    "message": "LLM backend is not responding",
                 },
             )
 
         try:
-            models_response = llm_service.client.list()
-            if isinstance(models_response, dict) and "models" in models_response:
-                models = [
-                    {
-                        "name": m.get("name", "unknown"),
-                        "size": m.get("size", 0),
-                        "modified_at": m.get("modified_at", ""),
-                    }
-                    for m in models_response.get("models", [])
-                ]
-            else:
-                models = []
+            models = llm_service.backend.list_models()
         except Exception:
             models = []
 
+        resolution = get_settings_service().get_model_resolution_info()
+
         return {
             "status": "healthy",
-            "url": OLLAMA_BASE_URL,
-            "default_model": get_settings_service().get_active_model(),
+            "url": base_url,
+            "backend": backend_type,
+            "default_model": resolution.model,
+            "effective_model": resolution.model,
+            "detected_platform": resolution.platform,
+            "resolution_source": resolution.source,
             "models_available": len(models),
             "models": models[:10],
         }
@@ -146,12 +145,12 @@ def ollamaz() -> dict:
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Ollama health check failed: {e}")
+        logger.error(f"LLM backend health check failed: {e}")
         raise HTTPException(
             status_code=503,
             detail={
                 "status": "error",
-                "url": OLLAMA_BASE_URL,
+                "url": base_url,
                 "error": str(e),
             },
         )

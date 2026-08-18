@@ -605,3 +605,44 @@ class TestEdgeCases:
 
         assert result1.topic == result2.topic
         assert result1.confidence == result2.confidence
+
+
+class TestLLMBackendWiring:
+    """
+    Regression tests for #337: topics.py's LLM call sites must go through
+    `llm_service.backend.generate()`, not the legacy `llm_service.client`
+    passthrough, so classification works under both the Ollama and oMLX
+    backends (#335/#336).
+    """
+
+    @patch("app.topics.get_llm_service")
+    def test_classify_free_form_calls_backend_generate(self, mock_get_llm):
+        from app.topics import _classify_free_form
+
+        mock_service = MagicMock()
+        mock_service.is_available.return_value = True
+        mock_service.model = "qwen2.5:14b"
+        mock_service.backend.generate.return_value = {"response": "ai research"}
+        mock_get_llm.return_value = mock_service
+
+        result = _classify_free_form("Title", "Summary", model="qwen2.5:14b")
+
+        assert result == "ai research"
+        mock_service.backend.generate.assert_called_once()
+        mock_service.client.generate.assert_not_called()
+
+    @patch("app.topics.get_llm_service")
+    def test_classify_topic_enhanced_calls_backend_generate(self, mock_get_llm):
+        mock_service = MagicMock()
+        mock_service.is_available.return_value = True
+        mock_service.model = "qwen2.5:14b"
+        # Deliberately invalid JSON - this test only asserts the call was
+        # routed through `.backend`, not the parsing outcome.
+        mock_service.backend.generate.return_value = {"response": "not json"}
+        mock_get_llm.return_value = mock_service
+
+        result = classify_topic_enhanced("Some title", "Some summary")
+
+        assert result is None
+        mock_service.backend.generate.assert_called_once()
+        mock_service.client.generate.assert_not_called()

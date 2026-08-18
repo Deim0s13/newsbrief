@@ -112,6 +112,32 @@ class TestClassifyClusterPathByTopicDiversity:
         # 2 topics out of 2 articles with topics = 1.0 → deep
         assert classify_cluster_path(articles) == "deep"
 
+    def test_none_topic_value_does_not_crash(self) -> None:
+        """
+        Regression test for #340: an article whose `topic` key is present
+        but explicitly `None` (the real shape of un-topic-classified
+        articles from the DB -- `items.topic` is nullable, and the cache
+        dict carries the column value through as-is) previously crashed
+        `.strip()` with an uncaught AttributeError, since
+        `dict.get("topic", "")` only applies the "" default when the key
+        is *absent*, not when its value is `None`. Hit live during
+        real-backlog verification of the #340 fix -- same root-cause
+        class as the OMLXBackend/_run_llm_call None-response bug.
+        """
+        articles = [{"id": i, "topic": None} for i in range(3)]
+        assert classify_cluster_path(articles) == "standard"
+
+    def test_mixed_none_and_present_topics(self) -> None:
+        articles = [
+            {"id": 0, "topic": "AI"},
+            {"id": 1, "topic": "Security"},
+            {"id": 2, "topic": None},
+            {"id": 3, "topic": None},
+        ]
+        # Same shape as test_mixed_present_and_missing_topics, but with
+        # None instead of "" for the missing topics.
+        assert classify_cluster_path(articles) == "deep"
+
 
 # ---------------------------------------------------------------------------
 # classify_cluster_path — count takes priority over diversity

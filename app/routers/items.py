@@ -193,29 +193,23 @@ def list_items(
 @router.get("/llm/status", response_model=LLMStatusOut)
 def llm_status():
     """Get LLM service status and available models."""
+    base_url = OLLAMA_BASE_URL
     try:
         service = get_llm_service()
+        base_url = service.backend.base_url
         available = service.is_available()
-        models = []
+        models: List[str] = []
         error = None
         if available:
             try:
-                model_list = service.client.list()
-                if isinstance(model_list, dict) and "models" in model_list:
-                    models = [
-                        m.get("name", m.get("model", ""))
-                        for m in model_list["models"]
-                        if m
-                    ]
-                else:
-                    models = []
+                models = service.backend.list_models()
             except Exception as e:
                 error = f"Could not list models: {e}"
         else:
             error = "LLM service not available"
         return LLMStatusOut(
             available=available,
-            base_url=OLLAMA_BASE_URL,
+            base_url=base_url,
             current_model=get_settings_service().get_active_model(),
             models_available=models,
             error=error,
@@ -223,7 +217,7 @@ def llm_status():
     except Exception as e:
         return LLMStatusOut(
             available=False,
-            base_url=OLLAMA_BASE_URL,
+            base_url=base_url,
             current_model=get_settings_service().get_active_model(),
             models_available=[],
             error=str(e),

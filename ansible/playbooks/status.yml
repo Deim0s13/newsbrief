@@ -27,12 +27,6 @@
       changed_when: false
       failed_when: false
 
-    - name: Check Tekton pods
-      command: kubectl get pods -n tekton-pipelines --no-headers
-      register: tekton_pods
-      changed_when: false
-      failed_when: false
-
     - name: Check ArgoCD pods
       command: kubectl get pods -n argocd --no-headers
       register: argocd_pods
@@ -72,9 +66,6 @@
 
           Kubernetes Context:
             {{ kube_context.stdout if kube_context.rc == 0 else '❌ Not configured' }}
-
-          Tekton:
-            {{ '✅ Running' if tekton_pods.rc == 0 and tekton_pods.stdout else '❌ Not running' }}
 
           ArgoCD:
             {{ '✅ Running' if argocd_pods.rc == 0 and argocd_pods.stdout else '❌ Not running' }}

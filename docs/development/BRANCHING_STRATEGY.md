@@ -1,326 +1,115 @@
 # Git Branching Strategy
 
-**Date**: 2025-11-12
+**Last Updated**: August 2026
 **Status**: Active
 
 ---
 
+This is a solo-maintained personal project. The branching model favors low ceremony over process: no required PR reviews, no branch protection rules — just two long-lived branches and a direct merge for releases. This document describes **what actually happens today**, not an aspirational process.
+
 ## 🌳 Branch Structure
 
-### **`main`** (Protected - Production)
-- **Purpose**: Production-ready code only
-- **Protection**: Require pull requests, reviews, CI/CD must pass
-- **Releases**: All tagged releases (v0.5.0, v0.6.0, etc.)
-- **Deploy**: Direct deployment to production
-- **Updates**: Only via PR from `dev` after thorough testing
+### **`dev`** — Day-to-day development
 
-### **`dev`** (Integration - Staging)
-- **Purpose**: Integration branch for completed features (staging environment)
-- **Merges from**: Feature branches (via PR)
-- **Merges to**: `main` (via PR for releases only)
-- **Testing**: All features tested together before promoting to production
-- **Default branch**: Primary development branch for day-to-day work
+- All feature work, fixes, and doc changes happen here — either as direct commits to `dev`, or via a short-lived `feature/*`/`fix/*` branch merged into `dev` for larger changes. Either is fine; there's no required PR.
+- Every push runs `.github/workflows/ci-dev.yml`: lint → test → build & push `:dev-latest` + `:sha-{sha}` → update `k8s/overlays/dev/kustomization.yaml`.
+- ArgoCD (macOS) auto-deploys the dev image to the `newsbrief-dev` namespace within ~5 minutes.
 
-### **`feature/*`** (Working branches)
-- **Purpose**: Individual feature development
-- **Naming**: `feature/issue-48-scheduled-generation`, `feature/story-ui`
-- **Lifetime**: Created for work, deleted after merge
-- **Merges to**: `dev` (via PR)
+### **`main`** — Releases only
+
+- Only receives a **direct merge from `dev`** when cutting a release — no PR, no required review, no branch protection rules enforced by GitHub.
+- Pushing to `main` runs `.github/workflows/ci-prod.yml`: version-check gate → lint → test → build & push `:v{version}` + `:latest` → Trivy scan → Cosign sign → SBOM → GitHub release → update `k8s/overlays/prod/kustomization.yaml`.
+- ArgoCD (macOS) auto-deploys within ~5 minutes; Windows picks up `:latest` the next morning at 06:00 via `compose-watch.ps1`.
+
+### **`feature/*`, `fix/*`** (optional working branches)
+
+Useful for isolating a larger change before merging into `dev`, but not required. Naming convention: `feature/issue-N-short-description`, `fix/issue-N-short-description`. Delete after merging.
 
 ---
 
-## 📋 Workflow
+## 📋 Release Process (what actually happens)
 
-### Starting New Work
+This is the sequence used for every release since v0.8.5, most recently v0.8.6:
 
-1. **Create feature branch from dev**:
+1. **Finish and commit the work on `dev`**, verify `pytest`, `black`, `isort`, `mypy` are clean, and CI is green on `dev`.
+
+2. **Bump the version** in `pyproject.toml` on `dev` and commit:
    ```bash
-   git checkout dev
-   git pull origin dev
-   git checkout -b feature/issue-48-scheduled-generation
+   # pyproject.toml: version = "X.Y.Z"
+   git add pyproject.toml
+   git commit -m "chore(release): bump version to X.Y.Z"
+   git push origin dev
    ```
+   `ci-prod.yml`'s `check-version` job fails the whole pipeline if this step is skipped — it checks that `vX.Y.Z` isn't already a tag.
 
-2. **Work on feature**:
-   ```bash
-   # Make changes
-   git add .
-   git commit -m "feat: add scheduled story generation"
-   git push origin feature/issue-48-scheduled-generation
-   ```
-
-3. **Create Pull Request**:
-   - From: `feature/issue-48-scheduled-generation`
-   - To: `dev`
-   - Title: "feat: Scheduled story generation (Issue #48)"
-   - Description: Link issue, describe changes
-
-4. **After PR merged**:
-   ```bash
-   git checkout dev
-   git pull origin dev
-   git branch -d feature/issue-48-scheduled-generation
-   ```
-
-### Release Process
-
-When ready to release (e.g., v0.7.4 complete):
-
-1. **Update Version & Documentation** (before merge):
-   ```bash
-   # Update version in pyproject.toml (single source of truth)
-   # [project]
-   # version = "0.7.4"
-
-   # Update main README.md
-   # - Move "Current" to "Previous"
-   # - Add new version as "Current"
-   # - Update "Next" to upcoming milestone
-
-   # Update docs/releases/README.md
-   # - Add one-line entry for new version with GitHub Release link
-   ```
-
-2. **Create release PR**:
-   - From: `dev`
-   - To: `main`
-   - Title: "Release v0.7.4 - Security"
-
-3. **After merge to main**:
+3. **Merge `dev` into `main` directly** (no PR):
    ```bash
    git checkout main
    git pull origin main
-   git tag -a v0.7.4 -m "Release v0.7.4 - Security"
-   git push origin v0.7.4
+   git merge dev --no-ff -m "chore(release): merge dev into main for vX.Y.Z"
+   git push origin main
    ```
 
-4. **Create GitHub Release**:
-   - Tag: v0.7.4
-   - Title: "v0.7.4 - Security"
-   - Release notes: Completed features, breaking changes, upgrade instructions
+4. **CI takes it from there** — `ci-prod.yml` creates the `vX.Y.Z` tag, GitHub release (with auto-generated notes from `git log`), signed+scanned image, and SBOM. No manual tagging step.
+
+5. **Update release docs** (this can happen before or after the merge — doesn't gate the pipeline):
+   - Add an entry to `docs/releases/README.md`
+   - Update the "Completed releases" table in `README.md`
+
+6. **Sync local branches**:
+   ```bash
+   git checkout dev
+   git merge main   # or: git pull, if dev and main have no divergent history
+   ```
 
 ### Release Checklist
 
-- [ ] All milestone issues closed
-- [ ] CI/CD pipeline passing on `dev`
-- [ ] `pyproject.toml` version updated
-- [ ] `README.md` updated (Next → Current → Previous)
-- [ ] `docs/releases/README.md` updated
-- [ ] Manual testing completed
-- [ ] Merged to `main`
-- [ ] Tag created and pushed
-- [ ] GitHub Release published with notes
+- [ ] Milestone issues closed on GitHub
+- [ ] CI green on `dev`
+- [ ] `pyproject.toml` version bumped and pushed to `dev` (before merging to `main`)
+- [ ] `dev` merged into `main` with `--no-ff` (direct, no PR)
+- [ ] `ci-prod.yml` completed successfully (check `gh run list --branch main --limit 3`)
+- [ ] `docs/releases/README.md` and `README.md` updated
 
 ---
 
-## 🔧 Initial Setup (One-Time)
+## 🏷️ Branch Naming (when using a working branch)
 
-### Create `dev` Branch
-
-```bash
-# From main
-git checkout main
-git pull origin main
-
-# Create dev branch
-git checkout -b dev
-git push origin dev
-
-# Set up tracking
-git branch --set-upstream-to=origin/dev dev
-```
-
-### Protect `main` Branch
-
-In GitHub:
-1. Settings → Branches → Branch protection rules
-2. Add rule for `main`:
-   - ✅ Require pull request before merging
-   - ✅ Require approvals (1+)
-   - ✅ Require status checks to pass
-   - ✅ Include administrators (optional)
-
----
-
-## 🏷️ Branch Naming Conventions
-
-### Features
-- `feature/issue-48-scheduled-generation`
-- `feature/story-landing-page`
-- `feature/performance-optimization`
-
-### Bugfixes
-- `bugfix/issue-99-fix-clustering`
-- `fix/story-api-timeout`
-
-### Hotfixes (emergency fixes to main)
-- `hotfix/critical-security-patch`
-- `hotfix/database-migration-fix`
-
-### Documentation
-- `docs/update-api-documentation`
-- `docs/add-architecture-diagrams`
-
-### Refactoring
-- `refactor/story-generation-pipeline`
-- `refactor/cleanup-tests`
-
----
+| Type | Example |
+|------|---------|
+| Feature | `feature/issue-262-rag-evaluation` |
+| Fix | `fix/issue-99-clustering` |
+| Docs | `docs/update-api-documentation` |
+| Refactor | `refactor/story-generation-pipeline` |
 
 ## 📝 Commit Message Convention
 
-Follow [Conventional Commits](https://www.conventionalcommits.org/):
+[Conventional Commits](https://www.conventionalcommits.org/) style — used consistently but not enforced by a commit hook beyond `pre-commit`'s formatting/lint checks:
 
 ```
 <type>(<scope>): <description>
 
 [optional body]
 
-[optional footer]
+[optional footer: Closes #N]
 ```
 
-### Types
-- `feat`: New feature
-- `fix`: Bug fix
-- `docs`: Documentation only
-- `style`: Formatting, missing semicolons, etc.
-- `refactor`: Code change that neither fixes bug nor adds feature
-- `test`: Adding tests
-- `chore`: Maintenance tasks (deps, config, etc.)
+**Types in active use**: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`.
 
-### Examples
-```bash
-feat(stories): add scheduled story generation
-
-Implements APScheduler for daily story generation at 6 AM.
-Configurable schedule via STORY_GENERATION_SCHEDULE env var.
-
-Closes #48
-
----
-
-fix(api): resolve story API timeout on POST /stories/generate
-
-Move story generation to background task to prevent HTTP timeouts.
-
-Relates to #66
-
----
-
-docs: update README with v0.5.0 milestone progress
-
-Added milestone links and updated project tracking section.
+**Example** (real commit from the v0.8.6 cycle):
+```
+feat(rag): embedding reliability, semantic dedup, light RAG anchors, retrieval hook, and complexity scoring
 ```
 
----
-
-## 🚫 What NOT to Commit Directly to Main
-
-- ❌ Feature development
-- ❌ Experimental changes
-- ❌ Untested code
-- ❌ Work in progress
-- ❌ Breaking changes without review
-
-### Exceptions (Emergency Only)
-- ✅ Critical security patches (via hotfix branch → PR)
-- ✅ Hotfixes for production issues (via hotfix branch → PR)
-- ✅ Documentation typos (very minor, or via PR)
+Note: there is **no automated semantic-release** wired into CI — commit prefixes are a convention for readable history, not a version-bump trigger. Version bumps are the manual `pyproject.toml` edit in step 2 above.
 
 ---
 
-## 🔄 Current State Correction
+## Why not required PRs / branch protection?
 
-**Issue**: We've been committing directly to `main` during development.
-
-**Action Plan**:
-
-1. **Create `dev` branch** from current `main`:
-   ```bash
-   git checkout -b dev
-   git push origin dev
-   ```
-
-2. **For future work**: Always branch from `dev`:
-   ```bash
-   git checkout dev
-   git checkout -b feature/my-feature
-   ```
-
-3. **Going forward**: Use PRs for all changes:
-   - Feature branches → `dev` (via PR)
-   - `dev` → `main` (via PR for releases)
-
-**Note**: Past commits to `main` are fine (they're done), but from now on we follow the proper workflow.
-
----
-
-## 📊 Example Workflow for Issue #48
-
-```bash
-# Start work
-git checkout dev
-git pull origin dev
-git checkout -b feature/issue-48-scheduled-generation
-
-# Make changes
-vim app/scheduler.py
-vim app/main.py
-git add .
-git commit -m "feat(stories): implement scheduled story generation
-
-- Add APScheduler for background tasks
-- Configure daily generation schedule
-- Add health checks and error handling
-- Update API to integrate scheduler
-
-Closes #48"
-
-# Push and create PR
-git push origin feature/issue-48-scheduled-generation
-gh pr create --base dev --title "feat: Scheduled story generation (Issue #48)"
-
-# After PR approved and merged
-git checkout dev
-git pull origin dev
-git branch -d feature/issue-48-scheduled-generation
-git push origin --delete feature/issue-48-scheduled-generation
-```
-
----
-
-## 🎯 Benefits
-
-### With Proper Branching
-- ✅ `main` always stable
-- ✅ Can rollback easily
-- ✅ Review before merge
-- ✅ Test features in isolation
-- ✅ Multiple people can work in parallel
-- ✅ Clear history via PRs
-
-### Without (Direct to Main)
-- ❌ Unstable `main` branch
-- ❌ Hard to revert changes
-- ❌ No review process
-- ❌ Messy commit history
-- ❌ Risky for collaboration
-
----
+This was the original intent (see the git history of this file), but for a single-maintainer personal project the overhead of self-reviewing every PR added friction without a corresponding safety benefit — the real safety net is CI (lint + test + build) on every push to both branches, plus the version-check gate on `main`. If this project ever gains other contributors, branch protection + required reviews on `main` should be revisited.
 
 ## 📚 Additional Resources
 
-- [Git Feature Branch Workflow](https://www.atlassian.com/git/tutorials/comparing-workflows/feature-branch-workflow)
-- [GitHub Flow](https://docs.github.com/en/get-started/quickstart/github-flow)
+- [CI/CD Guide](CI-CD.md) — full pipeline detail for `ci-dev.yml` / `ci-prod.yml`
 - [Conventional Commits](https://www.conventionalcommits.org/)
-
----
-
-**Next Steps**:
-1. Create `dev` branch
-2. Set up branch protection on `main`
-3. Use feature branches for all new work
-
----
-
-**Status**: Ready to implement
-**Impact**: Better code quality, safer releases, clearer history

@@ -5,12 +5,10 @@
 # This playbook checks and restarts all NewsBrief services:
 # 1. Podman machine
 # 2. Kind cluster with local registry
-# 3. Tekton pipelines and triggers (+ cosign secret from Bitwarden)
-# 4. ArgoCD
-# 5. Production PostgreSQL (host:5432 for prod in Kind)
-# 6. Port forwards + wait for prod deployment
-# 7. Caddy reverse proxy
-# 8. Smee webhook relay
+# 3. ArgoCD
+# 4. Production PostgreSQL (host:5432 for prod in Kind)
+# 5. Port forwards + wait for prod deployment
+# 6. Caddy reverse proxy
 
 - name: Recover NewsBrief Development Environment
   hosts: localhost
@@ -27,10 +25,6 @@
     - name: Check and create Kind cluster
       include_role:
         name: kind
-
-    - name: Install/verify Tekton
-      include_role:
-        name: tekton
 
     - name: Install/verify ArgoCD
       include_role:
@@ -63,10 +57,6 @@
       include_role:
         name: caddy
 
-    - name: Start Smee webhook relay
-      include_role:
-        name: smee
-
     - name: Display service status
       debug:
         msg: |
@@ -76,16 +66,13 @@
           ════════════════════════════════════════════════════════════════
 
           Prod (Kubernetes):
-            • App:              https://newsbrief.local
-            • Tekton Dashboard: http://localhost:9097
-            • Smee Relay:       https://smee.io/cddqBCYHwHG3ZcUY
+            • App: https://newsbrief.local
 
           Dev:
             • Kubernetes (Argo newsbrief-dev): http://localhost:8789
             • Host uvicorn: make dev → http://localhost:8787
 
           CI/CD:
-            • GitHub webhooks relay to local EventListener via Smee
-            • Logs: /tmp/smee.log
+            • GitHub Actions (hosted runners) — no local webhook relay needed
 
           ════════════════════════════════════════════════════════════════

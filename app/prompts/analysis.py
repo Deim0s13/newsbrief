@@ -132,6 +132,8 @@ def parse_analysis_response(response: str) -> Optional[AnalysisResult]:
             narrative_thread=data.get("narrative_thread", ""),
         )
 
-    except (json.JSONDecodeError, ValueError, KeyError) as e:
+    except (json.JSONDecodeError, ValueError, KeyError, AttributeError) as e:
+        # AttributeError guards against a None response reaching
+        # response.strip() above (#340).
         logger.warning(f"Failed to parse analysis response: {e}")
         return None

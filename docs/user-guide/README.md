@@ -17,6 +17,8 @@ Complete API reference including:
 - Story endpoints (`/stories`, `/stories/{id}`, `/stories/generate`)
 - Article endpoints (`/items`, `/items/{id}`)
 - Feed management (`/feeds`, OPML import/export)
+- **Semantic search & retrieval** ⭐ *v0.8.6* (`/search/semantic`, `/stories/{id}/related`, `/items/{id}/similar`)
+- **Pipeline admin & operations** ⭐ *v0.8.6* (`/api/admin/pipeline/*`, retrieval traces, semantic duplicates, retention)
 - **Model profiles** (`/api/models/profiles`, `/api/models`)
 - **Source credibility** (`/api/credibility/lookup`, `/api/credibility/stats`)
 - Health probes (`/healthz`, `/readyz`, `/ollamaz`)
@@ -50,8 +52,8 @@ make deploy                 # Idempotent; runs migrations automatically
 **Development**:
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-make dev
+pip install -r requirements.txt -r requirements-dev.txt
+make db-up && make migrate-dev && make dev
 # Access at http://localhost:8787 (shows DEV banner)
 ```
 

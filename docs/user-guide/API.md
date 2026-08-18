@@ -291,7 +291,7 @@ For large article clusters, the pipeline automatically selects the optimal synth
 ```json
 {
   "models": {
-    "llama3.1:8b": {
+    "qwen2.5:14b": {
       "context_window": 8192,
       "synthesis_budget": 6000
     }
@@ -336,6 +336,93 @@ Each story includes metadata explaining why its source articles were grouped tog
 | `clustering_factors` | Weights used in similarity calculation (entity 50%, keyword 30%, topic 20%) |
 
 This metadata powers the "Why Grouped Together" panel in the story detail UI, providing transparency into the clustering algorithm's decisions.
+
+---
+
+### 🔎 Semantic Search & Retrieval API ⭐ *New in v0.8.6 (ADR-0026)*
+
+Bounded pgvector similarity search over article/story embeddings (`nomic-embed-text`, 768 dimensions). All three endpoints share the same underlying `RetrievalService` (`app/retrieval.py`) and log a `RetrievalTrace` row per call for observability (see [Pipeline Admin API](#-pipeline-admin--operations-api--new-in-v086) below).
+
+#### **GET /search/semantic**
+
+Embeds the query text via Ollama and returns the closest articles or stories by cosine similarity.
+
+**Query Parameters**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `q` | string | required | Free-text query (min length 1) |
+| `content_type` | string | `article` | `article` or `story` |
+| `top_k` | int | 5 | Max results (1-50) |
+| `min_similarity` | float | 0.7 | Minimum cosine similarity (0.0-1.0) |
+
+**Response (200)**
+```json
+{
+  "query": "AI regulation in the EU",
+  "content_type": "article",
+  "results": [
+    {
+      "id": 123,
+      "title": "EU Finalizes AI Act Enforcement Rules",
+      "similarity": 0.87,
+      "published_at": "2026-08-01T10:30:00Z",
+      "url": "https://example.com/eu-ai-act"
+    }
+  ]
+}
+```
+
+**Error (503)** — embedding or query failure (e.g. Ollama unavailable)
+```json
+{"detail": "Semantic search failed: ..."}
+```
+
+**Example**
+```bash
+curl "http://localhost:8787/search/semantic?q=AI+regulation&content_type=story&top_k=5" | jq .
+```
+
+#### **GET /stories/{story_id}/related**
+
+Semantically related stories, ranked by pgvector cosine similarity against the target story's embedding.
+
+**Query Parameters**: `top_k` (default 5, max 50), `min_similarity` (default 0.7) — same semantics as above.
+
+**Response (200)**
+```json
+{
+  "query_id": 42,
+  "results": [
+    {"id": 38, "title": "EU Proposes Draft AI Act Risk Categories", "similarity": 0.80, "published_at": "2026-07-15T09:00:00Z", "url": null}
+  ]
+}
+```
+
+**Error (404)** — story not found: `{"detail": "Story with ID 999 not found"}`
+
+**Example**
+```bash
+curl "http://localhost:8787/stories/42/related?top_k=3" | jq .
+```
+
+#### **GET /items/{item_id}/similar**
+
+Semantically similar articles, ranked by pgvector cosine similarity against the target article's embedding.
+
+**Query Parameters**: `top_k` (default 5, max 50), `min_similarity` (default 0.7).
+
+**Response (200)** — same shape as `/stories/{id}/related`, with `query_id` set to the item ID.
+
+**Error (404)** — item not found: `{"detail": "Item not found"}`
+
+**Example**
+```bash
+curl "http://localhost:8787/items/123/similar" | jq .
+```
+
+**Notes**
+- All three endpoints require the source article/story to already have an embedding (embeddings are generated automatically after summarization/synthesis; see `app/item_embeddings.py` / `app/story_embeddings.py`). If embeddings are disabled or Ollama is unavailable at ingestion time, results may be empty rather than erroring.
+- These are separate from — and looser/stricter than — the internal `retrieval_hook` and `light_rag` thresholds used during story synthesis. See [MODEL-PROFILES.md](MODEL-PROFILES.md#rag--semantic-retrieval-configuration-v086) for how those are configured.
 
 ---
 
@@ -570,7 +657,7 @@ Get background scheduler status including feed refresh and story generation jobs
       "time_window_hours": 24,
       "archive_days": 7,
       "min_articles": 2,
-      "model": "llama3.1:8b"
+      "model": "qwen2.5:14b"
     }
   }
 }
@@ -582,6 +669,10 @@ Get background scheduler status including feed refresh and story generation jobs
 |----------|---------|-------------|
 | `FEED_REFRESH_ENABLED` | `true` | Enable/disable scheduled feed refresh |
 | `FEED_REFRESH_SCHEDULE` | `30 5 * * *` | Cron schedule for feed refresh (default: 5:30 AM) |
+| `BULK_ENRICH_ENABLED` | `true` | Enable/disable scheduled bulk enrichment (summarize + embed, #328) |
+| `BULK_ENRICH_SCHEDULE` | `45 5 * * *` | Cron schedule for bulk enrichment (default: 5:45 AM, between feed refresh and story generation) |
+| `BULK_ENRICH_BATCH_SIZE` | `100` | Max articles summarized + embedded per scheduled run |
+| `BULK_ENRICH_MAX_WORKERS` | `3` | Parallel LLM summarize calls per run |
 | `STORY_GENERATION_SCHEDULE` | `0 6 * * *` | Cron schedule for story generation (default: 6:00 AM) |
 | `STORY_GENERATION_TIMEZONE` | `Pacific/Auckland` | Timezone for all scheduled jobs |
 
@@ -2301,6 +2392,92 @@ Sources are filtered from synthesis based on type:
 
 ---
 
+## 🔧 Pipeline Admin & Operations API ⭐ *New in v0.8.6*
+
+Operator-facing endpoints for the orchestrated pipeline ([ADR-0029](../adr/0029-pipeline-oriented-orchestration.md)) and the RAG features shipped in v0.8.6 ([ADR-0026](../adr/0026-rag-integration-strategy.md)). All are also usable via the `/admin/pipeline` dashboard. Every mutating action here is recorded to the operator audit log (`app/operator_audit.py`).
+
+### Manual pipeline execution
+
+#### **POST /api/admin/pipeline/run**
+
+Manually trigger pipeline stages.
+
+**Request Body**
+```json
+{"from_stage": "full", "batch_size": 500}
+```
+`from_stage`: `full` (ingest → summarize → story generation, #328), `ingest`, `summarize`, or `story_generation`. Defaults to `full` if body omitted. `batch_size` (optional): overrides `BULK_ENRICH_BATCH_SIZE` for this run's `summarize` stage only — e.g. a large one-off value to catch up an existing backlog of un-summarized articles; ignored for `ingest`/`story_generation`.
+
+#### **POST /api/admin/pipeline/replay**
+
+Re-run one stage for a single item or story (targeted repair, not a full pipeline run).
+
+**Request Body**
+```json
+{
+  "target_type": "story",
+  "target_id": 42,
+  "from_stage": "story_generation",
+  "model": "qwen2.5:14b"
+}
+```
+`target_type`: `item` or `story`. `from_stage`: `enrich` or `summarize` (item) or `story_generation` (story). `model` optional — defaults to the active profile.
+
+### Observability
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/admin/pipeline/audit?limit=` | Recent operator actions (manual runs, replays, retries, discards) |
+| `GET /api/admin/pipeline/stages` | Article/story counts by `processing_state` |
+| `GET /api/admin/pipeline/run-metrics?window_hours=` | Aggregates from `pipeline_stage_runs` by stage, for a rolling window (default 24h) |
+| `GET /api/admin/pipeline/metrics` | Unified metrics view combining stage counts + run metrics |
+| `GET /api/admin/pipeline/stuck?max_age_seconds=&limit=` | In-flight stage runs older than the stuck threshold (default `PIPELINE_STUCK_AFTER_SECONDS=3600`) |
+| `GET /api/admin/pipeline/failed-entities?limit=` | Items/stories in a `failed` processing state |
+| `GET /api/admin/pipeline/runs?limit=` | List of `pipeline_stage_runs` rows (raw run history) |
+
+### RAG observability (v0.8.6)
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/admin/retrieval-traces?limit=` | Recent semantic retrieval queries (`RetrievalTrace` rows) + aggregate latency/count stats |
+| `GET /api/admin/semantic-duplicates?limit=` | Items flagged as likely semantic duplicates (`duplicate_of_id`) for operator review |
+| `GET /api/admin/pipeline/embedding-failures?limit=` | Items with a recorded `embedding_error`, distinct from not-yet-embedded |
+| `GET /api/admin/pipeline/complexity-scores?limit=` | Distribution sample of numeric cluster `complexity_score` values (advisory-only, doesn't affect routing decisions retroactively) |
+
+**Example**
+```bash
+curl "http://localhost:8787/api/admin/retrieval-traces?limit=20" | jq '.stats'
+curl "http://localhost:8787/api/admin/semantic-duplicates" | jq '.duplicates'
+```
+
+### Dead-letter retry / discard
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /api/admin/pipeline/failed-items/{item_id}/retry` | Re-attempt processing for a failed item |
+| `POST /api/admin/pipeline/failed-items/{item_id}/discard` | Mark a failed item as permanently discarded |
+| `POST /api/admin/pipeline/failed-stories/{story_id}/retry` | Re-attempt processing for a failed story |
+| `POST /api/admin/pipeline/failed-stories/{story_id}/discard` | Mark a failed story as permanently discarded |
+| `POST /api/admin/pipeline/runs/{run_id}/retry` | Re-run a specific `pipeline_stage_runs` row |
+| `POST /api/admin/pipeline/runs/{run_id}/discard` | Discard a specific stage run record |
+
+### Data Retention
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/admin/retention/status` | Current row counts and deletion eligibility under each retention policy |
+| `POST /api/admin/retention/run?dry_run=true` | Run retention policies. `dry_run=true` (default) previews counts without deleting; `dry_run=false` commits deletes and logs the operator action. Story-linked articles are always preserved regardless of policy. |
+
+**Example**
+```bash
+curl http://localhost:8787/api/admin/retention/status | jq .
+curl -X POST "http://localhost:8787/api/admin/retention/run?dry_run=true" | jq .
+```
+
+**Admin UI**: All of the above are surfaced at `/admin/pipeline`, which also links to `/admin/quality`, `/admin/models`, `/admin/topics`, `/admin/extraction`, and `/admin/credibility`.
+
+---
+
 ## 🛡️ Error Handling
 
 ### **Standard Error Response**
@@ -2448,9 +2625,9 @@ curl http://localhost:8787/items?limit=1 | jq '.[0].id'
 
 ---
 
-## 🐍 Python API (v0.5.0)
+## 🐍 Python API
 
-For story generation, the Python API is currently available while HTTP endpoints are being developed.
+All functionality documented above is available over HTTP — the sections below document the underlying Python functions (`app/stories.py`) directly, for anyone extending NewsBrief in-process (e.g. a CLI script, notebook, or custom scheduler job) rather than driving it over the network.
 
 ### Story Generation
 
@@ -2466,7 +2643,7 @@ with session_scope() as session:
         time_window_hours=24,      # Lookback period (default: 24)
         min_articles_per_story=1,  # Minimum articles per story (default: 1)
         similarity_threshold=0.3,  # Keyword overlap threshold (default: 0.3)
-        model="llama3.1:8b"        # LLM model for synthesis
+        model="qwen2.5:14b"        # LLM model for synthesis (or get_settings_service().get_active_model())
     )
     print(f"Generated {len(story_ids)} stories: {story_ids}")
 ```
@@ -2475,7 +2652,7 @@ with session_scope() as session:
 - `time_window_hours` (int): How many hours back to look for articles (default: 24)
 - `min_articles_per_story` (int): Minimum articles to form a story (default: 1, allows single-article stories)
 - `similarity_threshold` (float): Jaccard similarity threshold for keyword overlap (0.0-1.0, default: 0.3)
-- `model` (str): Ollama model to use for synthesis (default: "llama3.1:8b")
+- `model` (str): Ollama model to use for synthesis (default: the active profile's model, e.g. "qwen2.5:14b")
 
 **Returns**: List of created story IDs
 
@@ -2569,8 +2746,8 @@ with session_scope() as session:
 
 ## 💡 Tips & Best Practices
 
-### **Rate Limiting**
-Currently no rate limiting implemented. For production use, consider implementing rate limiting at the reverse proxy level.
+### **Rate Limiting** ⭐ *v0.7.4*
+API rate limiting is implemented via `slowapi` (see [ADR-0014](../adr/0014-api-rate-limiting.md)): a global default of `100/minute` per client IP, with a stricter `10/minute` limit on LLM-backed endpoints (e.g. `/summarize`). Override via `RATE_LIMIT_DEFAULT` / `RATE_LIMIT_LLM` environment variables. Exceeding a limit returns `429 Too Many Requests`.
 
 ### **Monitoring**
 - Monitor `/refresh` response times for feed health

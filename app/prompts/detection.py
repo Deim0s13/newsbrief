@@ -109,6 +109,10 @@ def parse_detection_response(response: str) -> Optional[StoryTypeResult]:
             reasoning=data.get("reasoning", ""),
         )
 
-    except (json.JSONDecodeError, ValueError, KeyError) as e:
+    except (json.JSONDecodeError, ValueError, KeyError, AttributeError) as e:
+        # AttributeError guards against a None response reaching
+        # response.strip() above (#340) -- belt-and-braces on top of the
+        # backend/_run_llm_call fixes that should prevent None arriving
+        # here at all.
         logger.warning(f"Failed to parse detection response: {e}")
         return None

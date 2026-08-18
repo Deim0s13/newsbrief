@@ -425,6 +425,22 @@ def extract_entities(
             locations=[],
         )
 
+    # Ensure the model is actually pulled before generating (mirrors the
+    # synthesis path in stories.py). Without this, a not-yet-pulled model
+    # returns a 404 that looks identical to "no entities found" downstream,
+    # silently poisoning the entity cache (see #328-adjacent clustering bug).
+    if not llm_service.ensure_model(model):
+        logger.warning(
+            f"Model {model} not available for entity extraction, returning empty entities"
+        )
+        return ExtractedEntities(
+            companies=[],
+            products=[],
+            people=[],
+            technologies=[],
+            locations=[],
+        )
+
     try:
         # Create prompt (enhanced by default)
         prompt = _create_entity_extraction_prompt(
@@ -432,7 +448,7 @@ def extract_entities(
         )
 
         # Call LLM
-        response = llm_service.client.generate(
+        response = llm_service.backend.generate(
             model=model,
             prompt=prompt,
             options={
@@ -443,7 +459,7 @@ def extract_entities(
             },
         )
 
-        raw_response = response.get("response", "").strip()
+        raw_response = (response.get("response") or "").strip()
 
         if not raw_response:
             logger.warning("Empty response from LLM for entity extraction")

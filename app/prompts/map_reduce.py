@@ -101,7 +101,9 @@ def parse_group_summary_response(response: str) -> Optional[Dict[str, Any]]:
             "unique_angle": data.get("unique_angle", ""),
         }
 
-    except (json.JSONDecodeError, ValueError) as e:
+    except (json.JSONDecodeError, ValueError, AttributeError) as e:
+        # AttributeError guards against a None response reaching
+        # response.strip() above (#340).
         logger.warning(f"Failed to parse group summary response: {e}")
         return None
 

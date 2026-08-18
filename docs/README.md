@@ -1,6 +1,6 @@
 # NewsBrief Documentation
 
-Project documentation organized by category. For current project status, see the [GitHub Project Board](https://github.com/users/Deim0s13/projects/2).
+Project documentation organized by category. For current project status, see the [GitHub Project Board](https://github.com/users/Deim0s13/projects/8).
 
 ## 📐 Architecture
 
@@ -24,7 +24,6 @@ Developer documentation:
 - **[KUBERNETES.md](development/KUBERNETES.md)** - Local Kubernetes and CI/CD setup
 - **[CI-CD.md](development/CI-CD.md)** - CI/CD pipeline documentation
 - **[BRANCHING_STRATEGY.md](development/BRANCHING_STRATEGY.md)** - Git workflow
-- **[GITHUB_PROJECT_BOARD_SETUP.md](development/GITHUB_PROJECT_BOARD_SETUP.md)** - Project board guide
 
 ### 🏛️ [Architecture Decision Records](adr/)
 Architectural decisions with context and rationale:
@@ -56,11 +55,11 @@ Historical documentation (no longer actively maintained):
 |----------|------|
 | **Quick Start** | [user-guide/QUICK-START.md](user-guide/QUICK-START.md) |
 | **API Reference** | [user-guide/API.md](user-guide/API.md) |
-| **Latest Release** | [v0.8.3](https://github.com/Deim0s13/newsbrief/releases) |
-| **Project Board** | [GitHub Projects](https://github.com/users/Deim0s13/projects/2) |
+| **Latest Release** | [v0.8.6](https://github.com/Deim0s13/newsbrief/releases) |
+| **Project Board** | [GitHub Projects](https://github.com/users/Deim0s13/projects/8) |
 | **Issues** | [GitHub Issues](https://github.com/Deim0s13/newsbrief/issues) |
 | **Milestones** | [GitHub Milestones](https://github.com/Deim0s13/newsbrief/milestones) |
 
 ---
 
-**Last Updated**: February 2026 · **Current Version**: v0.8.3
+**Last Updated**: August 2026 · **Current Version**: v0.8.6

@@ -246,6 +246,8 @@ jobs:
     needs: [build-and-push, sign-image, generate-sbom]
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # full history + tags needed for the commit-range diff below
 
       - name: Download SBOM artifact
         uses: actions/download-artifact@v8

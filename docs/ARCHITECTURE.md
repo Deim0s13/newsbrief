@@ -1,7 +1,7 @@
 # NewsBrief Architecture Document
 
-> **Version**: 1.5
-> **Last Updated**: June 2026 (v0.8.4)
+> **Version**: 1.6
+> **Last Updated**: August 2026 (v0.8.6)
 > **Status**: Living Document
 
 ---
@@ -74,8 +74,11 @@ NewsBrief is a **self-hosted, privacy-focused** application designed to:
 | **FR-12a** | Integrate external source credibility ratings (MBFC) | Should | ✅ Complete |
 | **FR-13** | Archive old stories automatically | Should | ✅ Complete |
 | **FR-14** | Full-text search across articles | Could | 🔜 Planned |
-| **FR-15** | Semantic search using embeddings | Could | 🔜 Planned |
+| **FR-15** | Semantic search using embeddings | Could | ✅ Complete (v0.8.6, `/search/semantic`) |
 | **FR-16** | User accounts and authentication | Won't (v1.0) | 📋 Future |
+| **FR-17** | Post-hoc semantic deduplication of paraphrased articles | Should | ✅ Complete (v0.8.6, ADR-0026) |
+| **FR-18** | Historical linking between a story and the story it continues | Should | ✅ Complete (v0.8.6, ADR-0026) |
+| **FR-19** | Bounded retrieval context injected into synthesis (light RAG) | Could | ✅ Complete (v0.8.6, ADR-0026) |
 
 ### 2.2 User Stories
 
@@ -289,11 +292,11 @@ C4Context
     System(newsbrief, "NewsBrief", "AI-powered news aggregator that synthesizes RSS feeds into story briefs")
 
     System_Ext(rss_feeds, "RSS/Atom Feeds", "External news sources (tech blogs, news sites)")
-    System_Ext(ollama, "Ollama", "Local LLM server running Qwen 2.5 (configurable profiles)")
+    System_Ext(llm_backend, "LLM Backend", "Local LLM server - Ollama or oMLX, platform-dependent (fast/balanced/quality profiles)")
 
     Rel(user, newsbrief, "Browses stories, manages feeds", "HTTPS")
     Rel(newsbrief, rss_feeds, "Fetches articles", "HTTP/HTTPS")
-    Rel(newsbrief, ollama, "Requests summaries, synthesis", "HTTP")
+    Rel(newsbrief, llm_backend, "Requests summaries, synthesis", "HTTP")
 ```
 
 ### 5.2 External Dependencies
@@ -301,7 +304,7 @@ C4Context
 | System | Purpose | Required | Local |
 |--------|---------|----------|-------|
 | **RSS/Atom Feeds** | News sources | Yes | No (external) |
-| **Ollama** | LLM inference | No (graceful fallback) | Yes |
+| **LLM Backend** (Ollama / oMLX, platform-dependent — see ADR-0025, ADR-0033) | LLM inference | No (graceful fallback) | Yes |
 | **PostgreSQL** | Application database (all environments) | Yes | Yes |
 | **Caddy** | Reverse proxy, TLS | No (direct access fallback) | Yes |
 
@@ -346,8 +349,8 @@ flowchart TB
     end
 
     subgraph AI["AI Layer"]
-        Ollama["Ollama Server"]
-        LLM["Qwen 2.5 (Fast/Balanced/Quality)"]
+        LLMBackend["LLM Backend<br/>Ollama (Windows) / oMLX (macOS)"]
+        LLM["Fast/Balanced/Quality profiles<br/>(device-specific models, ADR-0033)"]
     end
 
     subgraph Data["Data Layer"]
@@ -359,8 +362,8 @@ flowchart TB
     Caddy --> FastAPI
     FastAPI --> Services
     FastAPI --> Background
-    Services --> Ollama
-    Ollama --> LLM
+    Services --> LLMBackend
+    LLMBackend --> LLM
     Services --> PostgreSQL
     Scheduler --> Services
 ```
@@ -374,7 +377,7 @@ sequenceDiagram
     participant F as FastAPI
     participant S as Story Service
     participant D as Database
-    participant O as Ollama
+    participant O as LLM Backend
 
     U->>C: GET /stories
     C->>F: Forward (TLS terminated)
@@ -413,12 +416,23 @@ sequenceDiagram
 | **Database** | PostgreSQL 16 (+ pgvector in app images) | ACID, dev/prod parity (ADR-0022) |
 | **ORM** | SQLAlchemy 2.0 | Database abstraction |
 | **Migrations** | Alembic | Schema versioning |
-| **LLM** | Ollama (Qwen 2.5 14B default) | Local, private, configurable profiles (see ADR-0025) |
+| **LLM** | Platform-selectable: Ollama (Windows) / oMLX (macOS) | Local, private, configurable fast/balanced/quality profiles; backend and model chosen per-host via `device_profiles` (see ADR-0025, ADR-0033) |
 | **Scheduler** | APScheduler | Python-native background jobs |
 | **Content Extraction** | Trafilatura + Readability | Tiered extraction with fallback (see ADR-0024) |
 | **Reverse Proxy** | Caddy | Auto TLS, simple config |
 | **Container Runtime** | Podman/Docker | OCI-compliant |
 | **Orchestration** | Podman Compose | Multi-container |
+
+### 6.3.1 Device-Aware LLM Backend and Model Selection
+
+The LLM backend and model for each profile (fast/balanced/quality) are resolved **per-host** rather than globally, via `data/model_config.json` → `device_profiles.<platform>` and `SettingsService.get_active_model()`/`get_backend_type()` (`settings.py`). Full resolution order and rationale: [ADR-0033](adr/0033-hardware-informed-model-selection.md) and [MODEL-PROFILES.md](user-guide/MODEL-PROFILES.md#device-aware-defaults).
+
+| Platform | Backend | Fast | Balanced | Quality |
+|---|---|---|---|---|
+| **Windows** | Ollama | `llama3.1:8b` | `qwen3:14b` | `deepseek-r1:14b` |
+| **macOS** | oMLX | `Llama-3.2-3B-Instruct-4bit` | `Qwen3-30B-A3B-Instruct-2507` (MoE) | `Qwen3.6-35B-A3B` (unsloth dynamic quant, MoE) |
+
+macOS runs on [oMLX](https://github.com/omlx-org/omlx) rather than Ollama — a decision reversing ADR-0025's original "Ollama is the sole inference backend," made after real benchmarks showed a 2-5x throughput win depending on concurrency. See [ADR-0025's amendment](adr/0025-llm-model-selection.md#amendment-august-2026-platform-selectable-backend) for the full evidence. The backend is implemented behind a pluggable abstraction (`app/llm_backends.py`: `OllamaBackend` / `OMLXBackend`) so `stories.py`/`entities.py`/`topics.py` and the health/status routers call through `LLMService.backend` without knowing which runtime is active.
 
 ### 6.4 Story processing: pipeline orchestration
 
@@ -463,6 +477,17 @@ flowchart TB
         end
     end
 
+    subgraph RAGSvc["RAG / Retrieval Services (v0.8.6)"]
+        Retrieval["Retrieval Service (retrieval.py)"]
+        CtxRetrieval["Context Retrieval Hook (context_retrieval.py)"]
+        SemDedup["Semantic Dedup (semantic_dedup.py)"]
+        LightRAG["Light RAG Anchors (light_rag.py)"]
+        HistLink["Historical Linking (historical_linking.py)"]
+        RetrTrace["Retrieval Tracing (retrieval_tracing.py)"]
+        PubGate["Publish Gate (publish_gate.py)"]
+        EmbedSvc["Embedding Service (embedding_service.py)"]
+    end
+
     subgraph Support["Support Services"]
         LLMSvc["LLM Service (llm.py)"]
         LLMOutput["LLM Output Validation (llm_output.py)"]
@@ -473,6 +498,8 @@ flowchart TB
         CtxMgr["Context Manager (context_manager.py)"]
         Settings["Settings Service (settings.py)"]
         Prompts["Prompt Templates (prompts/)"]
+        PipelineRunner["Pipeline Runner (pipeline_runner.py)"]
+        Retention["Retention Service (retention.py)"]
     end
 
     subgraph Data["Data Access"]
@@ -483,6 +510,7 @@ flowchart TB
     Routes --> StorySvc
     Routes --> FeedSvc
     Routes --> EntitySvc
+    Routes --> Retrieval
     StorySvc --> LLMSvc
     StorySvc --> LLMOutput
     StorySvc --> Cluster
@@ -495,10 +523,21 @@ flowchart TB
     LLMSvc --> Prompts
     StorySvc --> QualityMet
     StorySvc --> CtxMgr
+    StorySvc --> CtxRetrieval
+    StorySvc --> HistLink
+    StorySvc --> PubGate
+    CtxRetrieval --> Retrieval
+    CtxRetrieval --> LightRAG
+    Retrieval --> RetrTrace
+    EmbedSvc --> SemDedup
     SchedSvc --> FeedSvc
     SchedSvc --> StorySvc
+    SchedSvc --> Retention
+    PipelineRunner --> FeedSvc
+    PipelineRunner --> StorySvc
 
     Core --> ORM
+    RAGSvc --> ORM
     ORM --> DB
 ```
 
@@ -512,15 +551,28 @@ flowchart TB
 | **Topic Classifier** | Categorization (Security, AI/ML, etc.) | `topics.py` |
 | **Ranking Engine** | Interest matching, source weighting | `ranking.py` |
 | **Credibility Service** | Source credibility lookup, MBFC data import | `credibility.py`, `credibility_import.py` |
-| **LLM Service** | Ollama integration, prompt management | `llm.py` |
+| **LLM Service** | LLM backend integration (Ollama/oMLX via pluggable `app/llm_backends.py`, ADR-0025/ADR-0033), prompt management | `llm.py`, `llm_backends.py` |
 | **LLM Output Validation** | JSON parsing, repair, schema validation, circuit breaker | `llm_output.py` |
 | **Content Extraction** | Tiered article extraction with quality scoring | `extraction.py` |
 | **Scheduler** | Background job orchestration | `scheduler.py` |
 | **Synthesis Cache** | LLM response caching | `synthesis_cache.py` |
 | **Quality Metrics** | Output quality tracking and scoring (v0.8.1) | `quality_metrics.py` |
 | **Context Manager** | Large article cluster handling with chunking (v0.8.1) | `context_manager.py` |
-| **Settings Service** | Model profiles and runtime configuration (v0.8.1) | `settings.py` |
+| **Settings Service** | Model profiles, device-aware model/backend resolution (v0.8.1, extended v0.8.7 per ADR-0033), runtime configuration | `settings.py` |
 | **Prompt Templates** | Multi-pass synthesis prompts (v0.8.1) | `prompts/` |
+| **Embedding Service** | Async Ollama embedding generation | `embedding_service.py`, `item_embeddings.py`, `story_embeddings.py`, `embed_backfill.py` |
+| **Retrieval Service** | Bounded pgvector similarity search powering semantic search + related/similar endpoints (v0.8.6) | `retrieval.py` |
+| **Context Retrieval Hook** | Fetches retrieval context for a cluster during the pipeline's retrieval stage (v0.8.6) | `context_retrieval.py` |
+| **Semantic Dedup** | Post-hoc detection of paraphrased duplicate articles via embedding similarity (v0.8.6) | `semantic_dedup.py` |
+| **Light RAG** | Structured historical context anchors injected into synthesis prompts (v0.8.6) | `light_rag.py` |
+| **Historical Linking** | Detects and links a story to the story it continues (v0.8.6) | `historical_linking.py` |
+| **Retrieval Tracing** | Records retrieval query latency/results for observability and evaluation (v0.8.6) | `retrieval_tracing.py` |
+| **Cluster Complexity Scoring** | Numeric 0.0-1.0 score routing clusters to standard vs deep synthesis (v0.8.6) | `stories.py` (`compute_cluster_complexity`) |
+| **Publish Gate** | Confidence-based publish/warn/hold decision before a story becomes visible (v0.8.5) | `publish_gate.py` |
+| **Pipeline Runner** | Orchestrates stage execution across ingest/summarize/enrich/story-generation (ADR-0029, #328) | `pipeline_runner.py`, `pipeline_monitoring.py`, `processing_states.py` |
+| **Retention Service** | Per-type data retention with dry-run preview and daily purge job | `retention.py` |
+| **Ingest Idempotency** | Stable article identity (`url_hash`) and `content_hash`-gated updates (ADR-0031) | `ingest_idempotency.py` |
+| **Operator Audit** | Audit log for manual admin actions (retries, discards) | `operator_audit.py` |
 
 ### 7.5 Story Processing Pipeline (orchestration)
 
@@ -548,6 +600,8 @@ Items move through a default sequence of stages. Order and insertion points are 
 - **Story states** (e.g. candidate, synthesizing, context_enriched, quality_checked, published, archived, failed) drive visibility and which operator actions are valid. Failed items are queryable and can be retried, inspected, or discarded.
 
 **Canonical enums, transition rules, and mapping to existing `Story.status` (`active` / `archived`)** are specified in [ADR-0030: Article and story processing states](adr/0030-article-story-processing-states.md) (subordinate to [ADR-0029](adr/0029-pipeline-oriented-orchestration.md)).
+
+**Implementation note (#328, v0.8.7):** `pipeline_runner.py`'s coarse, scheduled/tracked stages are `ingest` → `summarize` → `story_generation` (each recorded as a `PipelineStageRun`, retryable via `/admin/pipeline`). The `summarize` stage covers the **Enrich** row's summarize + embed work above as a real automatic step (bulk, scheduled between feed refresh and story generation) — previously this only existed as a manual, single-item `/summarize` API call, so real production traffic silently never populated item-level summaries or embeddings, starving every RAG feature that depends on them (semantic dedup, retrieval hook, light RAG, `/search/semantic`). Per-article **entity** extraction remains a separate `enrich` stage, run at cluster time during story generation (and individually replayable per item).
 
 **Feed ingest idempotency** (stable article identity via `url_hash`, bounded re-ingest, and `content_hash`-gated row updates) is specified in [ADR-0031: Pipeline idempotency and article re-ingest](adr/0031-pipeline-idempotency-and-reingest.md).
 
@@ -591,6 +645,9 @@ erDiagram
     Story ||--o{ StoryArticle : has
     Item ||--o{ StoryArticle : references
     Story ||--o{ Entity : mentions
+    Item }o--o| Item : "duplicate_of (semantic dedup)"
+    Story }o--o| Story : "continues_story (historical linking)"
+    Story ||--o{ RetrievalTrace : "retrieval queries"
 
     Feed {
         int id PK
@@ -612,6 +669,11 @@ erDiagram
         string topic
         datetime published
         datetime fetched
+        vector(768) embedding "nomic-embed-text"
+        string embedding_model
+        string embedding_error "v0.8.6"
+        int duplicate_of_id FK "semantic dedup, v0.8.6"
+        float duplicate_similarity "v0.8.6"
     }
 
     Story {
@@ -626,6 +688,14 @@ erDiagram
         float source_credibility_score
         boolean low_credibility_warning
         int sources_excluded
+        float confidence_score "v0.8.5"
+        string synthesis_path "standard|deep, v0.8.5"
+        float complexity_score "v0.8.6"
+        json context_anchors_json "light RAG, v0.8.6"
+        json synthesis_anchors_json "v0.8.6"
+        int continues_story_id FK "historical linking, v0.8.6"
+        float continues_similarity "v0.8.6"
+        vector(768) embedding "nomic-embed-text"
         datetime generated
         boolean is_archived
     }
@@ -657,6 +727,17 @@ erDiagram
         string provider
         datetime last_updated
     }
+
+    RetrievalTrace {
+        int id PK
+        string query_type "similar_articles|related_stories|semantic_search"
+        int source_id
+        string source_type
+        json retrieved_ids_json
+        json similarity_scores_json
+        int duration_ms
+        datetime created_at
+    }
 ```
 
 ### 8.2 Data Flow
@@ -672,15 +753,20 @@ flowchart LR
         Fetch["Fetch & Parse"]
         Extract["Content Extraction"]
         Summarize["AI Summarization"]
+        Embed["Embedding (Ollama, v0.8.6)"]
+        Dedup["Semantic Dedup (v0.8.6)"]
         Cluster["Article Clustering"]
+        Retrieve["Retrieval Hook + Light RAG Anchors (v0.8.6)"]
         Synthesize["Story Synthesis"]
+        HistLink["Historical Linking (v0.8.6)"]
         Rank["Ranking & Scoring"]
     end
 
     subgraph Store["Storage"]
-        Items["Items Table"]
-        Stories["Stories Table"]
+        Items["Items Table<br/>(+ embedding, duplicate_of_id)"]
+        Stories["Stories Table<br/>(+ embedding, context_anchors, continues_story_id)"]
         Cache["Synthesis Cache"]
+        Traces["Retrieval Traces"]
     end
 
     subgraph Output["Presentation"]
@@ -692,10 +778,15 @@ flowchart LR
     Fetch --> Extract
     Web --> Extract
     Extract --> Summarize
-    Summarize --> Items
+    Summarize --> Embed
+    Embed --> Dedup
+    Dedup --> Items
     Items --> Cluster
-    Cluster --> Synthesize
-    Synthesize --> Stories
+    Cluster --> Retrieve
+    Retrieve --> Traces
+    Retrieve --> Synthesize
+    Synthesize --> HistLink
+    HistLink --> Stories
     Synthesize --> Cache
     Stories --> Rank
     Rank --> API
@@ -772,7 +863,7 @@ flowchart TB
     GHCR["ghcr.io/deim0s13/newsbrief\n:sha-{SHA} / :latest"]
 
     subgraph macOS["macOS — ArgoCD (GitOps)"]
-        Argo["ArgoCD polls Git hourly"]
+        Argo["ArgoCD polls Git every 5 min"]
         MigrateJob["newsbrief-db-migrate Job\n(sync wave 0)"]
         KubeApp["API Deployment\n(sync wave 1)"]
         Argo --> MigrateJob --> KubeApp
@@ -1000,7 +1091,7 @@ All significant architectural decisions are documented as ADRs (Architecture Dec
 | [ADR-0022](adr/0022-dev-prod-database-parity.md) | Dev/Prod Database Parity | Accepted |
 | [ADR-0023](adr/0023-intelligence-platform-strategy.md) | Intelligence Platform Strategy | Accepted |
 | [ADR-0024](adr/0024-content-extraction-libraries.md) | Content Extraction Libraries | Accepted |
-| [ADR-0025](adr/0025-llm-model-selection.md) | LLM Model Selection (Qwen 2.5) | Accepted |
+| [ADR-0025](adr/0025-llm-model-selection.md) | LLM Model Selection (Qwen 2.5) | Accepted (amended Aug 2026 — platform-selectable backend) |
 | [ADR-0026](adr/0026-rag-integration-strategy.md) | RAG Integration Strategy | Accepted |
 | [ADR-0027](adr/0027-fine-tuning-deferral.md) | Fine-Tuning Deferral | Accepted |
 | [ADR-0028](adr/0028-source-credibility-architecture.md) | Source Credibility Architecture | Accepted |
@@ -1008,6 +1099,7 @@ All significant architectural decisions are documented as ADRs (Architecture Dec
 | [ADR-0030](adr/0030-article-story-processing-states.md) | Article and story processing states | Accepted |
 | [ADR-0031](adr/0031-pipeline-idempotency-and-reingest.md) | Pipeline idempotency and article re-ingest | Accepted |
 | [ADR-0032](adr/0032-cross-platform-cd-strategy.md) | Cross-Platform CD Strategy | Accepted |
+| [ADR-0033](adr/0033-hardware-informed-model-selection.md) | Hardware-Informed Model Selection (+ Aug 2026 oMLX addendum) | Accepted |
 
 ---
 

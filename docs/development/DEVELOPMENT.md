@@ -12,13 +12,12 @@ This guide covers setting up your development environment, running tests, debugg
 - **Git**: Version control
 - **jq**: JSON processing for API testing (optional)
 
-#### **For Kubernetes Development (v0.7.5+)**
+#### **For Kubernetes Development (macOS CD only)**
 - **kind**: Local Kubernetes clusters (`brew install kind`)
 - **kubectl**: Kubernetes CLI (`brew install kubectl`)
-- **tkn**: Tekton CLI (`brew install tektoncd-cli`)
-- **cosign**: Image signing (`brew install cosign`)
+- **cosign**: Image signing, for verifying signed images (`brew install cosign`)
 
-See [KUBERNETES.md](KUBERNETES.md) for complete setup guide.
+CI itself runs on GitHub Actions hosted runners — no local Tekton/CI tooling is required. `kind` + `kubectl` are only needed if you're working on the ArgoCD-managed macOS deployment. See [KUBERNETES.md](KUBERNETES.md) for the complete setup guide.
 
 ### **Initial Setup**
 
@@ -128,8 +127,9 @@ See [ADR-0022](../adr/0022-dev-prod-database-parity.md) for PostgreSQL parity. H
 ### **Database migrations (Alembic)**
 
 - **Local:** `make migrate` / `make migrate-dev`; new revisions: `make migrate-new MSG="description"`.
-- **Tekton:** CI runs `alembic upgrade head` during the test task.
-- **Argo CD:** **`newsbrief-db-migrate` Job** runs before the API `Deployment` (sync waves). See [KUBERNETES.md](KUBERNETES.md#sync-waves) and [CI-CD.md](CI-CD.md#database-migrations-alembic).
+- **CI (GitHub Actions):** `ci-dev.yml` / `ci-prod.yml` run `alembic upgrade head` against a throwaway Postgres service container as part of the test job.
+- **Argo CD (macOS):** **`newsbrief-db-migrate` Job** runs before the API `Deployment` (sync waves). See [KUBERNETES.md](KUBERNETES.md#sync-waves) and [CI-CD.md](CI-CD.md#database-migrations-alembic).
+- **Windows CD:** `compose-watch.ps1` / `make deploy` run `alembic upgrade head` directly against the Compose stack's database before restarting the app container.
 
 ### **Embeddings schema (pgvector, #250)**
 
@@ -174,7 +174,7 @@ NewsBrief supports several environment variables for configuration:
 ```bash
 # LLM Integration: Ollama service for AI summarization
 export OLLAMA_BASE_URL=http://localhost:11434
-export NEWSBRIEF_LLM_MODEL=llama3.1:8b
+export NEWSBRIEF_LLM_MODEL=qwen2.5:14b
 
 # Optional: Custom data directory
 export DATA_DIR=/path/to/your/data
@@ -186,6 +186,15 @@ export DATA_DIR=/path/to/your/data
 export FEED_REFRESH_ENABLED=true           # Enable/disable scheduled refresh
 export FEED_REFRESH_SCHEDULE="30 5 * * *"  # Cron: 5:30 AM daily
 
+# Bulk Enrichment: summarize + embed (#328, v0.8.7) -- runs between feed
+# refresh and story generation so newly-ingested articles get an AI summary
+# and embedding automatically; previously only available via a manual,
+# single-item admin/API call.
+export BULK_ENRICH_ENABLED=true            # Enable/disable scheduled enrichment
+export BULK_ENRICH_SCHEDULE="45 5 * * *"   # Cron: 5:45 AM daily
+export BULK_ENRICH_BATCH_SIZE=100          # Max articles summarized+embedded per run
+export BULK_ENRICH_MAX_WORKERS=3           # Parallel LLM summarize calls
+
 # Story Generation
 export STORY_GENERATION_SCHEDULE="0 6 * * *"  # Cron: 6:00 AM daily
 export STORY_GENERATION_TIMEZONE="Pacific/Auckland"
@@ -194,7 +203,7 @@ export STORY_GENERATION_TIMEZONE="Pacific/Auckland"
 export STORY_ARCHIVE_DAYS=7           # Archive stories older than 7 days
 export STORY_TIME_WINDOW_HOURS=24     # Generate from last 24 hours
 export STORY_MIN_ARTICLES=2           # Minimum articles per story
-export STORY_MODEL=llama3.1:8b        # LLM model for synthesis
+export STORY_MODEL=qwen2.5:14b        # LLM model for synthesis
 ```
 
 #### **Interest-Based Ranking** ⭐ *New in v0.6.5*
@@ -278,7 +287,7 @@ NewsBrief includes integrated AI summarization using local LLM services via Olla
 ```bash
 # LLM Service Configuration
 export OLLAMA_BASE_URL=http://localhost:11434  # Ollama service URL
-export NEWSBRIEF_LLM_MODEL=llama3.1:8b        # Default model for summarization
+export NEWSBRIEF_LLM_MODEL=qwen2.5:14b        # Default model for summarization
 
 # Production LLM settings
 export OLLAMA_BASE_URL=http://ollama-service:11434  # Internal service
@@ -296,7 +305,7 @@ export NEWSBRIEF_LLM_MODEL=mistral:7b              # Larger model for better qua
    ollama serve
 
    # Pull recommended models
-   ollama pull llama3.1:8b    # Recommended for accuracy
+   ollama pull qwen2.5:14b    # Recommended for accuracy
    ollama pull mistral:7b     # Better quality, slower
    ```
 
@@ -307,7 +316,7 @@ export NEWSBRIEF_LLM_MODEL=mistral:7b              # Larger model for better qua
      -p 8787:8787 \
      -v ./data:/app/data \
      -e OLLAMA_BASE_URL=http://host.containers.internal:11434 \
-     -e NEWSBRIEF_LLM_MODEL=llama3.1:8b \
+     -e NEWSBRIEF_LLM_MODEL=qwen2.5:14b \
      --name newsbrief newsbrief-api:latest
    ```
 
@@ -323,7 +332,7 @@ export NEWSBRIEF_LLM_MODEL=mistral:7b              # Larger model for better qua
    ```
 
 **Model Recommendations:**
-- **Development**: `llama3.1:8b` - Good balance of speed and accuracy
+- **Development**: `qwen2.5:14b` - Good balance of speed and accuracy
 - **Production**: `mistral:7b` - Higher quality, more detailed summaries
 - **High-volume**: `llama3.2:1b` - Fastest inference for large-scale processing
 
@@ -398,7 +407,7 @@ podman run --rm -d \
   -e NEWSBRIEF_MAX_ITEMS_PER_FEED=10 \
   -e NEWSBRIEF_MAX_REFRESH_TIME=120 \
   -e OLLAMA_BASE_URL=http://host.containers.internal:11434 \
-  -e NEWSBRIEF_LLM_MODEL=llama3.1:8b \
+  -e NEWSBRIEF_LLM_MODEL=qwen2.5:14b \
   -e NEWSBRIEF_CHUNKING_THRESHOLD=2000 \
   -e NEWSBRIEF_CHUNK_SIZE=1200 \
   --name newsbrief newsbrief-api:v0.3.3
@@ -455,7 +464,7 @@ podman run --rm -d \
   -p 8787:8787 \
   -v ./data:/app/data \
   -e OLLAMA_BASE_URL=http://host.containers.internal:11434 \
-  -e NEWSBRIEF_LLM_MODEL=llama3.1:8b \
+  -e NEWSBRIEF_LLM_MODEL=qwen2.5:14b \
   --name newsbrief newsbrief-api:v0.4.0
 
 # Production: High-capacity + AI + Ranking (v0.4.0+)
@@ -993,7 +1002,7 @@ Use **Alembic** only (no ad-hoc DDL in `db.py`):
 3. Apply locally: `make migrate` or `make migrate-dev`.
 4. Commit the new revision with the code that depends on the schema.
 
-See [CI-CD.md](CI-CD.md#database-migrations-alembic) for how migrations run in Tekton and Argo CD.
+See [CI-CD.md](CI-CD.md#database-migrations-alembic) for how migrations run in CI and in each CD path (ArgoCD on macOS, Compose on Windows).
 
 ## 📦 Container Development
 

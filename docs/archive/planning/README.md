@@ -43,6 +43,14 @@ Completed performance optimizations:
 - Lessons learned
 - Future recommendations
 
+### Code Review Documents (Archived Aug 2026)
+
+#### [CODE_IMPROVEMENT_PLAN.md](CODE_IMPROVEMENT_PLAN.md)
+Feb 2026 code-review tracking doc consolidating multiple review passes; all tracked items were resolved or superseded by later refactors (router split, ranking cleanup, etc).
+
+#### [CODE_REVIEW_RECOMMENDATIONS.md](CODE_REVIEW_RECOMMENDATIONS.md)
+Feb 2026 one-time independent code review findings (one SQL-injection fix, structure/consistency/quality recommendations).
+
 ---
 
 ## 🔄 Planning Process

@@ -33,10 +33,9 @@ Checks and restarts all services in the correct order:
 
 1. **Podman** - Starts the container runtime
 2. **Kind** - Creates/verifies the Kubernetes cluster
-3. **Tekton** - Installs pipelines, triggers, dashboard
-4. **ArgoCD** - Installs GitOps controller and apps
-5. **NewsBrief** - Sets up port forwards and seeds dev data
-6. **Caddy** - Starts the HTTPS reverse proxy
+3. **ArgoCD** - Installs GitOps controller and apps
+4. **NewsBrief** - Sets up port forwards and seeds dev data
+5. **Caddy** - Starts the HTTPS reverse proxy
 
 ```bash
 ansible-playbook -i inventory/localhost.yml playbooks/recover.yml
@@ -92,8 +91,6 @@ After recovery, services are available at:
 |---------|-----|-------|
 | **Dev** | http://localhost:8787 | Run `make dev` locally |
 | **Prod** | https://newsbrief.local | Kubernetes via Caddy |
-| Tekton Dashboard | http://localhost:9097 | Port-forwarded |
-| Event Listener | http://localhost:8080 | Port-forwarded |
 
 **Note**: Dev runs locally (not in Kubernetes). Run `make dev` to start the development server.
 
@@ -110,7 +107,7 @@ podman machine start
 
 ```bash
 kind delete cluster --name newsbrief-dev
-./scripts/setup-kind-registry.sh
+make recover
 ```
 
 ### Port forwards not working

@@ -213,7 +213,7 @@ class Story(Base):
     last_updated = Column(DateTime)
     time_window_start = Column(DateTime)
     time_window_end = Column(DateTime)
-    model = Column(String(50))
+    model = Column(Text)
     status = Column(String(20), default="active")
     # Pipeline processing state (ADR-0030 / #273); separate from status (active/archived)
     processing_state = Column(
@@ -380,7 +380,7 @@ class SynthesisCache(Base):
     id = Column(Integer, primary_key=True)
     cache_key = Column(String(64), unique=True, nullable=False)
     article_ids_json = Column(Text, nullable=False)
-    model = Column(String(50), nullable=False)
+    model = Column(Text, nullable=False)
     # Synthesis results
     synthesis = Column(Text, nullable=False)
     key_points_json = Column(Text)
@@ -418,7 +418,7 @@ class LLMMetrics(Base):
     operation_type = Column(
         String(50), nullable=False
     )  # synthesis, entity_extraction, topic_classification
-    model = Column(String(50))
+    model = Column(Text)
 
     # Timing
     created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)

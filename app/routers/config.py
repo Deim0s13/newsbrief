@@ -290,12 +290,16 @@ def set_active_profile(
         # Reload LLM service to pick up new model
         reload_llm_service()
 
+        resolution = settings.get_model_resolution_info()
+
         return {
             "status": "success",
             "profile_id": profile_id,
             "name": profile.name,
-            "model": profile.model,
-            "message": f"Active profile changed to '{profile.name}'. Model: {profile.model}",
+            "model": resolution.model,
+            "resolution_source": resolution.source,
+            "detected_platform": resolution.platform,
+            "message": f"Active profile changed to '{profile.name}'. Model: {resolution.model}",
         }
     except HTTPException:
         raise

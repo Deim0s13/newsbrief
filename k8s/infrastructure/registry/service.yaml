@@ -1,6 +1,7 @@
-# Registry service - accessible within cluster
+# Registry service - accessible within cluster (local dev image testing only;
+# production images come from ghcr.io/deim0s13/newsbrief via GitHub Actions).
 #
-# From Tekton pipelines, use:
+# From in-cluster consumers, use:
 #   registry.registry.svc.cluster.local:5000/newsbrief:tag
 # Or the short form:
 #   registry.registry:5000/newsbrief:tag

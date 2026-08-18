@@ -129,6 +129,8 @@ def parse_refinement_response(response: str) -> Optional[dict[str, Any]]:
 
         return data
 
-    except (json.JSONDecodeError, ValueError) as e:
+    except (json.JSONDecodeError, ValueError, AttributeError) as e:
+        # AttributeError guards against a None response reaching
+        # response.strip() above (#340).
         logger.warning(f"Failed to parse refinement response: {e}")
         return None
