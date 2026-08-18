@@ -134,7 +134,7 @@ LLMfit analysis should be re-run when hardware changes meaningfully (new GPU, VR
 - Issue #331 — Verify macOS candidate model tags
 - Issue #332 — Validate Windows model swap (incl. deepseek-r1 thinking-block risk) (closed — see [Windows Live Validation addendum](#addendum-august-2026-windows-live-validation-332) below)
 - Issue #330 — Re-evaluate embedding model for item/story embeddings (closed — see [Embedding Model Re-evaluation addendum](#addendum-august-2026-embedding-model-re-evaluation-330) below)
-- Issue #341 — Formalize the model-fitness harness (`scripts/model_fitness.py`), used for this validation
+- Issue #341 — Formalize the model-fitness harness (`scripts/model_fitness.py`) (closed — see [Model-Fitness Harness Formalization addendum](#addendum-august-2026-model-fitness-harness-formalization-341) below)
 
 ---
 
@@ -263,3 +263,30 @@ An initial run at `--sample-size 200` (a ~17% subsample of the eligible populati
 ### Re-evaluation trigger
 
 Revisit when a genuinely newer-generation embedding model becomes available (this evaluation is a point-in-time comparison against 2026-era candidates, same caveat as the synthesis-model addendum above), or when the corpus grows enough that low sample sizes stop being the limiting factor. `scripts/embedding_benchmark.py` is kept in the repo for that future re-run rather than being a one-off script.
+
+## Addendum (August 2026): Model-Fitness Harness Formalization (#341)
+
+**Status: Closed — harness formalized, smoke-checked, in active use.** This addendum closes out [#341](https://github.com/Deim0s13/newsbrief/issues/341), which turned the throwaway `/tmp` script used during #336 into `scripts/model_fitness.py`, permanent dev tooling for model-swap validation.
+
+### What shipped
+
+- `scripts/model_fitness.py`: takes model candidates (`--model`, repeatable) against a backend (`--backend ollama|mlx`), runs them through NewsBrief's real synthesis and entity-extraction prompt builders, validates output via the real `app/llm_output.py` parser, and prints/exports a comparison table (duration, JSON quality, repairs, tokens generated).
+- Already in production use before this addendum was written: the #332 Windows Live Validation addendum above used it directly. #330's embedding re-evaluation used a separate purpose-built script (`scripts/embedding_benchmark.py`) instead — not a gap, a deliberate split, per the issue's own proposal that embedding comparison "needs a different comparison path" (cosine-similarity retrieval precision, not JSON validation).
+
+### Smoke check: macOS reproduction
+
+The three macOS `device_profiles.darwin` candidates (fast/balanced/quality) were re-run through the now-formalized script and compared against the original ad hoc numbers in the "oMLX Adoption on macOS" addendum above:
+
+| Tier | Candidate | Original (ad hoc script) | Smoke check (`model_fitness.py`) | JSON quality (orig → now) |
+|---|---|---|---|---|
+| fast | `Llama-3.2-3B-Instruct-4bit` | 24.6s | 29.6s | minor repair → both tasks repaired |
+| balanced | `Qwen3-30B-A3B-Instruct-2507` | 26.5s | 11.7s | clean, no repair → clean, no repair |
+| quality | `Qwen3.6-35B-A3B` (unsloth) | 35.3s | 24.6s | minor repair → both tasks repaired |
+
+All 6 calls (3 models × 2 tasks) parsed successfully (`parse_ok: true`), and `balanced` remained the standout clean/no-repair result in both runs, matching the original finding. Per-call durations differ more than a pure noise band would suggest — driven by output length, not raw throughput: the fast-tier model hit the `--max-tokens=800` cap on both calls this run (rambling into a markdown fence before reaching valid JSON, hence needing repair on both), while balanced/quality terminated naturally well under budget (~300-400 tokens) and were correspondingly faster. This is consistent with a known characteristic of the smaller/weaker "fast" model (less concise instruction-following), not a script defect or a reason to revisit the `device_profiles.darwin` assignment — even its slowest result here (29.6s) still beats the original Ollama baseline (38.2s) this migration was measured against.
+
+**Conclusion:** the smoke check confirms the formalized script reproduces the original ad hoc findings' qualitative shape (all parse OK; `balanced` is the cleanest candidate) faithfully. Absolute per-call timings carry real single-sample LLM variance and shouldn't be read as exact benchmarks — multiple runs would be needed for that, out of scope for a tooling-formalization smoke check.
+
+### Decision
+
+No further action needed. [#341](https://github.com/Deim0s13/newsbrief/issues/341) closed.

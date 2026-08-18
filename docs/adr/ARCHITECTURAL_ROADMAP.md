@@ -322,7 +322,7 @@ Before introducing new dependencies, evaluate:
 | **v0.8.4** | Semantic Foundation (RAG, part 1) | pgvector embeddings for items + stories |
 | **v0.8.5** | Pipeline Completion | Confidence gate, synthesis routing, pipeline tests, data retention |
 | **v0.8.6** | RAG Milestone Completion | Semantic search/related/similar, semantic dedup, light RAG anchors, historical linking, complexity scoring, go/no-go evaluation |
-| **v0.8.7** (in progress) | Model Optimisation & Platform Intelligence | Hardware-informed, device-aware model profiles ([ADR-0033](0033-hardware-informed-model-selection.md)); oMLX backend adopted on macOS (Ollama retained on Windows); embedding model re-evaluated — `nomic-embed-text` retained (no change) |
+| **v0.8.7** (feature-complete, release pending) | Model Optimisation & Platform Intelligence | Hardware-informed, device-aware model profiles ([ADR-0033](0033-hardware-informed-model-selection.md)); oMLX backend adopted on macOS (Ollama retained on Windows); embedding model re-evaluated — `nomic-embed-text` retained (no change); model-fitness harness formalized (`scripts/model_fitness.py`) |
 | **v0.9.x** | Intelligence Layer | Entity intelligence, multi-perspective synthesis, story evolution, smart extraction |
 | **v0.10.x** | Context Layer | Why this matters, trend detection, confidence & transparency UI |
 | **v0.11.x** | Experience Layer | Reading tiers, audio/TTS, enhanced visualizations |
