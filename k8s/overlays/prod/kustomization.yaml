@@ -30,6 +30,8 @@ patches:
   # Strategic merge patch for deployment (resources, probes, affinity)
   - path: deployment-patch.yaml
   # JSON patch to replace emptyDir with PVC (more reliable than strategic merge)
+  # Volume name must be "state" to match the volumeMount name in base
+  # deployment.yaml (mounted at /app/state, not /app/data -- see #326).
   - target:
       kind: Deployment
       name: newsbrief
@@ -37,7 +39,7 @@ patches:
       - op: replace
         path: /spec/template/spec/volumes
         value:
-          - name: data
+          - name: state
             persistentVolumeClaim:
               claimName: newsbrief-data
 

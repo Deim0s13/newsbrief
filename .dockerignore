@@ -51,10 +51,13 @@ docs/
 node_modules/
 package-lock.json
 
-# Local data (mounted as volume in production)
+# Local data (settings.json is runtime state; see #326 for why the rest of
+# data/ is shipped read-only in the image instead of volume-mounted)
 data/
 !data/topics.json
 !data/model_config.json
+!data/interests.json
+!data/source_weights.json
 *.sqlite3
 *.db
 
