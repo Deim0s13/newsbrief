@@ -489,6 +489,16 @@ else
 	@echo "On Windows: check Task Scheduler for 'NewsBrief Infrastructure' task"
 endif
 
+# ---------- Kubernetes Secrets ----------
+k8s-omlx-secret:                  ## Create/update the oMLX API key Secret in newsbrief-dev + newsbrief-prod (#343)
+	@echo "Creating/updating newsbrief-omlx Secret (oMLX API key) in newsbrief-dev + newsbrief-prod..."
+	@echo "Not tracked by ArgoCD/kustomize by design -- see k8s/base/deployment.yaml comment."
+	@bash -c 'read -sp "Enter oMLX API key: " key && echo && \
+		for ns in newsbrief-dev newsbrief-prod; do \
+			kubectl create secret generic newsbrief-omlx --from-literal=api-key="$$key" \
+				-n $$ns --dry-run=client -o yaml | kubectl apply -f -; \
+		done && echo "✅ newsbrief-omlx secret created/updated in both namespaces"'
+
 # ---------- Kubernetes Operations (Ansible) ----------
 recover:                          ## Recover all services after reboot/sleep
 	@echo "🔄 Recovering NewsBrief environment..."
@@ -613,6 +623,7 @@ env-init:  ## Create .env from template with generated secure password
 	hostname-setup hostname-check hostname-remove hostname-trust-cert hostname-regen-certs \
 	autostart-install autostart-uninstall autostart-status \
 	infra-start infra-autostart-install infra-autostart-uninstall infra-autostart-status \
+	k8s-omlx-secret \
 	recover status port-forwards argo-ui \
 	port-forwards-autostart-install port-forwards-autostart-uninstall port-forwards-autostart-status \
 	compose-start compose-watch compose-autostart-install \
