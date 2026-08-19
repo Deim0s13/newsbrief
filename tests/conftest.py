@@ -21,7 +21,15 @@ def pytest_configure(config: pytest.Config) -> None:
     production (port 5432) once wiped all of prod's real feeds/items/stories,
     leaving only test fixtures behind. This check aborts the whole test session
     before any test runs if DATABASE_URL isn't the port-5433 dev DB.
+
+    Exempt when running under GitHub Actions: ci-dev.yml/ci-prod.yml spin up
+    their own disposable `postgres:5432` service container (db `newsbrief_test`,
+    torn down with the runner) -- never real production, which only GitHub's
+    hosted runners can't reach anyway.
     """
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        return
+
     database_url = os.environ.get("DATABASE_URL")
     if not database_url:
         return  # DB-dependent tests self-skip via `pytest.skip(..., allow_module_level=True)`
