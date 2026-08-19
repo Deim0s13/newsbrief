@@ -497,7 +497,7 @@ recover:                          ## Recover all services after reboot/sleep
 status:                           ## Check status of all services
 	cd ansible && ansible-playbook -i inventory/localhost.yml playbooks/status.yml
 
-port-forwards:                    ## Restart kubectl port-forwards (prod:8788, dev:8789, ArgoCD:8443)
+port-forwards:                    ## One-off restart of kubectl port-forwards (prod:8788, dev:8789, ArgoCD:8443)
 	@echo "🔌 Restarting port forwards..."
 	@pkill -f "kubectl port-forward" 2>/dev/null || true
 	@kubectl port-forward svc/newsbrief -n newsbrief-prod --address 0.0.0.0 8788:8787 &
@@ -508,6 +508,61 @@ port-forwards:                    ## Restart kubectl port-forwards (prod:8788, d
 	@echo "   Prod (K8s): http://localhost:8788 — https://newsbrief.local via Caddy"
 	@echo "   Dev  (K8s): http://localhost:8789"
 	@echo "   ArgoCD UI:  https://localhost:8443"
+	@echo ""
+	@echo "   These are one-off — they die on sleep/wake or network blips."
+	@echo "   For a self-healing version, run: make port-forwards-autostart-install"
+
+# ---------- Port-forward auto-heal (macOS launchd only) ----------
+# `kubectl port-forward` has no reconnect logic — it exits on any interruption
+# (laptop sleep/wake, network blip, kind node restart) and never comes back on
+# its own. scripts/port-forwards-watch.sh polls and restarts each one; launchd
+# (KeepAlive) keeps the watcher script itself running.
+PF_PLIST_NAME    := com.newsbrief.portforwards.plist
+PF_PLIST_DEST    := $(HOME)/Library/LaunchAgents/$(PF_PLIST_NAME)
+
+port-forwards-autostart-install:  ## Install self-healing port-forwards (auto-restart on crash/sleep, macOS only)
+ifeq ($(UNAME_S),Darwin)
+	@mkdir -p "$(PROJECT_PATH)/logs"
+	@mkdir -p "$$(dirname $(PF_PLIST_DEST))"
+	@sed -e 's|__PROJECT_PATH__|$(PROJECT_PATH)|g' \
+	     -e 's|__HOME__|$(HOME)|g' \
+	     launchd/com.newsbrief.portforwards.plist > $(PF_PLIST_DEST)
+	@launchctl unload $(PF_PLIST_DEST) 2>/dev/null || true
+	@launchctl load $(PF_PLIST_DEST)
+	@echo "✅ Self-healing port-forwards installed (macOS launchd)"
+	@echo "   prod:8788, dev:8789, ArgoCD:8443 — auto-restart on crash/sleep/wake"
+	@echo "   Logs: $(PROJECT_PATH)/logs/port-forwards-watch.log"
+else
+	@echo "port-forwards-autostart-install is macOS only."
+endif
+
+port-forwards-autostart-uninstall:  ## Remove self-healing port-forwards
+ifeq ($(UNAME_S),Darwin)
+	@if [ -f "$(PF_PLIST_DEST)" ]; then \
+		launchctl unload $(PF_PLIST_DEST) 2>/dev/null || true; \
+		rm -f $(PF_PLIST_DEST); \
+		pkill -f "port-forwards-watch.sh" 2>/dev/null || true; \
+		pkill -f "kubectl port-forward" 2>/dev/null || true; \
+		echo "✅ Self-healing port-forwards removed"; \
+	else \
+		echo "Self-healing port-forwards not installed"; \
+	fi
+else
+	@echo "port-forwards-autostart-uninstall is macOS only."
+endif
+
+port-forwards-autostart-status:   ## Check self-healing port-forwards status
+ifeq ($(UNAME_S),Darwin)
+	@if [ -f "$(PF_PLIST_DEST)" ]; then \
+		echo "✅ Self-healing port-forwards installed (macOS launchd)"; \
+		launchctl list | grep com.newsbrief.portforwards || echo "   (not currently loaded)"; \
+	else \
+		echo "❌ Self-healing port-forwards not installed"; \
+		echo "   Run: make port-forwards-autostart-install"; \
+	fi
+else
+	@echo "port-forwards-autostart-status is macOS only."
+endif
 
 argo-ui:  ## Port-forward Argo CD UI on 8443
 	@echo "Open https://localhost:8443"
@@ -559,5 +614,6 @@ env-init:  ## Create .env from template with generated secure password
 	autostart-install autostart-uninstall autostart-status \
 	infra-start infra-autostart-install infra-autostart-uninstall infra-autostart-status \
 	recover status port-forwards argo-ui \
+	port-forwards-autostart-install port-forwards-autostart-uninstall port-forwards-autostart-status \
 	compose-start compose-watch compose-autostart-install \
 	env-init
