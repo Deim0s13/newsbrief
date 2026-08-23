@@ -442,8 +442,17 @@ def list_feeds() -> (
     """
     List all feeds for refresh processing.
 
-    Orders by fetch_count ASC to prioritize unfetched feeds (fetch_count=0),
-    ensuring newly imported feeds are processed first.
+    Orders by ``last_fetch_at ASC NULLS FIRST`` to prioritize never-fetched and
+    longest-stale feeds first within each call (#344). This is a finer-grained
+    staleness signal than the previous ``fetch_count ASC, id ASC`` ordering
+    (#172): a static ``id ASC`` tiebreak meant a large batch of feeds tied on
+    the same ``fetch_count`` (e.g. right after a bulk OPML import) always broke
+    ties the same way every call, so the same low-id feeds in that batch kept
+    winning across repeated time/item-capped refreshes while feeds near the
+    back of the tie never got a turn. Ordering by actual last-fetch recency
+    means every feed a call *does* reach moves to the back of the queue for
+    next time, giving true round-robin rotation through a large tied batch
+    instead of a fixed order.
 
     Returns:
         Tuple of (id, url, etag, last_modified, robots_allowed, disabled, category)
@@ -453,7 +462,7 @@ def list_feeds() -> (
             text(
                 """SELECT id, url, etag, last_modified, robots_allowed, disabled, category
                    FROM feeds
-                   ORDER BY fetch_count ASC, id ASC"""
+                   ORDER BY last_fetch_at ASC NULLS FIRST, id ASC"""
             )
         ).all()
         for r in rows:

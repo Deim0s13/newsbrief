@@ -86,19 +86,25 @@ class TestStoryGenerationRequestMinArticles:
 
 
 class TestGenerateEndpointModelResolution:
+    # #348: the background task now routes through pipeline_runner's tracked
+    # stage-execution path instead of calling generate_stories_simple directly
+    # -- patch execute_story_generation_stage instead. TestClient runs
+    # BackgroundTasks synchronously as part of the request, so this mock is
+    # exercised within each client.post(...) call below.
     @patch("app.routers.stories.get_settings_service")
-    @patch("app.routers.stories.generate_stories_simple")
+    @patch("app.pipeline_runner.execute_story_generation_stage")
     def test_active_profile_used_when_model_omitted(self, mock_gen, mock_svc):
         """Endpoint with no model in body should use get_active_model()."""
-        from fastapi import BackgroundTasks
-        from starlette.requests import Request
+        from fastapi import FastAPI
         from starlette.testclient import TestClient
 
+        from app.pipeline_runner import StageResult
         from app.routers.stories import router
 
         mock_svc.return_value = _make_settings_service("qwen2.5:14b")
-
-        from fastapi import FastAPI
+        mock_gen.return_value = StageResult(
+            stage="story_generation", success=True, stats={}, error=None
+        )
 
         app = FastAPI()
         app.include_router(router)
@@ -110,15 +116,19 @@ class TestGenerateEndpointModelResolution:
         assert resp.json()["model"] == "qwen2.5:14b"
 
     @patch("app.routers.stories.get_settings_service")
-    @patch("app.routers.stories.generate_stories_simple")
+    @patch("app.pipeline_runner.execute_story_generation_stage")
     def test_explicit_model_overrides_active_profile(self, mock_gen, mock_svc):
         """Explicit model in request body takes precedence over active profile."""
-        mock_svc.return_value = _make_settings_service("qwen2.5:14b")
-
         from fastapi import FastAPI
         from starlette.testclient import TestClient
 
+        from app.pipeline_runner import StageResult
         from app.routers.stories import router
+
+        mock_svc.return_value = _make_settings_service("qwen2.5:14b")
+        mock_gen.return_value = StageResult(
+            stage="story_generation", success=True, stats={}, error=None
+        )
 
         app = FastAPI()
         app.include_router(router)
@@ -130,15 +140,19 @@ class TestGenerateEndpointModelResolution:
         assert resp.json()["model"] == "mistral:7b"
 
     @patch("app.routers.stories.get_settings_service")
-    @patch("app.routers.stories.generate_stories_simple")
+    @patch("app.pipeline_runner.execute_story_generation_stage")
     def test_model_is_not_llama_default(self, mock_gen, mock_svc):
         """Regression: endpoint must not default to llama3.1:8b."""
-        mock_svc.return_value = _make_settings_service("qwen2.5:14b")
-
         from fastapi import FastAPI
         from starlette.testclient import TestClient
 
+        from app.pipeline_runner import StageResult
         from app.routers.stories import router
+
+        mock_svc.return_value = _make_settings_service("qwen2.5:14b")
+        mock_gen.return_value = StageResult(
+            stage="story_generation", success=True, stats={}, error=None
+        )
 
         app = FastAPI()
         app.include_router(router)
@@ -205,12 +219,19 @@ class TestGenerationStatusEndpoint:
         app = FastAPI()
         app.include_router(router)
 
-        # Patch session_scope so no real DB is needed
-        with patch("app.routers.stories.session_scope") as mock_scope:
-            mock_session = MagicMock()
-            mock_session.execute.return_value.fetchone.return_value = None
-            mock_scope.return_value.__enter__ = MagicMock(return_value=mock_session)
-            mock_scope.return_value.__exit__ = MagicMock(return_value=False)
+        # #348: endpoint now delegates to pipeline_monitoring's shared helper
+        # instead of querying pipeline_stage_runs inline -- mock that instead.
+        with patch(
+            "app.pipeline_monitoring.get_latest_stage_run_status"
+        ) as mock_status:
+            mock_status.return_value = {
+                "in_progress": False,
+                "last_started_at": None,
+                "last_finished_at": None,
+                "last_success": None,
+                "last_stats": None,
+                "last_error": None,
+            }
 
             with TestClient(app) as client:
                 resp = client.get("/stories/generation-status")
@@ -229,11 +250,17 @@ class TestGenerationStatusEndpoint:
         app = FastAPI()
         app.include_router(router)
 
-        with patch("app.routers.stories.session_scope") as mock_scope:
-            mock_session = MagicMock()
-            mock_session.execute.return_value.fetchone.return_value = None
-            mock_scope.return_value.__enter__ = MagicMock(return_value=mock_session)
-            mock_scope.return_value.__exit__ = MagicMock(return_value=False)
+        with patch(
+            "app.pipeline_monitoring.get_latest_stage_run_status"
+        ) as mock_status:
+            mock_status.return_value = {
+                "in_progress": False,
+                "last_started_at": None,
+                "last_finished_at": None,
+                "last_success": None,
+                "last_stats": None,
+                "last_error": None,
+            }
 
             with TestClient(app) as client:
                 resp = client.get("/stories/generation-status")
