@@ -27,6 +27,19 @@ DEFAULT_TIMEOUT = 120.0
 DEFAULT_RETRIES = 3
 DEFAULT_MAX_CONCURRENT = 4
 
+# nomic-embed-text's underlying context window is 2048 tokens (confirmed via
+# `ollama show nomic-embed-text` -> model_info["nomic-bert.context_length"];
+# Ollama's own `num_ctx` default of 8192 doesn't override this). At ~4
+# chars/token for English text that's roughly 8000 characters; text beyond
+# that gets a 500 `{"error":"the input length exceeds the context length"}`
+# from Ollama with no truncation on its side. Some feeds' RSS `summary` field
+# holds the full article body rather than an actual summary, and that's used
+# as the embed-text fallback when an item has no AI summary yet -- occasionally
+# tens of thousands of characters (#349). Truncate defensively here, the
+# single choke point for every embedding call (live item/story embedding and
+# embed_backfill), rather than in each caller's text-builder.
+MAX_EMBED_TEXT_CHARS = 6000
+
 
 class EmbeddingService:
     """Generate dense embeddings using a local Ollama server."""
@@ -58,7 +71,7 @@ class EmbeddingService:
         }
 
     async def embed_text(self, text: str) -> List[float]:
-        stripped = (text or "").strip()
+        stripped = (text or "").strip()[:MAX_EMBED_TEXT_CHARS]
         if not stripped:
             raise ValueError("text must be non-empty")
         vec = await self._embed_one(stripped)
@@ -75,7 +88,7 @@ class EmbeddingService:
             return []
         normalized: List[str] = []
         for i, raw in enumerate(texts):
-            s = (raw or "").strip()
+            s = (raw or "").strip()[:MAX_EMBED_TEXT_CHARS]
             if not s:
                 raise ValueError(f"texts[{i}] must be non-empty after strip")
             normalized.append(s)
