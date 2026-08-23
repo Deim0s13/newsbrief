@@ -2,6 +2,8 @@
 
 This guide covers the local Kubernetes environment used for **production CD on macOS**: a `kind` cluster running ArgoCD, which watches this Git repo and auto-syncs the `dev` and `prod` overlays. There is no Tekton, in-cluster registry, or webhook relay in the current setup — CI runs entirely on GitHub Actions (see [CI-CD.md](CI-CD.md)); this cluster only does GitOps deployment.
 
+> **2026-08-23 cleanup**: the git-level Tekton/registry removal (earlier repo tidy-up) had never actually been applied to the *live* cluster — `tekton-pipelines`/`tekton-pipelines-resolvers` namespaces (9 pods) and a leftover Tekton Triggers `el-newsbrief-listener` in `default` were still running, alongside a crash-looping unused ArgoCD `applicationset-controller`. All deleted/scaled to 0 — see [#325](https://github.com/Deim0s13/newsbrief/issues/325) follow-up. If you ever see these again after a full cluster rebuild (`kind delete cluster` + Ansible re-install), that's expected — they ship in ArgoCD's default `install.yaml` bundle and need re-cleaning (applicationset-controller: `kubectl scale deployment argocd-applicationset-controller -n argocd --replicas=0`); Tekton itself should never come back since it's fully removed from the manifests ArgoCD/Ansible apply.
+
 > Windows does not run this stack at all — see [ADR-0032](../adr/0032-cross-platform-cd-strategy.md) for why Windows uses Podman Compose + GHCR polling instead.
 
 ## Architecture Overview
@@ -69,7 +71,7 @@ make k8s-version-check-autostart-install  # periodic Git-vs-running-image drift 
 
 ### `make infra-start` (`scripts/infra-start.sh`)
 
-1. Starts the Podman Compose prod stack (the Postgres DB the kind pods connect to via `host.containers.internal`)
+1. Starts **only the `db` Compose service** (`podman-compose ... up -d db`, equivalent to `make deploy-db-only`) — the Postgres DB the kind pods connect to via `host.containers.internal:5432`. Deliberately does **not** run a bare `up -d`, which would also start the standalone `api`/`proxy` Compose services — a stale duplicate of the real K8s-based prod with no auto-update path on macOS (see [Podman-Compose "prod" duplicate](#known-issue-podman-compose-prod-duplicate) below).
 2. Creates the `newsbrief-dev` kind cluster if it doesn't already exist (config: `k8s/kind/cluster-config.yaml`), otherwise starts the existing container
 3. Exports kubeconfig (`kind export kubeconfig --name newsbrief-dev`)
 4. Waits for the ArgoCD `argocd-server` Deployment to become available
@@ -110,7 +112,7 @@ Open `https://localhost:8443` (username `admin`; password via `kubectl -n argocd
 | `AppProject` | Allowed repos/namespaces | `k8s/argocd/project.yaml` |
 | `Application` (dev) | Watches `dev` branch → `newsbrief-dev` namespace | `k8s/argocd/app-dev.yaml` |
 | `Application` (prod) | Watches `main` branch → `newsbrief-prod` namespace | `k8s/argocd/app-prod.yaml` |
-| `ApplicationSet` | Alternative to the two `Application` files above (not currently active — both individual apps are used instead) | `k8s/argocd/appset.yaml` |
+| `ApplicationSet` | Alternative to the two `Application` files above (not currently active — both individual apps are used instead; the `argocd-applicationset-controller` Deployment that ships with the ArgoCD `install.yaml` bundle is scaled to 0 replicas since it's unused and was crash-looping) | `k8s/argocd/appset.yaml` |
 
 Auto-sync is enabled; ArgoCD polls Git every **5 minutes** (`timeout.reconciliation: 300s` in `k8s/argocd/argocd-cm.yaml`).
 
@@ -140,6 +142,29 @@ each namespace against what Git says it should be, and alerts via ntfy (if
 ArgoCD, so it still works while ArgoCD's own status is unreliable. Install as
 a recurring background check with `make k8s-version-check-autostart-install`
 (macOS launchd, every 30 minutes).
+
+### Known issue: Podman-Compose "prod" duplicate
+
+`compose.yaml` + `compose.prod.yaml` define three services: `db`, `api`, and
+`proxy` (Caddy, `newsbrief.local`). Only `db` is a genuine dependency of the
+K8s-based prod described in this doc — the API pods reach it via
+`host.containers.internal:5432`. The standalone `api`/`proxy` services
+duplicate the same app on ports 8787/80/443 with **no auto-update mechanism
+on macOS** (`compose-watch.ps1`, the image-drift-triggered redeploy script, is
+Windows-only) — so once started, that duplicate silently runs whatever image
+was pulled at the time forever, drifting further out of date with every
+release. It has come back to life more than once via a bare `podman-compose
+... up -d` (from `make deploy` or, previously, `infra-start.sh`'s own DB
+bootstrap step).
+
+Both `scripts/infra-start.sh` and `make deploy-db-only` now explicitly target
+only the `db` service (`up -d db`) to prevent this. Plain `make deploy` (all
+three services) is still available and correct for Windows dev/test — just
+avoid running it on macOS unless you specifically want the standalone
+Compose app+proxy for manual testing outside K8s. If you ever find `newsbrief`
+(port 8787) or `newsbrief-proxy` (port 80/443) containers running on macOS
+unexpectedly, `podman stop newsbrief newsbrief-proxy` (leave `newsbrief-db`
+running).
 
 ### Sync Waves
 
@@ -173,8 +198,6 @@ k8s/
 │       ├── deployment-patch.yaml
 │       ├── embed-backfill-job.yaml
 │       └── pdb.yaml, pvc.yaml
-├── infrastructure/
-│   └── registry/              # legacy in-cluster registry manifests, no longer used by CI
 └── argocd/
     ├── kustomization.yaml
     ├── project.yaml
@@ -218,6 +241,8 @@ After `make infra-start` (or `make port-forwards`):
 **Port-forwards dropped after sleep** — `make port-forwards` re-establishes them (kills any stale ones first).
 
 **Kind control-plane container not running / `kubectl` can't connect** — check `podman ps -a --filter name=control-plane` for an `Exited (137)` (OOM-killed) container; `podman start newsbrief-dev-control-plane` restarts it. If this recurs, increase the Podman machine's memory (see [Podman machine memory](#podman-machine-memory) above).
+
+**A `newsbrief`/`newsbrief-proxy` container is running unexpectedly on macOS** — that's the standalone Compose duplicate, not the real K8s prod; see [Known issue: Podman-Compose "prod" duplicate](#known-issue-podman-compose-prod-duplicate) above.
 
 ```bash
 kubectl describe application newsbrief-prod -n argocd

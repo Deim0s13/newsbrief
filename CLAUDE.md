@@ -82,11 +82,14 @@ Always commit migration files under `alembic/versions/` together with the code t
 ```bash
 make build          # Build OCI image (Podman)
 make deploy         # Start prod stack (auto-creates db_password secret, runs migrations)
+make deploy-db-only # macOS: start just the Compose DB — see note below
 make deploy-stop    # Stop prod stack (preserves data volumes)
 make deploy-status  # Check prod container status
 ```
 
 `make deploy` is idempotent: it creates the `db_password` Podman secret from `.env` if missing, brings Compose up, waits for the DB, then runs `alembic upgrade head`. No separate `make deploy-init` needed.
+
+**On macOS, prefer `make deploy-db-only` over `make deploy`.** The real macOS prod is the K8s Deployment (`newsbrief-prod` namespace, `localhost:8788`, ArgoCD-managed — see ADR-0032); its only Compose dependency is the `db` service (reached via `host.containers.internal:5432`). Plain `make deploy` also starts standalone `api`/`proxy` Compose services that duplicate that K8s app with no auto-update path on macOS — this has silently resurrected a stale duplicate more than once (see #325). `infra-start.sh` (the launchd auto-start script) already only starts `db`; only run full `make deploy` on macOS if you specifically want the standalone Compose app+proxy for manual testing outside K8s.
 
 ### Windows CD — Compose + GHCR polling
 

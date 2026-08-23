@@ -168,6 +168,24 @@ deploy:                           ## Deploy production stack (start, migrate, au
 	@$(RUNTIME)-compose -f compose.yaml -f compose.prod.yaml exec -T api alembic upgrade head
 	@echo "✅ Running at http://localhost:8787"
 
+deploy-db-only:                  ## Start just the Compose DB (macOS: what K8s prod actually depends on, see #325)
+	@test -f .env || { echo "❌ .env not found — run: make env-init"; exit 1; }
+	@echo "🚀 Starting NewsBrief production DB only..."
+	@if ! $(RUNTIME) secret inspect db_password >/dev/null 2>&1; then \
+		echo "🔑 Creating db_password secret from .env..."; \
+		grep '^POSTGRES_PASSWORD=' .env | cut -d= -f2- | \
+			$(RUNTIME) secret create db_password -; \
+	fi
+	@$(RUNTIME)-compose -f compose.yaml -f compose.prod.yaml up -d db
+	@echo "⏳ Waiting for database..."
+	@until $(RUNTIME) exec newsbrief-db pg_isready -U newsbrief -d newsbrief \
+		>/dev/null 2>&1; do sleep 1; done
+	@echo "✅ DB ready at localhost:5432 (K8s prod pods reach it via host.containers.internal)"
+	@echo "   NOTE: this does NOT start the api/proxy Compose services -- on macOS,"
+	@echo "   the K8s Deployment (namespace newsbrief-prod, localhost:8788) is the"
+	@echo "   real prod app (ADR-0032). Use plain 'make deploy' only for Windows"
+	@echo "   dev/test, or if you specifically want the standalone Compose app+proxy."
+
 deploy-stop:                      ## Stop production stack (preserves data)
 	@echo "🛑 Stopping production stack..."
 	$(RUNTIME)-compose down
@@ -670,7 +688,7 @@ env-init:  ## Create .env from template with generated secure password
 .DEFAULT_GOAL := run
 .PHONY: venv run-local dev dev-full refresh stories-generate api-health \
 	build tag push release local-release clean-release cleanup-old-images run \
-	deploy deploy-stop deploy-status deploy-init up down logs \
+	deploy deploy-db-only deploy-stop deploy-status deploy-init up down logs \
 	setup-dev-db db-up db-down db-status db-logs db-psql db-reset seed-dev \
 	db-backup db-restore db-backup-list \
 	secrets-create secrets-list secrets-delete \
