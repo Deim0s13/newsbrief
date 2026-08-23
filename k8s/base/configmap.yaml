@@ -8,8 +8,14 @@ metadata:
     argocd.argoproj.io/sync-wave: "0"  # Create config before deployment
 data:
   # LLM Configuration
+  # NEWSBRIEF_LLM_MODEL intentionally NOT set here (see #343) -- it would
+  # unconditionally override SettingsService's device-aware profile
+  # resolution (ADR-0033) for every deployment. NEWSBRIEF_DEVICE_TYPE +
+  # OMLX_BASE_URL below assume both overlays run on this same macOS/kind
+  # host today; revisit if either is ever deployed elsewhere.
   OLLAMA_BASE_URL: "http://host.containers.internal:11434"
-  NEWSBRIEF_LLM_MODEL: "llama3.1:8b"
+  NEWSBRIEF_DEVICE_TYPE: "darwin"
+  OMLX_BASE_URL: "http://host.containers.internal:8000"
 
   # Story Generation
   STORY_GENERATION_SCHEDULE: "0 6 * * *"

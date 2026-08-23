@@ -18,9 +18,17 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 # Paths
+# DATA_DIR holds read-only shipped config (model_config.json, interests.json,
+# source_weights.json, topics.json) -- baked into the image, never written to
+# at runtime. STATE_DIR holds the one file the app *does* write (settings.json)
+# and defaults to DATA_DIR for native/local dev where there's no volume-mount
+# shadowing concern. Container deployments set NEWSBRIEF_STATE_DIR to a separate
+# mount point (e.g. /app/state) so a persistent volume/emptyDir at that path
+# never shadows the shipped config in DATA_DIR (see #326).
 DATA_DIR = Path(__file__).parent.parent / "data"
 MODEL_CONFIG_PATH = DATA_DIR / "model_config.json"
-SETTINGS_PATH = DATA_DIR / "settings.json"
+STATE_DIR = Path(os.getenv("NEWSBRIEF_STATE_DIR", str(DATA_DIR)))
+SETTINGS_PATH = STATE_DIR / "settings.json"
 
 # Default settings
 DEFAULT_SETTINGS = {
@@ -119,17 +127,30 @@ class SettingsService:
         """Load settings from JSON file, creating with defaults if not exists."""
         if self._settings is None:
             try:
+                legacy_path = DATA_DIR / "settings.json"
                 if SETTINGS_PATH.exists():
                     with open(SETTINGS_PATH, "r") as f:
                         self._settings = json.load(f)
-                    # Merge with defaults for any missing keys
-                    for key, value in DEFAULT_SETTINGS.items():
-                        if key not in self._settings:
-                            self._settings[key] = value
+                elif STATE_DIR != DATA_DIR and legacy_path.exists():
+                    # One-time carry-over: STATE_DIR was just introduced (#326) to stop
+                    # a mounted volume/emptyDir at DATA_DIR from shadowing shipped config.
+                    # If an older deployment already has settings.json at the pre-fix
+                    # location, read it once rather than silently resetting to defaults.
+                    logger.info(
+                        f"Carrying over settings from legacy path {legacy_path} to {SETTINGS_PATH}"
+                    )
+                    with open(legacy_path, "r") as f:
+                        self._settings = json.load(f)
+                    self._save_settings()
                 else:
                     self._settings = DEFAULT_SETTINGS.copy()
                     self._save_settings()
                     logger.info(f"Created default settings at {SETTINGS_PATH}")
+
+                # Merge with defaults for any missing keys
+                for key, value in DEFAULT_SETTINGS.items():
+                    if key not in self._settings:
+                        self._settings[key] = value
             except json.JSONDecodeError as e:
                 logger.error(f"Invalid settings JSON: {e}, using defaults")
                 self._settings = DEFAULT_SETTINGS.copy()
@@ -138,8 +159,8 @@ class SettingsService:
     def _save_settings(self) -> bool:
         """Save current settings to JSON file."""
         try:
-            # Ensure data directory exists
-            DATA_DIR.mkdir(parents=True, exist_ok=True)
+            # Ensure state directory exists
+            STATE_DIR.mkdir(parents=True, exist_ok=True)
             with open(SETTINGS_PATH, "w") as f:
                 json.dump(self._settings, f, indent=2)
             logger.debug(f"Saved settings to {SETTINGS_PATH}")

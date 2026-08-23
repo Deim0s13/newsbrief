@@ -8,6 +8,7 @@ import httpx
 import pytest
 
 from app.embedding_service import (
+    MAX_EMBED_TEXT_CHARS,
     EmbeddingService,
     create_embedding_service_from_settings,
 )
@@ -51,6 +52,45 @@ async def test_embed_text_success() -> None:
             "model": "nomic-embed-text",
             "prompt": "hello world",
         }
+
+
+@pytest.mark.asyncio
+async def test_embed_text_truncates_oversized_input() -> None:
+    """
+    #349: text beyond nomic-embed-text's context window must be truncated
+    before it reaches Ollama, rather than causing a 500
+    'input length exceeds the context length' error.
+    """
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+    mock_response.json = MagicMock(return_value={"embedding": _vec768()})
+    mock_post = AsyncMock(return_value=mock_response)
+    with patch(
+        "app.embedding_service.httpx.AsyncClient",
+        return_value=_async_client_cm(mock_post),
+    ):
+        svc = EmbeddingService(dimensions=768, max_retries=1)
+        oversized = "x" * (MAX_EMBED_TEXT_CHARS + 5000)
+        await svc.embed_text(oversized)
+        sent_prompt = mock_post.await_args[1]["json"]["prompt"]
+        assert len(sent_prompt) == MAX_EMBED_TEXT_CHARS
+
+
+@pytest.mark.asyncio
+async def test_embed_texts_truncates_oversized_input() -> None:
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+    mock_response.json = MagicMock(return_value={"embedding": _vec768()})
+    mock_post = AsyncMock(return_value=mock_response)
+    with patch(
+        "app.embedding_service.httpx.AsyncClient",
+        return_value=_async_client_cm(mock_post),
+    ):
+        svc = EmbeddingService(dimensions=768, max_retries=1)
+        oversized = "y" * (MAX_EMBED_TEXT_CHARS + 5000)
+        await svc.embed_texts([oversized], batch_size=1)
+        sent_prompt = mock_post.await_args[1]["json"]["prompt"]
+        assert len(sent_prompt) == MAX_EMBED_TEXT_CHARS
 
 
 @pytest.mark.asyncio

@@ -208,6 +208,69 @@ def get_cluster_complexity_summary(*, limit: int = 20) -> Dict[str, Any]:
     }
 
 
+def get_latest_stage_run_status(stage: str) -> Dict[str, Any]:
+    """
+    Whether a coarse pipeline stage is currently running, plus its last result.
+
+    Used by manual-trigger endpoints (``POST /refresh``, ``POST /stories/generate``,
+    #327/#344/#348) so the frontend can poll for completion instead of the HTTP
+    request blocking for the stage's full duration. Also doubles as the
+    concurrency check for those endpoints (409 if already ``in_progress``) --
+    a DB-backed row is authoritative across replicas, unlike a per-process
+    in-memory flag.
+
+    Only considers coarse (non-targeted) runs of ``stage`` -- i.e. excludes
+    single-item/single-story replay rows, which share the same ``stage`` name
+    but a non-null ``target_type``.
+    """
+    import json as _json
+
+    with session_scope() as session:
+        row = (
+            session.query(PipelineStageRun)
+            .filter(
+                PipelineStageRun.stage == stage,
+                PipelineStageRun.target_type.is_(None),
+            )
+            .order_by(PipelineStageRun.started_at.desc())
+            .first()
+        )
+
+        if row is None:
+            return {
+                "in_progress": False,
+                "last_started_at": None,
+                "last_finished_at": None,
+                "last_success": None,
+                "last_stats": None,
+                "last_error": None,
+            }
+
+        # Extract everything while the row is still attached to the session --
+        # session_scope() commits/closes on exit, which expires ORM attributes.
+        started_at = row.started_at
+        finished_at = row.finished_at
+        success = row.success
+        stats_json = row.stats_json
+        error_message = row.error_message
+
+    stats = None
+    if stats_json:
+        try:
+            stats = _json.loads(stats_json)
+        except (TypeError, ValueError):
+            stats = None
+
+    return {
+        "in_progress": finished_at is None,
+        "last_started_at": _iso_utc(started_at),
+        "last_finished_at": _iso_utc(finished_at),
+        "last_success": success,
+        "last_stats": stats,
+        "last_error": error_message,
+    }
+
+
 def get_pipeline_run_metrics(window_hours: float = 24.0) -> Dict[str, Any]:
     """Aggregate ``pipeline_stage_runs`` by ``stage`` for rows started in the window."""
     cutoff = datetime.now(UTC) - timedelta(hours=window_hours)

@@ -426,6 +426,7 @@ def execute_story_generation_stage(
     min_articles_per_story: int,
     model: str,
     max_workers: int = 3,
+    similarity_threshold: float = 0.25,
 ) -> StageResult:
     # Deferred import: avoids cycles with scheduler at module import time
     from app.scheduler import archive_old_stories
@@ -450,7 +451,7 @@ def execute_story_generation_stage(
                     session=session,
                     time_window_hours=time_window_hours,
                     min_articles_per_story=min_articles_per_story,
-                    similarity_threshold=0.25,
+                    similarity_threshold=similarity_threshold,
                     model=model,
                     max_workers=max_workers,
                     pipeline_run_group_id=run_group_id,

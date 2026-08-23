@@ -48,7 +48,10 @@ LABEL org.opencontainers.image.source="https://github.com/Deim0s13/newsbrief"
 LABEL org.opencontainers.image.licenses="MIT"
 
 # NEWSBRIEF_GIT_SHA: surfaced in /health and footer for deploy verification
+# NEWSBRIEF_STATE_DIR: where settings.json lives (see #326) -- deployments that
+# mount a persistent volume/emptyDir should mount it here, not at /app/data.
 ENV NEWSBRIEF_GIT_SHA=${GIT_SHA} \
+    NEWSBRIEF_STATE_DIR=/app/state \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH"
@@ -77,11 +80,16 @@ COPY --chown=newsbrief:newsbrief alembic /app/alembic
 COPY --chown=newsbrief:newsbrief alembic.ini /app/alembic.ini
 COPY --chown=newsbrief:newsbrief pyproject.toml /app/pyproject.toml
 
-# Create data directory and copy default config files
-# These provide default configuration; can be overridden by volume mounts
-RUN mkdir -p /app/data && chown newsbrief:newsbrief /app/data
+# Create data directory and copy default config files.
+# /app/data is intentionally NEVER volume-mounted (see #326) -- it must always
+# come straight from the image so config changes committed to git actually
+# reach running containers. Only settings.json (the one file the app writes
+# at runtime) lives under /app/state, which deployments mount/persist instead.
+RUN mkdir -p /app/data /app/state && chown newsbrief:newsbrief /app/data /app/state
 COPY --chown=newsbrief:newsbrief data/topics.json /app/data/topics.json
 COPY --chown=newsbrief:newsbrief data/model_config.json /app/data/model_config.json
+COPY --chown=newsbrief:newsbrief data/interests.json /app/data/interests.json
+COPY --chown=newsbrief:newsbrief data/source_weights.json /app/data/source_weights.json
 
 # Never ship host-built __pycache__ (wrong Python tag / broken Alembic revision discovery).
 RUN find /app -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true

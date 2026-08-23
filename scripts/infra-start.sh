@@ -11,16 +11,24 @@ LOG_PREFIX="[newsbrief-infra]"
 
 log() { echo "${LOG_PREFIX} $*"; }
 
-# 1. Ensure Podman Compose prod stack is running (DB required by kind pods)
+# 1. Ensure the Compose DB (only) is running — that's the single Compose
+# dependency K8s prod actually needs (host.containers.internal:5432).
 #
-# NOTE: use `podman-compose` (standalone tool), not `podman compose` (Podman's
+# NOTE: `up -d db` (not a bare `up -d`) is deliberate (#325) — a bare `up -d`
+# also brings up the standalone `api`/`proxy` Compose services, a stale
+# duplicate of the real K8s-based prod (namespace newsbrief-prod, ADR-0032)
+# with no auto-update mechanism on macOS. That duplicate silently came back
+# to life via this exact script more than once. See `make deploy-db-only`,
+# which this mirrors.
+#
+# Use `podman-compose` (standalone tool), not `podman compose` (Podman's
 # built-in dispatcher) — the latter can auto-select an external provider such
 # as Docker Compose v2 if one is on PATH, which doesn't understand Podman
 # secrets ("unsupported external secret db_password"). `make deploy`/`make up`
 # use the same standalone `podman-compose` for this reason.
-log "Starting Podman Compose prod stack (DB)..."
+log "Starting Podman Compose DB (prod dependency only, not api/proxy)..."
 cd "${PROJECT_ROOT}"
-podman-compose -f compose.yaml -f compose.prod.yaml up -d 2>&1 | sed "s/^/${LOG_PREFIX} /" || \
+podman-compose -f compose.yaml -f compose.prod.yaml up -d db 2>&1 | sed "s/^/${LOG_PREFIX} /" || \
     log "Warning: podman-compose up failed — API pods may not reach the DB"
 cd - >/dev/null
 
@@ -50,10 +58,9 @@ fi
 kind export kubeconfig --name "${CLUSTER_NAME}"
 log "Kubeconfig set to cluster '${CLUSTER_NAME}'"
 
-# 4. Ensure local registry is connected (for cluster-internal workloads)
-if [ -f "${PROJECT_ROOT}/scripts/setup-kind-registry.sh" ]; then
-    bash "${PROJECT_ROOT}/scripts/setup-kind-registry.sh" >/dev/null 2>&1 || true
-fi
+# 4. (removed) Local kind registry setup -- superseded by ADR-0020: all
+# images now come from GHCR (ghcr.io/deim0s13/newsbrief), pulled directly by
+# ArgoCD-managed pods. See scripts/archive/setup-kind-registry.sh.
 
 # 5. Wait for ArgoCD server to be available
 log "Waiting for ArgoCD server..."

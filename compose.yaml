@@ -46,7 +46,13 @@ services:
       # Ollama LLM connection — Podman resolves host.containers.internal on macOS and Windows
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.containers.internal:11434}
     volumes:
-      - newsbrief_data:/app/data
+      # Mounted at /app/state, not /app/data (see #326) -- /app/data holds
+      # read-only shipped config baked into the image (model_config.json,
+      # interests.json, source_weights.json, topics.json) and must never be
+      # shadowed by a volume, or config changes committed to git would never
+      # reach the running container. settings.json (the one file the app
+      # writes at runtime) lives under /app/state instead.
+      - newsbrief_data:/app/state
     depends_on:
       db:
         condition: service_healthy

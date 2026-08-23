@@ -28,6 +28,19 @@ spec:
           envFrom:
             - configMapRef:
                 name: newsbrief-config
+          env:
+            # oMLX API key (#343, macOS-only backend, ADR-0033). Intentionally
+            # NOT a kustomize resource / not tracked by ArgoCD -- the
+            # `newsbrief-omlx` Secret is created out-of-band per namespace via
+            # `make k8s-omlx-secret` (never committed to git). If it were
+            # git-tracked, ArgoCD's selfHeal would revert any real value back
+            # to a placeholder on every reconcile.
+            - name: OMLX_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: newsbrief-omlx
+                  key: api-key
+                  optional: true
           resources:
             requests:
               memory: "256Mi"
@@ -50,8 +63,13 @@ spec:
             periodSeconds: 5
             timeoutSeconds: 3
           volumeMounts:
-            - name: data
-              mountPath: /app/data
+            # Mounted at /app/state, not /app/data (see #326) -- /app/data holds
+            # read-only shipped config baked into the image and must never be
+            # shadowed by a volume/emptyDir, or config changes committed to git
+            # would never reach the running pod. settings.json (the one file
+            # the app writes at runtime) lives under /app/state instead.
+            - name: state
+              mountPath: /app/state
       volumes:
-        - name: data
+        - name: state
           emptyDir: {}

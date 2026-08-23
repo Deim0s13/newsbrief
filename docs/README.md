@@ -62,4 +62,4 @@ Historical documentation (no longer actively maintained):
 
 ---
 
-**Last Updated**: August 2026 · **Current Version**: v0.8.6
+**Last Updated**: August 2026 · **Current Version**: v0.8.7

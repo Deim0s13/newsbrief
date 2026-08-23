@@ -168,6 +168,24 @@ deploy:                           ## Deploy production stack (start, migrate, au
 	@$(RUNTIME)-compose -f compose.yaml -f compose.prod.yaml exec -T api alembic upgrade head
 	@echo "✅ Running at http://localhost:8787"
 
+deploy-db-only:                  ## Start just the Compose DB (macOS: what K8s prod actually depends on, see #325)
+	@test -f .env || { echo "❌ .env not found — run: make env-init"; exit 1; }
+	@echo "🚀 Starting NewsBrief production DB only..."
+	@if ! $(RUNTIME) secret inspect db_password >/dev/null 2>&1; then \
+		echo "🔑 Creating db_password secret from .env..."; \
+		grep '^POSTGRES_PASSWORD=' .env | cut -d= -f2- | \
+			$(RUNTIME) secret create db_password -; \
+	fi
+	@$(RUNTIME)-compose -f compose.yaml -f compose.prod.yaml up -d db
+	@echo "⏳ Waiting for database..."
+	@until $(RUNTIME) exec newsbrief-db pg_isready -U newsbrief -d newsbrief \
+		>/dev/null 2>&1; do sleep 1; done
+	@echo "✅ DB ready at localhost:5432 (K8s prod pods reach it via host.containers.internal)"
+	@echo "   NOTE: this does NOT start the api/proxy Compose services -- on macOS,"
+	@echo "   the K8s Deployment (namespace newsbrief-prod, localhost:8788) is the"
+	@echo "   real prod app (ADR-0032). Use plain 'make deploy' only for Windows"
+	@echo "   dev/test, or if you specifically want the standalone Compose app+proxy."
+
 deploy-stop:                      ## Stop production stack (preserves data)
 	@echo "🛑 Stopping production stack..."
 	$(RUNTIME)-compose down
@@ -489,6 +507,16 @@ else
 	@echo "On Windows: check Task Scheduler for 'NewsBrief Infrastructure' task"
 endif
 
+# ---------- Kubernetes Secrets ----------
+k8s-omlx-secret:                  ## Create/update the oMLX API key Secret in newsbrief-dev + newsbrief-prod (#343)
+	@echo "Creating/updating newsbrief-omlx Secret (oMLX API key) in newsbrief-dev + newsbrief-prod..."
+	@echo "Not tracked by ArgoCD/kustomize by design -- see k8s/base/deployment.yaml comment."
+	@bash -c 'read -sp "Enter oMLX API key: " key && echo && \
+		for ns in newsbrief-dev newsbrief-prod; do \
+			kubectl create secret generic newsbrief-omlx --from-literal=api-key="$$key" \
+				-n $$ns --dry-run=client -o yaml | kubectl apply -f -; \
+		done && echo "✅ newsbrief-omlx secret created/updated in both namespaces"'
+
 # ---------- Kubernetes Operations (Ansible) ----------
 recover:                          ## Recover all services after reboot/sleep
 	@echo "🔄 Recovering NewsBrief environment..."
@@ -497,7 +525,7 @@ recover:                          ## Recover all services after reboot/sleep
 status:                           ## Check status of all services
 	cd ansible && ansible-playbook -i inventory/localhost.yml playbooks/status.yml
 
-port-forwards:                    ## Restart kubectl port-forwards (prod:8788, dev:8789, ArgoCD:8443)
+port-forwards:                    ## One-off restart of kubectl port-forwards (prod:8788, dev:8789, ArgoCD:8443)
 	@echo "🔌 Restarting port forwards..."
 	@pkill -f "kubectl port-forward" 2>/dev/null || true
 	@kubectl port-forward svc/newsbrief -n newsbrief-prod --address 0.0.0.0 8788:8787 &
@@ -508,6 +536,116 @@ port-forwards:                    ## Restart kubectl port-forwards (prod:8788, d
 	@echo "   Prod (K8s): http://localhost:8788 — https://newsbrief.local via Caddy"
 	@echo "   Dev  (K8s): http://localhost:8789"
 	@echo "   ArgoCD UI:  https://localhost:8443"
+	@echo ""
+	@echo "   These are one-off — they die on sleep/wake or network blips."
+	@echo "   For a self-healing version, run: make port-forwards-autostart-install"
+
+# ---------- Port-forward auto-heal (macOS launchd only) ----------
+# `kubectl port-forward` has no reconnect logic — it exits on any interruption
+# (laptop sleep/wake, network blip, kind node restart) and never comes back on
+# its own. scripts/port-forwards-watch.sh polls and restarts each one; launchd
+# (KeepAlive) keeps the watcher script itself running.
+PF_PLIST_NAME    := com.newsbrief.portforwards.plist
+PF_PLIST_DEST    := $(HOME)/Library/LaunchAgents/$(PF_PLIST_NAME)
+
+port-forwards-autostart-install:  ## Install self-healing port-forwards (auto-restart on crash/sleep, macOS only)
+ifeq ($(UNAME_S),Darwin)
+	@mkdir -p "$(PROJECT_PATH)/logs"
+	@mkdir -p "$$(dirname $(PF_PLIST_DEST))"
+	@sed -e 's|__PROJECT_PATH__|$(PROJECT_PATH)|g' \
+	     -e 's|__HOME__|$(HOME)|g' \
+	     launchd/com.newsbrief.portforwards.plist > $(PF_PLIST_DEST)
+	@launchctl unload $(PF_PLIST_DEST) 2>/dev/null || true
+	@launchctl load $(PF_PLIST_DEST)
+	@echo "✅ Self-healing port-forwards installed (macOS launchd)"
+	@echo "   prod:8788, dev:8789, ArgoCD:8443 — auto-restart on crash/sleep/wake"
+	@echo "   Logs: $(PROJECT_PATH)/logs/port-forwards-watch.log"
+else
+	@echo "port-forwards-autostart-install is macOS only."
+endif
+
+port-forwards-autostart-uninstall:  ## Remove self-healing port-forwards
+ifeq ($(UNAME_S),Darwin)
+	@if [ -f "$(PF_PLIST_DEST)" ]; then \
+		launchctl unload $(PF_PLIST_DEST) 2>/dev/null || true; \
+		rm -f $(PF_PLIST_DEST); \
+		pkill -f "port-forwards-watch.sh" 2>/dev/null || true; \
+		pkill -f "kubectl port-forward" 2>/dev/null || true; \
+		echo "✅ Self-healing port-forwards removed"; \
+	else \
+		echo "Self-healing port-forwards not installed"; \
+	fi
+else
+	@echo "port-forwards-autostart-uninstall is macOS only."
+endif
+
+port-forwards-autostart-status:   ## Check self-healing port-forwards status
+ifeq ($(UNAME_S),Darwin)
+	@if [ -f "$(PF_PLIST_DEST)" ]; then \
+		echo "✅ Self-healing port-forwards installed (macOS launchd)"; \
+		launchctl list | grep com.newsbrief.portforwards || echo "   (not currently loaded)"; \
+	else \
+		echo "❌ Self-healing port-forwards not installed"; \
+		echo "   Run: make port-forwards-autostart-install"; \
+	fi
+else
+	@echo "port-forwards-autostart-status is macOS only."
+endif
+
+# ---------- K8s version drift check (macOS launchd only, #325) ----------
+# ArgoCD's own sync status is unreliable on this kind-on-Podman setup (see
+# #325 — the application-controller intermittently can't resolve
+# `argocd-redis` over cluster DNS, silently breaking auto-sync while the UI
+# still shows a plausible status). scripts/k8s-version-check.sh is an
+# ArgoCD-independent safety net: it compares the image tag actually running
+# in each namespace against what Git says it should be, and alerts (ntfy, if
+# NTFY_TOPIC is set in .env) on drift or unreachability.
+VC_PLIST_NAME    := com.newsbrief.versioncheck.plist
+VC_PLIST_DEST    := $(HOME)/Library/LaunchAgents/$(VC_PLIST_NAME)
+
+k8s-version-check:                ## One-off run of the version drift check
+	@bash scripts/k8s-version-check.sh
+
+k8s-version-check-autostart-install:  ## Install periodic version drift check (every 30min, macOS only)
+ifeq ($(UNAME_S),Darwin)
+	@mkdir -p "$(PROJECT_PATH)/logs"
+	@mkdir -p "$$(dirname $(VC_PLIST_DEST))"
+	@sed -e 's|__PROJECT_PATH__|$(PROJECT_PATH)|g' \
+	     -e 's|__HOME__|$(HOME)|g' \
+	     launchd/com.newsbrief.versioncheck.plist > $(VC_PLIST_DEST)
+	@launchctl unload $(VC_PLIST_DEST) 2>/dev/null || true
+	@launchctl load $(VC_PLIST_DEST)
+	@echo "✅ Version drift check installed (macOS launchd, every 30min)"
+	@echo "   Logs: $(PROJECT_PATH)/logs/k8s-version-check.log"
+else
+	@echo "k8s-version-check-autostart-install is macOS only."
+endif
+
+k8s-version-check-autostart-uninstall:  ## Remove periodic version drift check
+ifeq ($(UNAME_S),Darwin)
+	@if [ -f "$(VC_PLIST_DEST)" ]; then \
+		launchctl unload $(VC_PLIST_DEST) 2>/dev/null || true; \
+		rm -f $(VC_PLIST_DEST); \
+		echo "✅ Version drift check removed"; \
+	else \
+		echo "Version drift check not installed"; \
+	fi
+else
+	@echo "k8s-version-check-autostart-uninstall is macOS only."
+endif
+
+k8s-version-check-autostart-status:   ## Check version drift check install status
+ifeq ($(UNAME_S),Darwin)
+	@if [ -f "$(VC_PLIST_DEST)" ]; then \
+		echo "✅ Version drift check installed (macOS launchd)"; \
+		launchctl list | grep com.newsbrief.versioncheck || echo "   (not currently loaded)"; \
+	else \
+		echo "❌ Version drift check not installed"; \
+		echo "   Run: make k8s-version-check-autostart-install"; \
+	fi
+else
+	@echo "k8s-version-check-autostart-status is macOS only."
+endif
 
 argo-ui:  ## Port-forward Argo CD UI on 8443
 	@echo "Open https://localhost:8443"
@@ -550,7 +688,7 @@ env-init:  ## Create .env from template with generated secure password
 .DEFAULT_GOAL := run
 .PHONY: venv run-local dev dev-full refresh stories-generate api-health \
 	build tag push release local-release clean-release cleanup-old-images run \
-	deploy deploy-stop deploy-status deploy-init up down logs \
+	deploy deploy-db-only deploy-stop deploy-status deploy-init up down logs \
 	setup-dev-db db-up db-down db-status db-logs db-psql db-reset seed-dev \
 	db-backup db-restore db-backup-list \
 	secrets-create secrets-list secrets-delete \
@@ -558,6 +696,9 @@ env-init:  ## Create .env from template with generated secure password
 	hostname-setup hostname-check hostname-remove hostname-trust-cert hostname-regen-certs \
 	autostart-install autostart-uninstall autostart-status \
 	infra-start infra-autostart-install infra-autostart-uninstall infra-autostart-status \
+	k8s-omlx-secret \
 	recover status port-forwards argo-ui \
+	port-forwards-autostart-install port-forwards-autostart-uninstall port-forwards-autostart-status \
+	k8s-version-check k8s-version-check-autostart-install k8s-version-check-autostart-uninstall k8s-version-check-autostart-status \
 	compose-start compose-watch compose-autostart-install \
 	env-init

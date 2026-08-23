@@ -147,6 +147,28 @@ async def test_embed_batch_or_fallback_on_batch_failure() -> None:
 
 
 @pytest.mark.asyncio
+async def test_embed_batch_or_fallback_isolates_single_item_failure() -> None:
+    """
+    #349: one bad item (e.g. Ollama context-length-exceeded) in the
+    single-request fallback must not drop the rest of the batch -- it should
+    come back as None for that item only, with the others still embedded.
+    """
+    svc = MagicMock()
+    svc.embed_texts = AsyncMock(side_effect=RuntimeError("batch failed"))
+
+    async def fake_embed_text(text: str):
+        if text == "bad":
+            raise RuntimeError("input length exceeds the context length")
+        return [0.1, 0.2]
+
+    svc.embed_text = AsyncMock(side_effect=fake_embed_text)
+
+    out = await _embed_batch_or_fallback(svc, ["good1", "bad", "good2"])
+    assert out == [[0.1, 0.2], None, [0.1, 0.2]]
+    assert svc.embed_text.call_count == 3
+
+
+@pytest.mark.asyncio
 async def test_async_main_disabled_embedding(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DATABASE_URL", "postgresql://test:test@127.0.0.1:5432/test")
     monkeypatch.setenv("NEWSBRIEF_EMBEDDING_ENABLED", "0")

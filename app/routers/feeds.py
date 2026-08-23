@@ -23,12 +23,10 @@ from ..feeds import (
     MAX_ITEMS_PER_FEED,
     MAX_ITEMS_PER_REFRESH,
     MAX_REFRESH_TIME_SECONDS,
-    RefreshStats,
     add_feed,
     create_import_record,
     export_opml,
     fail_import,
-    fetch_and_store,
     get_failed_imports,
     get_import_history,
     get_import_status,
@@ -620,47 +618,81 @@ def get_feed_stats(feed_id: int):
         )
 
 
-@limiter.limit("10/minute")
-@router.post("/refresh")
-def refresh_endpoint(request: Request):
-    """Trigger feed refresh. Rate limited."""
-    from ..scheduler import is_feed_refresh_in_progress, set_feed_refresh_in_progress
+def _run_refresh_task() -> None:
+    """
+    Background task: run the ingest stage (tracked, #327/#348) and log the result.
 
-    if is_feed_refresh_in_progress():
+    ``execute_ingest_stage`` persists a ``PipelineStageRun`` row itself, which
+    ``GET /refresh/status`` polls -- no need to also thread stats back here.
+    ``set_feed_refresh_in_progress`` is kept in sync so the scheduled job's
+    same-process overlap check (``scheduled_feed_refresh``) still works.
+    """
+    import uuid as _uuid
+
+    from ..scheduler import set_feed_refresh_in_progress
+
+    set_feed_refresh_in_progress(True)
+    try:
+        from ..pipeline_runner import execute_ingest_stage
+
+        run_group_id = str(_uuid.uuid4())
+        res = execute_ingest_stage(trigger="manual", run_group_id=run_group_id)
+        logger.info(
+            "Background feed refresh complete: success=%s stats=%s",
+            res.success,
+            res.stats,
+        )
+    except Exception as e:
+        logger.error("Background feed refresh failed: %s", e, exc_info=True)
+    finally:
+        set_feed_refresh_in_progress(False)
+
+
+@limiter.limit("10/minute")
+@router.post("/refresh", status_code=202)
+def refresh_endpoint(request: Request, background_tasks: BackgroundTasks):
+    """
+    Trigger feed refresh in the background. Rate limited.
+
+    Returns 202 immediately; the refresh continues regardless of page
+    navigation or a dropped client connection (#327 -- the previous
+    synchronous version could take several minutes and was fragile to
+    browser/proxy timeouts even though the backend always completed
+    successfully). Poll GET /refresh/status to track progress and read the
+    final stats once done.
+    """
+    from ..pipeline_monitoring import get_latest_stage_run_status
+
+    if get_latest_stage_run_status("ingest")["in_progress"]:
         from fastapi.responses import JSONResponse
 
         return JSONResponse(
             status_code=409, content={"error": "Feed refresh already in progress"}
         )
-    set_feed_refresh_in_progress(True)
-    try:
-        stats: RefreshStats = fetch_and_store()
-        return {
-            "ingested": stats.total_items,
-            "stats": {
-                "items": {
-                    "total": stats.total_items,
-                    "per_feed": stats.items_per_feed,
-                    "robots_blocked": stats.robots_txt_blocked_articles,
-                },
-                "feeds": {
-                    "processed": stats.total_feeds_processed,
-                    "skipped_disabled": stats.feeds_skipped_disabled,
-                    "skipped_robots": stats.feeds_skipped_robots,
-                    "cached_304": stats.feeds_cached_304,
-                    "errors": stats.feeds_error,
-                },
-                "performance": {
-                    "refresh_time_seconds": round(stats.refresh_time_seconds, 2),
-                    "hit_global_limit": stats.hit_global_limit,
-                    "hit_time_limit": stats.hit_time_limit,
-                },
-                "config": {
-                    "max_items_per_refresh": MAX_ITEMS_PER_REFRESH,
-                    "max_items_per_feed": MAX_ITEMS_PER_FEED,
-                    "max_refresh_time_seconds": MAX_REFRESH_TIME_SECONDS,
-                },
-            },
-        }
-    finally:
-        set_feed_refresh_in_progress(False)
+
+    background_tasks.add_task(_run_refresh_task)
+    return {
+        "status": "started",
+        "message": "Feed refresh started in background",
+        "config": {
+            "max_items_per_refresh": MAX_ITEMS_PER_REFRESH,
+            "max_items_per_feed": MAX_ITEMS_PER_FEED,
+            "max_refresh_time_seconds": MAX_REFRESH_TIME_SECONDS,
+        },
+    }
+
+
+@router.get("/refresh/status")
+def refresh_status_endpoint(request: Request):
+    """
+    Return whether a feed refresh is currently running, plus the last run's
+    result (#327/#344).
+
+    Clients can poll this endpoint after triggering POST /refresh to know
+    when it's safe to reload the feed/article list, and to surface the final
+    stats (feeds processed, articles ingested, whether the item/time cap was
+    hit) that the old synchronous response used to return directly.
+    """
+    from ..pipeline_monitoring import get_latest_stage_run_status
+
+    return get_latest_stage_run_status("ingest")

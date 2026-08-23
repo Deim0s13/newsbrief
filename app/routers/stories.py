@@ -29,7 +29,7 @@ from ..retrieval import (
     RetrievalService,
 )
 from ..settings import get_settings_service
-from ..stories import generate_stories_simple, get_stories, get_story_by_id
+from ..stories import get_stories, get_story_by_id
 
 logger = logging.getLogger(__name__)
 
@@ -42,21 +42,34 @@ def _run_generation_task(
     similarity_threshold: float,
     resolved_model: str,
 ) -> None:
-    """Background task: run story generation and log result."""
+    """
+    Background task: run the story_generation stage (tracked, #348) and log
+    the result.
+
+    Routes through ``pipeline_runner.execute_story_generation_stage`` instead
+    of calling ``generate_stories_simple`` directly, so this manual trigger
+    gets a ``PipelineStageRun`` row like the scheduled job does -- fixes
+    GET /stories/generation-status, which queries that table and previously
+    never saw a row for generations started this way.
+    """
+    import uuid as _uuid
+
+    from ..pipeline_runner import execute_story_generation_stage
+
     try:
-        with session_scope() as s:
-            result = generate_stories_simple(
-                session=s,
-                time_window_hours=time_window_hours,
-                min_articles_per_story=min_articles_per_story,
-                similarity_threshold=similarity_threshold,
-                model=resolved_model,
-                max_workers=3,
-            )
-        n = len(result.get("story_ids", []))
+        run_group_id = str(_uuid.uuid4())
+        res = execute_story_generation_stage(
+            trigger="manual",
+            run_group_id=run_group_id,
+            time_window_hours=time_window_hours,
+            min_articles_per_story=min_articles_per_story,
+            similarity_threshold=similarity_threshold,
+            model=resolved_model,
+            max_workers=3,
+        )
         logger.info(
             "Background story generation complete: %d stories, model=%s",
-            n,
+            res.stats.get("stories_created", 0),
             resolved_model,
         )
     except Exception as e:
@@ -97,34 +110,15 @@ def generate_stories_endpoint(
 @router.get("/stories/generation-status")
 def generation_status_endpoint(request: Request):
     """
-    Return whether a story generation stage is currently running.
+    Return whether a story generation stage is currently running, plus the
+    last run's result (#348).
 
     Clients can poll this endpoint (e.g. every 5 s) after triggering generation
     to know when it is safe to reload the stories list.
     """
-    with session_scope() as s:
-        row = s.execute(
-            text(
-                """
-                SELECT started_at, finished_at
-                FROM pipeline_stage_runs
-                WHERE stage = 'story_generation'
-                ORDER BY started_at DESC
-                LIMIT 1
-                """
-            )
-        ).fetchone()
+    from ..pipeline_monitoring import get_latest_stage_run_status
 
-    if row is None:
-        return {"in_progress": False, "last_started_at": None}
-
-    started_at, finished_at = row
-    in_progress = finished_at is None
-    return {
-        "in_progress": in_progress,
-        "last_started_at": started_at.isoformat() if started_at else None,
-        "last_finished_at": finished_at.isoformat() if finished_at else None,
-    }
+    return get_latest_stage_run_status("story_generation")
 
 
 @router.get("/stories", response_model=StoriesListOut)

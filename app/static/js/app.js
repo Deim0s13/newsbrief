@@ -314,7 +314,14 @@ function formatDate(dateString) {
     return DateUtils.formatRelative(dateString);
 }
 
-// Refresh functionality
+// Refresh functionality (#327: non-blocking -- POST /refresh returns 202
+// immediately and the refresh runs in the background, so we poll
+// GET /refresh/status instead of awaiting the POST response directly. The
+// old synchronous version could block the connection for several minutes on
+// a large feed list, which was fragile to browser/proxy timeouts even though
+// the backend always completed successfully.)
+let _refreshPollInterval = null;
+
 async function refreshFeeds() {
     console.log('refreshFeeds() called');
     const refreshBtn = document.querySelector('button[onclick="refreshFeeds()"]');
@@ -324,51 +331,80 @@ async function refreshFeeds() {
         return;
     }
 
-    const originalText = refreshBtn.innerHTML;
-
-    refreshBtn.innerHTML = `
-        <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-        <span>Refreshing...</span>
-    `;
-    refreshBtn.disabled = true;
+    setRefreshButtonBusy(refreshBtn, true);
 
     try {
         console.log('Calling /refresh API...');
         const response = await fetch('/refresh', { method: 'POST' });
 
+        if (response.status === 409) {
+            showNotification('A feed refresh is already in progress', 'info');
+            startRefreshPolling(refreshBtn);
+            return;
+        }
+
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
 
-        const result = await response.json();
-        console.log('Refresh result:', result);
-
-        // Show success notification with detailed stats
-        const articlesAdded = result.ingested || result.stats?.items?.total || 0;
-        const feedsProcessed = result.stats?.feeds?.processed || 0;
-        const feedsWithErrors = result.stats?.feeds?.errors || 0;
-
-        let message = `Refreshed ${feedsProcessed} feeds: ${articlesAdded} new articles`;
-        if (feedsWithErrors > 0) {
-            message += ` (${feedsWithErrors} feeds had errors)`;
-        }
-        showNotification(message, articlesAdded > 0 ? 'success' : 'info');
-
-        // Reload articles with current topic filter
-        const topicSelect = document.querySelector('select');
-        const currentTopic = topicSelect ? topicSelect.value : '';
-
-        setTimeout(() => {
-            loadArticles(currentTopic);
-        }, 1000);
+        console.log('Refresh started in background, polling for completion...');
+        startRefreshPolling(refreshBtn);
 
     } catch (error) {
         console.error('Refresh error:', error);
         showNotification(`Failed to refresh feeds: ${error.message}`, 'error');
-    } finally {
-        refreshBtn.innerHTML = originalText;
+        setRefreshButtonBusy(refreshBtn, false);
+    }
+}
+
+function setRefreshButtonBusy(refreshBtn, busy) {
+    if (busy) {
+        refreshBtn.dataset.originalText = refreshBtn.dataset.originalText || refreshBtn.innerHTML;
+        refreshBtn.innerHTML = `
+            <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+            <span>Refreshing...</span>
+        `;
+        refreshBtn.disabled = true;
+    } else {
+        refreshBtn.innerHTML = refreshBtn.dataset.originalText || refreshBtn.innerHTML;
         refreshBtn.disabled = false;
     }
+}
+
+function startRefreshPolling(refreshBtn) {
+    if (_refreshPollInterval) return;  // already polling
+    _refreshPollInterval = setInterval(async () => {
+        try {
+            const res = await fetch('/refresh/status');
+            if (!res.ok) return;
+            const data = await res.json();
+            if (!data.in_progress) {
+                clearInterval(_refreshPollInterval);
+                _refreshPollInterval = null;
+                setRefreshButtonBusy(refreshBtn, false);
+
+                const stats = data.last_stats || {};
+                const articlesAdded = stats.articles_ingested || 0;
+                const feedsProcessed = stats.feeds_processed || 0;
+                const feedsWithErrors = stats.feeds_error || 0;
+
+                if (data.last_success === false) {
+                    showNotification(`Feed refresh failed: ${data.last_error || 'unknown error'}`, 'error');
+                } else {
+                    let message = `Refreshed ${feedsProcessed} feeds: ${articlesAdded} new articles`;
+                    if (feedsWithErrors > 0) {
+                        message += ` (${feedsWithErrors} feeds had errors)`;
+                    }
+                    showNotification(message, articlesAdded > 0 ? 'success' : 'info');
+                }
+
+                // Reload articles with current topic filter
+                const topicSelect = document.querySelector('select');
+                const currentTopic = topicSelect ? topicSelect.value : '';
+                loadArticles(currentTopic);
+            }
+        } catch (_) { /* ignore network errors during poll */ }
+    }, 5000);
 }
 
 // Notification system

@@ -438,6 +438,7 @@ make hostname-trust-cert
 
 | Release | Summary |
 |---------|---------|
+| v0.8.7 | Model optimisation & platform intelligence: hardware-informed, device-aware model profiles ([ADR-0033](docs/adr/0033-hardware-informed-model-selection.md)); oMLX backend adopted on macOS; embedding model re-evaluated (no change); model-fitness harness formalized (`scripts/model_fitness.py`) |
 | v0.8.6 | RAG milestone completion: embeddings as a pipeline stage, semantic dedup, light RAG context anchors, bounded retrieval hook, historical linking, cluster complexity scoring, go/no-go evaluation harness |
 | v0.8.5 | Pipeline completion & stability: confidence scoring + publish gate, standard/deep synthesis split, per-type data retention, E2E pipeline tests, stuck-item observability |
 | v0.8.4.x | Cross-platform CD (ArgoCD on macOS, Compose + GHCR polling on Windows), native WSL2 dev PostgreSQL, date-fallback fixes |
@@ -454,7 +455,6 @@ make hostname-trust-cert
 
 ### Upcoming
 
-- **Model Optimisation & Platform Intelligence** (v0.8.7, feature-complete — release pending): hardware-informed, device-aware model profiles ([ADR-0033](docs/adr/0033-hardware-informed-model-selection.md)); oMLX backend adopted on macOS; embedding model re-evaluated (no change); model-fitness harness formalized
 - **Entity Intelligence System** (v0.9.0): deeper entity linking and disambiguation
 - **RAG re-evaluation**: re-run `scripts/rag_evaluation.py` after a normal week of production ingestion to validate the relatedness-precision gate at realistic corpus size (ADR-0026 follow-up condition)
 - **Fine-tuning feasibility**: Deferred — better alternatives first (ADR-0027)

@@ -161,14 +161,33 @@ def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
 async def _embed_batch_or_fallback(
     svc: EmbeddingService,
     texts: List[str],
-) -> List[List[float]]:
+) -> List[Optional[List[float]]]:
+    """
+    Embed a batch, falling back to per-item requests if the batch call fails.
+
+    Returns one entry per input text, in order; a failed individual text
+    (e.g. an Ollama error specific to that text) is ``None`` rather than
+    aborting the whole batch (#349) -- previously a single bad item in a
+    batch of up to --batch-size (default 32) caused *all* items in that
+    batch to be counted as errors, including otherwise-good ones, since the
+    fallback loop below re-raised on the first per-item exception too.
+    """
     try:
-        return await svc.embed_texts(texts, batch_size=len(texts))
+        batch_out: List[Optional[List[float]]] = list(
+            await svc.embed_texts(texts, batch_size=len(texts))
+        )
+        return batch_out
     except Exception as e:
         logger.warning("Batch embed failed (%s); falling back to single requests", e)
-        out: List[List[float]] = []
+        out: List[Optional[List[float]]] = []
         for t in texts:
-            out.append(await svc.embed_text(t))
+            try:
+                out.append(await svc.embed_text(t))
+            except Exception as item_err:
+                logger.error(
+                    "Embedding failed for a single item, skipping it: %s", item_err
+                )
+                out.append(None)
         return out
 
 
@@ -272,6 +291,9 @@ async def _run_article_backfill(
 
             info = svc.get_model_info()
             for row, vec in zip(batch_items, vectors):
+                if vec is None:
+                    errors += 1
+                    continue
                 persist_item_embedding(
                     session,
                     int(row.id),
@@ -370,6 +392,9 @@ async def _run_story_backfill(
 
             info = svc.get_model_info()
             for row, vec in zip(batch_stories, vectors):
+                if vec is None:
+                    errors += 1
+                    continue
                 persist_story_embedding(
                     row,
                     vec,
