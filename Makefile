@@ -574,6 +574,61 @@ else
 	@echo "port-forwards-autostart-status is macOS only."
 endif
 
+# ---------- K8s version drift check (macOS launchd only, #325) ----------
+# ArgoCD's own sync status is unreliable on this kind-on-Podman setup (see
+# #325 — the application-controller intermittently can't resolve
+# `argocd-redis` over cluster DNS, silently breaking auto-sync while the UI
+# still shows a plausible status). scripts/k8s-version-check.sh is an
+# ArgoCD-independent safety net: it compares the image tag actually running
+# in each namespace against what Git says it should be, and alerts (ntfy, if
+# NTFY_TOPIC is set in .env) on drift or unreachability.
+VC_PLIST_NAME    := com.newsbrief.versioncheck.plist
+VC_PLIST_DEST    := $(HOME)/Library/LaunchAgents/$(VC_PLIST_NAME)
+
+k8s-version-check:                ## One-off run of the version drift check
+	@bash scripts/k8s-version-check.sh
+
+k8s-version-check-autostart-install:  ## Install periodic version drift check (every 30min, macOS only)
+ifeq ($(UNAME_S),Darwin)
+	@mkdir -p "$(PROJECT_PATH)/logs"
+	@mkdir -p "$$(dirname $(VC_PLIST_DEST))"
+	@sed -e 's|__PROJECT_PATH__|$(PROJECT_PATH)|g' \
+	     -e 's|__HOME__|$(HOME)|g' \
+	     launchd/com.newsbrief.versioncheck.plist > $(VC_PLIST_DEST)
+	@launchctl unload $(VC_PLIST_DEST) 2>/dev/null || true
+	@launchctl load $(VC_PLIST_DEST)
+	@echo "✅ Version drift check installed (macOS launchd, every 30min)"
+	@echo "   Logs: $(PROJECT_PATH)/logs/k8s-version-check.log"
+else
+	@echo "k8s-version-check-autostart-install is macOS only."
+endif
+
+k8s-version-check-autostart-uninstall:  ## Remove periodic version drift check
+ifeq ($(UNAME_S),Darwin)
+	@if [ -f "$(VC_PLIST_DEST)" ]; then \
+		launchctl unload $(VC_PLIST_DEST) 2>/dev/null || true; \
+		rm -f $(VC_PLIST_DEST); \
+		echo "✅ Version drift check removed"; \
+	else \
+		echo "Version drift check not installed"; \
+	fi
+else
+	@echo "k8s-version-check-autostart-uninstall is macOS only."
+endif
+
+k8s-version-check-autostart-status:   ## Check version drift check install status
+ifeq ($(UNAME_S),Darwin)
+	@if [ -f "$(VC_PLIST_DEST)" ]; then \
+		echo "✅ Version drift check installed (macOS launchd)"; \
+		launchctl list | grep com.newsbrief.versioncheck || echo "   (not currently loaded)"; \
+	else \
+		echo "❌ Version drift check not installed"; \
+		echo "   Run: make k8s-version-check-autostart-install"; \
+	fi
+else
+	@echo "k8s-version-check-autostart-status is macOS only."
+endif
+
 argo-ui:  ## Port-forward Argo CD UI on 8443
 	@echo "Open https://localhost:8443"
 	kubectl port-forward svc/argocd-server -n argocd 8443:443
@@ -626,5 +681,6 @@ env-init:  ## Create .env from template with generated secure password
 	k8s-omlx-secret \
 	recover status port-forwards argo-ui \
 	port-forwards-autostart-install port-forwards-autostart-uninstall port-forwards-autostart-status \
+	k8s-version-check k8s-version-check-autostart-install k8s-version-check-autostart-uninstall k8s-version-check-autostart-status \
 	compose-start compose-watch compose-autostart-install \
 	env-init

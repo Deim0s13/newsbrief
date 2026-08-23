@@ -43,6 +43,17 @@ kubectl version --client
 argocd version --client
 ```
 
+### Podman machine memory
+
+The Podman machine VM hosting the kind cluster needs headroom for the full
+control plane (etcd, CoreDNS, kube-apiserver) plus ArgoCD plus both app
+namespaces. **Recommend at least 12GB** (`podman machine set --memory 12288
+podman-machine-default`, requires a machine restart: `podman machine stop &&
+podman machine start`). Running with the Podman default (~5.6GB) has caused
+the kind control-plane container itself to be OOM-killed (`exitCode=137`,
+`OOMKilled=true`) more than once, taking down both `newsbrief-dev` and
+`newsbrief-prod` until manually restarted — see [#325](https://github.com/Deim0s13/newsbrief/issues/325).
+
 ## Cluster Setup & Recovery
 
 In normal use you don't run these steps by hand — `make infra-start` (or the launchd auto-start job) does all of it idempotently. This section explains what it does.
@@ -52,6 +63,8 @@ In normal use you don't run these steps by hand — `make infra-start` (or the l
 ```bash
 make infra-autostart-install   # registers a launchd job that runs infra-start.sh on every login
 make infra-autostart-status    # verify the launchd plist is loaded
+make port-forwards-autostart-install   # self-healing kubectl port-forwards (recommended — see #325 history)
+make k8s-version-check-autostart-install  # periodic Git-vs-running-image drift check (recommended — see #325)
 ```
 
 ### `make infra-start` (`scripts/infra-start.sh`)
@@ -106,6 +119,27 @@ kubectl get applications -n argocd
 kubectl describe application newsbrief-prod -n argocd
 argocd app sync newsbrief-prod   # force an out-of-cycle sync
 ```
+
+### Known issue: ArgoCD sync status unreliable ([#325](https://github.com/Deim0s13/newsbrief/issues/325))
+
+The `argocd-application-controller` intermittently fails to resolve
+`argocd-redis` over cluster DNS (`dial tcp: lookup argocd-redis: i/o timeout`),
+even when the `argocd-redis` pod/Service/Endpoint are all healthy and a fresh
+debug pod can resolve the same name fine. This makes both Applications show
+`Unknown` sync status, and — worse — can silently stop auto-sync from working
+at all, leaving a namespace running a stale image for an extended period with
+no visible warning. Root cause not fully confirmed (kind-on-Podman(applehv)
+DNS reliability quirk, possibly related to the node's own `resolv.conf`
+`search ... dns.podman` entry leaking into pod resolver configs); restarting
+`argocd-redis`/the application-controller does **not** reliably fix it.
+
+**Mitigation, not a fix**: `scripts/k8s-version-check.sh` (`make
+k8s-version-check`) independently compares the image tag actually running in
+each namespace against what Git says it should be, and alerts via ntfy (if
+`NTFY_TOPIC` is set in `.env`) on drift or unreachability — it never talks to
+ArgoCD, so it still works while ArgoCD's own status is unreliable. Install as
+a recurring background check with `make k8s-version-check-autostart-install`
+(macOS launchd, every 30 minutes).
 
 ### Sync Waves
 
@@ -179,7 +213,11 @@ After `make infra-start` (or `make port-forwards`):
 
 **Sync stuck / app shows `OutOfSync`** — check the migrate Job first (`kubectl get jobs -n <namespace>`, `kubectl logs job/newsbrief-db-migrate -n <namespace>`); a failed migration blocks the Deployment from wave 2.
 
+**Sync shows `Unknown` / suspect a namespace is running a stale image** — see [Known issue: ArgoCD sync status unreliable](#known-issue-argocd-sync-status-unreliable-325) above; run `make k8s-version-check` to check Git vs. actually-running image tags directly, bypassing ArgoCD's own status.
+
 **Port-forwards dropped after sleep** — `make port-forwards` re-establishes them (kills any stale ones first).
+
+**Kind control-plane container not running / `kubectl` can't connect** — check `podman ps -a --filter name=control-plane` for an `Exited (137)` (OOM-killed) container; `podman start newsbrief-dev-control-plane` restarts it. If this recurs, increase the Podman machine's memory (see [Podman machine memory](#podman-machine-memory) above).
 
 ```bash
 kubectl describe application newsbrief-prod -n argocd
