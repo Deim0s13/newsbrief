@@ -1348,6 +1348,79 @@ def export_opml() -> str:
     return ET.tostring(opml, encoding="unicode", xml_declaration=True)
 
 
+def _fetch_feed_response(
+    client: httpx.Client,
+    fid: int,
+    url: str,
+    etag: Optional[str],
+    last_mod: Optional[str],
+    stats: RefreshStats,
+) -> Optional[httpx.Response]:
+    """
+    Fetch a single feed's URL, using ETag/Last-Modified conditional headers.
+
+    Classifies the outcome (304 cached / HTTP error / connection error /
+    success), updates ``stats`` and feed health metrics accordingly, and
+    returns the response only on success. ``None`` means the caller should
+    move on to the next feed (already-cached, errored, or an exception) --
+    extracted from ``fetch_and_store()`` (#347), behavior unchanged.
+    """
+    headers = {}
+    if etag:
+        headers["If-None-Match"] = etag
+    if last_mod:
+        headers["If-Modified-Since"] = last_mod
+
+    fetch_start_time = time.time()
+
+    try:
+        resp = client.get(url, headers=headers)
+        response_time_ms = (time.time() - fetch_start_time) * 1000
+
+        # Handle cached response (still considered successful)
+        if resp.status_code == 304:
+            stats.feeds_cached_304 += 1
+            update_feed_health_metrics(fid, True, response_time_ms)
+            return None
+
+        # Handle error responses
+        if resp.status_code >= 400:
+            stats.feeds_error += 1
+            error_message = f"HTTP {resp.status_code}: {resp.reason_phrase}"
+            update_feed_health_metrics(fid, False, response_time_ms, error_message)
+            return None
+
+        # Success case
+        update_feed_health_metrics(fid, True, response_time_ms)
+        return resp
+
+    except Exception as e:
+        response_time_ms = (time.time() - fetch_start_time) * 1000
+        stats.feeds_error += 1
+        error_message = f"Connection error: {str(e)}"
+        update_feed_health_metrics(fid, False, response_time_ms, error_message)
+        return None
+
+
+def _store_feed_cache_headers(
+    fid: int, new_etag: Optional[str], new_last_mod: Optional[str]
+) -> None:
+    """Persist a feed's new ETag/Last-Modified headers after a successful fetch."""
+    with session_scope() as s:
+        s.execute(
+            text(
+                """
+                UPDATE feeds SET
+                    etag=:e,
+                    last_modified=:lm,
+                    updated_at=CURRENT_TIMESTAMP
+                WHERE id=:id
+            """
+            ),
+            {"e": new_etag, "lm": new_last_mod, "id": fid},
+        )
+
+
 def fetch_and_store() -> RefreshStats:
     """
     Iterate all feeds, use ETag/Last-Modified. Respect robots_allowed/disabled.
@@ -1409,49 +1482,8 @@ def fetch_and_store() -> RefreshStats:
                 stats.feeds_skipped_robots += 1
                 continue
 
-            # Prepare cache headers
-            headers = {}
-            if etag:
-                headers["If-None-Match"] = etag
-            if last_mod:
-                headers["If-Modified-Since"] = last_mod
-
-            # Fetch feed with response time tracking
-            fetch_start_time = time.time()
-            fetch_success = False
-            error_message = None
-
-            try:
-                resp = client.get(url, headers=headers)
-                response_time_ms = (time.time() - fetch_start_time) * 1000
-
-                # Handle cached response (still considered successful)
-                if resp.status_code == 304:
-                    stats.feeds_cached_304 += 1
-                    fetch_success = True
-                    update_feed_health_metrics(fid, True, response_time_ms)
-                    continue
-
-                # Handle error responses
-                if resp.status_code >= 400:
-                    stats.feeds_error += 1
-                    fetch_success = False
-                    error_message = f"HTTP {resp.status_code}: {resp.reason_phrase}"
-                    update_feed_health_metrics(
-                        fid, False, response_time_ms, error_message
-                    )
-                    continue
-
-                # Success case
-                fetch_success = True
-                update_feed_health_metrics(fid, True, response_time_ms)
-
-            except Exception as e:
-                response_time_ms = (time.time() - fetch_start_time) * 1000
-                stats.feeds_error += 1
-                fetch_success = False
-                error_message = f"Connection error: {str(e)}"
-                update_feed_health_metrics(fid, False, response_time_ms, error_message)
+            resp = _fetch_feed_response(client, fid, url, etag, last_mod, stats)
+            if resp is None:
                 continue
 
             # Successfully fetched feed
@@ -1465,19 +1497,7 @@ def fetch_and_store() -> RefreshStats:
             parsed = feedparser.parse(resp.content)
 
             # Store cache headers only (metrics already updated by update_feed_health_metrics)
-            with session_scope() as s:
-                s.execute(
-                    text(
-                        """
-                    UPDATE feeds SET
-                        etag=:e,
-                        last_modified=:lm,
-                        updated_at=CURRENT_TIMESTAMP
-                    WHERE id=:id
-                """
-                    ),
-                    {"e": new_etag, "lm": new_last_mod, "id": fid},
-                )
+            _store_feed_cache_headers(fid, new_etag, new_last_mod)
 
             # Process feed entries with per-feed limit for fairness
             for entry in parsed.entries:
