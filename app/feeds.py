@@ -1630,6 +1630,129 @@ def _upsert_item_row(
     stats.items_per_feed[fid] += 1
 
 
+def _process_feed_entries(
+    client: httpx.Client,
+    fid: int,
+    entries: Iterable[Any],
+    stats: RefreshStats,
+    start_time: float,
+) -> None:
+    """
+    Process one feed's parsed entries: dedup, extract, classify, upsert.
+
+    Applies the global item limit, per-feed fairness limit, and overall
+    time limit, stopping early (via ``stats.hit_global_limit`` /
+    ``stats.hit_time_limit``) if any is hit. Mutates ``stats`` in place;
+    the caller is responsible for breaking its own feed loop afterward.
+    """
+    for entry in entries:
+        # Check global limit
+        if stats.total_items >= MAX_ITEMS_PER_REFRESH:
+            stats.hit_global_limit = True
+            break
+
+        # Check per-feed limit for fairness
+        if stats.items_per_feed[fid] >= MAX_ITEMS_PER_FEED:
+            break
+
+        # Check time limit
+        elapsed = time.time() - start_time
+        if elapsed > MAX_REFRESH_TIME_SECONDS:
+            stats.hit_time_limit = True
+            break
+
+        link = entry.get("link") or entry.get("id")
+        if not link:
+            continue
+
+        h = url_hash(link)
+
+        existing_item = _lookup_existing_item(h)
+        if existing_item is not None:
+            existing_id, existing_hash, existing_pub, existing_content = existing_item
+        else:
+            existing_id = existing_hash = existing_pub = existing_content = None
+
+        entry_updated = entry_updated_instant(entry)
+        published = entry_published_for_item(entry)
+
+        if existing_id is not None:
+            if not should_reingest_existing_item(
+                existing_pub, existing_content, entry_updated
+            ):
+                continue
+
+        title = entry.get("title") or ""
+        author = None
+
+        # Initial summary (feed-provided, sanitized for safety)
+        summary = sanitize_html(entry.get("summary") or "")
+
+        # Fetch article page for full text (best-effort)
+        extraction = _extract_article_content(client, link, summary)
+        content_text = extraction.content_text
+        extraction_method = extraction.extraction_method
+        extraction_quality = extraction.extraction_quality
+        extraction_error = extraction.extraction_error
+        extracted_at = extraction.extracted_at
+        extraction_time_ms = extraction.extraction_time_ms
+        if not author and extraction.author:
+            author = extraction.author
+        if extraction.robots_blocked:
+            stats.robots_txt_blocked_articles += 1
+
+        # Calculate content hash for AI caching
+        content_hash = create_content_hash(title, content_text or summary or "")
+
+        if (
+            existing_id is not None
+            and existing_hash is not None
+            and content_hash == existing_hash
+        ):
+            logger.debug(
+                "Skipping item update (content_hash unchanged): url_hash=%s",
+                h[:16],
+            )
+            continue
+
+        # Classify topic and calculate ranking score (v0.4.0)
+        topic_result, ranking_result = _classify_and_score_item(
+            title, content_text or summary or "", published
+        )
+
+        ingest_processing_state = article_state_after_ingest(
+            extraction_method,
+            extracted_at,
+            content_text,
+        )
+
+        row_params = {
+            "feed_id": fid,
+            "title": title,
+            "url": link,
+            "url_hash": h,
+            "published": published.replace(tzinfo=None) if published else None,
+            "author": author,
+            "summary": summary,
+            "content": content_text,
+            "content_hash": content_hash,
+            "ranking_score": ranking_result.score,
+            "topic": topic_result.topic,
+            "topic_confidence": topic_result.confidence,
+            "source_weight": 1.0,
+            "extraction_method": extraction_method,
+            "extraction_quality": extraction_quality,
+            "extraction_error": extraction_error,
+            "extracted_at": (
+                extracted_at.replace(tzinfo=None) if extracted_at else None
+            ),
+            "extraction_time_ms": extraction_time_ms,
+            "processing_state": ingest_processing_state.value,
+        }
+
+        _upsert_item_row(existing_id, row_params, link, fid, stats)
+
+
 def fetch_and_store() -> RefreshStats:
     """
     Iterate all feeds, use ETag/Last-Modified. Respect robots_allowed/disabled.
@@ -1709,114 +1832,7 @@ def fetch_and_store() -> RefreshStats:
             _store_feed_cache_headers(fid, new_etag, new_last_mod)
 
             # Process feed entries with per-feed limit for fairness
-            for entry in parsed.entries:
-                # Check global limit
-                if stats.total_items >= MAX_ITEMS_PER_REFRESH:
-                    stats.hit_global_limit = True
-                    break
-
-                # Check per-feed limit for fairness
-                if stats.items_per_feed[fid] >= MAX_ITEMS_PER_FEED:
-                    break
-
-                # Check time limit
-                elapsed = time.time() - start_time
-                if elapsed > MAX_REFRESH_TIME_SECONDS:
-                    stats.hit_time_limit = True
-                    break
-
-                link = entry.get("link") or entry.get("id")
-                if not link:
-                    continue
-
-                h = url_hash(link)
-
-                existing_item = _lookup_existing_item(h)
-                if existing_item is not None:
-                    existing_id, existing_hash, existing_pub, existing_content = (
-                        existing_item
-                    )
-                else:
-                    existing_id = existing_hash = existing_pub = existing_content = None
-
-                entry_updated = entry_updated_instant(entry)
-                published = entry_published_for_item(entry)
-
-                if existing_id is not None:
-                    if not should_reingest_existing_item(
-                        existing_pub, existing_content, entry_updated
-                    ):
-                        continue
-
-                title = entry.get("title") or ""
-                author = None
-
-                # Initial summary (feed-provided, sanitized for safety)
-                summary = sanitize_html(entry.get("summary") or "")
-
-                # Fetch article page for full text (best-effort)
-                extraction = _extract_article_content(client, link, summary)
-                content_text = extraction.content_text
-                extraction_method = extraction.extraction_method
-                extraction_quality = extraction.extraction_quality
-                extraction_error = extraction.extraction_error
-                extracted_at = extraction.extracted_at
-                extraction_time_ms = extraction.extraction_time_ms
-                if not author and extraction.author:
-                    author = extraction.author
-                if extraction.robots_blocked:
-                    stats.robots_txt_blocked_articles += 1
-
-                # Calculate content hash for AI caching
-                content_hash = create_content_hash(title, content_text or summary or "")
-
-                if (
-                    existing_id is not None
-                    and existing_hash is not None
-                    and content_hash == existing_hash
-                ):
-                    logger.debug(
-                        "Skipping item update (content_hash unchanged): url_hash=%s",
-                        h[:16],
-                    )
-                    continue
-
-                # Classify topic and calculate ranking score (v0.4.0)
-                topic_result, ranking_result = _classify_and_score_item(
-                    title, content_text or summary or "", published
-                )
-
-                ingest_processing_state = article_state_after_ingest(
-                    extraction_method,
-                    extracted_at,
-                    content_text,
-                )
-
-                row_params = {
-                    "feed_id": fid,
-                    "title": title,
-                    "url": link,
-                    "url_hash": h,
-                    "published": published.replace(tzinfo=None) if published else None,
-                    "author": author,
-                    "summary": summary,
-                    "content": content_text,
-                    "content_hash": content_hash,
-                    "ranking_score": ranking_result.score,
-                    "topic": topic_result.topic,
-                    "topic_confidence": topic_result.confidence,
-                    "source_weight": 1.0,
-                    "extraction_method": extraction_method,
-                    "extraction_quality": extraction_quality,
-                    "extraction_error": extraction_error,
-                    "extracted_at": (
-                        extracted_at.replace(tzinfo=None) if extracted_at else None
-                    ),
-                    "extraction_time_ms": extraction_time_ms,
-                    "processing_state": ingest_processing_state.value,
-                }
-
-                _upsert_item_row(existing_id, row_params, link, fid, stats)
+            _process_feed_entries(client, fid, parsed.entries, stats, start_time)
 
             # Break outer loop if limits hit
             if stats.hit_global_limit or stats.hit_time_limit:
