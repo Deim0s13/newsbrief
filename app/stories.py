@@ -2875,6 +2875,54 @@ def _build_cluster_data(
     }
 
 
+def _synthesize_cluster(
+    session: Session,
+    cluster_data: Dict[str, Any],
+    articles_cache: Dict[int, Dict[str, Any]],
+    model: str,
+) -> Dict[str, Any]:
+    """
+    Synthesize one cluster's story. Runs on a ThreadPoolExecutor worker
+    thread (submitted from the parallel synthesis loop below) -- must not
+    touch the shared session's transaction state (only read-only queries
+    inside ``_generate_story_synthesis``/``_compute_cluster_complexity``).
+    """
+    try:
+        cluster_articles = [
+            articles_cache[aid]
+            for aid in cluster_data["article_ids"]
+            if aid in articles_cache
+        ]
+        path = classify_cluster_path(cluster_articles)
+        synthesis_data = _generate_story_synthesis(
+            session,
+            cluster_data["article_ids"],
+            model,
+            articles_cache=articles_cache,
+            synthesis_path=path,
+        )
+        complexity_score = _compute_cluster_complexity(
+            session, cluster_data["article_ids"], cluster_articles, model
+        )
+        return {
+            "success": True,
+            "cluster_data": cluster_data,
+            "synthesis_data": synthesis_data,
+            "synthesis_path": path,
+            "complexity_score": complexity_score,
+        }
+    except Exception as e:
+        # exc_info=True (#340): the bare message alone previously gave
+        # no traceback, making root-causing failures like the #340
+        # NoneType bug much harder than it needed to be.
+        logger.error(f"Synthesis failed for cluster: {e}", exc_info=True)
+        return {
+            "success": False,
+            "cluster_data": cluster_data,
+            "error": str(e),
+        }
+
+
 def generate_stories_simple(
     session: Session,
     time_window_hours: int = 24,
@@ -3001,43 +3049,6 @@ def generate_stories_simple(
     updated_stories = 0
     db_time = 0.0
     completed_count = 0
-
-    def generate_synthesis_for_cluster(cluster_data):
-        """Helper function for parallel execution."""
-        try:
-            cluster_articles = [
-                articles_cache[aid]
-                for aid in cluster_data["article_ids"]
-                if aid in articles_cache
-            ]
-            path = classify_cluster_path(cluster_articles)
-            synthesis_data = _generate_story_synthesis(
-                session,
-                cluster_data["article_ids"],
-                model,
-                articles_cache=articles_cache,
-                synthesis_path=path,
-            )
-            complexity_score = _compute_cluster_complexity(
-                session, cluster_data["article_ids"], cluster_articles, model
-            )
-            return {
-                "success": True,
-                "cluster_data": cluster_data,
-                "synthesis_data": synthesis_data,
-                "synthesis_path": path,
-                "complexity_score": complexity_score,
-            }
-        except Exception as e:
-            # exc_info=True (#340): the bare message alone previously gave
-            # no traceback, making root-causing failures like the #340
-            # NoneType bug much harder than it needed to be.
-            logger.error(f"Synthesis failed for cluster: {e}", exc_info=True)
-            return {
-                "success": False,
-                "cluster_data": cluster_data,
-                "error": str(e),
-            }
 
     def _persist_synthesized_story(result: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -3268,7 +3279,9 @@ def generate_stories_simple(
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         # Submit all synthesis tasks
         futures = {
-            executor.submit(generate_synthesis_for_cluster, cluster_data): i
+            executor.submit(
+                _synthesize_cluster, session, cluster_data, articles_cache, model
+            ): i
             for i, cluster_data in enumerate(cluster_data_list)
         }
 
