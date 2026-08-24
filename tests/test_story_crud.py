@@ -155,6 +155,51 @@ def test_get_stories_list():
         session.close()
 
 
+def test_get_stories_generated_at_tiebreak_is_deterministic():
+    """
+    Reported bug: "Latest Generated" sort order wasn't stable across reloads.
+
+    Batch story generation can give several stories the same (or
+    near-identical) generated_at timestamp, and ORDER BY generated_at DESC
+    alone has no defined order among ties -- Postgres can return them
+    differently from query to query. get_stories() now adds Story.id DESC
+    as a secondary key so ties resolve the same way every time.
+    """
+    session = setup_test_db()
+    try:
+        same_timestamp = datetime.now(UTC)
+        story_ids = []
+        for i in range(4):
+            story_id = create_test_story(
+                session=session,
+                title=f"Tied Story {i+1}",
+                synthesis="D" * 100,
+                key_points=["A", "B", "C"],
+                why_it_matters="Test",
+                topics=["Test"],
+                entities=["Test"],
+                importance_score=0.5,
+                freshness_score=0.5,
+                model="test",
+                time_window_start=datetime.now(UTC),
+                time_window_end=datetime.now(UTC),
+            )
+            story = session.query(Story).filter(Story.id == story_id).first()
+            story.generated_at = same_timestamp
+            session.commit()
+            link_test_articles_to_story(session, story_id, [i + 1])
+            story_ids.append(story_id)
+
+        first_run = [s.id for s in get_stories(session, order_by="generated_at")]
+        second_run = [s.id for s in get_stories(session, order_by="generated_at")]
+
+        assert first_run == second_run, "Order must be stable across identical queries"
+        # Secondary key is id DESC: highest id (most recently created) first.
+        assert first_run == sorted(story_ids, reverse=True)
+    finally:
+        session.close()
+
+
 def test_cleanup_archived():
     """Test cleanup of old archived stories."""
     session = setup_test_db()

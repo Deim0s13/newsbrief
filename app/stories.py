@@ -411,7 +411,9 @@ def get_stories(
         # This allows us to calculate blended scores at query time
         # Fetch more than needed to account for offset, then slice
         fetch_limit = offset + limit + 50  # Buffer for accurate ranking
-        query = query.order_by(desc(Story.importance_score))  # Initial ordering
+        # Secondary key (id) makes ties on importance_score deterministic --
+        # otherwise Postgres may return them in a different order each query.
+        query = query.order_by(desc(Story.importance_score), desc(Story.id))
         query = query.limit(fetch_limit)
         stories = query.all()
 
@@ -467,8 +469,9 @@ def get_stories(
         if order_by == "importance":
             # Fetch stories and sort by importance * dynamic freshness
             # This ensures old stories decay even if stored freshness_score is stale
+            # id is a deterministic tiebreaker for ties on the first two keys.
             query = query.order_by(
-                desc(Story.importance_score), desc(Story.generated_at)
+                desc(Story.importance_score), desc(Story.generated_at), desc(Story.id)
             )
             stories_raw = query.all()
 
@@ -493,13 +496,16 @@ def get_stories(
             scored.sort(key=lambda x: x[0], reverse=True)
             stories = [s[1] for s in scored[offset : offset + limit]]
         elif order_by == "freshness":
+            # id is a deterministic tiebreaker: batch-generated stories can
+            # share the same generated_at timestamp, and without a secondary
+            # key Postgres may return ties in a different order each query.
             query = query.order_by(
-                desc(Story.generated_at)
+                desc(Story.generated_at), desc(Story.id)
             )  # Use generated_at for freshness
             query = query.offset(offset).limit(limit)
             stories = query.all()
         else:  # generated_at
-            query = query.order_by(desc(Story.generated_at))
+            query = query.order_by(desc(Story.generated_at), desc(Story.id))
             query = query.offset(offset).limit(limit)
             stories = query.all()
 

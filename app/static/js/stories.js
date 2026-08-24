@@ -3,6 +3,13 @@
 
 let _generationPollInterval = null;
 
+// Sequence guard for loadStories(): multiple calls can overlap (e.g. the
+// initial default-sort load racing a pageshow/bfcache refetch after browser
+// Back, or rapid filter changes) with no guarantee they resolve in the order
+// they were issued. Without this, a slower, older response can overwrite a
+// newer one's results, showing stories in the wrong sort order.
+let _loadStoriesRequestSeq = 0;
+
 document.addEventListener('DOMContentLoaded', function() {
     loadStories();
     setupEventListeners();
@@ -46,6 +53,7 @@ function setupEventListeners() {
 }
 
 async function loadStories() {
+    const requestId = ++_loadStoriesRequestSeq;
     const container = document.getElementById('stories-container');
     const loading = document.getElementById('loading');
     const statsDiv = document.getElementById('story-stats');
@@ -87,6 +95,12 @@ async function loadStories() {
         const data = await response.json();
         console.log('Loaded stories:', data);
 
+        // A newer loadStories() call has since been issued -- discard this
+        // now-stale response rather than let it overwrite the current list.
+        if (requestId !== _loadStoriesRequestSeq) {
+            return;
+        }
+
         // Clear and repopulate only after data is ready (prevents blank flash)
         container.innerHTML = '';
         loading.classList.add('hidden');
@@ -126,6 +140,10 @@ async function loadStories() {
         }
 
     } catch (error) {
+        // Don't show an error for a request that's already been superseded.
+        if (requestId !== _loadStoriesRequestSeq) {
+            return;
+        }
         loading.classList.add('hidden');
         container.innerHTML = `
             <div class="text-center py-12">
