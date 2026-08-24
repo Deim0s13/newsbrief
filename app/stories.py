@@ -3248,6 +3248,58 @@ def _run_parallel_synthesis_and_persist(
     return story_ids, skipped_duplicates, updated_stories, db_time
 
 
+def _build_generation_result(
+    story_ids: List[int],
+    skipped_duplicates: int,
+    updated_stories: int,
+    articles: List[Any],
+    clusters: List[List[int]],
+    data_fetch_time: float,
+    synthesis_time: float,
+    db_time: float,
+    overall_time: float,
+) -> Dict[str, Any]:
+    """
+    Log the final synthesis/structured-logging summaries and build
+    generate_stories_simple's return dict (final step).
+    """
+    logger.info(
+        f"Synthesis + incremental persistence complete: "
+        f"{len(story_ids)}/{len(clusters)} stories persisted "
+        f"({synthesis_time:.2f}s, avg {synthesis_time/len(clusters):.2f}s per cluster)"
+    )
+    if skipped_duplicates > 0:
+        logger.info(f"Skipped {skipped_duplicates} duplicate/no-op stories")
+    if updated_stories > 0:
+        logger.info(f"Updated {updated_stories} existing stories with new articles")
+
+    # Structured logging for story generation
+    logger.info(
+        "Story generation completed",
+        extra={
+            "duration_ms": round(overall_time * 1000, 2),
+            "stories_created": len(story_ids),
+            "stories_updated": updated_stories,
+            "articles_found": len(articles),
+            "clusters_created": len(clusters),
+            "duplicates_skipped": skipped_duplicates,
+            "fetch_time_ms": round(data_fetch_time * 1000, 2),
+            "synthesis_time_ms": round(synthesis_time * 1000, 2),
+            "db_time_ms": round(db_time * 1000, 2),
+        },
+    )
+
+    # v0.6.1: Return detailed stats for better UX
+    # v0.6.3: Added stories_updated count
+    return {
+        "story_ids": story_ids,
+        "articles_found": len(articles),
+        "clusters_created": len(clusters),
+        "duplicates_skipped": skipped_duplicates,
+        "stories_updated": updated_stories,
+    }
+
+
 def generate_stories_simple(
     session: Session,
     time_window_hours: int = 24,
@@ -3377,40 +3429,16 @@ def generate_stories_simple(
     )
 
     synthesis_time = time.time() - synthesis_start
-    logger.info(
-        f"Synthesis + incremental persistence complete: "
-        f"{len(story_ids)}/{len(clusters)} stories persisted "
-        f"({synthesis_time:.2f}s, avg {synthesis_time/len(clusters):.2f}s per cluster)"
-    )
-    if skipped_duplicates > 0:
-        logger.info(f"Skipped {skipped_duplicates} duplicate/no-op stories")
-    if updated_stories > 0:
-        logger.info(f"Updated {updated_stories} existing stories with new articles")
-
     overall_time = time.time() - overall_start
 
-    # Structured logging for story generation
-    logger.info(
-        "Story generation completed",
-        extra={
-            "duration_ms": round(overall_time * 1000, 2),
-            "stories_created": len(story_ids),
-            "stories_updated": updated_stories,
-            "articles_found": len(articles),
-            "clusters_created": len(clusters),
-            "duplicates_skipped": skipped_duplicates,
-            "fetch_time_ms": round(data_fetch_time * 1000, 2),
-            "synthesis_time_ms": round(synthesis_time * 1000, 2),
-            "db_time_ms": round(db_time * 1000, 2),
-        },
+    return _build_generation_result(
+        story_ids,
+        skipped_duplicates,
+        updated_stories,
+        articles,
+        clusters,
+        data_fetch_time,
+        synthesis_time,
+        db_time,
+        overall_time,
     )
-
-    # v0.6.1: Return detailed stats for better UX
-    # v0.6.3: Added stories_updated count
-    return {
-        "story_ids": story_ids,
-        "articles_found": len(articles),
-        "clusters_created": len(clusters),
-        "duplicates_skipped": skipped_duplicates,
-        "stories_updated": updated_stories,
-    }
