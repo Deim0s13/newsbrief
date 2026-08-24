@@ -152,7 +152,21 @@ into named sub-steps would make the next bug in either much faster to isolate.
 > from **F (49)** to **B (8)**; the remaining per-entry orchestrator, `_process_feed_entries`, is
 > **D (24)** — a big drop from the original monolith, though still the most complex piece since
 > it coordinates the global/per-feed/time-limit early exits plus all 6 other helpers. All other
-> new helpers are A/B rank. `generate_stories_simple` (F/50) is unresolved — tracked separately.
+> new helpers are A/B rank.
+>
+> **Resolved, `generate_stories_simple` half (#347):** extract-method only, no behavior change.
+> Split into 8 named helpers/promoted closures (`_fetch_window_articles`,
+> `_group_articles_by_topic`, `_cluster_topic_group`, `_build_cluster_data`, `_synthesize_cluster`,
+> `_persist_synthesized_story`, `_run_parallel_synthesis_and_persist`, `_build_generation_result`),
+> one extraction per commit with the full non-Ollama test suite green after each, plus live
+> synthesis smoke tests (fresh-cluster, dedup-skip, and overlap-update paths) after every step
+> touching the threaded synthesis/persistence code to confirm identical clustering, scores, and
+> outcomes vs. baseline. `generate_stories_simple` itself dropped from **F (50)** to **B (7)**; the
+> two most complex new helpers, `_cluster_topic_group` and `_build_cluster_data`, are **C (16)**
+> each — still the busiest pieces (per-topic keyword/entity clustering, and per-cluster
+> scoring/metadata respectively) but a large drop from the original monolith. All other new
+> helpers are A/B/C rank, with `_run_parallel_synthesis_and_persist` at **B (9)**. #347 is now
+> fully resolved.
 
 ---
 
