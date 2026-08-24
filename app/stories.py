@@ -2923,6 +2923,238 @@ def _synthesize_cluster(
         }
 
 
+def _persist_synthesized_story(
+    session: Session,
+    result: Dict[str, Any],
+    articles_cache: Dict[int, Dict[str, Any]],
+    model: str,
+    pipeline_run_group_id: Optional[str],
+) -> Dict[str, Any]:
+    """
+    Persist one successfully-synthesized cluster immediately: dedupe by
+    hash, merge into an overlapping story if one exists, else create a
+    new story + article links + embeddings - then commit. Called from
+    the as_completed() loop in generate_stories_simple (main thread only,
+    after the cluster's synthesis future has already completed).
+
+    Returns {"outcome": "created"|"updated"|"skipped", "story_id": int|None}.
+    """
+    cluster_data = result["cluster_data"]
+    synthesis_data = result["synthesis_data"]
+    cluster_article_ids = cluster_data["article_ids"]
+    complexity_score = result.get("complexity_score")
+
+    # Skip if exact story already exists (same hash)
+    existing = session.execute(
+        text("SELECT 1 FROM stories WHERE story_hash = :hash LIMIT 1"),
+        {"hash": cluster_data["cluster_hash"]},
+    ).fetchone()
+    if existing:
+        logger.debug(
+            f"Skipping duplicate story with hash {cluster_data['cluster_hash']}"
+        )
+        return {"outcome": "skipped", "story_id": None}
+
+    # Check for overlapping story to update (v0.6.3 - ADR 0004)
+    overlap_result = find_overlapping_story(
+        session, cluster_article_ids, overlap_threshold=0.70
+    )
+
+    if overlap_result:
+        existing_story, existing_article_ids, overlap_ratio = overlap_result
+        merged_article_ids = list(existing_article_ids | set(cluster_article_ids))
+
+        # Only update if there are actually new articles
+        new_article_count = len(set(cluster_article_ids) - existing_article_ids)
+        if new_article_count == 0:
+            logger.debug(
+                f"Skipping update - no new articles for story #{existing_story.id}"
+            )
+            return {"outcome": "skipped", "story_id": None}
+
+        try:
+            # Re-synthesize with merged articles
+            merged_cluster_articles = [
+                articles_cache[aid]
+                for aid in merged_article_ids
+                if aid in articles_cache
+            ]
+            merged_path = classify_cluster_path(merged_cluster_articles)
+            merged_synthesis = _generate_story_synthesis(
+                session,
+                merged_article_ids,
+                model,
+                skip_cache=True,
+                synthesis_path=merged_path,
+            )
+            merged_complexity_score = _compute_cluster_complexity(
+                session, merged_article_ids, merged_cluster_articles, model
+            )
+
+            # Create new version
+            new_story_id = update_story_with_new_articles(
+                session=session,
+                existing_story=existing_story,
+                existing_article_ids=existing_article_ids,
+                merged_article_ids=merged_article_ids,
+                synthesis_data=merged_synthesis,
+                model=model,
+                complexity_score=merged_complexity_score,
+                cluster_data={
+                    **cluster_data,
+                    "cluster_hash": hashlib.md5(
+                        str(sorted(merged_article_ids)).encode()
+                    ).hexdigest(),
+                },
+            )
+            session.commit()
+            logger.info(
+                f"Updated story #{existing_story.id} → #{new_story_id} "
+                f"(+{new_article_count} articles, {overlap_ratio:.0%} overlap)"
+            )
+            return {"outcome": "updated", "story_id": new_story_id}
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Failed to update story: {e}", exc_info=True)
+            err_msg = str(e)
+            for aid in merged_article_ids:
+                mark_article_failed(
+                    session,
+                    aid,
+                    err_msg,
+                    failure_stage="story_generation",
+                    run_group_id=pipeline_run_group_id,
+                    context="generate_stories_simple:overlap_update",
+                )
+            session.commit()
+            return {"outcome": "skipped", "story_id": None}
+
+    # No overlap - create new story
+    try:
+        # Use synthesis quality metrics if available (Issue #105)
+        # Extract credibility metadata from synthesis (v0.8.2 - Issue #198)
+        cred_meta = synthesis_data.get("_credibility", {})
+
+        # Calculate confidence score and apply publish gate (#287)
+        _conf_score = calculate_confidence_score(
+            source_credibility=cred_meta.get("aggregate_score"),
+            article_count=len(cluster_article_ids),
+            freshness_score=cluster_data.get("freshness_score", 0.5),
+            synthesis_quality=synthesis_data.get("_quality_score", 0.5),
+        )
+        _gate_fields = gate_result_to_story_fields(evaluate_confidence(_conf_score))
+        if _gate_fields["status"] == "held":
+            logger.warning(
+                f"New story held by confidence gate (score={_conf_score:.3f})"
+            )
+
+        story = Story(
+            title=synthesis_data.get("title")
+            or _generate_fallback_title(
+                None,
+                synthesis_data["synthesis"],
+                synthesis_data.get("entities", []),
+            ),
+            synthesis=synthesis_data["synthesis"],
+            key_points_json=serialize_story_json_field(synthesis_data["key_points"]),
+            why_it_matters=synthesis_data["why_it_matters"],
+            topics_json=serialize_story_json_field(synthesis_data["topics"]),
+            entities_json=serialize_story_json_field(synthesis_data["entities"]),
+            article_count=len(cluster_article_ids),
+            importance_score=cluster_data["importance_score"],
+            freshness_score=cluster_data["freshness_score"],
+            # Use synthesis quality score if available, else cluster score
+            quality_score=synthesis_data.get(
+                "_quality_score", cluster_data["quality_score"]
+            ),
+            # Confidence score: source reliability × breadth × recency × synthesis quality (#220)
+            confidence_score=_conf_score,
+            # Synthesis routing path: 'standard' or 'deep' (#282)
+            synthesis_path=synthesis_data.get("_synthesis_path", "standard"),
+            # Numeric cluster complexity score, advisory-only (#280)
+            complexity_score=complexity_score,
+            # Quality metrics (v0.8.1 - Issue #105)
+            quality_breakdown_json=serialize_story_json_field(
+                synthesis_data.get("_quality_breakdown")
+            ),
+            title_source=synthesis_data.get("_title_source"),
+            parse_strategy=synthesis_data.get("_parse_strategy"),
+            # Clustering metadata (v0.8.1 - Issue #232)
+            clustering_metadata_json=(
+                json.dumps(cluster_data.get("clustering_metadata"))
+                if cluster_data.get("clustering_metadata")
+                else None
+            ),
+            # Light RAG anchors injected into the synthesis prompt, if any (#259)
+            synthesis_anchors_json=json.dumps(
+                synthesis_data.get("_synthesis_anchors", [])
+            ),
+            # Structured context anchors from the pre-synthesis retrieval hook (#279, #281)
+            context_anchors_json=json.dumps(
+                to_background_anchors(synthesis_data.get("_retrieved_context", []))
+            ),
+            # Source credibility (v0.8.2 - Issue #198)
+            source_credibility_score=cred_meta.get("aggregate_score"),
+            low_credibility_warning=cred_meta.get("low_credibility_warning", False),
+            sources_excluded=cred_meta.get("sources_excluded", 0),
+            # Confidence gate fields (#287)
+            confidence_warning=_gate_fields["confidence_warning"],
+            failure_stage=_gate_fields["failure_stage"],
+            cluster_method="hybrid_topic_keywords_optimized",
+            story_hash=cluster_data["cluster_hash"],
+            generated_at=datetime.now(UTC),
+            first_seen=datetime.now(UTC),
+            last_updated=datetime.now(UTC),
+            time_window_start=cluster_data["time_window_start"],
+            time_window_end=cluster_data["time_window_end"],
+            model=model,
+            status=_gate_fields["status"],
+            processing_state=_gate_fields["processing_state"],
+            version=1,
+        )
+        session.add(story)
+        session.flush()  # assign story.id
+
+        for article_id in cluster_article_ids:
+            story_article = StoryArticle(
+                story_id=story.id,
+                article_id=article_id,
+                relevance_score=1.0,
+                is_primary=(article_id == cluster_article_ids[0]),
+                added_at=datetime.now(UTC),
+            )
+            session.add(story_article)
+
+        apply_article_processing_state_batch(
+            session,
+            cluster_article_ids,
+            ArticleProcessingState.CLUSTERED,
+            context="generate_stories_simple",
+        )
+
+        maybe_embed_story_after_synthesis(session, story)
+        maybe_link_historical_context(session, story)
+
+        session.commit()
+        return {"outcome": "created", "story_id": story.id}
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Failed to prepare story: {e}", exc_info=True)
+        err_msg = str(e)
+        for aid in cluster_article_ids:
+            mark_article_failed(
+                session,
+                aid,
+                err_msg,
+                failure_stage="story_generation",
+                run_group_id=pipeline_run_group_id,
+                context="generate_stories_simple:prepare_story",
+            )
+        session.commit()
+        return {"outcome": "skipped", "story_id": None}
+
+
 def generate_stories_simple(
     session: Session,
     time_window_hours: int = 24,
@@ -3050,232 +3282,6 @@ def generate_stories_simple(
     db_time = 0.0
     completed_count = 0
 
-    def _persist_synthesized_story(result: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Persist one successfully-synthesized cluster immediately: dedupe by
-        hash, merge into an overlapping story if one exists, else create a
-        new story + article links + embeddings - then commit. Called from
-        the as_completed() loop below (main thread only).
-
-        Returns {"outcome": "created"|"updated"|"skipped", "story_id": int|None}.
-        """
-        cluster_data = result["cluster_data"]
-        synthesis_data = result["synthesis_data"]
-        cluster_article_ids = cluster_data["article_ids"]
-        complexity_score = result.get("complexity_score")
-
-        # Skip if exact story already exists (same hash)
-        existing = session.execute(
-            text("SELECT 1 FROM stories WHERE story_hash = :hash LIMIT 1"),
-            {"hash": cluster_data["cluster_hash"]},
-        ).fetchone()
-        if existing:
-            logger.debug(
-                f"Skipping duplicate story with hash {cluster_data['cluster_hash']}"
-            )
-            return {"outcome": "skipped", "story_id": None}
-
-        # Check for overlapping story to update (v0.6.3 - ADR 0004)
-        overlap_result = find_overlapping_story(
-            session, cluster_article_ids, overlap_threshold=0.70
-        )
-
-        if overlap_result:
-            existing_story, existing_article_ids, overlap_ratio = overlap_result
-            merged_article_ids = list(existing_article_ids | set(cluster_article_ids))
-
-            # Only update if there are actually new articles
-            new_article_count = len(set(cluster_article_ids) - existing_article_ids)
-            if new_article_count == 0:
-                logger.debug(
-                    f"Skipping update - no new articles for story #{existing_story.id}"
-                )
-                return {"outcome": "skipped", "story_id": None}
-
-            try:
-                # Re-synthesize with merged articles
-                merged_cluster_articles = [
-                    articles_cache[aid]
-                    for aid in merged_article_ids
-                    if aid in articles_cache
-                ]
-                merged_path = classify_cluster_path(merged_cluster_articles)
-                merged_synthesis = _generate_story_synthesis(
-                    session,
-                    merged_article_ids,
-                    model,
-                    skip_cache=True,
-                    synthesis_path=merged_path,
-                )
-                merged_complexity_score = _compute_cluster_complexity(
-                    session, merged_article_ids, merged_cluster_articles, model
-                )
-
-                # Create new version
-                new_story_id = update_story_with_new_articles(
-                    session=session,
-                    existing_story=existing_story,
-                    existing_article_ids=existing_article_ids,
-                    merged_article_ids=merged_article_ids,
-                    synthesis_data=merged_synthesis,
-                    model=model,
-                    complexity_score=merged_complexity_score,
-                    cluster_data={
-                        **cluster_data,
-                        "cluster_hash": hashlib.md5(
-                            str(sorted(merged_article_ids)).encode()
-                        ).hexdigest(),
-                    },
-                )
-                session.commit()
-                logger.info(
-                    f"Updated story #{existing_story.id} → #{new_story_id} "
-                    f"(+{new_article_count} articles, {overlap_ratio:.0%} overlap)"
-                )
-                return {"outcome": "updated", "story_id": new_story_id}
-            except Exception as e:
-                session.rollback()
-                logger.error(f"Failed to update story: {e}", exc_info=True)
-                err_msg = str(e)
-                for aid in merged_article_ids:
-                    mark_article_failed(
-                        session,
-                        aid,
-                        err_msg,
-                        failure_stage="story_generation",
-                        run_group_id=pipeline_run_group_id,
-                        context="generate_stories_simple:overlap_update",
-                    )
-                session.commit()
-                return {"outcome": "skipped", "story_id": None}
-
-        # No overlap - create new story
-        try:
-            # Use synthesis quality metrics if available (Issue #105)
-            # Extract credibility metadata from synthesis (v0.8.2 - Issue #198)
-            cred_meta = synthesis_data.get("_credibility", {})
-
-            # Calculate confidence score and apply publish gate (#287)
-            _conf_score = calculate_confidence_score(
-                source_credibility=cred_meta.get("aggregate_score"),
-                article_count=len(cluster_article_ids),
-                freshness_score=cluster_data.get("freshness_score", 0.5),
-                synthesis_quality=synthesis_data.get("_quality_score", 0.5),
-            )
-            _gate_fields = gate_result_to_story_fields(evaluate_confidence(_conf_score))
-            if _gate_fields["status"] == "held":
-                logger.warning(
-                    f"New story held by confidence gate (score={_conf_score:.3f})"
-                )
-
-            story = Story(
-                title=synthesis_data.get("title")
-                or _generate_fallback_title(
-                    None,
-                    synthesis_data["synthesis"],
-                    synthesis_data.get("entities", []),
-                ),
-                synthesis=synthesis_data["synthesis"],
-                key_points_json=serialize_story_json_field(
-                    synthesis_data["key_points"]
-                ),
-                why_it_matters=synthesis_data["why_it_matters"],
-                topics_json=serialize_story_json_field(synthesis_data["topics"]),
-                entities_json=serialize_story_json_field(synthesis_data["entities"]),
-                article_count=len(cluster_article_ids),
-                importance_score=cluster_data["importance_score"],
-                freshness_score=cluster_data["freshness_score"],
-                # Use synthesis quality score if available, else cluster score
-                quality_score=synthesis_data.get(
-                    "_quality_score", cluster_data["quality_score"]
-                ),
-                # Confidence score: source reliability × breadth × recency × synthesis quality (#220)
-                confidence_score=_conf_score,
-                # Synthesis routing path: 'standard' or 'deep' (#282)
-                synthesis_path=synthesis_data.get("_synthesis_path", "standard"),
-                # Numeric cluster complexity score, advisory-only (#280)
-                complexity_score=complexity_score,
-                # Quality metrics (v0.8.1 - Issue #105)
-                quality_breakdown_json=serialize_story_json_field(
-                    synthesis_data.get("_quality_breakdown")
-                ),
-                title_source=synthesis_data.get("_title_source"),
-                parse_strategy=synthesis_data.get("_parse_strategy"),
-                # Clustering metadata (v0.8.1 - Issue #232)
-                clustering_metadata_json=(
-                    json.dumps(cluster_data.get("clustering_metadata"))
-                    if cluster_data.get("clustering_metadata")
-                    else None
-                ),
-                # Light RAG anchors injected into the synthesis prompt, if any (#259)
-                synthesis_anchors_json=json.dumps(
-                    synthesis_data.get("_synthesis_anchors", [])
-                ),
-                # Structured context anchors from the pre-synthesis retrieval hook (#279, #281)
-                context_anchors_json=json.dumps(
-                    to_background_anchors(synthesis_data.get("_retrieved_context", []))
-                ),
-                # Source credibility (v0.8.2 - Issue #198)
-                source_credibility_score=cred_meta.get("aggregate_score"),
-                low_credibility_warning=cred_meta.get("low_credibility_warning", False),
-                sources_excluded=cred_meta.get("sources_excluded", 0),
-                # Confidence gate fields (#287)
-                confidence_warning=_gate_fields["confidence_warning"],
-                failure_stage=_gate_fields["failure_stage"],
-                cluster_method="hybrid_topic_keywords_optimized",
-                story_hash=cluster_data["cluster_hash"],
-                generated_at=datetime.now(UTC),
-                first_seen=datetime.now(UTC),
-                last_updated=datetime.now(UTC),
-                time_window_start=cluster_data["time_window_start"],
-                time_window_end=cluster_data["time_window_end"],
-                model=model,
-                status=_gate_fields["status"],
-                processing_state=_gate_fields["processing_state"],
-                version=1,
-            )
-            session.add(story)
-            session.flush()  # assign story.id
-
-            for article_id in cluster_article_ids:
-                story_article = StoryArticle(
-                    story_id=story.id,
-                    article_id=article_id,
-                    relevance_score=1.0,
-                    is_primary=(article_id == cluster_article_ids[0]),
-                    added_at=datetime.now(UTC),
-                )
-                session.add(story_article)
-
-            apply_article_processing_state_batch(
-                session,
-                cluster_article_ids,
-                ArticleProcessingState.CLUSTERED,
-                context="generate_stories_simple",
-            )
-
-            maybe_embed_story_after_synthesis(session, story)
-            maybe_link_historical_context(session, story)
-
-            session.commit()
-            return {"outcome": "created", "story_id": story.id}
-
-        except Exception as e:
-            session.rollback()
-            logger.error(f"Failed to prepare story: {e}", exc_info=True)
-            err_msg = str(e)
-            for aid in cluster_article_ids:
-                mark_article_failed(
-                    session,
-                    aid,
-                    err_msg,
-                    failure_stage="story_generation",
-                    run_group_id=pipeline_run_group_id,
-                    context="generate_stories_simple:prepare_story",
-                )
-            session.commit()
-            return {"outcome": "skipped", "story_id": None}
-
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         # Submit all synthesis tasks
         futures = {
@@ -3318,7 +3324,9 @@ def generate_stories_simple(
                 continue
 
             db_write_start = time.time()
-            outcome = _persist_synthesized_story(result)
+            outcome = _persist_synthesized_story(
+                session, result, articles_cache, model, pipeline_run_group_id
+            )
             db_time += time.time() - db_write_start
 
             if outcome["outcome"] == "created":
