@@ -128,6 +128,20 @@ class RefreshStats:
     items_updated: int = 0
 
 
+@dataclass
+class ArticleExtractionResult:
+    """Outcome of best-effort full-article content extraction for one entry."""
+
+    content_text: Optional[str]
+    extraction_method: str
+    extraction_quality: Optional[float]
+    extraction_error: Optional[str]
+    extracted_at: Optional[datetime]
+    extraction_time_ms: Optional[float]
+    author: Optional[str]
+    robots_blocked: bool
+
+
 # Configurable limits (can be overridden by environment variables)
 MAX_ITEMS_PER_REFRESH = int(os.getenv("NEWSBRIEF_MAX_ITEMS_PER_REFRESH", "500"))
 MAX_ITEMS_PER_FEED = int(os.getenv("NEWSBRIEF_MAX_ITEMS_PER_FEED", "50"))
@@ -1446,6 +1460,84 @@ def _lookup_existing_item(
     return (int(row[0]), row[1], row[2], row[3])
 
 
+def _extract_article_content(
+    client: httpx.Client, link: str, summary: str
+) -> ArticleExtractionResult:
+    """
+    Best-effort fetch + tiered extraction of an article's full text.
+
+    Checks robots.txt first; on any failure (blocked, non-HTML response,
+    or an exception), falls back gracefully with ``content_text=None`` --
+    the caller uses the RSS ``summary`` in that case.
+    """
+    try:
+        if not is_article_url_allowed(link):
+            return ArticleExtractionResult(
+                content_text=None,
+                extraction_method="blocked",
+                extraction_quality=None,
+                extraction_error="robots_txt_blocked",
+                extracted_at=None,
+                extraction_time_ms=None,
+                author=None,
+                robots_blocked=True,
+            )
+
+        page = client.get(link, follow_redirects=True, timeout=HTTP_TIMEOUT)
+        if page.status_code >= 400 or not page.headers.get(
+            "content-type", ""
+        ).startswith(("text/html", "application/xhtml")):
+            return ArticleExtractionResult(
+                content_text=None,
+                extraction_method="none",
+                extraction_quality=None,
+                extraction_error=None,
+                extracted_at=None,
+                extraction_time_ms=None,
+                author=None,
+                robots_blocked=False,
+            )
+
+        # Use tiered extraction (v0.8.0)
+        extraction_result = extract_content(
+            html=page.text,
+            url=link,
+            rss_summary=summary,
+        )
+        content_text = extraction_result.content
+        extraction_method = extraction_result.method
+
+        logger.debug(
+            f"Extracted {link} via {extraction_method}, "
+            f"quality={extraction_result.quality_score:.2f}, "
+            f"length={len(content_text) if content_text else 0}"
+        )
+
+        return ArticleExtractionResult(
+            content_text=content_text,
+            extraction_method=extraction_method,
+            extraction_quality=extraction_result.quality_score,
+            extraction_error=extraction_result.error,
+            extracted_at=datetime.now(timezone.utc),
+            extraction_time_ms=extraction_result.extraction_time_ms,
+            # Use trafilatura's author when RSS doesn't provide one
+            author=extraction_result.metadata.author or None,
+            robots_blocked=False,
+        )
+    except Exception as e:
+        logger.warning(f"Extraction failed for {link}: {e}")
+        return ArticleExtractionResult(
+            content_text=None,
+            extraction_method="failed",
+            extraction_quality=None,
+            extraction_error=str(e)[:200],  # Truncate long errors
+            extracted_at=None,
+            extraction_time_ms=None,
+            author=None,
+            robots_blocked=False,
+        )
+
+
 def fetch_and_store() -> RefreshStats:
     """
     Iterate all feeds, use ETag/Last-Modified. Respect robots_allowed/disabled.
@@ -1571,54 +1663,17 @@ def fetch_and_store() -> RefreshStats:
                 summary = sanitize_html(entry.get("summary") or "")
 
                 # Fetch article page for full text (best-effort)
-                # Extraction metadata for v0.8.0 observability
-                content_text = None
-                extraction_method = "none"
-                extraction_quality = None
-                extraction_error = None
-                extracted_at = None
-                extraction_time_ms = None
-
-                try:
-                    # Check robots.txt before fetching article content
-                    if is_article_url_allowed(link):
-                        page = client.get(
-                            link, follow_redirects=True, timeout=HTTP_TIMEOUT
-                        )
-                        if page.status_code < 400 and page.headers.get(
-                            "content-type", ""
-                        ).startswith(("text/html", "application/xhtml")):
-                            # Use tiered extraction (v0.8.0)
-                            extraction_result = extract_content(
-                                html=page.text,
-                                url=link,
-                                rss_summary=summary,
-                            )
-                            content_text = extraction_result.content
-                            extraction_method = extraction_result.method
-                            extraction_quality = extraction_result.quality_score
-                            extraction_error = extraction_result.error
-                            extracted_at = datetime.now(timezone.utc)
-                            extraction_time_ms = extraction_result.extraction_time_ms
-
-                            # Use trafilatura's author when RSS doesn't provide one
-                            if not author and extraction_result.metadata.author:
-                                author = extraction_result.metadata.author
-
-                            logger.debug(
-                                f"Extracted {link} via {extraction_method}, "
-                                f"quality={extraction_quality:.2f}, "
-                                f"length={len(content_text) if content_text else 0}"
-                            )
-                    else:
-                        stats.robots_txt_blocked_articles += 1
-                        extraction_method = "blocked"
-                        extraction_error = "robots_txt_blocked"
-                        # If robots.txt disallows, content_text remains None (graceful degradation)
-                except Exception as e:
-                    extraction_method = "failed"
-                    extraction_error = str(e)[:200]  # Truncate long errors
-                    logger.warning(f"Extraction failed for {link}: {e}")
+                extraction = _extract_article_content(client, link, summary)
+                content_text = extraction.content_text
+                extraction_method = extraction.extraction_method
+                extraction_quality = extraction.extraction_quality
+                extraction_error = extraction.extraction_error
+                extracted_at = extraction.extracted_at
+                extraction_time_ms = extraction.extraction_time_ms
+                if not author and extraction.author:
+                    author = extraction.author
+                if extraction.robots_blocked:
+                    stats.robots_txt_blocked_articles += 1
 
                 # Calculate content hash for AI caching
                 content_hash = create_content_hash(title, content_text or summary or "")
