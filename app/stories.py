@@ -3155,6 +3155,99 @@ def _persist_synthesized_story(
         return {"outcome": "skipped", "story_id": None}
 
 
+def _run_parallel_synthesis_and_persist(
+    session: Session,
+    cluster_data_list: List[Dict[str, Any]],
+    articles_cache: Dict[int, Dict[str, Any]],
+    model: str,
+    max_workers: int,
+    total_clusters: int,
+    pipeline_run_group_id: Optional[str],
+) -> Tuple[List[int], int, int, float]:
+    """
+    Run cluster synthesis in parallel via ThreadPoolExecutor, persisting
+    each successfully-synthesized cluster as soon as its own synthesis
+    completes (#333 incremental persistence) rather than waiting for the
+    whole batch -- a crash/restart mid-run only loses in-flight clusters,
+    not already-completed ones. Synthesis runs on worker threads;
+    persistence (and all session/commit calls) runs in the main thread
+    from this as_completed() loop, so no additional session concurrency
+    is introduced.
+
+    Returns ``(story_ids, skipped_duplicates, updated_stories, db_time)``.
+    """
+    story_ids: List[int] = []
+    skipped_duplicates = 0
+    updated_stories = 0
+    db_time = 0.0
+    completed_count = 0
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all synthesis tasks
+        futures = {
+            executor.submit(
+                _synthesize_cluster, session, cluster_data, articles_cache, model
+            ): i
+            for i, cluster_data in enumerate(cluster_data_list)
+        }
+
+        # Persist each result as soon as its synthesis completes
+        for future in as_completed(futures):
+            cluster_idx = futures[future]
+            completed_count += 1
+            try:
+                result = future.result()
+            except Exception as e:
+                logger.error(f"Failed to get synthesis result: {e}")
+                result = {
+                    "success": False,
+                    "cluster_data": cluster_data_list[cluster_idx],
+                    "error": str(e),
+                }
+
+            if not result["success"]:
+                err_msg = result.get("error") or "synthesis failed"
+                for aid in result["cluster_data"]["article_ids"]:
+                    mark_article_failed(
+                        session,
+                        aid,
+                        err_msg,
+                        failure_stage="story_generation",
+                        run_group_id=pipeline_run_group_id,
+                        context="generate_stories_simple:synthesis",
+                    )
+                session.commit()
+                logger.info(
+                    f"[{completed_count}/{total_clusters}] Synthesis failed "
+                    f"(cluster {cluster_idx + 1}): {err_msg}"
+                )
+                continue
+
+            db_write_start = time.time()
+            outcome = _persist_synthesized_story(
+                session, result, articles_cache, model, pipeline_run_group_id
+            )
+            db_time += time.time() - db_write_start
+
+            if outcome["outcome"] == "created":
+                story_ids.append(outcome["story_id"])
+                logger.info(
+                    f"[{completed_count}/{total_clusters}] Story persisted "
+                    f"(id={outcome['story_id']}, cluster {cluster_idx + 1})"
+                )
+            elif outcome["outcome"] == "updated":
+                story_ids.append(outcome["story_id"])
+                updated_stories += 1
+                logger.info(
+                    f"[{completed_count}/{total_clusters}] Story updated "
+                    f"(id={outcome['story_id']}, cluster {cluster_idx + 1})"
+                )
+            else:
+                skipped_duplicates += 1
+
+    return story_ids, skipped_duplicates, updated_stories, db_time
+
+
 def generate_stories_simple(
     session: Session,
     time_window_hours: int = 24,
@@ -3268,82 +3361,20 @@ def generate_stories_simple(
         for cluster_article_ids in clusters
     ]
 
-    # Parallel LLM synthesis with INCREMENTAL persistence (#333): each
-    # cluster's story is dedup-checked, created/merged, linked, embedded,
-    # and committed as soon as its own synthesis completes, instead of
-    # waiting for the entire batch. Previously a multi-hour run had zero
-    # durability until the very last line - any crash/restart mid-run lost
-    # all completed work. Synthesis itself still runs in parallel via
-    # ThreadPoolExecutor; persistence runs in the main thread as each
-    # future completes, so no additional session concurrency is introduced.
-    story_ids: List[int] = []
-    skipped_duplicates = 0
-    updated_stories = 0
-    db_time = 0.0
-    completed_count = 0
-
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Submit all synthesis tasks
-        futures = {
-            executor.submit(
-                _synthesize_cluster, session, cluster_data, articles_cache, model
-            ): i
-            for i, cluster_data in enumerate(cluster_data_list)
-        }
-
-        # Persist each result as soon as its synthesis completes
-        for future in as_completed(futures):
-            cluster_idx = futures[future]
-            completed_count += 1
-            try:
-                result = future.result()
-            except Exception as e:
-                logger.error(f"Failed to get synthesis result: {e}")
-                result = {
-                    "success": False,
-                    "cluster_data": cluster_data_list[cluster_idx],
-                    "error": str(e),
-                }
-
-            if not result["success"]:
-                err_msg = result.get("error") or "synthesis failed"
-                for aid in result["cluster_data"]["article_ids"]:
-                    mark_article_failed(
-                        session,
-                        aid,
-                        err_msg,
-                        failure_stage="story_generation",
-                        run_group_id=pipeline_run_group_id,
-                        context="generate_stories_simple:synthesis",
-                    )
-                session.commit()
-                logger.info(
-                    f"[{completed_count}/{len(clusters)}] Synthesis failed "
-                    f"(cluster {cluster_idx + 1}): {err_msg}"
-                )
-                continue
-
-            db_write_start = time.time()
-            outcome = _persist_synthesized_story(
-                session, result, articles_cache, model, pipeline_run_group_id
-            )
-            db_time += time.time() - db_write_start
-
-            if outcome["outcome"] == "created":
-                story_ids.append(outcome["story_id"])
-                logger.info(
-                    f"[{completed_count}/{len(clusters)}] Story persisted "
-                    f"(id={outcome['story_id']}, cluster {cluster_idx + 1})"
-                )
-            elif outcome["outcome"] == "updated":
-                story_ids.append(outcome["story_id"])
-                updated_stories += 1
-                logger.info(
-                    f"[{completed_count}/{len(clusters)}] Story updated "
-                    f"(id={outcome['story_id']}, cluster {cluster_idx + 1})"
-                )
-            else:
-                skipped_duplicates += 1
+    # Parallel LLM synthesis with INCREMENTAL persistence (#333): see
+    # _run_parallel_synthesis_and_persist's docstring for why persistence
+    # happens per-cluster instead of after the whole batch.
+    story_ids, skipped_duplicates, updated_stories, db_time = (
+        _run_parallel_synthesis_and_persist(
+            session,
+            cluster_data_list,
+            articles_cache,
+            model,
+            max_workers,
+            len(clusters),
+            pipeline_run_group_id,
+        )
+    )
 
     synthesis_time = time.time() - synthesis_start
     logger.info(
