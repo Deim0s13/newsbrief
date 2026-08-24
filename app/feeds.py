@@ -1567,6 +1567,69 @@ def _classify_and_score_item(
     return topic_result, ranking_result
 
 
+def _upsert_item_row(
+    existing_id: Optional[int],
+    row_params: dict,
+    link: str,
+    fid: int,
+    stats: RefreshStats,
+) -> None:
+    """
+    Insert a new item row, or update an existing one, and update ``stats``.
+
+    ``row_params`` must contain all columns needed by both the INSERT and
+    UPDATE statements below (see call site in ``fetch_and_store``).
+    """
+    with session_scope() as s:
+        if existing_id is None:
+            try:
+                s.execute(
+                    text(
+                        """
+                    INSERT INTO items(feed_id, title, url, url_hash, published, author, summary, content, content_hash, ranking_score, topic, topic_confidence, source_weight, extraction_method, extraction_quality, extraction_error, extracted_at, extraction_time_ms, processing_state)
+                    VALUES(:feed_id, :title, :url, :url_hash, :published, :author, :summary, :content, :content_hash, :ranking_score, :topic, :topic_confidence, :source_weight, :extraction_method, :extraction_quality, :extraction_error, :extracted_at, :extraction_time_ms, :processing_state)
+                    ON CONFLICT (url_hash) DO NOTHING
+                    """
+                    ),
+                    row_params,
+                )
+                stats.items_inserted += 1
+            except IntegrityError as e:
+                logger.warning("Skipping item (integrity conflict): %s — %s", link, e)
+        else:
+            s.execute(
+                text(
+                    """
+                UPDATE items SET
+                    feed_id=:feed_id,
+                    title=:title,
+                    url=:url,
+                    published=:published,
+                    author=:author,
+                    summary=:summary,
+                    content=:content,
+                    content_hash=:content_hash,
+                    ranking_score=:ranking_score,
+                    topic=:topic,
+                    topic_confidence=:topic_confidence,
+                    source_weight=:source_weight,
+                    extraction_method=:extraction_method,
+                    extraction_quality=:extraction_quality,
+                    extraction_error=:extraction_error,
+                    extracted_at=:extracted_at,
+                    extraction_time_ms=:extraction_time_ms,
+                    processing_state=:processing_state
+                WHERE id=:item_id
+                """
+                ),
+                {**row_params, "item_id": existing_id},
+            )
+            stats.items_updated += 1
+
+    stats.total_items += 1
+    stats.items_per_feed[fid] += 1
+
+
 def fetch_and_store() -> RefreshStats:
     """
     Iterate all feeds, use ETag/Last-Modified. Respect robots_allowed/disabled.
@@ -1753,56 +1816,7 @@ def fetch_and_store() -> RefreshStats:
                     "processing_state": ingest_processing_state.value,
                 }
 
-                with session_scope() as s:
-                    if existing_id is None:
-                        try:
-                            s.execute(
-                                text(
-                                    """
-                        INSERT INTO items(feed_id, title, url, url_hash, published, author, summary, content, content_hash, ranking_score, topic, topic_confidence, source_weight, extraction_method, extraction_quality, extraction_error, extracted_at, extraction_time_ms, processing_state)
-                        VALUES(:feed_id, :title, :url, :url_hash, :published, :author, :summary, :content, :content_hash, :ranking_score, :topic, :topic_confidence, :source_weight, :extraction_method, :extraction_quality, :extraction_error, :extracted_at, :extraction_time_ms, :processing_state)
-                        ON CONFLICT (url_hash) DO NOTHING
-                        """
-                                ),
-                                row_params,
-                            )
-                            stats.items_inserted += 1
-                        except IntegrityError as e:
-                            logger.warning(
-                                "Skipping item (integrity conflict): %s — %s", link, e
-                            )
-                    else:
-                        s.execute(
-                            text(
-                                """
-                        UPDATE items SET
-                            feed_id=:feed_id,
-                            title=:title,
-                            url=:url,
-                            published=:published,
-                            author=:author,
-                            summary=:summary,
-                            content=:content,
-                            content_hash=:content_hash,
-                            ranking_score=:ranking_score,
-                            topic=:topic,
-                            topic_confidence=:topic_confidence,
-                            source_weight=:source_weight,
-                            extraction_method=:extraction_method,
-                            extraction_quality=:extraction_quality,
-                            extraction_error=:extraction_error,
-                            extracted_at=:extracted_at,
-                            extraction_time_ms=:extraction_time_ms,
-                            processing_state=:processing_state
-                        WHERE id=:item_id
-                        """
-                            ),
-                            {**row_params, "item_id": existing_id},
-                        )
-                        stats.items_updated += 1
-
-                stats.total_items += 1
-                stats.items_per_feed[fid] += 1
+                _upsert_item_row(existing_id, row_params, link, fid, stats)
 
             # Break outer loop if limits hit
             if stats.hit_global_limit or stats.hit_time_limit:
