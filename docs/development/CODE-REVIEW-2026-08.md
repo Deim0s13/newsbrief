@@ -61,6 +61,14 @@ afterwards.
 
 ### 2a. Story CRUD API is fully tested but never called by the production pipeline
 
+> **Resolved (#346):** split decision. `cleanup_archived_stories()` was wired into
+> `retention.py::run_retention()` (option (a) below, low-risk — it fixed a real unbounded-growth
+> bug where archived stories were reported as "eligible for purge" but never actually deleted).
+> `create_story`, `link_articles_to_story`, `update_story`, `archive_story`, `delete_story` were
+> removed (option (b) — no production callers, and the live pipeline's `generate_stories_simple()`
+> had grown ~15 fields beyond what this layer's frozen signatures ever supported). Their test
+> coverage was preserved by moving equivalent test-setup fixtures into `tests/pg_testutil.py`.
+
 `app/stories.py` defines a complete CRUD layer — `create_story`, `link_articles_to_story`,
 `update_story`, `archive_story`, `delete_story`, `cleanup_archived_stories` (lines 268-1050) —
 with substantial dedicated test coverage across `tests/test_story_crud.py`,

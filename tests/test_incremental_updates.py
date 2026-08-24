@@ -21,12 +21,14 @@ if not os.environ.get("DATABASE_URL"):
 from app.stories import (
     Story,
     StoryArticle,
-    create_story,
     find_overlapping_story,
-    link_articles_to_story,
     update_story_with_new_articles,
 )
-from tests.pg_testutil import pg_session_truncate_story_graph
+from tests.pg_testutil import (
+    create_test_story,
+    link_test_articles_to_story,
+    pg_session_truncate_story_graph,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -88,7 +90,7 @@ class TestFindOverlappingStory:
         session = setup_test_db()
 
         # Create existing story with articles 1, 2, 3
-        story_id = create_story(
+        story_id = create_test_story(
             session=session,
             title="Existing Story",
             synthesis="Test synthesis",
@@ -102,7 +104,7 @@ class TestFindOverlappingStory:
             time_window_start=datetime.now(UTC) - timedelta(hours=24),
             time_window_end=datetime.now(UTC),
         )
-        link_articles_to_story(session, story_id, [1, 2, 3])
+        link_test_articles_to_story(session, story_id, [1, 2, 3])
 
         # New cluster with articles 7, 8, 9 (no overlap)
         result = find_overlapping_story(session, [7, 8, 9])
@@ -113,7 +115,7 @@ class TestFindOverlappingStory:
         session = setup_test_db()
 
         # Create existing story with articles 1, 2, 3, 4, 5
-        story_id = create_story(
+        story_id = create_test_story(
             session=session,
             title="Existing Story",
             synthesis="Test synthesis",
@@ -127,7 +129,7 @@ class TestFindOverlappingStory:
             time_window_start=datetime.now(UTC) - timedelta(hours=24),
             time_window_end=datetime.now(UTC),
         )
-        link_articles_to_story(session, story_id, [1, 2, 3, 4, 5])
+        link_test_articles_to_story(session, story_id, [1, 2, 3, 4, 5])
 
         # New cluster with articles 1, 6, 7, 8, 9 (20% overlap - 1 out of 5)
         result = find_overlapping_story(session, [1, 6, 7, 8, 9])
@@ -138,7 +140,7 @@ class TestFindOverlappingStory:
         session = setup_test_db()
 
         # Create existing story with articles 1, 2, 3, 4, 5
-        story_id = create_story(
+        story_id = create_test_story(
             session=session,
             title="Existing Story",
             synthesis="Test synthesis",
@@ -152,7 +154,7 @@ class TestFindOverlappingStory:
             time_window_start=datetime.now(UTC) - timedelta(hours=24),
             time_window_end=datetime.now(UTC),
         )
-        link_articles_to_story(session, story_id, [1, 2, 3, 4, 5])
+        link_test_articles_to_story(session, story_id, [1, 2, 3, 4, 5])
 
         # New cluster with articles 1, 2, 3, 4, 6, 7, 8, 9, 10 (but only check overlap)
         # Cluster [1, 2, 3, 7] has 3/4 = 75% overlap with story [1,2,3,4,5]
@@ -167,7 +169,7 @@ class TestFindOverlappingStory:
         session = setup_test_db()
 
         # Create existing story with articles 1, 2, 3
-        story_id = create_story(
+        story_id = create_test_story(
             session=session,
             title="Existing Story",
             synthesis="Test synthesis",
@@ -181,7 +183,7 @@ class TestFindOverlappingStory:
             time_window_start=datetime.now(UTC) - timedelta(hours=24),
             time_window_end=datetime.now(UTC),
         )
-        link_articles_to_story(session, story_id, [1, 2, 3])
+        link_test_articles_to_story(session, story_id, [1, 2, 3])
 
         # New cluster with articles 1, 2, 3, 4 (75% overlap)
         result = find_overlapping_story(session, [1, 2, 3, 4])
@@ -195,7 +197,7 @@ class TestFindOverlappingStory:
         session = setup_test_db()
 
         # Create archived story with articles 1, 2, 3
-        story_id = create_story(
+        story_id = create_test_story(
             session=session,
             title="Archived Story",
             synthesis="Test synthesis",
@@ -209,7 +211,7 @@ class TestFindOverlappingStory:
             time_window_start=datetime.now(UTC) - timedelta(hours=24),
             time_window_end=datetime.now(UTC),
         )
-        link_articles_to_story(session, story_id, [1, 2, 3])
+        link_test_articles_to_story(session, story_id, [1, 2, 3])
 
         # Archive the story
         story = session.query(Story).filter(Story.id == story_id).first()
@@ -229,7 +231,7 @@ class TestUpdateStoryWithNewArticles:
         session = setup_test_db()
 
         # Create v1 story
-        story_id = create_story(
+        story_id = create_test_story(
             session=session,
             title="Original Story v1",
             synthesis="Original synthesis",
@@ -243,7 +245,7 @@ class TestUpdateStoryWithNewArticles:
             time_window_start=datetime.now(UTC) - timedelta(hours=24),
             time_window_end=datetime.now(UTC),
         )
-        link_articles_to_story(session, story_id, [1, 2, 3])
+        link_test_articles_to_story(session, story_id, [1, 2, 3])
 
         original_story = session.query(Story).filter(Story.id == story_id).first()
         existing_article_ids = {1, 2, 3}
@@ -292,7 +294,7 @@ class TestUpdateStoryWithNewArticles:
         original_first_seen = datetime.now(UTC) - timedelta(days=3)
 
         # Create v1 story with specific first_seen
-        story_id = create_story(
+        story_id = create_test_story(
             session=session,
             title="Original Story",
             synthesis="Original synthesis",
@@ -307,7 +309,7 @@ class TestUpdateStoryWithNewArticles:
             time_window_end=datetime.now(UTC),
             first_seen=original_first_seen,
         )
-        link_articles_to_story(session, story_id, [1, 2])
+        link_test_articles_to_story(session, story_id, [1, 2])
 
         original_story = session.query(Story).filter(Story.id == story_id).first()
 
@@ -345,7 +347,7 @@ class TestUpdateStoryWithNewArticles:
         """Test that new version is linked to all merged articles."""
         session = setup_test_db()
 
-        story_id = create_story(
+        story_id = create_test_story(
             session=session,
             title="Original",
             synthesis="Original",
@@ -359,7 +361,7 @@ class TestUpdateStoryWithNewArticles:
             time_window_start=datetime.now(UTC),
             time_window_end=datetime.now(UTC),
         )
-        link_articles_to_story(session, story_id, [1, 2])
+        link_test_articles_to_story(session, story_id, [1, 2])
 
         original_story = session.query(Story).filter(Story.id == story_id).first()
 
@@ -405,7 +407,7 @@ class TestVersionChain:
         session = setup_test_db()
 
         # Create v1
-        story_v1_id = create_story(
+        story_v1_id = create_test_story(
             session=session,
             title="Story v1",
             synthesis="V1 synthesis",
@@ -419,7 +421,7 @@ class TestVersionChain:
             time_window_start=datetime.now(UTC),
             time_window_end=datetime.now(UTC),
         )
-        link_articles_to_story(session, story_v1_id, [1])
+        link_test_articles_to_story(session, story_v1_id, [1])
 
         story_v1 = session.query(Story).filter(Story.id == story_v1_id).first()
 

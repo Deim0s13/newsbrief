@@ -42,8 +42,8 @@ from app.publish_gate import (
     evaluate_confidence,
     gate_result_to_story_fields,
 )
-from app.stories import Story, create_story, get_stories, link_articles_to_story
-from tests.pg_testutil import pg_session_truncate_story_graph
+from app.stories import get_stories
+from tests.pg_testutil import create_test_story, pg_session_truncate_story_graph
 
 
 @pytest.fixture(autouse=True)
@@ -357,7 +357,7 @@ class TestDeadLetterQueue:
     def test_failed_story_appears_in_dead_letter(self) -> None:
         session = _setup_db_with_articles()
         try:
-            story_id = create_story(
+            story_id = create_test_story(
                 session=session,
                 title="Failing Story",
                 synthesis="X" * 100,
@@ -423,7 +423,7 @@ class TestDeadLetterQueue:
         """Held stories (confidence_gate failure_stage) show in dead-letter queue."""
         session = _setup_db_with_articles()
         try:
-            story_id = create_story(
+            story_id = create_test_story(
                 session=session,
                 title="Low Confidence Story",
                 synthesis="Y" * 100,
@@ -490,7 +490,7 @@ class TestConfidenceGate:
         """A story with status='held' must not appear in the public stories list."""
         session = _setup_db_with_articles()
         try:
-            story_id = create_story(
+            story_id = create_test_story(
                 session=session,
                 title="Held Story Should Not Appear",
                 synthesis="Z" * 100,
@@ -538,7 +538,7 @@ class TestConfidenceGate:
         """A warned story publishes with confidence_warning=True."""
         session = _setup_db_with_articles()
         try:
-            story_id = create_story(
+            story_id = create_test_story(
                 session=session,
                 title="Warned Story With Badge",
                 synthesis="W" * 100,
@@ -584,7 +584,7 @@ class TestConfidenceGate:
         """A high-confidence story publishes without the warning flag."""
         session = _setup_db_with_articles()
         try:
-            story_id = create_story(
+            story_id = create_test_story(
                 session=session,
                 title="High Confidence Story",
                 synthesis="V" * 100,

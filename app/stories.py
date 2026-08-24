@@ -106,14 +106,6 @@ from .story_embeddings import maybe_embed_story_after_synthesis
 
 logger = logging.getLogger(__name__)
 
-# Configuration
-STORY_ARCHIVE_DAYS = int(
-    os.getenv("STORY_ARCHIVE_DAYS", "7")
-)  # Auto-archive after 7 days
-STORY_DELETE_DAYS = int(
-    os.getenv("STORY_DELETE_DAYS", "30")
-)  # Hard delete after 30 days
-
 # Similarity Tuning (v0.6.1) - Adjust these for clustering behavior
 SIMILARITY_KEYWORD_WEIGHT = float(
     os.getenv("SIMILARITY_KEYWORD_WEIGHT", "0.3")
@@ -260,128 +252,6 @@ def get_article_credibility(
     )
 
     return result
-
-
-# CRUD Operations
-
-
-def create_story(
-    session: Session,
-    title: str,
-    synthesis: str,
-    key_points: List[str],
-    why_it_matters: str,
-    topics: List[str],
-    entities: List[str],
-    importance_score: float,
-    freshness_score: float,
-    model: str,
-    time_window_start: datetime,
-    time_window_end: datetime,
-    cluster_method: str = "naive",
-    story_hash: Optional[str] = None,
-    first_seen: Optional[datetime] = None,
-    version: int = 1,
-    previous_version_id: Optional[int] = None,
-) -> int:
-    """
-    Create a new story.
-
-    Args:
-        session: SQLAlchemy session
-        title: Story title
-        synthesis: AI-generated synthesis paragraph
-        key_points: List of key bullet points
-        why_it_matters: Significance analysis
-        topics: List of topic tags
-        entities: List of entities (companies, products, people)
-        importance_score: Story importance (0.0-1.0)
-        freshness_score: Time-based relevance (0.0-1.0)
-        model: LLM model used for synthesis
-        time_window_start: Start of article time window
-        time_window_end: End of article time window
-        cluster_method: Clustering algorithm used
-        story_hash: Unique hash for deduplication
-        first_seen: When story was first generated
-        version: Story version number (default 1)
-        previous_version_id: ID of previous version if this is an update
-
-    Returns:
-        Story ID
-    """
-    story = Story(
-        title=title,
-        synthesis=synthesis,
-        key_points_json=serialize_story_json_field(key_points),
-        why_it_matters=why_it_matters,
-        topics_json=serialize_story_json_field(topics),
-        entities_json=serialize_story_json_field(entities),
-        article_count=0,  # Will be updated when articles are linked
-        importance_score=importance_score,
-        freshness_score=freshness_score,
-        cluster_method=cluster_method,
-        story_hash=story_hash,
-        generated_at=datetime.now(UTC),
-        first_seen=first_seen or datetime.now(UTC),
-        last_updated=datetime.now(UTC),
-        time_window_start=time_window_start,
-        time_window_end=time_window_end,
-        model=model,
-        status="active",
-        processing_state=StoryProcessingState.PUBLISHED.value,
-        version=version,
-        previous_version_id=previous_version_id,
-    )
-
-    session.add(story)
-    session.commit()
-    session.refresh(story)
-
-    logger.info(f"Created story #{story.id}: {title[:50]}...")
-    return story.id  # type: ignore[return-value]
-
-
-def link_articles_to_story(
-    session: Session,
-    story_id: int,
-    article_ids: List[int],
-    primary_article_id: Optional[int] = None,
-) -> None:
-    """
-    Link articles to a story via junction table.
-
-    Args:
-        session: SQLAlchemy session
-        story_id: Story ID
-        article_ids: List of article IDs to link
-        primary_article_id: Optional primary article ID (most relevant)
-    """
-    # Create links
-    for article_id in article_ids:
-        story_article = StoryArticle(
-            story_id=story_id,
-            article_id=article_id,
-            relevance_score=1.0,  # Can be adjusted later with clustering scores
-            is_primary=(article_id == primary_article_id),
-            added_at=datetime.now(UTC),
-        )
-        session.add(story_article)
-
-    apply_article_processing_state_batch(
-        session,
-        article_ids,
-        ArticleProcessingState.CLUSTERED,
-        context="link_articles_to_story",
-    )
-
-    # Update article count on story
-    story = session.query(Story).filter(Story.id == story_id).first()
-    if story:
-        story.article_count = len(article_ids)  # type: ignore[assignment]
-        story.last_updated = datetime.now(UTC)  # type: ignore[assignment]
-
-    session.commit()
-    logger.info(f"Linked {len(article_ids)} articles to story #{story_id}")
 
 
 def get_story_by_id(session: Session, story_id: int) -> Optional[StoryOut]:
@@ -636,72 +506,6 @@ def get_stories(
     # Convert to StoryOut models
     # For list view, we don't need full article details
     return [_story_db_to_model(story, [], None) for story in stories]
-
-
-def update_story(session: Session, story_id: int, **updates) -> bool:
-    """
-    Update story fields.
-
-    Args:
-        session: SQLAlchemy session
-        story_id: Story ID
-        **updates: Fields to update (title, synthesis, importance_score, etc.)
-
-    Returns:
-        True if story was updated, False if not found
-    """
-    story = session.query(Story).filter(Story.id == story_id).first()
-    if not story:
-        return False
-
-    # Update allowed fields
-    allowed_fields = {
-        "title",
-        "synthesis",
-        "key_points_json",
-        "why_it_matters",
-        "topics_json",
-        "entities_json",
-        "importance_score",
-        "freshness_score",
-        "status",
-    }
-
-    for key, value in updates.items():
-        if key in allowed_fields:
-            setattr(story, key, value)
-
-    story.last_updated = datetime.now(UTC)  # type: ignore[assignment]
-    session.commit()
-
-    logger.info(f"Updated story #{story_id}")
-    return True
-
-
-def archive_story(session: Session, story_id: int) -> bool:
-    """
-    Archive story (soft delete).
-
-    Sets status to 'archived' without deleting the record.
-
-    Args:
-        session: SQLAlchemy session
-        story_id: Story ID
-
-    Returns:
-        True if story was archived, False if not found
-    """
-    story = session.query(Story).filter(Story.id == story_id).first()
-    if not story:
-        return False
-
-    story.status = "archived"  # type: ignore[assignment]
-    story.processing_state = StoryProcessingState.ARCHIVED.value  # type: ignore[assignment]
-    story.last_updated = datetime.now(UTC)  # type: ignore[assignment]
-    session.commit()
-
-    logger.info(f"Archived story #{story_id}")
-    return True
 
 
 def find_overlapping_story(
@@ -994,33 +798,9 @@ def regenerate_story_synthesis(
     }
 
 
-def delete_story(session: Session, story_id: int) -> bool:
-    """
-    Hard delete story (CASCADE deletes story_articles).
-
-    Permanently removes story and its article links from database.
-
-    Args:
-        session: SQLAlchemy session
-        story_id: Story ID
-
-    Returns:
-        True if story was deleted, False if not found
-    """
-    story = session.query(Story).filter(Story.id == story_id).first()
-    if not story:
-        return False
-
-    session.delete(story)
-    session.commit()
-
-    logger.info(f"Deleted story #{story_id}")
-    return True
-
-
 def cleanup_archived_stories(
     session: Session,
-    days: int = STORY_DELETE_DAYS,
+    days: int = 30,
 ) -> int:
     """
     Hard delete archived stories older than N days.

@@ -8,6 +8,8 @@ from typing import Optional
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from .stories import cleanup_archived_stories
+
 logger = logging.getLogger(__name__)
 
 # Retention periods (days) — configurable via environment variables.
@@ -52,7 +54,7 @@ def get_retention_counts(session: Session) -> dict:
             text(
                 """
             SELECT COUNT(*) FROM stories
-            WHERE status = 'archived' AND generated_at < :cutoff
+            WHERE status = 'archived' AND last_updated < :cutoff
             """
             ),
             {"cutoff": story_cutoff},
@@ -161,19 +163,60 @@ def _purge_pipeline_logs(
     return {"eligible": eligible, "deleted": eligible if not dry_run else 0}
 
 
+def _purge_stories(
+    session: Session,
+    retention_days: Optional[int] = None,
+    dry_run: bool = False,
+) -> dict:
+    """
+    Purge archived stories older than the retention window (#346).
+
+    Delegates the actual delete to ``stories.cleanup_archived_stories()``
+    (ORM-based, relies on the ``Story.story_articles`` cascade relationship
+    for the FK rather than raw SQL) rather than reimplementing it here.
+    That function commits internally, so -- unlike ``_purge_articles`` /
+    ``_purge_pipeline_logs`` -- this purge step is not part of the same
+    outer transaction as the others; each purge category is independent
+    of the others, so this is a low-risk, acceptable deviation.
+    """
+    days = retention_days if retention_days is not None else STORY_RETENTION_DAYS
+    cutoff = datetime.now(UTC) - timedelta(days=days)
+
+    eligible = (
+        session.execute(
+            text(
+                "SELECT COUNT(*) FROM stories WHERE status = 'archived' AND last_updated < :cutoff"
+            ),
+            {"cutoff": cutoff},
+        ).scalar()
+        or 0
+    )
+
+    deleted = 0
+    if not dry_run and eligible > 0:
+        deleted = cleanup_archived_stories(session, days=days)
+
+    return {"eligible": eligible, "deleted": deleted}
+
+
 def run_retention(session: Session, dry_run: bool = False) -> dict:
     """Run all configured retention policies in a single transaction."""
     start = datetime.now(UTC)
 
     article_result = _purge_articles(session, dry_run=dry_run)
+    story_result = _purge_stories(session, dry_run=dry_run)
     log_result = _purge_pipeline_logs(session, dry_run=dry_run)
 
     if not dry_run:
         session.commit()
 
     elapsed = (datetime.now(UTC) - start).total_seconds()
-    total_deleted = article_result["deleted"] + log_result["deleted"]
-    total_eligible = article_result["eligible"] + log_result["eligible"]
+    total_deleted = (
+        article_result["deleted"] + story_result["deleted"] + log_result["deleted"]
+    )
+    total_eligible = (
+        article_result["eligible"] + story_result["eligible"] + log_result["eligible"]
+    )
 
     return {
         "dry_run": dry_run,
@@ -181,5 +224,6 @@ def run_retention(session: Session, dry_run: bool = False) -> dict:
         "total_eligible": total_eligible,
         "total_deleted": total_deleted,
         "articles": article_result,
+        "stories": story_result,
         "pipeline_logs": log_result,
     }
