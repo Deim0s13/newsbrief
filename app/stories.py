@@ -2629,6 +2629,162 @@ def _fallback_synthesis(
     }
 
 
+def _fetch_window_articles(
+    session: Session, time_window_hours: int
+) -> Tuple[List[Any], Dict[int, Dict[str, Any]], float, datetime]:
+    """
+    Query items published within the trailing window that have a summary.
+
+    Returns ``(articles, articles_cache, data_fetch_time, cutoff_time)``.
+    ``articles_cache`` avoids repeated queries during clustering/scoring.
+    """
+    cutoff_time = datetime.now(UTC) - timedelta(hours=time_window_hours)
+    # Legacy query path: naive ISO string param for ``published`` comparison in this SELECT.
+    cutoff_time_str = cutoff_time.replace(tzinfo=None).isoformat()
+
+    data_fetch_start = time.time()
+    articles = session.execute(
+        text(
+            """
+        SELECT id, title, topic, published, summary, ai_summary
+        FROM items
+        WHERE published >= :cutoff_time
+        AND (ai_summary IS NOT NULL OR summary IS NOT NULL)
+        ORDER BY published DESC
+    """
+        ),
+        {"cutoff_time": cutoff_time_str},
+    ).fetchall()
+    data_fetch_time = time.time() - data_fetch_start
+
+    articles_cache = {
+        int(art[0]): {
+            "id": int(art[0]),
+            "title": str(art[1]),
+            "topic": art[2],
+            "published": art[3],
+            "summary": art[4],
+            "ai_summary": art[5],
+        }
+        for art in articles
+    }
+
+    return articles, articles_cache, data_fetch_time, cutoff_time
+
+
+def _group_articles_by_topic(articles: List[Any]) -> Dict[str, List[Any]]:
+    """Coarse first-pass grouping by an article's stored topic (Step 1)."""
+    topic_groups: Dict[str, List[Any]] = defaultdict(list)
+    for article in articles:
+        topic = article[2] or "uncategorized"
+        topic_groups[topic].append(article)
+    return topic_groups
+
+
+def _cluster_topic_group(
+    topic: str,
+    topic_articles: List[Any],
+    articles_cache: Dict[int, Dict[str, Any]],
+    session: Session,
+    model: str,
+    similarity_threshold: float,
+) -> List[List[int]]:
+    """
+    Greedily cluster one topic's articles by combined keyword + entity
+    similarity (Step 2, per-topic). Returns that topic's clusters (each a
+    list of article ids) -- the caller extends its overall ``clusters``
+    list with these.
+    """
+    logger.debug(f"Processing topic '{topic}' with {len(topic_articles)} articles")
+
+    # Extract keywords for each article (v0.6.1 - using title + summary + bigrams)
+    article_keywords = {}
+    for article in topic_articles:
+        article_id = int(article[0])  # type: ignore[index]
+        title = str(article[1])  # type: ignore[index]
+        summary = article[4] or article[5] or ""  # type: ignore[index]
+        article_keywords[article_id] = _extract_keywords(
+            title=title,
+            summary=str(summary),
+            include_bigrams=True,
+        )
+
+    # Extract entities for each article (v0.6.1 - enhanced clustering)
+    article_entities = {}
+    entity_extraction_start = time.time()
+    for article in topic_articles:
+        article_id = int(article[0])  # type: ignore[index]
+        title = str(article[1])  # type: ignore[index]
+        summary = article[4] or article[5] or ""  # type: ignore[index]
+
+        try:
+            entities = extract_and_cache_entities(
+                article_id=article_id,
+                title=title,
+                summary=str(summary),
+                session=session,
+                model=model,
+                use_cache=True,
+            )
+            article_entities[article_id] = entities
+        except Exception as e:
+            logger.warning(f"Failed to extract entities for article {article_id}: {e}")
+            article_entities[article_id] = None
+
+    entity_extraction_time = time.time() - entity_extraction_start
+    logger.debug(
+        f"Entity extraction for {len(topic_articles)} articles took {entity_extraction_time:.2f}s"
+    )
+
+    # Greedy clustering: iterate through articles, add to existing cluster or create new one
+    topic_clusters: List[List[int]] = []
+
+    for article in topic_articles:
+        article_id = int(article[0])  # type: ignore[index]
+        article_topic = article[2]  # type: ignore[index]
+        keywords = article_keywords[article_id]
+        entities = article_entities.get(article_id)
+
+        # Find best matching cluster
+        best_cluster = None
+        best_similarity = 0.0
+
+        for cluster in topic_clusters:
+            # Calculate average combined similarity to cluster (keywords + entities + topic)
+            similarities = []
+            for aid in cluster:
+                # Get cached article data for topic
+                other_article = articles_cache.get(aid)
+                other_topic = other_article["topic"] if other_article else None
+
+                sim = _calculate_combined_similarity(
+                    keywords,
+                    article_keywords[aid],
+                    entities,
+                    article_entities.get(aid),
+                    topic1=article_topic,
+                    topic2=other_topic,
+                )
+                similarities.append(sim)
+
+            avg_similarity = (
+                sum(similarities) / len(similarities) if similarities else 0.0
+            )
+
+            if avg_similarity > best_similarity:
+                best_similarity = avg_similarity
+                best_cluster = cluster
+
+        # Add to best cluster if similar enough, otherwise create new cluster
+        if best_cluster and best_similarity >= similarity_threshold:
+            best_cluster.append(article_id)
+        else:
+            topic_clusters.append([article_id])
+
+    logger.debug(f"Topic '{topic}' clustered into {len(topic_clusters)} story clusters")
+    return topic_clusters
+
+
 def generate_stories_simple(
     session: Session,
     time_window_hours: int = 24,
@@ -2682,24 +2838,9 @@ def generate_stories_simple(
     )
 
     # Get articles from time window (fetch ALL data once to cache it)
-    cutoff_time = datetime.now(UTC) - timedelta(hours=time_window_hours)
-    # Legacy query path: naive ISO string param for ``published`` comparison in this SELECT.
-    cutoff_time_str = cutoff_time.replace(tzinfo=None).isoformat()
-
-    data_fetch_start = time.time()
-    articles = session.execute(
-        text(
-            """
-        SELECT id, title, topic, published, summary, ai_summary
-        FROM items
-        WHERE published >= :cutoff_time
-        AND (ai_summary IS NOT NULL OR summary IS NOT NULL)
-        ORDER BY published DESC
-    """
-        ),
-        {"cutoff_time": cutoff_time_str},
-    ).fetchall()
-    data_fetch_time = time.time() - data_fetch_start
+    articles, articles_cache, data_fetch_time, cutoff_time = _fetch_window_articles(
+        session, time_window_hours
+    )
 
     if not articles:
         logger.info("No articles found in time window")
@@ -2714,24 +2855,8 @@ def generate_stories_simple(
         f"Found {len(articles)} articles in time window ({data_fetch_time:.2f}s)"
     )
 
-    # Build article cache (optimization: avoid repeated queries)
-    articles_cache = {
-        int(art[0]): {
-            "id": int(art[0]),
-            "title": str(art[1]),
-            "topic": art[2],
-            "published": art[3],
-            "summary": art[4],
-            "ai_summary": art[5],
-        }
-        for art in articles
-    }
-
     # Step 1: Group by topic (coarse filter)
-    topic_groups: Dict[str, List[Any]] = defaultdict(list)
-    for article in articles:
-        topic = article[2] or "uncategorized"
-        topic_groups[topic].append(article)
+    topic_groups = _group_articles_by_topic(articles)
 
     logger.info(f"Grouped into {len(topic_groups)} topics")
 
@@ -2739,98 +2864,10 @@ def generate_stories_simple(
     clusters: List[List[int]] = []
 
     for topic, topic_articles in topic_groups.items():
-        logger.debug(f"Processing topic '{topic}' with {len(topic_articles)} articles")
-
-        # Extract keywords for each article (v0.6.1 - using title + summary + bigrams)
-        article_keywords = {}
-        for article in topic_articles:
-            article_id = int(article[0])  # type: ignore[index]
-            title = str(article[1])  # type: ignore[index]
-            summary = article[4] or article[5] or ""  # type: ignore[index]
-            article_keywords[article_id] = _extract_keywords(
-                title=title,
-                summary=str(summary),
-                include_bigrams=True,
-            )
-
-        # Extract entities for each article (v0.6.1 - enhanced clustering)
-        article_entities = {}
-        entity_extraction_start = time.time()
-        for article in topic_articles:
-            article_id = int(article[0])  # type: ignore[index]
-            title = str(article[1])  # type: ignore[index]
-            summary = article[4] or article[5] or ""  # type: ignore[index]
-
-            try:
-                entities = extract_and_cache_entities(
-                    article_id=article_id,
-                    title=title,
-                    summary=str(summary),
-                    session=session,
-                    model=model,
-                    use_cache=True,
-                )
-                article_entities[article_id] = entities
-            except Exception as e:
-                logger.warning(
-                    f"Failed to extract entities for article {article_id}: {e}"
-                )
-                article_entities[article_id] = None
-
-        entity_extraction_time = time.time() - entity_extraction_start
-        logger.debug(
-            f"Entity extraction for {len(topic_articles)} articles took {entity_extraction_time:.2f}s"
+        topic_clusters = _cluster_topic_group(
+            topic, topic_articles, articles_cache, session, model, similarity_threshold
         )
-
-        # Greedy clustering: iterate through articles, add to existing cluster or create new one
-        topic_clusters: List[List[int]] = []
-
-        for article in topic_articles:
-            article_id = int(article[0])  # type: ignore[index]
-            article_topic = article[2]  # type: ignore[index]
-            keywords = article_keywords[article_id]
-            entities = article_entities.get(article_id)
-
-            # Find best matching cluster
-            best_cluster = None
-            best_similarity = 0.0
-
-            for cluster in topic_clusters:
-                # Calculate average combined similarity to cluster (keywords + entities + topic)
-                similarities = []
-                for aid in cluster:
-                    # Get cached article data for topic
-                    other_article = articles_cache.get(aid)
-                    other_topic = other_article["topic"] if other_article else None
-
-                    sim = _calculate_combined_similarity(
-                        keywords,
-                        article_keywords[aid],
-                        entities,
-                        article_entities.get(aid),
-                        topic1=article_topic,
-                        topic2=other_topic,
-                    )
-                    similarities.append(sim)
-
-                avg_similarity = (
-                    sum(similarities) / len(similarities) if similarities else 0.0
-                )
-
-                if avg_similarity > best_similarity:
-                    best_similarity = avg_similarity
-                    best_cluster = cluster
-
-            # Add to best cluster if similar enough, otherwise create new cluster
-            if best_cluster and best_similarity >= similarity_threshold:
-                best_cluster.append(article_id)
-            else:
-                topic_clusters.append([article_id])
-
         clusters.extend(topic_clusters)
-        logger.debug(
-            f"Topic '{topic}' clustered into {len(topic_clusters)} story clusters"
-        )
 
     logger.info(f"Total clusters: {len(clusters)}")
 
