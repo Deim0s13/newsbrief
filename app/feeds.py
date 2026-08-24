@@ -1538,6 +1538,35 @@ def _extract_article_content(
         )
 
 
+def _classify_and_score_item(
+    title: str,
+    content_for_analysis: str,
+    published: Optional[datetime],
+) -> Tuple[Any, Any]:
+    """
+    Classify an item's topic and calculate its ranking score (v0.4.0).
+
+    Returns ``(topic_result, ranking_result)``. ``content_for_analysis``
+    should already be the caller's ``content_text or summary or ""``
+    fallback chain.
+    """
+    topic_result = classify_article_topic(
+        title=title or "",
+        content=content_for_analysis,
+        use_llm_fallback=False,  # Use keywords only for feed ingestion performance
+    )
+
+    ranking_result = calculate_ranking_score(
+        published=published,
+        source_weight=1.0,  # Default source weight, can be customized per feed later
+        title=title or "",
+        content=content_for_analysis,
+        topic=topic_result.topic,
+    )
+
+    return topic_result, ranking_result
+
+
 def fetch_and_store() -> RefreshStats:
     """
     Iterate all feeds, use ETag/Last-Modified. Respect robots_allowed/disabled.
@@ -1689,20 +1718,9 @@ def fetch_and_store() -> RefreshStats:
                     )
                     continue
 
-                # Classify article topic (v0.4.0)
-                topic_result = classify_article_topic(
-                    title=title or "",
-                    content=content_text or summary or "",
-                    use_llm_fallback=False,  # Use keywords only for feed ingestion performance
-                )
-
-                # Calculate ranking score (v0.4.0)
-                ranking_result = calculate_ranking_score(
-                    published=published,
-                    source_weight=1.0,  # Default source weight, can be customized per feed later
-                    title=title or "",
-                    content=content_text or summary or "",
-                    topic=topic_result.topic,
+                # Classify topic and calculate ranking score (v0.4.0)
+                topic_result, ranking_result = _classify_and_score_item(
+                    title, content_text or summary or "", published
                 )
 
                 ingest_processing_state = article_state_after_ingest(
