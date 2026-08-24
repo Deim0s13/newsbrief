@@ -1421,6 +1421,31 @@ def _store_feed_cache_headers(
         )
 
 
+def _lookup_existing_item(
+    h: str,
+) -> Optional[Tuple[int, Optional[str], Any, Optional[str]]]:
+    """
+    Look up an existing item by its url_hash.
+
+    Returns ``(id, content_hash, published, content)`` or ``None`` if no
+    item with this hash exists yet.
+    """
+    with session_scope() as s:
+        row = s.execute(
+            text(
+                """
+                SELECT id, content_hash, published, content
+                FROM items WHERE url_hash=:h LIMIT 1
+                """
+            ),
+            {"h": h},
+        ).fetchone()
+
+    if row is None:
+        return None
+    return (int(row[0]), row[1], row[2], row[3])
+
+
 def fetch_and_store() -> RefreshStats:
     """
     Iterate all feeds, use ETag/Last-Modified. Respect robots_allowed/disabled.
@@ -1522,21 +1547,13 @@ def fetch_and_store() -> RefreshStats:
 
                 h = url_hash(link)
 
-                with session_scope() as s:
-                    row = s.execute(
-                        text(
-                            """
-                        SELECT id, content_hash, published, content
-                        FROM items WHERE url_hash=:h LIMIT 1
-                        """
-                        ),
-                        {"h": h},
-                    ).fetchone()
-
-                existing_id = int(row[0]) if row else None
-                existing_hash = row[1] if row else None
-                existing_pub = row[2] if row else None
-                existing_content = row[3] if row else None
+                existing_item = _lookup_existing_item(h)
+                if existing_item is not None:
+                    existing_id, existing_hash, existing_pub, existing_content = (
+                        existing_item
+                    )
+                else:
+                    existing_id = existing_hash = existing_pub = existing_content = None
 
                 entry_updated = entry_updated_instant(entry)
                 published = entry_published_for_item(entry)
