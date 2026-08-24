@@ -144,6 +144,16 @@ highest-value split candidates — they're also the exact two functions implicat
 morning's feed-refresh investigation and the earlier singleton-clustering fix. Breaking each
 into named sub-steps would make the next bug in either much faster to isolate.
 
+> **Resolved, `fetch_and_store` half (#347):** extract-method only, no behavior change. Split
+> into 8 named helpers (`_fetch_feed_response`, `_store_feed_cache_headers`,
+> `_lookup_existing_item`, `_extract_article_content`, `_classify_and_score_item`,
+> `_upsert_item_row`, `_process_feed_entries`, `_finalize_refresh_stats`), one extraction per
+> commit with the full non-Ollama test suite green after each. `fetch_and_store` itself dropped
+> from **F (49)** to **B (8)**; the remaining per-entry orchestrator, `_process_feed_entries`, is
+> **D (24)** — a big drop from the original monolith, though still the most complex piece since
+> it coordinates the global/per-feed/time-limit early exits plus all 6 other helpers. All other
+> new helpers are A/B rank. `generate_stories_simple` (F/50) is unresolved — tracked separately.
+
 ---
 
 ## 4. Docs / script bloat
