@@ -2631,7 +2631,7 @@ def _fallback_synthesis(
 
 def _fetch_window_articles(
     session: Session, time_window_hours: int
-) -> Tuple[List[Any], Dict[int, Dict[str, Any]], float, datetime]:
+) -> Tuple[Sequence[Any], Dict[int, Dict[str, Any]], float, datetime]:
     """
     Query items published within the trailing window that have a summary.
 
@@ -2672,7 +2672,7 @@ def _fetch_window_articles(
     return articles, articles_cache, data_fetch_time, cutoff_time
 
 
-def _group_articles_by_topic(articles: List[Any]) -> Dict[str, List[Any]]:
+def _group_articles_by_topic(articles: Sequence[Any]) -> Dict[str, List[Any]]:
     """Coarse first-pass grouping by an article's stored topic (Step 1)."""
     topic_groups: Dict[str, List[Any]] = defaultdict(list)
     for article in articles:
@@ -3252,7 +3252,7 @@ def _build_generation_result(
     story_ids: List[int],
     skipped_duplicates: int,
     updated_stories: int,
-    articles: List[Any],
+    articles: Sequence[Any],
     clusters: List[List[int]],
     data_fetch_time: float,
     synthesis_time: float,
