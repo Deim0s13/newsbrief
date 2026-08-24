@@ -17,7 +17,6 @@ from .deps import get_git_revision, get_version, register_limiter_on_app, templa
 from .feeds import (
     import_opml,
     migrate_sanitize_existing_summaries,
-    recalculate_rankings_and_topics,
     update_feed_health_scores,
 )
 from .logging_config import configure_logging

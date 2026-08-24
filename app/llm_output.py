@@ -272,12 +272,6 @@ class EnhancedTopicOutput(BaseModel):
         if isinstance(v, str) and v.lower() in allowed:
             return v.lower()
         return None
-        if isinstance(v, (int, float)):
-            val = float(v)
-            if val > 1.0:
-                val = val / 100.0
-            return max(0.0, min(1.0, val))
-        return 0.5
 
 
 class EntityOutput(BaseModel):
@@ -1295,84 +1289,3 @@ def parse_and_validate(
         if circuit_breaker_name:
             get_circuit_breaker(circuit_breaker_name).record_failure()
         return None, metrics
-
-
-def parse_with_retry(
-    llm_call: Callable[[str], str],
-    prompt: str,
-    model_class: Type[T],
-    required_fields: Optional[List[str]] = None,
-    allow_partial: bool = True,
-    retry_config: Optional[RetryConfig] = None,
-    circuit_breaker_name: Optional[str] = None,
-) -> Tuple[Optional[T], LLMParseMetrics]:
-    """
-    Parse LLM output with automatic retry on failure.
-
-    Args:
-        llm_call: Function that takes a prompt and returns LLM response
-        prompt: The prompt to send to the LLM
-        model_class: Pydantic model class to validate against
-        required_fields: Fields that must be present
-        allow_partial: Whether to allow partial extraction
-        retry_config: Retry configuration (defaults to RetryConfig())
-        circuit_breaker_name: Circuit breaker to use
-
-    Returns:
-        Tuple of (validated_model, metrics)
-    """
-    config = retry_config or RetryConfig()
-    final_metrics: Optional[LLMParseMetrics] = None
-
-    for attempt in range(config.max_attempts):
-        # Adjust prompt for retries
-        current_prompt = (
-            prompt if attempt == 0 else adjust_prompt_for_retry(prompt, attempt, config)
-        )
-
-        # Make LLM call
-        try:
-            response = llm_call(current_prompt)
-        except Exception as e:
-            logger.warning(f"LLM call failed on attempt {attempt + 1}: {e}")
-            if attempt < config.max_attempts - 1:
-                delay = calculate_retry_delay(attempt, config)
-                time.sleep(delay)
-            continue
-
-        # Parse and validate
-        model, metrics = parse_and_validate(
-            response,
-            model_class,
-            required_fields=required_fields,
-            allow_partial=allow_partial,
-            circuit_breaker_name=circuit_breaker_name,
-        )
-
-        metrics.retry_count = attempt
-        final_metrics = metrics
-
-        if model is not None:
-            return model, metrics
-
-        # Wait before retry
-        if attempt < config.max_attempts - 1:
-            delay = calculate_retry_delay(attempt, config)
-            logger.debug(f"Retrying in {delay:.1f}s after attempt {attempt + 1}")
-            time.sleep(delay)
-
-    # All attempts failed
-    if final_metrics:
-        final_metrics.retry_count = config.max_attempts - 1
-        return None, final_metrics
-
-    # No metrics at all (all LLM calls failed)
-    return None, LLMParseMetrics(
-        success=False,
-        strategy_used="none",
-        repair_applied=False,
-        model_class=model_class.__name__,
-        retry_count=config.max_attempts - 1,
-        error_category=ErrorCategory.UNKNOWN,
-        error_message="All LLM calls failed",
-    )

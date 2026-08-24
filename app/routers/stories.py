@@ -18,7 +18,6 @@ from ..models import (
     SimilarityResultOut,
     StoriesListOut,
     StoryGenerationRequest,
-    StoryGenerationResponse,
     StoryOut,
     StructuredSummary,
 )
