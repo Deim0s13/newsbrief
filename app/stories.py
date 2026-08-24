@@ -2785,6 +2785,96 @@ def _cluster_topic_group(
     return topic_clusters
 
 
+def _build_cluster_data(
+    cluster_article_ids: List[int],
+    articles_cache: Dict[int, Dict[str, Any]],
+    session: Session,
+    model: str,
+    cutoff_time: datetime,
+) -> Dict[str, Any]:
+    """
+    Build one cluster's metadata + quality scores from cached article data
+    (v0.6.1). Called once per cluster to build ``cluster_data_list``.
+    """
+    cluster_articles = [articles_cache[aid] for aid in cluster_article_ids]
+    published_times = [art["published"] for art in cluster_articles]
+
+    # Get time range
+    time_window_start = min(published_times) if published_times else cutoff_time
+    time_window_end = max(published_times) if published_times else datetime.now(UTC)
+
+    # Convert string to datetime if needed (driver may return ``str`` for timestamps)
+    if isinstance(time_window_start, str):
+        time_window_start = datetime.fromisoformat(
+            time_window_start.replace("Z", "+00:00")
+        )
+    if isinstance(time_window_end, str):
+        time_window_end = datetime.fromisoformat(time_window_end.replace("Z", "+00:00"))
+
+    # Convert published times to datetime objects
+    published_datetimes = []
+    for pt in published_times:
+        if isinstance(pt, str):
+            pt = datetime.fromisoformat(pt.replace("Z", "+00:00"))
+        elif pt.tzinfo is None:
+            pt = pt.replace(tzinfo=UTC)
+        published_datetimes.append(pt)
+
+    # Calculate story scores (v0.6.1 quality scoring)
+    # Get unique sources (feed IDs)
+    feed_ids = {art["id"] for art in cluster_articles if "id" in art}
+    unique_source_count = len(feed_ids)
+
+    # Get unique entities from articles (if available)
+    entity_count = 0
+    # Note: Entities will be available after entity extraction (#40)
+    # For now, use a placeholder based on article count
+    entity_count = min(len(cluster_article_ids) * 2, 10)  # Estimate
+
+    # Get feed health scores (query from database)
+    feed_health_scores = []
+    if feed_ids:
+        feed_id_list = list(feed_ids)
+        placeholders_health, health_params = _build_in_clause_params(
+            feed_id_list, "fid"
+        )
+        health_results = session.execute(
+            text(f"SELECT health_score FROM feeds WHERE id IN ({placeholders_health})"),
+            health_params,
+        ).fetchall()
+        feed_health_scores = [row[0] for row in health_results if row[0] is not None]
+
+    if not feed_health_scores:
+        feed_health_scores = [100.0]  # Default to perfect health
+
+    # Calculate scores using proper algorithms
+    importance, freshness, quality = _calculate_story_scores(
+        article_count=len(cluster_article_ids),
+        unique_source_count=unique_source_count,
+        entity_count=entity_count,
+        article_published_times=published_datetimes,
+        feed_health_scores=feed_health_scores,
+    )
+
+    # Calculate clustering metadata for "Why Grouped Together" (Issue #232)
+    clustering_metadata = _calculate_clustering_metadata(
+        cluster_article_ids, articles_cache, session, model
+    )
+
+    return {
+        "article_ids": cluster_article_ids,
+        "time_window_start": time_window_start,
+        "time_window_end": time_window_end,
+        "importance_score": importance,
+        "freshness_score": freshness,
+        "quality_score": quality,
+        "cluster_hash": hashlib.md5(
+            json.dumps(sorted(cluster_article_ids)).encode()
+        ).hexdigest(),
+        "clustering_metadata": clustering_metadata,
+    }
+
+
 def generate_stories_simple(
     session: Session,
     time_window_hours: int = 24,
@@ -2891,94 +2981,12 @@ def generate_stories_simple(
     synthesis_start = time.time()
 
     # Prepare cluster data with cached article info and calculate scores (v0.6.1)
-    cluster_data_list = []
-    for cluster_article_ids in clusters:
-        # Calculate metadata from cached data
-        cluster_articles = [articles_cache[aid] for aid in cluster_article_ids]
-        published_times = [art["published"] for art in cluster_articles]
-
-        # Get time range
-        time_window_start = min(published_times) if published_times else cutoff_time
-        time_window_end = max(published_times) if published_times else datetime.now(UTC)
-
-        # Convert string to datetime if needed (driver may return ``str`` for timestamps)
-        if isinstance(time_window_start, str):
-            time_window_start = datetime.fromisoformat(
-                time_window_start.replace("Z", "+00:00")
-            )
-        if isinstance(time_window_end, str):
-            time_window_end = datetime.fromisoformat(
-                time_window_end.replace("Z", "+00:00")
-            )
-
-        # Convert published times to datetime objects
-        published_datetimes = []
-        for pt in published_times:
-            if isinstance(pt, str):
-                pt = datetime.fromisoformat(pt.replace("Z", "+00:00"))
-            elif pt.tzinfo is None:
-                pt = pt.replace(tzinfo=UTC)
-            published_datetimes.append(pt)
-
-        # Calculate story scores (v0.6.1 quality scoring)
-        # Get unique sources (feed IDs)
-        feed_ids = {art["id"] for art in cluster_articles if "id" in art}
-        unique_source_count = len(feed_ids)
-
-        # Get unique entities from articles (if available)
-        entity_count = 0
-        # Note: Entities will be available after entity extraction (#40)
-        # For now, use a placeholder based on article count
-        entity_count = min(len(cluster_article_ids) * 2, 10)  # Estimate
-
-        # Get feed health scores (query from database)
-        feed_health_scores = []
-        if feed_ids:
-            feed_id_list = list(feed_ids)
-            placeholders_health, health_params = _build_in_clause_params(
-                feed_id_list, "fid"
-            )
-            health_results = session.execute(
-                text(
-                    f"SELECT health_score FROM feeds WHERE id IN ({placeholders_health})"
-                ),
-                health_params,
-            ).fetchall()
-            feed_health_scores = [
-                row[0] for row in health_results if row[0] is not None
-            ]
-
-        if not feed_health_scores:
-            feed_health_scores = [100.0]  # Default to perfect health
-
-        # Calculate scores using proper algorithms
-        importance, freshness, quality = _calculate_story_scores(
-            article_count=len(cluster_article_ids),
-            unique_source_count=unique_source_count,
-            entity_count=entity_count,
-            article_published_times=published_datetimes,
-            feed_health_scores=feed_health_scores,
+    cluster_data_list = [
+        _build_cluster_data(
+            cluster_article_ids, articles_cache, session, model, cutoff_time
         )
-
-        # Calculate clustering metadata for "Why Grouped Together" (Issue #232)
-        clustering_metadata = _calculate_clustering_metadata(
-            cluster_article_ids, articles_cache, session, model
-        )
-
-        cluster_data_list.append(
-            {
-                "article_ids": cluster_article_ids,
-                "time_window_start": time_window_start,
-                "time_window_end": time_window_end,
-                "importance_score": importance,
-                "freshness_score": freshness,
-                "quality_score": quality,
-                "cluster_hash": hashlib.md5(
-                    json.dumps(sorted(cluster_article_ids)).encode()
-                ).hexdigest(),
-                "clustering_metadata": clustering_metadata,
-            }
-        )
+        for cluster_article_ids in clusters
+    ]
 
     # Parallel LLM synthesis with INCREMENTAL persistence (#333): each
     # cluster's story is dedup-checked, created/merged, linked, embedded,
