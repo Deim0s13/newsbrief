@@ -1667,6 +1667,11 @@ def _process_feed_entries(
 
         h = url_hash(link)
 
+        existing_id: Optional[int]
+        existing_hash: Optional[str]
+        existing_pub: Any
+        existing_content: Optional[str]
+
         existing_item = _lookup_existing_item(h)
         if existing_item is not None:
             existing_id, existing_hash, existing_pub, existing_content = existing_item
@@ -1751,6 +1756,37 @@ def _process_feed_entries(
         }
 
         _upsert_item_row(existing_id, row_params, link, fid, stats)
+
+
+def _finalize_refresh_stats(stats: RefreshStats, start_time: float) -> None:
+    """
+    Record final timing, refresh feed health scores, and log a structured summary.
+
+    Mutates ``stats.refresh_time_seconds`` in place.
+    """
+    stats.refresh_time_seconds = time.time() - start_time
+
+    try:
+        update_feed_health_scores()
+    except Exception as e:
+        # Don't fail the entire refresh if health score update fails
+        logger.warning(f"Failed to update health scores: {e}")
+
+    logger.info(
+        "Feed refresh completed",
+        extra={
+            "duration_ms": round(stats.refresh_time_seconds * 1000, 2),
+            "feeds_processed": stats.total_feeds_processed,
+            "articles_ingested": stats.total_items,
+            "articles_inserted": stats.items_inserted,
+            "articles_updated": stats.items_updated,
+            "feeds_cached": stats.feeds_cached_304,
+            "feeds_error": stats.feeds_error,
+            "feeds_disabled": stats.feeds_skipped_disabled,
+            "hit_time_limit": stats.hit_time_limit,
+            "hit_global_limit": stats.hit_global_limit,
+        },
+    )
 
 
 def fetch_and_store() -> RefreshStats:
@@ -1838,32 +1874,7 @@ def fetch_and_store() -> RefreshStats:
             if stats.hit_global_limit or stats.hit_time_limit:
                 break
 
-    # Record final timing
-    stats.refresh_time_seconds = time.time() - start_time
-
-    # Update health scores for all feeds after refresh
-    try:
-        update_feed_health_scores()
-    except Exception as e:
-        # Don't fail the entire refresh if health score update fails
-        logger.warning(f"Failed to update health scores: {e}")
-
-    # Log structured refresh summary
-    logger.info(
-        "Feed refresh completed",
-        extra={
-            "duration_ms": round(stats.refresh_time_seconds * 1000, 2),
-            "feeds_processed": stats.total_feeds_processed,
-            "articles_ingested": stats.total_items,
-            "articles_inserted": stats.items_inserted,
-            "articles_updated": stats.items_updated,
-            "feeds_cached": stats.feeds_cached_304,
-            "feeds_error": stats.feeds_error,
-            "feeds_disabled": stats.feeds_skipped_disabled,
-            "hit_time_limit": stats.hit_time_limit,
-            "hit_global_limit": stats.hit_global_limit,
-        },
-    )
+    _finalize_refresh_stats(stats, start_time)
 
     return stats
 
