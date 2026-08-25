@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Idempotent startup script: start kind cluster, confirm ArgoCD is ready,
-# trigger ArgoCD sync, and re-establish kubectl port-forwards.
-# Called by launchd (macOS) on login, or manually via `make infra-start`.
+# Idempotent startup script: ensure the Podman machine + DB are up, start the
+# kind cluster, confirm ArgoCD is ready, trigger ArgoCD sync, re-establish
+# kubectl port-forwards, and best-effort start Caddy.
+# Called by launchd (macOS) on login, manually via `make infra-start`, or via
+# `make recover` (same script — see docs/development/KUBERNETES.md).
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -10,6 +12,21 @@ CLUSTER_CONFIG="${PROJECT_ROOT}/k8s/kind/cluster-config.yaml"
 LOG_PREFIX="[newsbrief-infra]"
 
 log() { echo "${LOG_PREFIX} $*"; }
+
+# 0. Ensure the Podman machine itself is running. Normally Podman Desktop
+# starts its VM automatically at login (see the launchd plist's
+# ThrottleInterval comment), but this script is also the target of `make
+# recover` — the "laptop woke from sleep and things seem stuck" path — where
+# the VM can be suspended even though Podman Desktop.app is still "running".
+if ! podman info >/dev/null 2>&1; then
+    log "Podman machine not responding — starting it..."
+    podman machine start 2>&1 | sed "s/^/${LOG_PREFIX} /" || \
+        log "Warning: 'podman machine start' failed — is Podman Desktop installed?"
+    for _ in $(seq 1 10); do
+        podman info >/dev/null 2>&1 && break
+        sleep 3
+    done
+fi
 
 # 1. Ensure the Compose DB (only) is running — that's the single Compose
 # dependency K8s prod actually needs (host.containers.internal:5432).
@@ -62,7 +79,16 @@ log "Kubeconfig set to cluster '${CLUSTER_NAME}'"
 # images now come from GHCR (ghcr.io/deim0s13/newsbrief), pulled directly by
 # ArgoCD-managed pods. See scripts/archive/setup-kind-registry.sh.
 
-# 5. Wait for ArgoCD server to be available
+# 5. Install ArgoCD itself if this is a genuinely fresh cluster with no
+# argocd namespace yet (a recreated-but-previously-seen cluster already has
+# this; only a brand-new `kind create cluster` hits this branch).
+if ! kubectl get namespace argocd >/dev/null 2>&1; then
+    log "No 'argocd' namespace found — installing ArgoCD..."
+    kubectl create namespace argocd
+    kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+fi
+
+# 6. Wait for ArgoCD server to be available
 log "Waiting for ArgoCD server..."
 kubectl wait \
     --for=condition=available \
@@ -72,7 +98,7 @@ kubectl wait \
 
 log "ArgoCD is ready"
 
-# 6. Ensure ArgoCD Application CRs exist — cluster recreation wipes them
+# 7. Ensure ArgoCD Application CRs exist — cluster recreation wipes them
 if ! kubectl get application newsbrief-prod -n argocd >/dev/null 2>&1; then
     log "ArgoCD Applications not found — applying from k8s/argocd/..."
     kubectl apply -f "${PROJECT_ROOT}/k8s/argocd/"
@@ -81,7 +107,7 @@ else
     log "ArgoCD Applications already registered"
 fi
 
-# 7. Trigger sync for both apps (async — auto-sync will also pick these up)
+# 8. Trigger sync for both apps (async — auto-sync will also pick these up)
 argocd app sync newsbrief-dev --async 2>/dev/null \
     && log "Triggered sync: newsbrief-dev" \
     || log "Warning: could not trigger newsbrief-dev sync (ArgoCD CLI not logged in?)"
@@ -90,7 +116,7 @@ argocd app sync newsbrief-prod --async 2>/dev/null \
     && log "Triggered sync: newsbrief-prod" \
     || log "Warning: could not trigger newsbrief-prod sync"
 
-# 8. Re-establish port-forwards (kill any stale ones first)
+# 9. Re-establish port-forwards (kill any stale ones first)
 pkill -f "kubectl port-forward" 2>/dev/null || true
 sleep 1
 
@@ -105,4 +131,31 @@ log "Port-forwards started:"
 log "  Prod app:     http://localhost:8788"
 log "  Dev app:      http://localhost:8789"
 log "  ArgoCD UI:    https://localhost:8443"
+
+# 10. Ensure the Caddy reverse proxy (newsbrief.local) is running. Optional —
+# localhost:8788/8789 above are the primary access paths — but `make recover`
+# has historically also brought this back up, so keep it working. Uses the
+# checked-in Caddyfile as-is (ADR-0010/0012); best-effort, non-fatal.
+CADDY_CONTAINER="newsbrief-proxy"
+if podman ps --filter "name=${CADDY_CONTAINER}" --format '{{.Names}}' 2>/dev/null | grep -q .; then
+    log "Caddy ('${CADDY_CONTAINER}') already running"
+elif podman ps -a --filter "name=${CADDY_CONTAINER}" --format '{{.Names}}' 2>/dev/null | grep -q .; then
+    log "Starting existing Caddy container..."
+    podman start "${CADDY_CONTAINER}" >/dev/null 2>&1 \
+        && log "Caddy started — https://newsbrief.local" \
+        || log "Warning: failed to start Caddy container"
+else
+    log "Creating Caddy container..."
+    mkdir -p "${PROJECT_ROOT}/caddy-data/data" "${PROJECT_ROOT}/caddy-data/config"
+    podman run -d \
+        --name "${CADDY_CONTAINER}" \
+        -p 80:80 -p 443:443 \
+        -v "${PROJECT_ROOT}/Caddyfile:/etc/caddy/Caddyfile:ro" \
+        -v "${PROJECT_ROOT}/caddy-data/data:/data" \
+        -v "${PROJECT_ROOT}/caddy-data/config:/config" \
+        caddy:2-alpine >/dev/null 2>&1 \
+        && log "Caddy started — https://newsbrief.local" \
+        || log "Warning: failed to create Caddy container"
+fi
+
 log "NewsBrief infrastructure ready."

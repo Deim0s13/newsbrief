@@ -517,13 +517,13 @@ k8s-omlx-secret:                  ## Create/update the oMLX API key Secret in ne
 				-n $$ns --dry-run=client -o yaml | kubectl apply -f -; \
 		done && echo "✅ newsbrief-omlx secret created/updated in both namespaces"'
 
-# ---------- Kubernetes Operations (Ansible) ----------
-recover:                          ## Recover all services after reboot/sleep
+# ---------- Kubernetes Operations (recover/status) ----------
+recover:                          ## Recover all services after reboot/sleep (Podman machine + kind + ArgoCD + DB + Caddy + port-forwards)
 	@echo "🔄 Recovering NewsBrief environment..."
-	cd ansible && ansible-playbook -i inventory/localhost.yml playbooks/recover.yml
+	@bash scripts/infra-start.sh
 
 status:                           ## Check status of all services
-	cd ansible && ansible-playbook -i inventory/localhost.yml playbooks/status.yml
+	@bash scripts/infra-status.sh
 
 port-forwards:                    ## One-off restart of kubectl port-forwards (prod:8788, dev:8789, ArgoCD:8443)
 	@echo "🔌 Restarting port forwards..."

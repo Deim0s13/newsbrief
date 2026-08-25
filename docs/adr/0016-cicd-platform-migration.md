@@ -7,6 +7,8 @@
 
 > **Housekeeping (August 2026):** the `tekton/` directory (29 manifest files), `k8s/infrastructure/tekton-rbac.yaml`, and the `ansible/roles/tekton/` and `ansible/roles/smee/` roles (Smee's only purpose was relaying GitHub webhooks to Tekton's now-removed EventListener) were deleted — dead code that had sat unused since this ADR's reversal, discovered while tidying the repo root. `ansible/playbooks/recover.yml`/`status.yml`, `Makefile`'s `port-forwards` target, and `scripts/infra-start.sh`/`infra-start.ps1` were updated to drop the corresponding dead port-forwards and status checks. The code excerpts elsewhere in this document remain as the historical record of what was actually built; they no longer correspond to files in the repo.
 
+> **Housekeeping (August 2026, #352):** the entire `ansible/` directory (the `kind`/`argocd`/`podman`/`newsbrief`/`caddy` roles and `recover.yml`/`status.yml` playbooks that survived the Tekton/Smee-role removal above) was removed too. It had drifted from `scripts/infra-start.sh` — different Compose flags, a call to an already-archived kind-registry setup script, a narrower ArgoCD apply scope — making `make recover` broken on a from-scratch environment; the drift was only caught by a code-health audit, not an actual outage. `make recover`/`make status` now call `scripts/infra-start.sh`/`infra-start.ps1` and the new `scripts/infra-status.sh` directly — Ansible is no longer a project dependency. See [docs/development/KUBERNETES.md](../development/KUBERNETES.md) for the current recovery flow.
+
 ## Context
 
 We currently use GitHub Actions for CI/CD. As part of our cloud-native learning journey, we're evaluating whether to migrate to Tekton Pipelines running on our local Kubernetes cluster.
