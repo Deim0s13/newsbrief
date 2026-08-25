@@ -1073,7 +1073,7 @@ All significant architectural decisions are documented as ADRs (Architecture Dec
 | [ADR-0004](adr/0004-incremental-story-updates.md) | Incremental Story Updates | Accepted |
 | [ADR-0005](adr/0005-interest-based-ranking.md) | Interest-Based Ranking | Accepted |
 | [ADR-0006](adr/0006-source-quality-weighting.md) | Source Quality Weighting | Accepted |
-| [ADR-0007](adr/0007-postgresql-database-migration.md) | PostgreSQL Migration | Accepted |
+| [ADR-0007](adr/0007-postgresql-database-migration.md) | PostgreSQL Migration | Superseded |
 | [ADR-0008](adr/0008-apple-containers-deferred.md) | Apple Containers Deferred | Deferred |
 | [ADR-0009](adr/0009-secrets-management-strategy.md) | Secrets Management | Accepted |
 | [ADR-0010](adr/0010-caddy-reverse-proxy.md) | Caddy Reverse Proxy | Accepted |
@@ -1085,8 +1085,8 @@ All significant architectural decisions are documented as ADRs (Architecture Dec
 | [ADR-0016](adr/0016-cicd-platform-migration.md) | CI/CD Platform (Tekton) | Superseded |
 | [ADR-0017](adr/0017-gitops-tooling.md) | GitOps Tooling (ArgoCD) | Accepted |
 | [ADR-0018](adr/0018-secure-supply-chain.md) | Secure Supply Chain | Accepted |
-| [ADR-0019](adr/0019-cicd-pipeline-design.md) | CI/CD Pipeline Design | Accepted |
-| [ADR-0020](adr/0020-kind-local-registry.md) | Kind Local Registry | Accepted |
+| [ADR-0019](adr/0019-cicd-pipeline-design.md) | CI/CD Pipeline Design | Superseded |
+| [ADR-0020](adr/0020-kind-local-registry.md) | Kind Local Registry | Superseded |
 | [ADR-0021](adr/0021-pipeline-notifications.md) | Pipeline Notifications | Accepted |
 | [ADR-0022](adr/0022-dev-prod-database-parity.md) | Dev/Prod Database Parity | Accepted |
 | [ADR-0023](adr/0023-intelligence-platform-strategy.md) | Intelligence Platform Strategy | Accepted |

@@ -21,6 +21,10 @@ spec:
     spec:
       containers:
         - name: newsbrief
+          # Placeholder only — never pulled as-is. Both overlays' kustomization.yaml
+          # `images:` block rewrites this to ghcr.io/deim0s13/newsbrief:<real tag>.
+          # "localhost:5000" is a leftover match-key from the removed local
+          # registry (ADR-0020/ADR-0032) but still works fine as a search target.
           image: localhost:5000/newsbrief:dev-latest
           ports:
             - containerPort: 8787

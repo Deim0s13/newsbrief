@@ -27,7 +27,9 @@ spec:
                 topologyKey: kubernetes.io/hostname
       containers:
         - name: newsbrief
-          # Mutable semver tags on Kind local registry: always resolve the digest Argo just synced.
+          # Prod image tag (v<version>) is updated automatically by ci-prod.yml's
+          # update-manifest job on each release — see kustomization.yaml's images:
+          # block. imagePullPolicy: Always guards against any residual stale pull.
           imagePullPolicy: Always
           resources:
             requests:

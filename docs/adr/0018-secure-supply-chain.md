@@ -3,6 +3,8 @@
 ## Status
 **Accepted** - January 2026
 
+> Note (August 2026): The security decisions here (Trivy scanning, Cosign signing, SBOM generation) remain valid and are implemented today — via GitHub Actions workflow steps in `.github/workflows/ci-prod.yml`, not the Tekton Task YAML shown below (Tekton was later replaced, see ADR-0016/ADR-0032). The Tekton Task excerpts remain as historical record of the original implementation and no longer correspond to files in the repo.
+
 ## Context
 
 Software supply chain security has become critical. High-profile attacks (SolarWinds, Log4Shell, codecov) have shown that attackers target the build and delivery process, not just runtime.

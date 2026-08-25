@@ -3,6 +3,8 @@
 ## Status
 **Accepted** - January 2026
 
+> Note (August 2026): This ADR's decision — a local `kind` cluster for GitOps — remains valid and in active use (see `scripts/infra-start.sh`, ADR-0032). The "run Tekton pipelines" context below is no longer accurate: Tekton was later replaced by GitHub Actions for CI (see ADR-0016), and this cluster now only runs ArgoCD for CD.
+
 ## Context
 
 As part of our GitOps learning journey (v0.7.5), we need a local Kubernetes cluster to run Tekton pipelines and ArgoCD. This cluster should closely mirror production Kubernetes while being lightweight enough for laptop development.

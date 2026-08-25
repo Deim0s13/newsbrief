@@ -1,12 +1,16 @@
 # kind cluster configuration for NewsBrief development
 # Documentation: https://kind.sigs.k8s.io/docs/user/configuration/
-# Registry: https://kind.sigs.k8s.io/docs/user/local-registry/
+#
+# NOTE: there is no local registry — images come from GHCR
+# (ghcr.io/deim0s13/newsbrief), pulled directly by ArgoCD-managed pods (see
+# ADR-0020/ADR-0032). The containerdConfigPatches block below is a harmless
+# leftover from when a local registry was used; nothing currently populates
+# /etc/containerd/certs.d, so it's a no-op.
 
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 name: newsbrief-dev
 
-# Configure containerd to use the local registry
 containerdConfigPatches:
   - |-
     [plugins."io.containerd.grpc.v1.cri".registry]

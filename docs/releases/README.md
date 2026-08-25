@@ -2,11 +2,26 @@
 
 Quick reference for all NewsBrief releases. For detailed release notes, see [GitHub Releases](https://github.com/Deim0s13/newsbrief/releases).
 
+> **Note (August 2026):** entries below are an unedited historical record of what shipped in each release at the time. Several v0.7.x entries mention Tekton (Dashboard/Triggers/pipelines), the kind local registry, Smee, and Ansible recovery automation — all of these were later removed (Tekton/registry: ADR-0016/ADR-0032/#325; Smee: same Tekton removal, its only purpose was relaying webhooks to Tekton; Ansible: #352). Current infrastructure is GitHub Actions (CI) + ArgoCD/GHCR (CD on macOS) + Podman Compose/GHCR polling (CD on Windows) — see [ADR-0032](../adr/0032-cross-platform-cd-strategy.md) and `CLAUDE.md`.
+
 ---
 
 ## v0.8.x - Content Quality
 
-### v0.8.7 - Model Optimisation & Platform Intelligence (Current)
+### v0.8.8 - Backlog & Ops Triage (Current)
+**August 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.8.8)
+
+Ops/reliability triage milestone — no new user-facing features, focused on closing gaps found while stabilizing dev/prod after the v0.8.7 release.
+
+**Highlights:**
+- **Pipeline Tracking for Manual Triggers**: `/refresh` and `/stories/generate` now route through tracked `PipelineStageRun` stages instead of calling `fetch_and_store()`/`generate_stories_simple()` directly, fixing the audit-trail gap and feed-refresh fairness (#327, #344, #348)
+- **oMLX Wired Up in K8s**: Fixed hardcoded `NEWSBRIEF_LLM_MODEL` + missing `OMLX_BASE_URL`/`NEWSBRIEF_DEVICE_TYPE` env vars so macOS-deployed pods actually use the oMLX backend from v0.8.7 (#343)
+- **embed-backfill Reliability**: Truncate oversized embed text and isolate per-item batch failures so one bad item no longer 500s the whole PostSync job (#349)
+- **Config Volume Shadowing Fix**: Persistent data volume no longer shadows shipped `model_config.json`/`interests.json`/`source_weights.json`/`topics.json` on redeploy (#326)
+- **ArgoCD/kind Stability**: Recovered from a control-plane OOM-kill (bumped Podman machine memory), added an ArgoCD-independent drift check script, removed orphaned live-cluster infra (Tekton, ApplicationSet controller, kind-registry) that had survived earlier git-level cleanups (#325)
+- **Self-Healing Port-Forwards**: launchd-supervised `kubectl port-forward` watchdog; tests now guarded against accidentally targeting the prod DB
+
+### v0.8.7 - Model Optimisation & Platform Intelligence
 **August 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.8.7)
 
 Hardware-informed, device-aware model selection so each machine runs the right model automatically — see [ADR-0033](../adr/0033-hardware-informed-model-selection.md).
