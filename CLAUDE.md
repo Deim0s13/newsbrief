@@ -15,6 +15,9 @@ The app runs on **two machines** — a macOS MBP and a Windows machine — both 
 | Ollama | Ollama.app (native) | Ollama.exe (native, GPU) |
 | Ollama URL (containers) | `host.containers.internal:11434` | Same — identical |
 | Infra auto-start | launchd (`make infra-autostart-install`) | Task Scheduler (`scripts\compose-task-install.ps1`) |
+| Compose CLI | `podman-compose` (standalone tool) | `podman compose` (Podman's built-in v2 subcommand) |
+
+Two different Compose CLIs, deliberately (#357): macOS `Makefile` targets (`deploy`, `deploy-db-only`, `infra-start.sh`) use the standalone `podman-compose` because Podman secrets (`db_password`) need it — Podman's built-in `podman compose` doesn't support the `secrets:` block the same way. Windows `.ps1` scripts (`compose-start.ps1`, `compose-watch.ps1`) use the built-in `podman compose` instead and skip secrets entirely (password comes straight from `.env` — see `compose.windows.yaml`). Don't "simplify" this to one tool without re-checking that constraint.
 
 ---
 

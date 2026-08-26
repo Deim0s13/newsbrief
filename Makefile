@@ -359,6 +359,22 @@ migrate-history:                    ## Show migration history
 migrate-current:                    ## Show current migration version
 	DATABASE_URL=$${DATABASE_URL:-$(DEV_DATABASE_URL)} .venv/bin/alembic current
 
+# ---------- Model/RAG Evaluation Harness (#357) ----------
+# Recurring re-evaluation tools referenced from ADR-0025/0026/0033 and #330/#332/#336/#341.
+# Previously only runnable via `python3 scripts/...` remembered from memory/docs; promoted
+# to make targets purely for discoverability -- no changes to the scripts themselves.
+# All default to the dev DB (override with DATABASE_URL=... make ...) since they're
+# read-only and dev-focused; point at prod's DB explicitly if you need real prod data.
+model-fitness:                     ## Run model-fitness harness: make model-fitness ARGS="--backend ollama --model llama3.1:8b"
+	@test -n "$(ARGS)" || (echo "Set ARGS, e.g.: make model-fitness ARGS=\"--backend ollama --model llama3.1:8b\"" && exit 1)
+	DATABASE_URL=$${DATABASE_URL:-$(DEV_DATABASE_URL)} python3 scripts/model_fitness.py $(ARGS)
+
+embedding-benchmark:               ## Run embedding-model benchmark (#330): make embedding-benchmark [ARGS="--sample-size 200"]
+	DATABASE_URL=$${DATABASE_URL:-$(DEV_DATABASE_URL)} python3 scripts/embedding_benchmark.py $(ARGS)
+
+rag-eval:                          ## Run RAG go/no-go evaluation (ADR-0026): make rag-eval [ARGS="--sample-size 50 --json"]
+	DATABASE_URL=$${DATABASE_URL:-$(DEV_DATABASE_URL)} python3 scripts/rag_evaluation.py $(ARGS)
+
 # ---------- Hostname & TLS ----------
 HOSTNAME         ?= newsbrief.local
 PROJECT_PATH     ?= $(PWD)
@@ -674,6 +690,7 @@ env-init:  ## Create .env from template with generated secure password
 	db-backup db-restore db-backup-list \
 	secrets-create secrets-list secrets-delete \
 	migrate migrate-dev migrate-new migrate-stamp migrate-history migrate-current \
+	model-fitness embedding-benchmark rag-eval \
 	hostname-setup hostname-check hostname-remove hostname-trust-cert hostname-regen-certs \
 	infra-start infra-autostart-install infra-autostart-uninstall infra-autostart-status \
 	k8s-omlx-secret k8s-db-secret \
