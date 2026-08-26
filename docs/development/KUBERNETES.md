@@ -112,7 +112,15 @@ Open `https://localhost:8443` (username `admin`; password via `kubectl -n argocd
 | `AppProject` | Allowed repos/namespaces | `k8s/argocd/project.yaml` |
 | `Application` (dev) | Watches `dev` branch → `newsbrief-dev` namespace | `k8s/argocd/app-dev.yaml` |
 | `Application` (prod) | Watches `main` branch → `newsbrief-prod` namespace | `k8s/argocd/app-prod.yaml` |
-| `ApplicationSet` | Alternative to the two `Application` files above (not currently active — both individual apps are used instead; the `argocd-applicationset-controller` Deployment that ships with the ArgoCD `install.yaml` bundle is scaled to 0 replicas since it's unused and was crash-looping) | `k8s/argocd/appset.yaml` |
+
+Each environment gets its own individual `Application` file — an
+`ApplicationSet` alternative was considered but removed (#355), since
+`infra-start.sh` applies `k8s/argocd/` as a raw directory (`kubectl apply -f`,
+not through kustomize), so an ApplicationSet living alongside the individual
+apps would have generated Applications with the same names and fought over
+ownership. Note: the `argocd-applicationset-controller` Deployment that ships
+with the ArgoCD `install.yaml` bundle is scaled to 0 replicas — it's unused
+and was crash-looping.
 
 Auto-sync is enabled; ArgoCD polls Git every **5 minutes** (`timeout.reconciliation: 300s` in `k8s/argocd/argocd-cm.yaml`).
 
@@ -201,7 +209,7 @@ k8s/
 └── argocd/
     ├── kustomization.yaml
     ├── project.yaml
-    ├── app-dev.yaml, app-prod.yaml, appset.yaml
+    ├── app-dev.yaml, app-prod.yaml
     ├── argocd-cm.yaml          # poll interval, UI config
     └── notifications-cm.yaml, notifications-secret.yaml
 ```

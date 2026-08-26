@@ -7,12 +7,13 @@ metadata:
 resources:
   - project.yaml
   - argocd-cm.yaml
-  # Individual apps (can be replaced by appset.yaml)
+  # Individual apps -- one Application per environment. (An ApplicationSet
+  # variant was considered and removed in #355: infra-start.sh applies this
+  # directory with `kubectl apply -f` rather than through kustomize, so an
+  # alternate appset.yaml living alongside these would get applied too and
+  # fight over the same Application names.)
   - app-dev.yaml
   - app-prod.yaml
-  # Advanced: ApplicationSet for multi-environment management
-  # Uncomment to use ApplicationSet instead of individual apps:
-  # - appset.yaml
   # Notifications
   - notifications-cm.yaml
   - notifications-secret.yaml
