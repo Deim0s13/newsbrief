@@ -32,6 +32,14 @@ spec:
           envFrom:
             - configMapRef:
                 name: newsbrief-config
+            # DATABASE_URL (#357). Intentionally NOT a kustomize resource /
+            # not tracked by ArgoCD, same reasoning as OMLX_API_KEY below --
+            # created out-of-band per namespace via `make k8s-db-secret`
+            # (never committed to git). Required (no `optional: true`): if
+            # this Secret is missing, pods should fail to start rather than
+            # silently run without a DB.
+            - secretRef:
+                name: newsbrief-db-credentials
           env:
             # oMLX API key (#343, macOS-only backend, ADR-0033). Intentionally
             # NOT a kustomize resource / not tracked by ArgoCD -- the

@@ -479,6 +479,25 @@ k8s-omlx-secret:                  ## Create/update the oMLX API key Secret in ne
 				-n $$ns --dry-run=client -o yaml | kubectl apply -f -; \
 		done && echo "✅ newsbrief-omlx secret created/updated in both namespaces"'
 
+k8s-db-secret:                    ## Create/update the DB credentials Secret in newsbrief-dev + newsbrief-prod (#357)
+	@test -f .env || { echo "❌ .env not found — run: make env-init"; exit 1; }
+	@echo "Creating/updating newsbrief-db-credentials Secret in newsbrief-dev + newsbrief-prod..."
+	@echo "Not tracked by ArgoCD/kustomize by design -- created out-of-band, same as newsbrief-omlx."
+	@PASSWORD="$$(grep '^POSTGRES_PASSWORD=' .env | cut -d= -f2-)"; \
+	test -n "$$PASSWORD" || { echo "❌ POSTGRES_PASSWORD not set in .env"; exit 1; }; \
+	kubectl create namespace newsbrief-dev --dry-run=client -o yaml | kubectl apply -f - >/dev/null; \
+	kubectl create namespace newsbrief-prod --dry-run=client -o yaml | kubectl apply -f - >/dev/null; \
+	kubectl create secret generic newsbrief-db-credentials -n newsbrief-dev \
+		--from-literal=DATABASE_URL="postgresql://newsbrief:$${PASSWORD}@host.containers.internal:5433/newsbrief" \
+		--dry-run=client -o yaml | kubectl apply -f -; \
+	kubectl create secret generic newsbrief-db-credentials -n newsbrief-prod \
+		--from-literal=DATABASE_URL="postgresql://newsbrief:$${PASSWORD}@host.containers.internal:5432/newsbrief" \
+		--dry-run=client -o yaml | kubectl apply -f -
+	@echo "✅ newsbrief-db-credentials Secret created/updated in both namespaces"
+	@echo "   Existing pods need a restart to pick up a changed value:"
+	@echo "   kubectl rollout restart deployment/newsbrief -n newsbrief-dev"
+	@echo "   kubectl rollout restart deployment/newsbrief -n newsbrief-prod"
+
 # ---------- Kubernetes Operations (recover/status) ----------
 recover:                          ## Recover all services after reboot/sleep (Podman machine + kind + ArgoCD + DB + Caddy + port-forwards)
 	@echo "🔄 Recovering NewsBrief environment..."
@@ -657,7 +676,7 @@ env-init:  ## Create .env from template with generated secure password
 	migrate migrate-dev migrate-new migrate-stamp migrate-history migrate-current \
 	hostname-setup hostname-check hostname-remove hostname-trust-cert hostname-regen-certs \
 	infra-start infra-autostart-install infra-autostart-uninstall infra-autostart-status \
-	k8s-omlx-secret \
+	k8s-omlx-secret k8s-db-secret \
 	recover status port-forwards argo-ui \
 	port-forwards-autostart-install port-forwards-autostart-uninstall port-forwards-autostart-status \
 	k8s-version-check k8s-version-check-autostart-install k8s-version-check-autostart-uninstall k8s-version-check-autostart-status \

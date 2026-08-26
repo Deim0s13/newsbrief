@@ -78,9 +78,10 @@ make k8s-version-check-autostart-install  # periodic Git-vs-running-image drift 
 4. **Installs ArgoCD itself** (namespace + upstream `install.yaml`) if the `argocd` namespace doesn't exist yet — only hit on a genuinely brand-new cluster, since recreated-but-previously-seen clusters already have it
 5. Waits for the ArgoCD `argocd-server` Deployment to become available
 6. **Re-applies `k8s/argocd/` Application CRs if missing** — cluster recreation wipes ArgoCD's own state, so this makes the script safe to re-run after a full cluster rebuild
-7. Triggers an async sync for both `newsbrief-dev` and `newsbrief-prod` Applications
-8. Re-establishes `kubectl port-forward`s for the prod app, dev app, and ArgoCD UI
-9. Best-effort starts the Caddy reverse proxy (`newsbrief-proxy`, using the checked-in `Caddyfile`) so `https://newsbrief.local` keeps working — optional, not required for the `localhost:8788`/`:8789` access paths above
+7. **Ensures the `newsbrief-db-credentials` Secret exists in both namespaces** (#357) — reads `POSTGRES_PASSWORD` from `.env`, same source of truth as the Podman `db_password` secret. Unlike the optional oMLX key, this one is required: a missing Secret means pods can't start at all, so it runs before the sync below, not after. See [Secrets](#secrets) below.
+8. Triggers an async sync for both `newsbrief-dev` and `newsbrief-prod` Applications
+9. Re-establishes `kubectl port-forward`s for the prod app, dev app, and ArgoCD UI
+10. Best-effort starts the Caddy reverse proxy (`newsbrief-proxy`, using the checked-in `Caddyfile`) so `https://newsbrief.local` keeps working — optional, not required for the `localhost:8788`/`:8789` access paths above
 
 ### `make recover` / `make status`
 
@@ -128,6 +129,24 @@ Auto-sync is enabled; ArgoCD polls Git every **5 minutes** (`timeout.reconciliat
 kubectl get applications -n argocd
 kubectl describe application newsbrief-prod -n argocd
 argocd app sync newsbrief-prod   # force an out-of-cycle sync
+```
+
+## Secrets
+
+Two Secrets are created **out-of-band**, per namespace, and deliberately not tracked by kustomize/ArgoCD — if they were git-tracked, ArgoCD's `selfHeal` would revert any real value back to a placeholder (or delete it) on every reconcile.
+
+| Secret | Key | Purpose | Created by |
+|--------|-----|---------|------------|
+| `newsbrief-db-credentials` | `DATABASE_URL` | Full Postgres connection string (moved out of the git-tracked `newsbrief-config` ConfigMap — #357, the repo is public) | `make k8s-db-secret`, also ensured on every `make infra-start`/`make recover` run (step 7 above) |
+| `newsbrief-omlx` | `api-key` | oMLX API key (#343, macOS-only backend, ADR-0033) | `make k8s-omlx-secret` (manual only — not wired into `infra-start.sh`, since it's `optional: true` in the Deployment) |
+
+`newsbrief-db-credentials` reads `POSTGRES_PASSWORD` from `.env` (the same source of truth as the Podman `db_password` secret used by `make deploy`) and reconstructs the per-namespace connection string (dev: `host.containers.internal:5433`, prod: `:5432` — see `compose.dev.yaml`/`compose.prod.yaml`). It's required, not optional: a missing Secret means the API/migrate/embed-backfill pods fail to start (`CreateContainerConfigError`) rather than silently running without a DB.
+
+```bash
+make k8s-db-secret     # create/update in both namespaces
+# After a password change, existing pods need a restart to pick it up:
+kubectl rollout restart deployment/newsbrief -n newsbrief-dev
+kubectl rollout restart deployment/newsbrief -n newsbrief-prod
 ```
 
 ### Known issue: ArgoCD sync status unreliable ([#325](https://github.com/Deim0s13/newsbrief/issues/325))

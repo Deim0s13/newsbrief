@@ -34,6 +34,9 @@ spec:
           envFrom:
             - configMapRef:
                 name: newsbrief-config
+            # DATABASE_URL Secret -- see k8s/base/deployment.yaml comment (#357)
+            - secretRef:
+                name: newsbrief-db-credentials
           resources:
             requests:
               memory: "128Mi"

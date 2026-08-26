@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Idempotent startup script: ensure the Podman machine + DB are up, start the
-# kind cluster, confirm ArgoCD is ready, trigger ArgoCD sync, re-establish
-# kubectl port-forwards, and best-effort start Caddy.
+# kind cluster, confirm ArgoCD is ready, ensure the DB credentials Secret
+# exists, trigger ArgoCD sync, re-establish kubectl port-forwards, and
+# best-effort start Caddy.
 # Called by launchd (macOS) on login, manually via `make infra-start`, or via
 # `make recover` (same script — see docs/development/KUBERNETES.md).
 set -euo pipefail
@@ -107,7 +108,32 @@ else
     log "ArgoCD Applications already registered"
 fi
 
-# 8. Trigger sync for both apps (async — auto-sync will also pick these up)
+# 8. Ensure the DB credentials Secret exists in both namespaces (#357).
+# DATABASE_URL moved out of the git-tracked ConfigMap into this Secret,
+# created out-of-band the same way as newsbrief-omlx (`make k8s-db-secret`).
+# Re-run here on every recovery too — a fresh `kind create cluster` wipes it,
+# and unlike the optional oMLX key, a missing DATABASE_URL means pods can't
+# start at all, so this needs to happen before the sync below, not after.
+if [ -f "${PROJECT_ROOT}/.env" ]; then
+    kubectl create namespace newsbrief-dev --dry-run=client -o yaml | kubectl apply -f - >/dev/null 2>&1
+    kubectl create namespace newsbrief-prod --dry-run=client -o yaml | kubectl apply -f - >/dev/null 2>&1
+    DB_PASSWORD="$(grep '^POSTGRES_PASSWORD=' "${PROJECT_ROOT}/.env" | cut -d= -f2-)"
+    if [ -n "${DB_PASSWORD}" ]; then
+        kubectl create secret generic newsbrief-db-credentials -n newsbrief-dev \
+            --from-literal=DATABASE_URL="postgresql://newsbrief:${DB_PASSWORD}@host.containers.internal:5433/newsbrief" \
+            --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+        kubectl create secret generic newsbrief-db-credentials -n newsbrief-prod \
+            --from-literal=DATABASE_URL="postgresql://newsbrief:${DB_PASSWORD}@host.containers.internal:5432/newsbrief" \
+            --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+        log "newsbrief-db-credentials Secret ensured in both namespaces"
+    else
+        log "Warning: POSTGRES_PASSWORD not set in .env — DB Secret not created"
+    fi
+else
+    log "Warning: .env not found — DB Secret not created (run: make env-init)"
+fi
+
+# 9. Trigger sync for both apps (async — auto-sync will also pick these up)
 argocd app sync newsbrief-dev --async 2>/dev/null \
     && log "Triggered sync: newsbrief-dev" \
     || log "Warning: could not trigger newsbrief-dev sync (ArgoCD CLI not logged in?)"
@@ -116,7 +142,7 @@ argocd app sync newsbrief-prod --async 2>/dev/null \
     && log "Triggered sync: newsbrief-prod" \
     || log "Warning: could not trigger newsbrief-prod sync"
 
-# 9. Re-establish port-forwards (kill any stale ones first)
+# 10. Re-establish port-forwards (kill any stale ones first)
 pkill -f "kubectl port-forward" 2>/dev/null || true
 sleep 1
 
@@ -132,7 +158,7 @@ log "  Prod app:     http://localhost:8788"
 log "  Dev app:      http://localhost:8789"
 log "  ArgoCD UI:    https://localhost:8443"
 
-# 10. Ensure the Caddy reverse proxy (newsbrief.local) is running. Optional —
+# 11. Ensure the Caddy reverse proxy (newsbrief.local) is running. Optional —
 # localhost:8788/8789 above are the primary access paths — but `make recover`
 # has historically also brought this back up, so keep it working. Uses the
 # checked-in Caddyfile as-is (ADR-0010/0012); best-effort, non-fatal.
