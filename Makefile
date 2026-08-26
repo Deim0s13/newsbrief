@@ -362,7 +362,6 @@ migrate-current:                    ## Show current migration version
 # ---------- Hostname & TLS ----------
 HOSTNAME         ?= newsbrief.local
 PROJECT_PATH     ?= $(PWD)
-PODMAN_COMPOSE   ?= $(shell which podman-compose 2>/dev/null || echo podman-compose)
 
 hostname-setup:                   ## Add newsbrief.local to /etc/hosts (requires sudo)
 	@if grep -q "$(HOSTNAME)" /etc/hosts; then \
@@ -424,50 +423,13 @@ hostname-regen-certs:             ## Fix ERR_CERT_DATE_INVALID: regenerate Caddy
 		caddy:2-alpine
 	@echo "✅ Caddy restarted. Next: make hostname-trust-cert"
 
-# ---------- Autostart (app — macOS launchd only) ----------
-PLIST_NAME       := com.newsbrief.plist
-PLIST_DEST       := $(HOME)/Library/LaunchAgents/$(PLIST_NAME)
-
-autostart-install:                ## Install launchd plist for app auto-start on login (macOS only)
-ifeq ($(UNAME_S),Darwin)
-	@mkdir -p "$(PROJECT_PATH)/logs"
-	@mkdir -p "$$(dirname $(PLIST_DEST))"
-	@sed -e 's|__PROJECT_PATH__|$(PROJECT_PATH)|g' \
-	     -e 's|__PODMAN_COMPOSE_PATH__|$(PODMAN_COMPOSE)|g' \
-	     scripts/com.newsbrief.plist.template > $(PLIST_DEST)
-	@launchctl load $(PLIST_DEST)
-	@echo "✅ Autostart installed and enabled"
-else
-	@echo "autostart-install is macOS only. On Windows use Podman Desktop auto-start + Task Scheduler."
-endif
-
-autostart-uninstall:              ## Remove launchd plist (macOS only)
-ifeq ($(UNAME_S),Darwin)
-	@if [ -f "$(PLIST_DEST)" ]; then \
-		launchctl unload $(PLIST_DEST) 2>/dev/null || true; \
-		rm -f $(PLIST_DEST); \
-		echo "✅ Autostart disabled and removed"; \
-	else \
-		echo "Autostart not installed"; \
-	fi
-else
-	@echo "autostart-uninstall is macOS only."
-endif
-
-autostart-status:                 ## Check autostart status (macOS only)
-ifeq ($(UNAME_S),Darwin)
-	@if [ -f "$(PLIST_DEST)" ]; then \
-		echo "✅ Autostart is installed"; \
-		launchctl list | grep com.newsbrief || echo "   (not currently loaded)"; \
-	else \
-		echo "❌ Autostart not installed"; \
-		echo "   Run: make autostart-install"; \
-	fi
-else
-	@echo "autostart-status is macOS only."
-endif
-
 # ---------- Infrastructure Auto-Start ----------
+# Note (#356): a standalone-Compose-stack launchd autostart (app + Caddy + db,
+# scripts/com.newsbrief.plist.template) used to live here. Removed -- it
+# auto-started a full duplicate Compose app on macOS login, competing with
+# the K8s Deployment that's the real prod (see #325). `infra-autostart-install`
+# below is the correct macOS autostart path -- it starts kind + ArgoCD, which
+# manage that same K8s Deployment, not a separate app instance.
 infra-start:                      ## Manually start k8s infra (kind + ArgoCD + port-forwards)
 	@bash scripts/infra-start.sh
 
@@ -481,8 +443,8 @@ ifeq ($(UNAME_S),Darwin)
 	@echo "✅ Infra auto-start installed (macOS launchd)"
 	@echo "   The kind cluster + ArgoCD will start automatically on login"
 else
-	@echo "On Windows: run scripts/infra-task-install.ps1 in PowerShell to register the Task Scheduler task"
-	@echo "  powershell.exe -ExecutionPolicy Bypass -File scripts/infra-task-install.ps1"
+	@echo "infra-autostart-install is macOS only (kind + ArgoCD)."
+	@echo "On Windows, prod CD is Compose-based instead (ADR-0032) -- run: make compose-autostart-install"
 endif
 
 infra-autostart-uninstall:        ## Remove infra auto-start
@@ -491,7 +453,7 @@ ifeq ($(UNAME_S),Darwin)
 	@rm -f "$(HOME)/Library/LaunchAgents/com.newsbrief.infra.plist"
 	@echo "✅ Infra auto-start removed"
 else
-	@echo "On Windows: open Task Scheduler and delete the 'NewsBrief Infrastructure' task"
+	@echo "infra-autostart-uninstall is macOS only. On Windows, see: make compose-autostart-install"
 endif
 
 infra-autostart-status:           ## Check infra auto-start status
@@ -504,7 +466,7 @@ ifeq ($(UNAME_S),Darwin)
 		echo "   Run: make infra-autostart-install"; \
 	fi
 else
-	@echo "On Windows: check Task Scheduler for 'NewsBrief Infrastructure' task"
+	@echo "infra-autostart-status is macOS only. On Windows, check Task Scheduler for 'NewsBrief Compose Start'/'NewsBrief Compose Watch'."
 endif
 
 # ---------- Kubernetes Secrets ----------
@@ -694,7 +656,6 @@ env-init:  ## Create .env from template with generated secure password
 	secrets-create secrets-list secrets-delete \
 	migrate migrate-dev migrate-new migrate-stamp migrate-history migrate-current \
 	hostname-setup hostname-check hostname-remove hostname-trust-cert hostname-regen-certs \
-	autostart-install autostart-uninstall autostart-status \
 	infra-start infra-autostart-install infra-autostart-uninstall infra-autostart-status \
 	k8s-omlx-secret \
 	recover status port-forwards argo-ui \

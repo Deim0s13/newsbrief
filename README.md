@@ -345,7 +345,7 @@ newsbrief/
 │   └── ci-prod.yml        # main branch: same + Trivy + Cosign + SBOM + release
 ├── k8s/                   # Kubernetes manifests (Kustomize overlays for dev/prod)
 ├── launchd/               # macOS LaunchAgent plist for infra auto-start
-├── scripts/               # infra-start.sh, infra-start.ps1, infra-task-install.ps1
+├── scripts/               # infra-start.sh/infra-status.sh (macOS), compose-*.ps1 (Windows)
 ├── data/                  # model_config.json, settings.json, interests.json
 ├── compose.yaml           # Production stack (API + PostgreSQL + Caddy)
 ├── Caddyfile              # Reverse proxy configuration
