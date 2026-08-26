@@ -45,6 +45,10 @@ Testing documentation with outdated results:
 - `TECHNICAL_DEBT_v0.6.0.md` - Historical debt tracking
 - `HOUSEKEEPING_*.md` - Historical cleanup notes
 - `MIGRATION_v0.5.0.md` - v0.5.0 migration guide
+- `ci-cd.yml.disabled` - Tekton-era CI/CD workflow, superseded by GitHub Actions (ADR-0016)
+- `gitops-deploy.yml.disabled` - Tekton-era GitOps deploy workflow, superseded by ArgoCD (ADR-0017)
+- `project-automation.yml.disabled` - GitHub Project Board sync workflow, disabled since no Project was ever configured for it (Archived Aug 2026, #354)
+- `dependencies.yml.disabled` - Automated dependency-update workflow (pip-compile/pip-audit), abandoned with stale v4/v5 action pins (Archived Aug 2026, #354)
 
 ---
 

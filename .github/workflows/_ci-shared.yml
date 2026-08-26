@@ -1,0 +1,76 @@
+name: CI Shared (Lint + Test)
+
+# Reusable workflow called by ci-dev.yml and ci-prod.yml (`uses:`) -- the two
+# previously had ~80 near-identical lines here that had to be edited twice on
+# any lint/test change. No inputs/secrets needed: neither job uses anything
+# beyond the default GITHUB_TOKEN implicitly granted by the caller's
+# `permissions:` block.
+on:
+  workflow_call:
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install formatting tools
+        run: pip install black==24.10.0 isort
+
+      - name: black
+        run: black --check --diff app/ tests/
+
+      - name: isort
+        run: isort --check-only --diff --profile=black app/ tests/
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: newsbrief
+          POSTGRES_PASSWORD: newsbrief
+          POSTGRES_DB: newsbrief_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      CI: "true"
+      DATABASE_URL: postgresql://newsbrief:newsbrief@localhost:5432/newsbrief_test
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run migrations
+        run: alembic upgrade head
+
+      - name: pytest
+        run: pytest tests/ --cov=app --cov-report=term -v --tb=short -m "not requires_ollama"
+
+      # Intentionally non-blocking: pre-existing type-hint debt across the
+      # codebase (see docs/development/CODE-REVIEW-2026-08.md), not yet worth
+      # gating merges on. Tighten once that debt is paid down -- don't "fix"
+      # this by accident in a lint-tidying pass.
+      - name: mypy
+        run: mypy app/ --ignore-missing-imports
+        continue-on-error: true
