@@ -15,26 +15,22 @@ import os
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import text
 
 if not os.environ.get("DATABASE_URL"):
     pytest.skip("PostgreSQL required (set DATABASE_URL)", allow_module_level=True)
 
 from app.retention import get_retention_counts, run_retention
 from app.stories import Story
-from tests.pg_testutil import create_test_story, pg_session_truncate_story_graph
+from tests.pg_testutil import (
+    create_test_story,
+    pg_session_truncate_story_graph,
+    seed_default_feed,
+)
 
 
 def setup_test_db():
     session = pg_session_truncate_story_graph()
-    session.execute(
-        text(
-            """
-            INSERT INTO feeds (id, url, name, disabled, health_score)
-            VALUES (1, 'http://example.com/feed', 'Test Feed', 0, 100.0)
-            """
-        )
-    )
+    seed_default_feed(session)
     session.commit()
     return session
 

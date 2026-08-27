@@ -28,6 +28,7 @@ from tests.pg_testutil import (
     create_test_story,
     link_test_articles_to_story,
     pg_session_truncate_story_graph,
+    seed_default_feed,
 )
 
 
@@ -42,14 +43,7 @@ def disable_embedding_for_incremental_tests(
 def setup_test_db():
     """Reset story-related tables, seed feed and ten articles (ids 1–10)."""
     session = pg_session_truncate_story_graph()
-    session.execute(
-        text(
-            """
-            INSERT INTO feeds (id, url, name, disabled, health_score)
-            VALUES (1, 'http://test.com', 'Test Feed', 0, 100.0)
-            """
-        )
-    )
+    seed_default_feed(session, url="http://test.com")
     for i in range(1, 11):
         session.execute(
             text(

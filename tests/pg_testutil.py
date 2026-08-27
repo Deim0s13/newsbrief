@@ -96,6 +96,58 @@ def link_test_articles_to_story(
     session.commit()
 
 
+def _vec(seed: float, dims: int = 768) -> List[float]:
+    """Deterministic vector; small seed deltas => near-1.0 cosine similarity.
+
+    Was copy-pasted byte-for-byte across 6 test files (#359) -- shared here
+    so the RAG-integration test cluster (semantic dedup, retrieval, light
+    RAG, retrieval tracing, context retrieval, historical linking) has one
+    definition instead of six.
+    """
+    return [seed + 0.0001 * i for i in range(dims)]
+
+
+def seed_default_feed(
+    session: Session,
+    feed_id: int = 1,
+    url: str = "http://example.com/feed",
+    name: str = "Test Feed",
+    disabled: int = 0,
+    health_score: float = 100.0,
+) -> None:
+    """Insert a single minimal feed row for test setup.
+
+    Extracted from the near-identical inline SQL repeated in
+    ``_seed_feed()`` (see below) and several ``setup_test_db()`` fixtures
+    (#359). Parameterized rather than hardcoded so callers that need a
+    different id/url (e.g. a distinct feed per test) aren't forced into
+    the same literal values.
+    """
+    session.execute(
+        text(
+            "INSERT INTO feeds (id, url, name, disabled, health_score) "
+            "VALUES (:id, :url, :name, :disabled, :health_score)"
+        ),
+        {
+            "id": feed_id,
+            "url": url,
+            "name": name,
+            "disabled": disabled,
+            "health_score": health_score,
+        },
+    )
+
+
+def _seed_feed(session: Session) -> None:
+    """Insert the RAG-cluster's conventional default feed (id=1).
+
+    Was copy-pasted byte-for-byte across 5 test files (#359) -- now a thin
+    wrapper over ``seed_default_feed()`` so RAG-cluster call sites don't
+    need to change their existing ``_seed_feed(session)`` call shape.
+    """
+    seed_default_feed(session)
+
+
 def resync_sequences(
     session: Session,
     tables: Iterable[str] = (

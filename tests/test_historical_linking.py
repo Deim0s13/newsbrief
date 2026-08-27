@@ -14,12 +14,7 @@ from datetime import UTC, datetime, timedelta
 
 from app.historical_linking import maybe_link_historical_context
 from app.orm_models import Story
-from tests.pg_testutil import pg_session_truncate_story_graph
-
-
-def _vec(seed: float, dims: int = 768) -> list[float]:
-    """Deterministic vector; small seed deltas => near-1.0 cosine similarity."""
-    return [seed + 0.0001 * i for i in range(dims)]
+from tests.pg_testutil import _vec, pg_session_truncate_story_graph
 
 
 class TestMaybeLinkHistoricalContext:
