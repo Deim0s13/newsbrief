@@ -48,17 +48,39 @@ def pytest_configure(config: pytest.Config) -> None:
 @pytest.fixture(autouse=True)
 def dispose_db_connections_after_test():
     """
-    Close all SQLAlchemy sessions and pool connections after each test.
+    Resync serial-id sequences, then close all SQLAlchemy sessions/pool
+    connections, after each test.
 
-    Without this, sessions left open by tests hold idle PostgreSQL transactions.
-    Subsequent tests calling TRUNCATE block on those locks for the full
-    per-test timeout (120s) before the GC eventually closes the session.
+    Sequence resync (#358): many integration tests insert rows with explicit
+    hardcoded primary keys (id=1, id=999, ...) after a TRUNCATE ... RESTART
+    IDENTITY, which doesn't advance the sequence. A later test elsewhere in
+    the suite doing a normal implicit-id insert then collides with those
+    leftover rows (IntegrityError: duplicate key value violates unique
+    constraint "items_pkey"). Running this after *every* test (rather than
+    requiring each affected test file to opt in individually) closes the gap
+    for the whole suite, not just the files already known to hit it. See
+    tests.pg_testutil.resync_sequences for the mechanism.
+
+    Connection cleanup: without this, sessions left open by tests hold idle
+    PostgreSQL transactions. Subsequent tests calling TRUNCATE block on those
+    locks for the full per-test timeout (120s) before the GC eventually
+    closes the session.
 
     engine.dispose() alone is not enough — it only closes idle pool connections.
     Sessions still hold checked-out connections until explicitly closed.
     close_all_sessions() returns those connections to the pool first.
     """
     yield
+    if os.environ.get("DATABASE_URL"):
+        try:
+            from app.db import SessionLocal, init_db
+            from tests.pg_testutil import resync_sequences
+
+            init_db()
+            with SessionLocal() as session:
+                resync_sequences(session)
+        except Exception:
+            pass
     try:
         from sqlalchemy.orm import close_all_sessions
 

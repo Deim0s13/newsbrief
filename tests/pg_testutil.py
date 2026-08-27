@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import List, Optional
+from typing import Iterable, List, Optional
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -93,6 +93,44 @@ def link_test_articles_to_story(
         story.article_count = len(article_ids)  # type: ignore[assignment]
         story.last_updated = datetime.now(UTC)  # type: ignore[assignment]
 
+    session.commit()
+
+
+def resync_sequences(
+    session: Session,
+    tables: Iterable[str] = (
+        "feeds",
+        "items",
+        "stories",
+        "story_articles",
+        "retrieval_traces",
+        "synthesis_cache",
+    ),
+) -> None:
+    """Advance each table's serial ``id`` sequence past its current max value.
+
+    Guards against ``IntegrityError: duplicate key value violates unique
+    constraint "<table>_pkey"`` (#358): many integration tests insert rows
+    with explicit hardcoded primary keys (``id=1``, ``id=999``, ...) after a
+    ``TRUNCATE ... RESTART IDENTITY``. Explicit-value inserts don't advance a
+    PostgreSQL serial sequence, so it stays parked at 1 while low-numbered
+    rows now exist -- any later insert via ``DEFAULT``/an omitted id column
+    (a normal ORM insert) then collides with those ids.
+
+    Called automatically after every test (see conftest.py's
+    ``dispose_db_connections_after_test``), not just from the truncate
+    helpers below -- calling it right after a ``TRUNCATE`` is a no-op (the
+    table is empty at that point); the actual danger window is *between*
+    tests, once one test's explicit-id seed data exists and a later test
+    inserts via a normal ORM/implicit-id path.
+    """
+    for table in tables:
+        session.execute(
+            text(
+                f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), "
+                f"COALESCE((SELECT MAX(id) FROM {table}), 1))"
+            )
+        )
     session.commit()
 
 
