@@ -392,7 +392,3 @@ class TestCacheDisabled:
         # Even if there was an entry, should return None
         cached = get_cached_synthesis(session, [1, 2], "test")
         assert cached is None
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])

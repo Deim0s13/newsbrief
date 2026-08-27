@@ -65,7 +65,7 @@ jobs:
         run: alembic upgrade head
 
       - name: pytest
-        run: pytest tests/ --cov=app --cov-report=term -v --tb=short -m "not requires_ollama"
+        run: pytest tests/ --cov=app --cov-report=term -v --tb=short -m "not requires_llm_backend"
 
       # Intentionally non-blocking: pre-existing type-hint debt across the
       # codebase (see docs/development/CODE-REVIEW-2026-08.md), not yet worth

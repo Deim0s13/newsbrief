@@ -9,8 +9,6 @@ Part of Issue #271: Import and auto-refresh MBFC source credibility data
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from app.credibility_import import (
     ImportStats,
     fetch_mbfc_data,
@@ -263,11 +261,3 @@ class TestImportMbfcSources:
 
         assert stats.total_records == 3
         assert stats.skipped >= 2  # At least the invalid ones
-
-
-# -----------------------------------------------------------------------------
-# Run with pytest
-# -----------------------------------------------------------------------------
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])

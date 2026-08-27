@@ -489,7 +489,3 @@ class TestVersionChain:
         assert story_v1_refreshed.version == 1
         assert story_v1_refreshed.previous_version_id is None
         assert story_v1_refreshed.status == "superseded"
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])

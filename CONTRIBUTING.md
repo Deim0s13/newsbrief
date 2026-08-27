@@ -109,18 +109,18 @@ pytest tests/ --cov=app --cov-report=term
 pytest tests/test_stories.py -v
 
 # Skip LLM-dependent tests (what CI runs)
-pytest tests/ -v -m "not requires_ollama"
+pytest tests/ -v -m "not requires_llm_backend"
 ```
 
 Non-LLM tests require a dev PostgreSQL database at `localhost:5433` (`make db-up`); DB-dependent tests skip automatically if `DATABASE_URL` isn't set.
 
 ### Test Categories
 
-| Category | Requires Ollama | Description |
-|----------|-----------------|-------------|
+| Category | Requires LLM backend | Description |
+|----------|-----------------------|-------------|
 | Unit / mocked | No | Core logic, utilities — always safe |
 | Integration tests | No | Real PostgreSQL (`DATABASE_URL`); skip automatically without it |
-| LLM tests (`@pytest.mark.requires_ollama`) | Yes | Story generation, synthesis; excluded from CI |
+| LLM tests (`@pytest.mark.requires_llm_backend`) | Yes (Ollama or oMLX) | Story generation, synthesis; excluded from CI |
 
 Coverage threshold in CI is 34% (`pytest tests/ --cov=app --cov-report=term`).
 

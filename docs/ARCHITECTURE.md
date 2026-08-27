@@ -137,7 +137,7 @@ NewsBrief is a **self-hosted, privacy-focused** application designed to:
 
 | ID | Requirement | Target | Status |
 |----|-------------|--------|--------|
-| **NFR-M01** | Test coverage | > 40% | ✅ Met (41%) |
+| **NFR-M01** | Test coverage | > 45% (enforced floor, `pyproject.toml`) | ✅ Met (51%, Aug 2026) |
 | **NFR-M02** | Type safety | mypy clean | ✅ Met |
 | **NFR-M03** | Documentation | ADRs for major decisions | ✅ Met |
 | **NFR-M04** | CI/CD automation | Automated testing & deployment | ✅ Met |

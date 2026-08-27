@@ -151,7 +151,7 @@ def _check_llm_available() -> bool:
         return False
 
 
-@pytest.mark.requires_ollama
+@pytest.mark.requires_llm_backend
 def test_story_generation():
     """Test the full story generation pipeline."""
     # Skip if the configured LLM backend (Ollama or oMLX) is not available
@@ -262,15 +262,3 @@ def test_story_generation():
             session.rollback()
         finally:
             session.close()
-
-
-def main():
-    """Run all tests and report results."""
-    test_story_generation()
-    print("\n" + "=" * 60)
-    print("✅ All tests passed!")
-    return 0
-
-
-if __name__ == "__main__":
-    exit(main())

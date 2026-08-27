@@ -6,7 +6,7 @@ Tests the complete synthesis pipeline with actual AI generation.
 NOTE: These tests require a live LLM backend -- Ollama or oMLX, whichever
 `device_profiles.<platform>.backend` resolves to (ADR-0033) -- with its
 active model available.
-Run manually with: pytest tests/test_story_generation_with_llm.py -m requires_ollama -v
+Run manually with: pytest tests/test_story_generation_with_llm.py -m requires_llm_backend -v
 
 Uses PostgreSQL via DATABASE_URL (ADR 0022).
 """
@@ -22,7 +22,7 @@ from app.llm import get_llm_service
 from app.settings import get_settings_service
 from app.stories import _generate_story_synthesis, generate_stories_simple
 
-pytestmark = pytest.mark.requires_ollama
+pytestmark = pytest.mark.requires_llm_backend
 
 
 def _active_model() -> str:
@@ -326,48 +326,3 @@ def test_full_pipeline_with_llm():
             session.rollback()
         finally:
             session.close()
-
-
-def main():
-    """Run all manual tests."""
-    print("=" * 70)
-    print("🧪 Manual Story Generation Test with a Real LLM Backend")
-    print("=" * 70)
-
-    # Check LLM backend availability
-    if not test_llm_availability():
-        print("\n❌ Cannot proceed without a live LLM backend")
-        print("\n💡 To fix (Ollama):")
-        print("   1. Start Ollama: ollama serve")
-        print("   2. Pull the active model: ollama pull <model>")
-        print("   3. Run this test again")
-        print("\n💡 To fix (oMLX, macOS):")
-        print("   1. Start oMLX: omlx start")
-        print("   2. Ensure the active model is loaded/served")
-        print("   3. Run this test again")
-        return 1
-
-    # Test synthesis
-    success1, msg1 = test_synthesis_with_llm()
-
-    # Test full pipeline
-    success2, msg2 = test_full_pipeline_with_llm()
-
-    # Summary
-    print("\n" + "=" * 70)
-    print("📊 Test Summary")
-    print("=" * 70)
-    print(f"LLM Synthesis Test: {'✅ PASS' if success1 else '❌ FAIL'} - {msg1}")
-    print(f"Full Pipeline Test: {'✅ PASS' if success2 else '❌ FAIL'} - {msg2}")
-
-    if success1 and success2:
-        print("\n✅ All manual tests passed!")
-        print("\n🎉 Story generation with LLM is working correctly!")
-        return 0
-    else:
-        print("\n❌ Some tests failed")
-        return 1
-
-
-if __name__ == "__main__":
-    exit(main())

@@ -304,10 +304,10 @@ make env-init
 ### **Tests**
 
 ```bash
-pytest tests/ -v                              # All non-LLM tests (requires dev DB)
-pytest tests/ -v -m "not requires_ollama"     # Same — explicit (what CI runs)
-pytest tests/ -v -m "requires_ollama"         # LLM tests (requires Ollama running)
-pytest tests/ --cov=app --cov-report=term     # With coverage
+pytest tests/ -v                                    # All non-LLM tests (requires dev DB)
+pytest tests/ -v -m "not requires_llm_backend"      # Same — explicit (what CI runs)
+pytest tests/ -v -m "requires_llm_backend"          # LLM tests (requires Ollama/oMLX running)
+pytest tests/ --cov=app --cov-report=term           # With coverage
 ```
 
 Tests use a real PostgreSQL instance — start one with `make db-up` and set:

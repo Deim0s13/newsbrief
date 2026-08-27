@@ -48,17 +48,17 @@ On macOS, it starts a `pgvector/pg16` container via Podman.
 ### Tests
 ```bash
 pytest tests/ -v                                    # All non-LLM tests (requires dev DB at localhost:5433)
-pytest tests/ -v -m "not requires_ollama"           # Same — explicit (what CI runs)
-pytest tests/ -v -m "requires_ollama"               # LLM tests only (requires Ollama running)
+pytest tests/ -v -m "not requires_llm_backend"      # Same — explicit (what CI runs)
+pytest tests/ -v -m "requires_llm_backend"          # LLM tests only (requires Ollama/oMLX running)
 pytest tests/test_stories.py -v                     # Single test file
 pytest tests/ -v -k "test_ranking"                  # Single test by name
-pytest tests/ --cov=app --cov-report=term           # With coverage (threshold: 34%)
+pytest tests/ --cov=app --cov-report=term           # With coverage (threshold: 45%)
 ```
 
 Tests are split into three categories:
 - **Unit / mocked** — always safe, no external deps
 - **DB integration** — hit real PostgreSQL; skip automatically without `DATABASE_URL`
-- **LLM tests** (`@pytest.mark.requires_ollama`) — require live Ollama; excluded from CI via `-m "not requires_ollama"`
+- **LLM tests** (`@pytest.mark.requires_llm_backend`) — require a live LLM backend (Ollama or oMLX); excluded from CI via `-m "not requires_llm_backend"`
 
 Integration tests hit a **real PostgreSQL** (no mocks). Set `DATABASE_URL=postgresql://newsbrief:newsbrief_dev@localhost:5433/newsbrief` or start the dev DB with `make db-up`.
 
