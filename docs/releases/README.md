@@ -8,7 +8,18 @@ Quick reference for all NewsBrief releases. For detailed release notes, see [Git
 
 ## v0.8.x - Content Quality
 
-### v0.8.8 - Backlog & Ops Triage (Current)
+### v0.8.9 - Code Health & Tech Debt (Current)
+**August 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.8.9)
+
+One-time code-health audit across `app/`, `tests/`, `scripts/`, and infra/docs — findings-only pass with cleanup executed issue-by-issue, not a feature release. Full methodology and findings in [`docs/development/CODE-REVIEW-2026-08.md`](../development/CODE-REVIEW-2026-08.md).
+
+**Highlights:**
+- **App-code cleanup**: confirmed dead code + 2 unused dependencies removed; `generate_stories_simple`/`fetch_and_store` (the two most complex functions in the app) decomposed into smaller helpers; Story CRUD API duplication investigated and documented (#345-347)
+- **Infra cleanup**: `make recover` fixed, stale Tekton/kind-registry references purged from ADRs/docs, CI workflows deduplicated into a shared reusable workflow, orphaned/duplicate infra files removed, ambiguous Windows autostart paths resolved, prod/dev DB password moved out of git into a K8s Secret (#352-357)
+- **Test-suite fixes**: a real DB sequence-desync bug fixed (`resync_sequences()` helper, now run after every test), duplicated test setup helpers consolidated, coverage-threshold doc drift fixed (34%→45% floor, matching actual 51%) — and, found along the way, a real assertion-bypass bug in `test_models.py` where 18 tests could never actually fail under pytest (#358-360)
+- **CI reliability**: removed the flaky ntfy `Notify` step from `ci-dev.yml`/`ci-prod.yml` — its `curl` call had no timeout/retry, so a network blip reaching ntfy.sh repeatedly showed unrelated, otherwise-passing runs as failed (ADR-0021 amendment)
+
+### v0.8.8 - Backlog & Ops Triage
 **August 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.8.8)
 
 Ops/reliability triage milestone — no new user-facing features, focused on closing gaps found while stabilizing dev/prod after the v0.8.7 release.

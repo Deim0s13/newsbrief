@@ -1,7 +1,7 @@
 # NewsBrief Architecture Document
 
 > **Version**: 1.6
-> **Last Updated**: August 2026 (v0.8.6)
+> **Last Updated**: August 2026 (v0.8.9)
 > **Status**: Living Document
 
 ---
