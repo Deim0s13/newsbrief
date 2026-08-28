@@ -131,7 +131,6 @@ CI runs automatically on push. No local trigger commands needed.
 |---|---|
 | `COSIGN_PRIVATE_KEY` | Image signing (prod only) |
 | `COSIGN_PASSWORD` | Cosign key passphrase |
-| `NTFY_TOPIC` | ntfy.sh topic for pipeline notifications |
 
 ### Kubernetes / ArgoCD (macOS only)
 ```bash
@@ -296,7 +295,7 @@ The embedding model (`nomic-embed-text`, 768 dimensions) is separate and configu
 - **Windows CD**: `compose-watch.ps1` (native PowerShell) runs once daily at 06:00 via Task Scheduler, compares the running image digest against `ghcr.io/deim0s13/newsbrief:latest`, redeploys + migrates if changed.
 - Dev DB (`compose.dev.yaml`) runs on `newsbrief_dev_network`; prod DB runs on `newsbrief_default` — isolated to prevent DNS round-robin.
 - `make env-init` generates a single random password and substitutes it into both `POSTGRES_PASSWORD` and `DATABASE_URL` in `.env` — credentials are always in sync.
-- Pipeline CI notifications go to ntfy.sh topic set in `NTFY_TOPIC` env/secret. Deploy notifications sent by `compose-watch.sh` (Windows) use the same topic from `.env`.
+- CI (GitHub Actions) no longer sends ntfy.sh notifications (removed, ADR-0021 amendment — the curl had no timeout/retry, so ntfy.sh network blips repeatedly showed unrelated CI runs as failed; use `gh run list`/`gh run view` for CI status). ntfy.sh is still used for infra-level alerting (port-forward watchdog, `k8s-version-check.sh`, Windows' `compose-watch.ps1`) via `NTFY_TOPIC` in `.env`.
 
 ### Key Design Constraints
 

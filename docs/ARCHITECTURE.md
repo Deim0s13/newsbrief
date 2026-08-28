@@ -919,10 +919,6 @@ flowchart LR
         ComposeWatch["compose-watch.ps1 daily (Windows)"]
     end
 
-    subgraph Notify["Notifications"]
-        ntfy["ntfy.sh → macOS/iOS"]
-    end
-
     Push --> Clone
     Clone --> Parallel
     Parallel --> Build
@@ -932,10 +928,13 @@ flowchart LR
     Sign --> SBOM --> Release --> Kustomize
     Kustomize --> ArgoCD
     Kustomize --> ComposeWatch
-
-    CI -.->|"always"| ntfy
-    Security -.->|"always"| ntfy
 ```
+
+CI itself no longer sends notifications (the `Notify` job was removed, ADR-0021
+amendment — `gh run list`/`gh run view` cover CI status instead). `ntfy.sh`
+is still used, but only for **infra-level** alerting outside this pipeline
+diagram: the port-forward watchdog, `k8s-version-check.sh` (#325), and
+`compose-watch.ps1`'s own deploy-success/failure push (Windows).
 
 ### 10.2 Security Gates
 
@@ -971,52 +970,24 @@ gitGraph
 | `dev` | `ci-dev.yml` | `sha-{SHA}` | newsbrief-dev (macOS ArgoCD) + Windows Compose |
 | `main` | `ci-prod.yml` | `sha-{SHA}` + `:latest` | newsbrief-prod (macOS ArgoCD) + Windows Compose |
 
-### 10.4 Pipeline Notifications
+### 10.4 Pipeline Notifications (removed, Aug 2026)
 
-Pipelines send real-time notifications for both successes and failures:
+GitHub Actions no longer sends ntfy.sh notifications — the `Notify` job in
+`ci-dev.yml`/`ci-prod.yml` was removed because its `curl` call had no
+timeout/retry/`continue-on-error`, so a transient DNS/network hiccup reaching
+`ntfy.sh` from the runner (unrelated to whether the pipeline itself passed)
+repeatedly showed the whole run as failed. `gh run list`/`gh run view` provide
+sufficient CI-status visibility for a single-maintainer project. The Slack
+integration described in the original ADR was never actually wired up
+(groundwork only, disabled by default) and was removed along with it.
 
-```mermaid
-flowchart LR
-    subgraph Pipeline["GitHub Actions"]
-        Tasks["Workflow Jobs"]
-        Finally["always-run step"]
-    end
+`ntfy.sh` itself is unaffected and still used for **infra-level** alerting
+outside CI: the port-forward watchdog, `k8s-version-check.sh` (#325), and
+Windows' `compose-watch.ps1` deploy notification — all via the `NTFY_TOPIC`
+value in `.env` (unrelated to the now-deleted GitHub Actions secret of the
+same name).
 
-    subgraph Notifications["Notification Channels"]
-        ntfy["ntfy.sh<br/>(primary)"]
-        Slack["Slack Webhook<br/>(optional)"]
-    end
-
-    subgraph Delivery["Delivery"]
-        macOS["macOS Notifications"]
-        iOS["iOS/Android"]
-        SlackApp["Slack Channel"]
-    end
-
-    Tasks -->|"success/failure"| Finally
-    Finally --> ntfy
-    Finally -.->|"if configured"| Slack
-    ntfy --> macOS
-    ntfy --> iOS
-    Slack --> SlackApp
-```
-
-| Channel | Status | Use Case | Configuration |
-|---------|--------|----------|---------------|
-| **ntfy.sh** | ✅ Primary | macOS/iOS push notifications | Topic: `newsbrief-ci` |
-| **Slack** | ⏸️ Optional | Team notifications | Create `slack-webhook` secret |
-
-**Notification Triggers**:
-- ✅ Pipeline success (default priority)
-- ❌ Pipeline failure (high/urgent priority)
-- 🚀 Production release complete
-
-**Setup**:
-1. Install ntfy macOS app: `brew install --cask ntfy`
-2. Subscribe to topic: `newsbrief-ci`
-3. (Optional) Create Slack webhook secret for team notifications
-
-See [ADR-0021: Pipeline Notifications](adr/0021-pipeline-notifications.md) for full details.
+See [ADR-0021: Pipeline Notifications](adr/0021-pipeline-notifications.md) (with its Aug 2026 amendment) for full history.
 
 ### 10.5 Operational Procedures
 

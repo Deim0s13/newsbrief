@@ -5,6 +5,8 @@
 
 > Note (June 2026): The ntfy.sh notification decision remains valid and is still in use. The implementation mechanism changed from Tekton finally blocks to GitHub Actions job steps and a `compose-watch.sh` deploy step (see ADR-0032). The notification channel and strategy are unchanged.
 
+> Amendment (Aug 2026): The **GitHub Actions leg specifically** was removed from `ci-dev.yml`/`ci-prod.yml`. Its `curl` call had no timeout, no retry, and no `continue-on-error`, so a transient DNS/network hiccup reaching `ntfy.sh` from the GitHub-hosted runner (unrelated to whether the pipeline itself passed) repeatedly made the whole run show as failed — happened on 2+ of the last ~30 `dev` runs alone. `gh run list`/`gh run view` are sufficient CI-status visibility for a single-maintainer project; hardening (retry + `continue-on-error`) was considered but removal was simpler and just as effective. **ntfy.sh itself is unaffected and still in active use** for infra-level alerting outside CI — the port-forward watchdog, `k8s-version-check.sh` (#325), and Windows' `compose-watch.ps1` — via the `NTFY_TOPIC` value in `.env` (a distinct value from the removed GitHub Actions secret of the same name, which is now unused and can be deleted from repo Settings → Secrets).
+
 ## Context
 
 NewsBrief uses Tekton pipelines for CI/CD running in a local kind cluster. When pipelines fail, developers currently need to manually check pipeline status via `kubectl` or the Tekton Dashboard. This creates a poor developer experience and delays response to failures.
