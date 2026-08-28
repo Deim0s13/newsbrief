@@ -304,10 +304,10 @@ make env-init
 ### **Tests**
 
 ```bash
-pytest tests/ -v                              # All non-LLM tests (requires dev DB)
-pytest tests/ -v -m "not requires_ollama"     # Same — explicit (what CI runs)
-pytest tests/ -v -m "requires_ollama"         # LLM tests (requires Ollama running)
-pytest tests/ --cov=app --cov-report=term     # With coverage
+pytest tests/ -v                                    # All non-LLM tests (requires dev DB)
+pytest tests/ -v -m "not requires_llm_backend"      # Same — explicit (what CI runs)
+pytest tests/ -v -m "requires_llm_backend"          # LLM tests (requires Ollama/oMLX running)
+pytest tests/ --cov=app --cov-report=term           # With coverage
 ```
 
 Tests use a real PostgreSQL instance — start one with `make db-up` and set:
@@ -345,7 +345,7 @@ newsbrief/
 │   └── ci-prod.yml        # main branch: same + Trivy + Cosign + SBOM + release
 ├── k8s/                   # Kubernetes manifests (Kustomize overlays for dev/prod)
 ├── launchd/               # macOS LaunchAgent plist for infra auto-start
-├── scripts/               # infra-start.sh, infra-start.ps1, infra-task-install.ps1
+├── scripts/               # infra-start.sh/infra-status.sh (macOS), compose-*.ps1 (Windows)
 ├── data/                  # model_config.json, settings.json, interests.json
 ├── compose.yaml           # Production stack (API + PostgreSQL + Caddy)
 ├── Caddyfile              # Reverse proxy configuration

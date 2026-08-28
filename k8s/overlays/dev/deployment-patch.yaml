@@ -1,4 +1,7 @@
-# Dev uses floating tag dev-latest; always resolve from registry after push-kind-dev-image.
+# Dev image tag (sha-<full SHA>, matching prod's format) is updated
+# automatically by ci-dev.yml's update-manifest job on each push to dev — see
+# kustomization.yaml's images: block. imagePullPolicy: Always guards against
+# any residual stale pull.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

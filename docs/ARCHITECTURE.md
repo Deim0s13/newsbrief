@@ -137,7 +137,7 @@ NewsBrief is a **self-hosted, privacy-focused** application designed to:
 
 | ID | Requirement | Target | Status |
 |----|-------------|--------|--------|
-| **NFR-M01** | Test coverage | > 40% | ✅ Met (41%) |
+| **NFR-M01** | Test coverage | > 45% (enforced floor, `pyproject.toml`) | ✅ Met (51%, Aug 2026) |
 | **NFR-M02** | Type safety | mypy clean | ✅ Met |
 | **NFR-M03** | Documentation | ADRs for major decisions | ✅ Met |
 | **NFR-M04** | CI/CD automation | Automated testing & deployment | ✅ Met |
@@ -919,10 +919,6 @@ flowchart LR
         ComposeWatch["compose-watch.ps1 daily (Windows)"]
     end
 
-    subgraph Notify["Notifications"]
-        ntfy["ntfy.sh → macOS/iOS"]
-    end
-
     Push --> Clone
     Clone --> Parallel
     Parallel --> Build
@@ -932,10 +928,13 @@ flowchart LR
     Sign --> SBOM --> Release --> Kustomize
     Kustomize --> ArgoCD
     Kustomize --> ComposeWatch
-
-    CI -.->|"always"| ntfy
-    Security -.->|"always"| ntfy
 ```
+
+CI itself no longer sends notifications (the `Notify` job was removed, ADR-0021
+amendment — `gh run list`/`gh run view` cover CI status instead). `ntfy.sh`
+is still used, but only for **infra-level** alerting outside this pipeline
+diagram: the port-forward watchdog, `k8s-version-check.sh` (#325), and
+`compose-watch.ps1`'s own deploy-success/failure push (Windows).
 
 ### 10.2 Security Gates
 
@@ -971,52 +970,24 @@ gitGraph
 | `dev` | `ci-dev.yml` | `sha-{SHA}` | newsbrief-dev (macOS ArgoCD) + Windows Compose |
 | `main` | `ci-prod.yml` | `sha-{SHA}` + `:latest` | newsbrief-prod (macOS ArgoCD) + Windows Compose |
 
-### 10.4 Pipeline Notifications
+### 10.4 Pipeline Notifications (removed, Aug 2026)
 
-Pipelines send real-time notifications for both successes and failures:
+GitHub Actions no longer sends ntfy.sh notifications — the `Notify` job in
+`ci-dev.yml`/`ci-prod.yml` was removed because its `curl` call had no
+timeout/retry/`continue-on-error`, so a transient DNS/network hiccup reaching
+`ntfy.sh` from the runner (unrelated to whether the pipeline itself passed)
+repeatedly showed the whole run as failed. `gh run list`/`gh run view` provide
+sufficient CI-status visibility for a single-maintainer project. The Slack
+integration described in the original ADR was never actually wired up
+(groundwork only, disabled by default) and was removed along with it.
 
-```mermaid
-flowchart LR
-    subgraph Pipeline["GitHub Actions"]
-        Tasks["Workflow Jobs"]
-        Finally["always-run step"]
-    end
+`ntfy.sh` itself is unaffected and still used for **infra-level** alerting
+outside CI: the port-forward watchdog, `k8s-version-check.sh` (#325), and
+Windows' `compose-watch.ps1` deploy notification — all via the `NTFY_TOPIC`
+value in `.env` (unrelated to the now-deleted GitHub Actions secret of the
+same name).
 
-    subgraph Notifications["Notification Channels"]
-        ntfy["ntfy.sh<br/>(primary)"]
-        Slack["Slack Webhook<br/>(optional)"]
-    end
-
-    subgraph Delivery["Delivery"]
-        macOS["macOS Notifications"]
-        iOS["iOS/Android"]
-        SlackApp["Slack Channel"]
-    end
-
-    Tasks -->|"success/failure"| Finally
-    Finally --> ntfy
-    Finally -.->|"if configured"| Slack
-    ntfy --> macOS
-    ntfy --> iOS
-    Slack --> SlackApp
-```
-
-| Channel | Status | Use Case | Configuration |
-|---------|--------|----------|---------------|
-| **ntfy.sh** | ✅ Primary | macOS/iOS push notifications | Topic: `newsbrief-ci` |
-| **Slack** | ⏸️ Optional | Team notifications | Create `slack-webhook` secret |
-
-**Notification Triggers**:
-- ✅ Pipeline success (default priority)
-- ❌ Pipeline failure (high/urgent priority)
-- 🚀 Production release complete
-
-**Setup**:
-1. Install ntfy macOS app: `brew install --cask ntfy`
-2. Subscribe to topic: `newsbrief-ci`
-3. (Optional) Create Slack webhook secret for team notifications
-
-See [ADR-0021: Pipeline Notifications](adr/0021-pipeline-notifications.md) for full details.
+See [ADR-0021: Pipeline Notifications](adr/0021-pipeline-notifications.md) (with its Aug 2026 amendment) for full history.
 
 ### 10.5 Operational Procedures
 
@@ -1073,7 +1044,7 @@ All significant architectural decisions are documented as ADRs (Architecture Dec
 | [ADR-0004](adr/0004-incremental-story-updates.md) | Incremental Story Updates | Accepted |
 | [ADR-0005](adr/0005-interest-based-ranking.md) | Interest-Based Ranking | Accepted |
 | [ADR-0006](adr/0006-source-quality-weighting.md) | Source Quality Weighting | Accepted |
-| [ADR-0007](adr/0007-postgresql-database-migration.md) | PostgreSQL Migration | Accepted |
+| [ADR-0007](adr/0007-postgresql-database-migration.md) | PostgreSQL Migration | Superseded |
 | [ADR-0008](adr/0008-apple-containers-deferred.md) | Apple Containers Deferred | Deferred |
 | [ADR-0009](adr/0009-secrets-management-strategy.md) | Secrets Management | Accepted |
 | [ADR-0010](adr/0010-caddy-reverse-proxy.md) | Caddy Reverse Proxy | Accepted |
@@ -1085,8 +1056,8 @@ All significant architectural decisions are documented as ADRs (Architecture Dec
 | [ADR-0016](adr/0016-cicd-platform-migration.md) | CI/CD Platform (Tekton) | Superseded |
 | [ADR-0017](adr/0017-gitops-tooling.md) | GitOps Tooling (ArgoCD) | Accepted |
 | [ADR-0018](adr/0018-secure-supply-chain.md) | Secure Supply Chain | Accepted |
-| [ADR-0019](adr/0019-cicd-pipeline-design.md) | CI/CD Pipeline Design | Accepted |
-| [ADR-0020](adr/0020-kind-local-registry.md) | Kind Local Registry | Accepted |
+| [ADR-0019](adr/0019-cicd-pipeline-design.md) | CI/CD Pipeline Design | Superseded |
+| [ADR-0020](adr/0020-kind-local-registry.md) | Kind Local Registry | Superseded |
 | [ADR-0021](adr/0021-pipeline-notifications.md) | Pipeline Notifications | Accepted |
 | [ADR-0022](adr/0022-dev-prod-database-parity.md) | Dev/Prod Database Parity | Accepted |
 | [ADR-0023](adr/0023-intelligence-platform-strategy.md) | Intelligence Platform Strategy | Accepted |

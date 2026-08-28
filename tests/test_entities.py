@@ -694,6 +694,10 @@ def setup_test_db():
     session = SessionLocal()
 
     # Create a test feed if needed
+    # Sequence resync against leftover explicit-id rows from earlier tests is
+    # now handled centrally, after every test, by conftest.py's
+    # dispose_db_connections_after_test fixture (#358) -- no need to guard
+    # against that here before inserting items with an implicit (serial) id.
     try:
         session.execute(
             text(
@@ -702,18 +706,6 @@ def setup_test_db():
             VALUES (1, 'http://test.com/feed', 'Test Feed')
             ON CONFLICT (id) DO NOTHING
             """
-            )
-        )
-        # Other integration test modules use explicit-id inserts against a
-        # freshly-truncated (RESTART IDENTITY) table, which never advances
-        # the sequence itself. Since this fixture inserts items with an
-        # implicit (serial) id, resync the sequence past any existing rows
-        # so it doesn't collide with leftover explicit-id rows from tests
-        # that ran earlier in the same session, regardless of file order.
-        session.execute(
-            text(
-                "SELECT setval('items_id_seq', "
-                "COALESCE((SELECT MAX(id) FROM items), 0) + 1, false)"
             )
         )
         session.commit()

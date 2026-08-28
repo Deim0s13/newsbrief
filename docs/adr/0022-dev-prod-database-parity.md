@@ -167,7 +167,7 @@ ADR 0007 established dual database support: PostgreSQL for production and SQLite
 - [ ] Update README with new dev setup
 - [ ] Update DEVELOPMENT.md
 - [ ] Archive SQLite migration documentation
-- [ ] Update ADR 0007 status to "Superseded by ADR 0022"
+- [x] Update ADR 0007 status to "Superseded by ADR 0022" (done — see ADR-0007's Status section)
 
 ## Migration Path for Existing SQLite Users
 

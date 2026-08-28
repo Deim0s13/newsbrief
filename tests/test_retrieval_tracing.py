@@ -16,22 +16,7 @@ from app.retrieval_tracing import (
     list_recent_retrieval_traces,
     record_retrieval_trace,
 )
-from tests.pg_testutil import pg_session_truncate_retrieval_traces
-
-
-def _vec(seed: float, dims: int = 768) -> list[float]:
-    return [seed + 0.0001 * i for i in range(dims)]
-
-
-def _seed_feed(session) -> None:
-    from sqlalchemy import text
-
-    session.execute(
-        text(
-            "INSERT INTO feeds (id, url, name, disabled, health_score) "
-            "VALUES (1, 'http://example.com/feed', 'Test Feed', 0, 100.0)"
-        )
-    )
+from tests.pg_testutil import _seed_feed, _vec, pg_session_truncate_retrieval_traces
 
 
 class TestRecordAndListTraces:

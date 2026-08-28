@@ -106,14 +106,6 @@ from .story_embeddings import maybe_embed_story_after_synthesis
 
 logger = logging.getLogger(__name__)
 
-# Configuration
-STORY_ARCHIVE_DAYS = int(
-    os.getenv("STORY_ARCHIVE_DAYS", "7")
-)  # Auto-archive after 7 days
-STORY_DELETE_DAYS = int(
-    os.getenv("STORY_DELETE_DAYS", "30")
-)  # Hard delete after 30 days
-
 # Similarity Tuning (v0.6.1) - Adjust these for clustering behavior
 SIMILARITY_KEYWORD_WEIGHT = float(
     os.getenv("SIMILARITY_KEYWORD_WEIGHT", "0.3")
@@ -260,128 +252,6 @@ def get_article_credibility(
     )
 
     return result
-
-
-# CRUD Operations
-
-
-def create_story(
-    session: Session,
-    title: str,
-    synthesis: str,
-    key_points: List[str],
-    why_it_matters: str,
-    topics: List[str],
-    entities: List[str],
-    importance_score: float,
-    freshness_score: float,
-    model: str,
-    time_window_start: datetime,
-    time_window_end: datetime,
-    cluster_method: str = "naive",
-    story_hash: Optional[str] = None,
-    first_seen: Optional[datetime] = None,
-    version: int = 1,
-    previous_version_id: Optional[int] = None,
-) -> int:
-    """
-    Create a new story.
-
-    Args:
-        session: SQLAlchemy session
-        title: Story title
-        synthesis: AI-generated synthesis paragraph
-        key_points: List of key bullet points
-        why_it_matters: Significance analysis
-        topics: List of topic tags
-        entities: List of entities (companies, products, people)
-        importance_score: Story importance (0.0-1.0)
-        freshness_score: Time-based relevance (0.0-1.0)
-        model: LLM model used for synthesis
-        time_window_start: Start of article time window
-        time_window_end: End of article time window
-        cluster_method: Clustering algorithm used
-        story_hash: Unique hash for deduplication
-        first_seen: When story was first generated
-        version: Story version number (default 1)
-        previous_version_id: ID of previous version if this is an update
-
-    Returns:
-        Story ID
-    """
-    story = Story(
-        title=title,
-        synthesis=synthesis,
-        key_points_json=serialize_story_json_field(key_points),
-        why_it_matters=why_it_matters,
-        topics_json=serialize_story_json_field(topics),
-        entities_json=serialize_story_json_field(entities),
-        article_count=0,  # Will be updated when articles are linked
-        importance_score=importance_score,
-        freshness_score=freshness_score,
-        cluster_method=cluster_method,
-        story_hash=story_hash,
-        generated_at=datetime.now(UTC),
-        first_seen=first_seen or datetime.now(UTC),
-        last_updated=datetime.now(UTC),
-        time_window_start=time_window_start,
-        time_window_end=time_window_end,
-        model=model,
-        status="active",
-        processing_state=StoryProcessingState.PUBLISHED.value,
-        version=version,
-        previous_version_id=previous_version_id,
-    )
-
-    session.add(story)
-    session.commit()
-    session.refresh(story)
-
-    logger.info(f"Created story #{story.id}: {title[:50]}...")
-    return story.id  # type: ignore[return-value]
-
-
-def link_articles_to_story(
-    session: Session,
-    story_id: int,
-    article_ids: List[int],
-    primary_article_id: Optional[int] = None,
-) -> None:
-    """
-    Link articles to a story via junction table.
-
-    Args:
-        session: SQLAlchemy session
-        story_id: Story ID
-        article_ids: List of article IDs to link
-        primary_article_id: Optional primary article ID (most relevant)
-    """
-    # Create links
-    for article_id in article_ids:
-        story_article = StoryArticle(
-            story_id=story_id,
-            article_id=article_id,
-            relevance_score=1.0,  # Can be adjusted later with clustering scores
-            is_primary=(article_id == primary_article_id),
-            added_at=datetime.now(UTC),
-        )
-        session.add(story_article)
-
-    apply_article_processing_state_batch(
-        session,
-        article_ids,
-        ArticleProcessingState.CLUSTERED,
-        context="link_articles_to_story",
-    )
-
-    # Update article count on story
-    story = session.query(Story).filter(Story.id == story_id).first()
-    if story:
-        story.article_count = len(article_ids)  # type: ignore[assignment]
-        story.last_updated = datetime.now(UTC)  # type: ignore[assignment]
-
-    session.commit()
-    logger.info(f"Linked {len(article_ids)} articles to story #{story_id}")
 
 
 def get_story_by_id(session: Session, story_id: int) -> Optional[StoryOut]:
@@ -541,7 +411,9 @@ def get_stories(
         # This allows us to calculate blended scores at query time
         # Fetch more than needed to account for offset, then slice
         fetch_limit = offset + limit + 50  # Buffer for accurate ranking
-        query = query.order_by(desc(Story.importance_score))  # Initial ordering
+        # Secondary key (id) makes ties on importance_score deterministic --
+        # otherwise Postgres may return them in a different order each query.
+        query = query.order_by(desc(Story.importance_score), desc(Story.id))
         query = query.limit(fetch_limit)
         stories = query.all()
 
@@ -597,8 +469,9 @@ def get_stories(
         if order_by == "importance":
             # Fetch stories and sort by importance * dynamic freshness
             # This ensures old stories decay even if stored freshness_score is stale
+            # id is a deterministic tiebreaker for ties on the first two keys.
             query = query.order_by(
-                desc(Story.importance_score), desc(Story.generated_at)
+                desc(Story.importance_score), desc(Story.generated_at), desc(Story.id)
             )
             stories_raw = query.all()
 
@@ -623,85 +496,22 @@ def get_stories(
             scored.sort(key=lambda x: x[0], reverse=True)
             stories = [s[1] for s in scored[offset : offset + limit]]
         elif order_by == "freshness":
+            # id is a deterministic tiebreaker: batch-generated stories can
+            # share the same generated_at timestamp, and without a secondary
+            # key Postgres may return ties in a different order each query.
             query = query.order_by(
-                desc(Story.generated_at)
+                desc(Story.generated_at), desc(Story.id)
             )  # Use generated_at for freshness
             query = query.offset(offset).limit(limit)
             stories = query.all()
         else:  # generated_at
-            query = query.order_by(desc(Story.generated_at))
+            query = query.order_by(desc(Story.generated_at), desc(Story.id))
             query = query.offset(offset).limit(limit)
             stories = query.all()
 
     # Convert to StoryOut models
     # For list view, we don't need full article details
     return [_story_db_to_model(story, [], None) for story in stories]
-
-
-def update_story(session: Session, story_id: int, **updates) -> bool:
-    """
-    Update story fields.
-
-    Args:
-        session: SQLAlchemy session
-        story_id: Story ID
-        **updates: Fields to update (title, synthesis, importance_score, etc.)
-
-    Returns:
-        True if story was updated, False if not found
-    """
-    story = session.query(Story).filter(Story.id == story_id).first()
-    if not story:
-        return False
-
-    # Update allowed fields
-    allowed_fields = {
-        "title",
-        "synthesis",
-        "key_points_json",
-        "why_it_matters",
-        "topics_json",
-        "entities_json",
-        "importance_score",
-        "freshness_score",
-        "status",
-    }
-
-    for key, value in updates.items():
-        if key in allowed_fields:
-            setattr(story, key, value)
-
-    story.last_updated = datetime.now(UTC)  # type: ignore[assignment]
-    session.commit()
-
-    logger.info(f"Updated story #{story_id}")
-    return True
-
-
-def archive_story(session: Session, story_id: int) -> bool:
-    """
-    Archive story (soft delete).
-
-    Sets status to 'archived' without deleting the record.
-
-    Args:
-        session: SQLAlchemy session
-        story_id: Story ID
-
-    Returns:
-        True if story was archived, False if not found
-    """
-    story = session.query(Story).filter(Story.id == story_id).first()
-    if not story:
-        return False
-
-    story.status = "archived"  # type: ignore[assignment]
-    story.processing_state = StoryProcessingState.ARCHIVED.value  # type: ignore[assignment]
-    story.last_updated = datetime.now(UTC)  # type: ignore[assignment]
-    session.commit()
-
-    logger.info(f"Archived story #{story_id}")
-    return True
 
 
 def find_overlapping_story(
@@ -994,33 +804,9 @@ def regenerate_story_synthesis(
     }
 
 
-def delete_story(session: Session, story_id: int) -> bool:
-    """
-    Hard delete story (CASCADE deletes story_articles).
-
-    Permanently removes story and its article links from database.
-
-    Args:
-        session: SQLAlchemy session
-        story_id: Story ID
-
-    Returns:
-        True if story was deleted, False if not found
-    """
-    story = session.query(Story).filter(Story.id == story_id).first()
-    if not story:
-        return False
-
-    session.delete(story)
-    session.commit()
-
-    logger.info(f"Deleted story #{story_id}")
-    return True
-
-
 def cleanup_archived_stories(
     session: Session,
-    days: int = STORY_DELETE_DAYS,
+    days: int = 30,
 ) -> int:
     """
     Hard delete archived stories older than N days.
@@ -2843,6 +2629,677 @@ def _fallback_synthesis(
     }
 
 
+def _fetch_window_articles(
+    session: Session, time_window_hours: int
+) -> Tuple[Sequence[Any], Dict[int, Dict[str, Any]], float, datetime]:
+    """
+    Query items published within the trailing window that have a summary.
+
+    Returns ``(articles, articles_cache, data_fetch_time, cutoff_time)``.
+    ``articles_cache`` avoids repeated queries during clustering/scoring.
+    """
+    cutoff_time = datetime.now(UTC) - timedelta(hours=time_window_hours)
+    # Legacy query path: naive ISO string param for ``published`` comparison in this SELECT.
+    cutoff_time_str = cutoff_time.replace(tzinfo=None).isoformat()
+
+    data_fetch_start = time.time()
+    articles = session.execute(
+        text(
+            """
+        SELECT id, title, topic, published, summary, ai_summary
+        FROM items
+        WHERE published >= :cutoff_time
+        AND (ai_summary IS NOT NULL OR summary IS NOT NULL)
+        ORDER BY published DESC
+    """
+        ),
+        {"cutoff_time": cutoff_time_str},
+    ).fetchall()
+    data_fetch_time = time.time() - data_fetch_start
+
+    articles_cache = {
+        int(art[0]): {
+            "id": int(art[0]),
+            "title": str(art[1]),
+            "topic": art[2],
+            "published": art[3],
+            "summary": art[4],
+            "ai_summary": art[5],
+        }
+        for art in articles
+    }
+
+    return articles, articles_cache, data_fetch_time, cutoff_time
+
+
+def _group_articles_by_topic(articles: Sequence[Any]) -> Dict[str, List[Any]]:
+    """Coarse first-pass grouping by an article's stored topic (Step 1)."""
+    topic_groups: Dict[str, List[Any]] = defaultdict(list)
+    for article in articles:
+        topic = article[2] or "uncategorized"
+        topic_groups[topic].append(article)
+    return topic_groups
+
+
+def _cluster_topic_group(
+    topic: str,
+    topic_articles: List[Any],
+    articles_cache: Dict[int, Dict[str, Any]],
+    session: Session,
+    model: str,
+    similarity_threshold: float,
+) -> List[List[int]]:
+    """
+    Greedily cluster one topic's articles by combined keyword + entity
+    similarity (Step 2, per-topic). Returns that topic's clusters (each a
+    list of article ids) -- the caller extends its overall ``clusters``
+    list with these.
+    """
+    logger.debug(f"Processing topic '{topic}' with {len(topic_articles)} articles")
+
+    # Extract keywords for each article (v0.6.1 - using title + summary + bigrams)
+    article_keywords = {}
+    for article in topic_articles:
+        article_id = int(article[0])  # type: ignore[index]
+        title = str(article[1])  # type: ignore[index]
+        summary = article[4] or article[5] or ""  # type: ignore[index]
+        article_keywords[article_id] = _extract_keywords(
+            title=title,
+            summary=str(summary),
+            include_bigrams=True,
+        )
+
+    # Extract entities for each article (v0.6.1 - enhanced clustering)
+    article_entities = {}
+    entity_extraction_start = time.time()
+    for article in topic_articles:
+        article_id = int(article[0])  # type: ignore[index]
+        title = str(article[1])  # type: ignore[index]
+        summary = article[4] or article[5] or ""  # type: ignore[index]
+
+        try:
+            entities = extract_and_cache_entities(
+                article_id=article_id,
+                title=title,
+                summary=str(summary),
+                session=session,
+                model=model,
+                use_cache=True,
+            )
+            article_entities[article_id] = entities
+        except Exception as e:
+            logger.warning(f"Failed to extract entities for article {article_id}: {e}")
+            article_entities[article_id] = None
+
+    entity_extraction_time = time.time() - entity_extraction_start
+    logger.debug(
+        f"Entity extraction for {len(topic_articles)} articles took {entity_extraction_time:.2f}s"
+    )
+
+    # Greedy clustering: iterate through articles, add to existing cluster or create new one
+    topic_clusters: List[List[int]] = []
+
+    for article in topic_articles:
+        article_id = int(article[0])  # type: ignore[index]
+        article_topic = article[2]  # type: ignore[index]
+        keywords = article_keywords[article_id]
+        entities = article_entities.get(article_id)
+
+        # Find best matching cluster
+        best_cluster = None
+        best_similarity = 0.0
+
+        for cluster in topic_clusters:
+            # Calculate average combined similarity to cluster (keywords + entities + topic)
+            similarities = []
+            for aid in cluster:
+                # Get cached article data for topic
+                other_article = articles_cache.get(aid)
+                other_topic = other_article["topic"] if other_article else None
+
+                sim = _calculate_combined_similarity(
+                    keywords,
+                    article_keywords[aid],
+                    entities,
+                    article_entities.get(aid),
+                    topic1=article_topic,
+                    topic2=other_topic,
+                )
+                similarities.append(sim)
+
+            avg_similarity = (
+                sum(similarities) / len(similarities) if similarities else 0.0
+            )
+
+            if avg_similarity > best_similarity:
+                best_similarity = avg_similarity
+                best_cluster = cluster
+
+        # Add to best cluster if similar enough, otherwise create new cluster
+        if best_cluster and best_similarity >= similarity_threshold:
+            best_cluster.append(article_id)
+        else:
+            topic_clusters.append([article_id])
+
+    logger.debug(f"Topic '{topic}' clustered into {len(topic_clusters)} story clusters")
+    return topic_clusters
+
+
+def _build_cluster_data(
+    cluster_article_ids: List[int],
+    articles_cache: Dict[int, Dict[str, Any]],
+    session: Session,
+    model: str,
+    cutoff_time: datetime,
+) -> Dict[str, Any]:
+    """
+    Build one cluster's metadata + quality scores from cached article data
+    (v0.6.1). Called once per cluster to build ``cluster_data_list``.
+    """
+    cluster_articles = [articles_cache[aid] for aid in cluster_article_ids]
+    published_times = [art["published"] for art in cluster_articles]
+
+    # Get time range
+    time_window_start = min(published_times) if published_times else cutoff_time
+    time_window_end = max(published_times) if published_times else datetime.now(UTC)
+
+    # Convert string to datetime if needed (driver may return ``str`` for timestamps)
+    if isinstance(time_window_start, str):
+        time_window_start = datetime.fromisoformat(
+            time_window_start.replace("Z", "+00:00")
+        )
+    if isinstance(time_window_end, str):
+        time_window_end = datetime.fromisoformat(time_window_end.replace("Z", "+00:00"))
+
+    # Convert published times to datetime objects
+    published_datetimes = []
+    for pt in published_times:
+        if isinstance(pt, str):
+            pt = datetime.fromisoformat(pt.replace("Z", "+00:00"))
+        elif pt.tzinfo is None:
+            pt = pt.replace(tzinfo=UTC)
+        published_datetimes.append(pt)
+
+    # Calculate story scores (v0.6.1 quality scoring)
+    # Get unique sources (feed IDs)
+    feed_ids = {art["id"] for art in cluster_articles if "id" in art}
+    unique_source_count = len(feed_ids)
+
+    # Get unique entities from articles (if available)
+    entity_count = 0
+    # Note: Entities will be available after entity extraction (#40)
+    # For now, use a placeholder based on article count
+    entity_count = min(len(cluster_article_ids) * 2, 10)  # Estimate
+
+    # Get feed health scores (query from database)
+    feed_health_scores = []
+    if feed_ids:
+        feed_id_list = list(feed_ids)
+        placeholders_health, health_params = _build_in_clause_params(
+            feed_id_list, "fid"
+        )
+        health_results = session.execute(
+            text(f"SELECT health_score FROM feeds WHERE id IN ({placeholders_health})"),
+            health_params,
+        ).fetchall()
+        feed_health_scores = [row[0] for row in health_results if row[0] is not None]
+
+    if not feed_health_scores:
+        feed_health_scores = [100.0]  # Default to perfect health
+
+    # Calculate scores using proper algorithms
+    importance, freshness, quality = _calculate_story_scores(
+        article_count=len(cluster_article_ids),
+        unique_source_count=unique_source_count,
+        entity_count=entity_count,
+        article_published_times=published_datetimes,
+        feed_health_scores=feed_health_scores,
+    )
+
+    # Calculate clustering metadata for "Why Grouped Together" (Issue #232)
+    clustering_metadata = _calculate_clustering_metadata(
+        cluster_article_ids, articles_cache, session, model
+    )
+
+    return {
+        "article_ids": cluster_article_ids,
+        "time_window_start": time_window_start,
+        "time_window_end": time_window_end,
+        "importance_score": importance,
+        "freshness_score": freshness,
+        "quality_score": quality,
+        "cluster_hash": hashlib.md5(
+            json.dumps(sorted(cluster_article_ids)).encode()
+        ).hexdigest(),
+        "clustering_metadata": clustering_metadata,
+    }
+
+
+def _synthesize_cluster(
+    session: Session,
+    cluster_data: Dict[str, Any],
+    articles_cache: Dict[int, Dict[str, Any]],
+    model: str,
+) -> Dict[str, Any]:
+    """
+    Synthesize one cluster's story. Runs on a ThreadPoolExecutor worker
+    thread (submitted from the parallel synthesis loop below) -- must not
+    touch the shared session's transaction state (only read-only queries
+    inside ``_generate_story_synthesis``/``_compute_cluster_complexity``).
+    """
+    try:
+        cluster_articles = [
+            articles_cache[aid]
+            for aid in cluster_data["article_ids"]
+            if aid in articles_cache
+        ]
+        path = classify_cluster_path(cluster_articles)
+        synthesis_data = _generate_story_synthesis(
+            session,
+            cluster_data["article_ids"],
+            model,
+            articles_cache=articles_cache,
+            synthesis_path=path,
+        )
+        complexity_score = _compute_cluster_complexity(
+            session, cluster_data["article_ids"], cluster_articles, model
+        )
+        return {
+            "success": True,
+            "cluster_data": cluster_data,
+            "synthesis_data": synthesis_data,
+            "synthesis_path": path,
+            "complexity_score": complexity_score,
+        }
+    except Exception as e:
+        # exc_info=True (#340): the bare message alone previously gave
+        # no traceback, making root-causing failures like the #340
+        # NoneType bug much harder than it needed to be.
+        logger.error(f"Synthesis failed for cluster: {e}", exc_info=True)
+        return {
+            "success": False,
+            "cluster_data": cluster_data,
+            "error": str(e),
+        }
+
+
+def _persist_synthesized_story(
+    session: Session,
+    result: Dict[str, Any],
+    articles_cache: Dict[int, Dict[str, Any]],
+    model: str,
+    pipeline_run_group_id: Optional[str],
+) -> Dict[str, Any]:
+    """
+    Persist one successfully-synthesized cluster immediately: dedupe by
+    hash, merge into an overlapping story if one exists, else create a
+    new story + article links + embeddings - then commit. Called from
+    the as_completed() loop in generate_stories_simple (main thread only,
+    after the cluster's synthesis future has already completed).
+
+    Returns {"outcome": "created"|"updated"|"skipped", "story_id": int|None}.
+    """
+    cluster_data = result["cluster_data"]
+    synthesis_data = result["synthesis_data"]
+    cluster_article_ids = cluster_data["article_ids"]
+    complexity_score = result.get("complexity_score")
+
+    # Skip if exact story already exists (same hash)
+    existing = session.execute(
+        text("SELECT 1 FROM stories WHERE story_hash = :hash LIMIT 1"),
+        {"hash": cluster_data["cluster_hash"]},
+    ).fetchone()
+    if existing:
+        logger.debug(
+            f"Skipping duplicate story with hash {cluster_data['cluster_hash']}"
+        )
+        return {"outcome": "skipped", "story_id": None}
+
+    # Check for overlapping story to update (v0.6.3 - ADR 0004)
+    overlap_result = find_overlapping_story(
+        session, cluster_article_ids, overlap_threshold=0.70
+    )
+
+    if overlap_result:
+        existing_story, existing_article_ids, overlap_ratio = overlap_result
+        merged_article_ids = list(existing_article_ids | set(cluster_article_ids))
+
+        # Only update if there are actually new articles
+        new_article_count = len(set(cluster_article_ids) - existing_article_ids)
+        if new_article_count == 0:
+            logger.debug(
+                f"Skipping update - no new articles for story #{existing_story.id}"
+            )
+            return {"outcome": "skipped", "story_id": None}
+
+        try:
+            # Re-synthesize with merged articles
+            merged_cluster_articles = [
+                articles_cache[aid]
+                for aid in merged_article_ids
+                if aid in articles_cache
+            ]
+            merged_path = classify_cluster_path(merged_cluster_articles)
+            merged_synthesis = _generate_story_synthesis(
+                session,
+                merged_article_ids,
+                model,
+                skip_cache=True,
+                synthesis_path=merged_path,
+            )
+            merged_complexity_score = _compute_cluster_complexity(
+                session, merged_article_ids, merged_cluster_articles, model
+            )
+
+            # Create new version
+            new_story_id = update_story_with_new_articles(
+                session=session,
+                existing_story=existing_story,
+                existing_article_ids=existing_article_ids,
+                merged_article_ids=merged_article_ids,
+                synthesis_data=merged_synthesis,
+                model=model,
+                complexity_score=merged_complexity_score,
+                cluster_data={
+                    **cluster_data,
+                    "cluster_hash": hashlib.md5(
+                        str(sorted(merged_article_ids)).encode()
+                    ).hexdigest(),
+                },
+            )
+            session.commit()
+            logger.info(
+                f"Updated story #{existing_story.id} → #{new_story_id} "
+                f"(+{new_article_count} articles, {overlap_ratio:.0%} overlap)"
+            )
+            return {"outcome": "updated", "story_id": new_story_id}
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Failed to update story: {e}", exc_info=True)
+            err_msg = str(e)
+            for aid in merged_article_ids:
+                mark_article_failed(
+                    session,
+                    aid,
+                    err_msg,
+                    failure_stage="story_generation",
+                    run_group_id=pipeline_run_group_id,
+                    context="generate_stories_simple:overlap_update",
+                )
+            session.commit()
+            return {"outcome": "skipped", "story_id": None}
+
+    # No overlap - create new story
+    try:
+        # Use synthesis quality metrics if available (Issue #105)
+        # Extract credibility metadata from synthesis (v0.8.2 - Issue #198)
+        cred_meta = synthesis_data.get("_credibility", {})
+
+        # Calculate confidence score and apply publish gate (#287)
+        _conf_score = calculate_confidence_score(
+            source_credibility=cred_meta.get("aggregate_score"),
+            article_count=len(cluster_article_ids),
+            freshness_score=cluster_data.get("freshness_score", 0.5),
+            synthesis_quality=synthesis_data.get("_quality_score", 0.5),
+        )
+        _gate_fields = gate_result_to_story_fields(evaluate_confidence(_conf_score))
+        if _gate_fields["status"] == "held":
+            logger.warning(
+                f"New story held by confidence gate (score={_conf_score:.3f})"
+            )
+
+        story = Story(
+            title=synthesis_data.get("title")
+            or _generate_fallback_title(
+                None,
+                synthesis_data["synthesis"],
+                synthesis_data.get("entities", []),
+            ),
+            synthesis=synthesis_data["synthesis"],
+            key_points_json=serialize_story_json_field(synthesis_data["key_points"]),
+            why_it_matters=synthesis_data["why_it_matters"],
+            topics_json=serialize_story_json_field(synthesis_data["topics"]),
+            entities_json=serialize_story_json_field(synthesis_data["entities"]),
+            article_count=len(cluster_article_ids),
+            importance_score=cluster_data["importance_score"],
+            freshness_score=cluster_data["freshness_score"],
+            # Use synthesis quality score if available, else cluster score
+            quality_score=synthesis_data.get(
+                "_quality_score", cluster_data["quality_score"]
+            ),
+            # Confidence score: source reliability × breadth × recency × synthesis quality (#220)
+            confidence_score=_conf_score,
+            # Synthesis routing path: 'standard' or 'deep' (#282)
+            synthesis_path=synthesis_data.get("_synthesis_path", "standard"),
+            # Numeric cluster complexity score, advisory-only (#280)
+            complexity_score=complexity_score,
+            # Quality metrics (v0.8.1 - Issue #105)
+            quality_breakdown_json=serialize_story_json_field(
+                synthesis_data.get("_quality_breakdown")
+            ),
+            title_source=synthesis_data.get("_title_source"),
+            parse_strategy=synthesis_data.get("_parse_strategy"),
+            # Clustering metadata (v0.8.1 - Issue #232)
+            clustering_metadata_json=(
+                json.dumps(cluster_data.get("clustering_metadata"))
+                if cluster_data.get("clustering_metadata")
+                else None
+            ),
+            # Light RAG anchors injected into the synthesis prompt, if any (#259)
+            synthesis_anchors_json=json.dumps(
+                synthesis_data.get("_synthesis_anchors", [])
+            ),
+            # Structured context anchors from the pre-synthesis retrieval hook (#279, #281)
+            context_anchors_json=json.dumps(
+                to_background_anchors(synthesis_data.get("_retrieved_context", []))
+            ),
+            # Source credibility (v0.8.2 - Issue #198)
+            source_credibility_score=cred_meta.get("aggregate_score"),
+            low_credibility_warning=cred_meta.get("low_credibility_warning", False),
+            sources_excluded=cred_meta.get("sources_excluded", 0),
+            # Confidence gate fields (#287)
+            confidence_warning=_gate_fields["confidence_warning"],
+            failure_stage=_gate_fields["failure_stage"],
+            cluster_method="hybrid_topic_keywords_optimized",
+            story_hash=cluster_data["cluster_hash"],
+            generated_at=datetime.now(UTC),
+            first_seen=datetime.now(UTC),
+            last_updated=datetime.now(UTC),
+            time_window_start=cluster_data["time_window_start"],
+            time_window_end=cluster_data["time_window_end"],
+            model=model,
+            status=_gate_fields["status"],
+            processing_state=_gate_fields["processing_state"],
+            version=1,
+        )
+        session.add(story)
+        session.flush()  # assign story.id
+
+        for article_id in cluster_article_ids:
+            story_article = StoryArticle(
+                story_id=story.id,
+                article_id=article_id,
+                relevance_score=1.0,
+                is_primary=(article_id == cluster_article_ids[0]),
+                added_at=datetime.now(UTC),
+            )
+            session.add(story_article)
+
+        apply_article_processing_state_batch(
+            session,
+            cluster_article_ids,
+            ArticleProcessingState.CLUSTERED,
+            context="generate_stories_simple",
+        )
+
+        maybe_embed_story_after_synthesis(session, story)
+        maybe_link_historical_context(session, story)
+
+        session.commit()
+        return {"outcome": "created", "story_id": story.id}
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Failed to prepare story: {e}", exc_info=True)
+        err_msg = str(e)
+        for aid in cluster_article_ids:
+            mark_article_failed(
+                session,
+                aid,
+                err_msg,
+                failure_stage="story_generation",
+                run_group_id=pipeline_run_group_id,
+                context="generate_stories_simple:prepare_story",
+            )
+        session.commit()
+        return {"outcome": "skipped", "story_id": None}
+
+
+def _run_parallel_synthesis_and_persist(
+    session: Session,
+    cluster_data_list: List[Dict[str, Any]],
+    articles_cache: Dict[int, Dict[str, Any]],
+    model: str,
+    max_workers: int,
+    total_clusters: int,
+    pipeline_run_group_id: Optional[str],
+) -> Tuple[List[int], int, int, float]:
+    """
+    Run cluster synthesis in parallel via ThreadPoolExecutor, persisting
+    each successfully-synthesized cluster as soon as its own synthesis
+    completes (#333 incremental persistence) rather than waiting for the
+    whole batch -- a crash/restart mid-run only loses in-flight clusters,
+    not already-completed ones. Synthesis runs on worker threads;
+    persistence (and all session/commit calls) runs in the main thread
+    from this as_completed() loop, so no additional session concurrency
+    is introduced.
+
+    Returns ``(story_ids, skipped_duplicates, updated_stories, db_time)``.
+    """
+    story_ids: List[int] = []
+    skipped_duplicates = 0
+    updated_stories = 0
+    db_time = 0.0
+    completed_count = 0
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all synthesis tasks
+        futures = {
+            executor.submit(
+                _synthesize_cluster, session, cluster_data, articles_cache, model
+            ): i
+            for i, cluster_data in enumerate(cluster_data_list)
+        }
+
+        # Persist each result as soon as its synthesis completes
+        for future in as_completed(futures):
+            cluster_idx = futures[future]
+            completed_count += 1
+            try:
+                result = future.result()
+            except Exception as e:
+                logger.error(f"Failed to get synthesis result: {e}")
+                result = {
+                    "success": False,
+                    "cluster_data": cluster_data_list[cluster_idx],
+                    "error": str(e),
+                }
+
+            if not result["success"]:
+                err_msg = result.get("error") or "synthesis failed"
+                for aid in result["cluster_data"]["article_ids"]:
+                    mark_article_failed(
+                        session,
+                        aid,
+                        err_msg,
+                        failure_stage="story_generation",
+                        run_group_id=pipeline_run_group_id,
+                        context="generate_stories_simple:synthesis",
+                    )
+                session.commit()
+                logger.info(
+                    f"[{completed_count}/{total_clusters}] Synthesis failed "
+                    f"(cluster {cluster_idx + 1}): {err_msg}"
+                )
+                continue
+
+            db_write_start = time.time()
+            outcome = _persist_synthesized_story(
+                session, result, articles_cache, model, pipeline_run_group_id
+            )
+            db_time += time.time() - db_write_start
+
+            if outcome["outcome"] == "created":
+                story_ids.append(outcome["story_id"])
+                logger.info(
+                    f"[{completed_count}/{total_clusters}] Story persisted "
+                    f"(id={outcome['story_id']}, cluster {cluster_idx + 1})"
+                )
+            elif outcome["outcome"] == "updated":
+                story_ids.append(outcome["story_id"])
+                updated_stories += 1
+                logger.info(
+                    f"[{completed_count}/{total_clusters}] Story updated "
+                    f"(id={outcome['story_id']}, cluster {cluster_idx + 1})"
+                )
+            else:
+                skipped_duplicates += 1
+
+    return story_ids, skipped_duplicates, updated_stories, db_time
+
+
+def _build_generation_result(
+    story_ids: List[int],
+    skipped_duplicates: int,
+    updated_stories: int,
+    articles: Sequence[Any],
+    clusters: List[List[int]],
+    data_fetch_time: float,
+    synthesis_time: float,
+    db_time: float,
+    overall_time: float,
+) -> Dict[str, Any]:
+    """
+    Log the final synthesis/structured-logging summaries and build
+    generate_stories_simple's return dict (final step).
+    """
+    logger.info(
+        f"Synthesis + incremental persistence complete: "
+        f"{len(story_ids)}/{len(clusters)} stories persisted "
+        f"({synthesis_time:.2f}s, avg {synthesis_time/len(clusters):.2f}s per cluster)"
+    )
+    if skipped_duplicates > 0:
+        logger.info(f"Skipped {skipped_duplicates} duplicate/no-op stories")
+    if updated_stories > 0:
+        logger.info(f"Updated {updated_stories} existing stories with new articles")
+
+    # Structured logging for story generation
+    logger.info(
+        "Story generation completed",
+        extra={
+            "duration_ms": round(overall_time * 1000, 2),
+            "stories_created": len(story_ids),
+            "stories_updated": updated_stories,
+            "articles_found": len(articles),
+            "clusters_created": len(clusters),
+            "duplicates_skipped": skipped_duplicates,
+            "fetch_time_ms": round(data_fetch_time * 1000, 2),
+            "synthesis_time_ms": round(synthesis_time * 1000, 2),
+            "db_time_ms": round(db_time * 1000, 2),
+        },
+    )
+
+    # v0.6.1: Return detailed stats for better UX
+    # v0.6.3: Added stories_updated count
+    return {
+        "story_ids": story_ids,
+        "articles_found": len(articles),
+        "clusters_created": len(clusters),
+        "duplicates_skipped": skipped_duplicates,
+        "stories_updated": updated_stories,
+    }
+
+
 def generate_stories_simple(
     session: Session,
     time_window_hours: int = 24,
@@ -2896,24 +3353,9 @@ def generate_stories_simple(
     )
 
     # Get articles from time window (fetch ALL data once to cache it)
-    cutoff_time = datetime.now(UTC) - timedelta(hours=time_window_hours)
-    # Legacy query path: naive ISO string param for ``published`` comparison in this SELECT.
-    cutoff_time_str = cutoff_time.replace(tzinfo=None).isoformat()
-
-    data_fetch_start = time.time()
-    articles = session.execute(
-        text(
-            """
-        SELECT id, title, topic, published, summary, ai_summary
-        FROM items
-        WHERE published >= :cutoff_time
-        AND (ai_summary IS NOT NULL OR summary IS NOT NULL)
-        ORDER BY published DESC
-    """
-        ),
-        {"cutoff_time": cutoff_time_str},
-    ).fetchall()
-    data_fetch_time = time.time() - data_fetch_start
+    articles, articles_cache, data_fetch_time, cutoff_time = _fetch_window_articles(
+        session, time_window_hours
+    )
 
     if not articles:
         logger.info("No articles found in time window")
@@ -2928,24 +3370,8 @@ def generate_stories_simple(
         f"Found {len(articles)} articles in time window ({data_fetch_time:.2f}s)"
     )
 
-    # Build article cache (optimization: avoid repeated queries)
-    articles_cache = {
-        int(art[0]): {
-            "id": int(art[0]),
-            "title": str(art[1]),
-            "topic": art[2],
-            "published": art[3],
-            "summary": art[4],
-            "ai_summary": art[5],
-        }
-        for art in articles
-    }
-
     # Step 1: Group by topic (coarse filter)
-    topic_groups: Dict[str, List[Any]] = defaultdict(list)
-    for article in articles:
-        topic = article[2] or "uncategorized"
-        topic_groups[topic].append(article)
+    topic_groups = _group_articles_by_topic(articles)
 
     logger.info(f"Grouped into {len(topic_groups)} topics")
 
@@ -2953,98 +3379,10 @@ def generate_stories_simple(
     clusters: List[List[int]] = []
 
     for topic, topic_articles in topic_groups.items():
-        logger.debug(f"Processing topic '{topic}' with {len(topic_articles)} articles")
-
-        # Extract keywords for each article (v0.6.1 - using title + summary + bigrams)
-        article_keywords = {}
-        for article in topic_articles:
-            article_id = int(article[0])  # type: ignore[index]
-            title = str(article[1])  # type: ignore[index]
-            summary = article[4] or article[5] or ""  # type: ignore[index]
-            article_keywords[article_id] = _extract_keywords(
-                title=title,
-                summary=str(summary),
-                include_bigrams=True,
-            )
-
-        # Extract entities for each article (v0.6.1 - enhanced clustering)
-        article_entities = {}
-        entity_extraction_start = time.time()
-        for article in topic_articles:
-            article_id = int(article[0])  # type: ignore[index]
-            title = str(article[1])  # type: ignore[index]
-            summary = article[4] or article[5] or ""  # type: ignore[index]
-
-            try:
-                entities = extract_and_cache_entities(
-                    article_id=article_id,
-                    title=title,
-                    summary=str(summary),
-                    session=session,
-                    model=model,
-                    use_cache=True,
-                )
-                article_entities[article_id] = entities
-            except Exception as e:
-                logger.warning(
-                    f"Failed to extract entities for article {article_id}: {e}"
-                )
-                article_entities[article_id] = None
-
-        entity_extraction_time = time.time() - entity_extraction_start
-        logger.debug(
-            f"Entity extraction for {len(topic_articles)} articles took {entity_extraction_time:.2f}s"
+        topic_clusters = _cluster_topic_group(
+            topic, topic_articles, articles_cache, session, model, similarity_threshold
         )
-
-        # Greedy clustering: iterate through articles, add to existing cluster or create new one
-        topic_clusters: List[List[int]] = []
-
-        for article in topic_articles:
-            article_id = int(article[0])  # type: ignore[index]
-            article_topic = article[2]  # type: ignore[index]
-            keywords = article_keywords[article_id]
-            entities = article_entities.get(article_id)
-
-            # Find best matching cluster
-            best_cluster = None
-            best_similarity = 0.0
-
-            for cluster in topic_clusters:
-                # Calculate average combined similarity to cluster (keywords + entities + topic)
-                similarities = []
-                for aid in cluster:
-                    # Get cached article data for topic
-                    other_article = articles_cache.get(aid)
-                    other_topic = other_article["topic"] if other_article else None
-
-                    sim = _calculate_combined_similarity(
-                        keywords,
-                        article_keywords[aid],
-                        entities,
-                        article_entities.get(aid),
-                        topic1=article_topic,
-                        topic2=other_topic,
-                    )
-                    similarities.append(sim)
-
-                avg_similarity = (
-                    sum(similarities) / len(similarities) if similarities else 0.0
-                )
-
-                if avg_similarity > best_similarity:
-                    best_similarity = avg_similarity
-                    best_cluster = cluster
-
-            # Add to best cluster if similar enough, otherwise create new cluster
-            if best_cluster and best_similarity >= similarity_threshold:
-                best_cluster.append(article_id)
-            else:
-                topic_clusters.append([article_id])
-
         clusters.extend(topic_clusters)
-        logger.debug(
-            f"Topic '{topic}' clustered into {len(topic_clusters)} story clusters"
-        )
 
     logger.info(f"Total clusters: {len(clusters)}")
 
@@ -3068,466 +3406,39 @@ def generate_stories_simple(
     synthesis_start = time.time()
 
     # Prepare cluster data with cached article info and calculate scores (v0.6.1)
-    cluster_data_list = []
-    for cluster_article_ids in clusters:
-        # Calculate metadata from cached data
-        cluster_articles = [articles_cache[aid] for aid in cluster_article_ids]
-        published_times = [art["published"] for art in cluster_articles]
-
-        # Get time range
-        time_window_start = min(published_times) if published_times else cutoff_time
-        time_window_end = max(published_times) if published_times else datetime.now(UTC)
-
-        # Convert string to datetime if needed (driver may return ``str`` for timestamps)
-        if isinstance(time_window_start, str):
-            time_window_start = datetime.fromisoformat(
-                time_window_start.replace("Z", "+00:00")
-            )
-        if isinstance(time_window_end, str):
-            time_window_end = datetime.fromisoformat(
-                time_window_end.replace("Z", "+00:00")
-            )
-
-        # Convert published times to datetime objects
-        published_datetimes = []
-        for pt in published_times:
-            if isinstance(pt, str):
-                pt = datetime.fromisoformat(pt.replace("Z", "+00:00"))
-            elif pt.tzinfo is None:
-                pt = pt.replace(tzinfo=UTC)
-            published_datetimes.append(pt)
-
-        # Calculate story scores (v0.6.1 quality scoring)
-        # Get unique sources (feed IDs)
-        feed_ids = {art["id"] for art in cluster_articles if "id" in art}
-        unique_source_count = len(feed_ids)
-
-        # Get unique entities from articles (if available)
-        entity_count = 0
-        # Note: Entities will be available after entity extraction (#40)
-        # For now, use a placeholder based on article count
-        entity_count = min(len(cluster_article_ids) * 2, 10)  # Estimate
-
-        # Get feed health scores (query from database)
-        feed_health_scores = []
-        if feed_ids:
-            feed_id_list = list(feed_ids)
-            placeholders_health, health_params = _build_in_clause_params(
-                feed_id_list, "fid"
-            )
-            health_results = session.execute(
-                text(
-                    f"SELECT health_score FROM feeds WHERE id IN ({placeholders_health})"
-                ),
-                health_params,
-            ).fetchall()
-            feed_health_scores = [
-                row[0] for row in health_results if row[0] is not None
-            ]
-
-        if not feed_health_scores:
-            feed_health_scores = [100.0]  # Default to perfect health
-
-        # Calculate scores using proper algorithms
-        importance, freshness, quality = _calculate_story_scores(
-            article_count=len(cluster_article_ids),
-            unique_source_count=unique_source_count,
-            entity_count=entity_count,
-            article_published_times=published_datetimes,
-            feed_health_scores=feed_health_scores,
+    cluster_data_list = [
+        _build_cluster_data(
+            cluster_article_ids, articles_cache, session, model, cutoff_time
         )
+        for cluster_article_ids in clusters
+    ]
 
-        # Calculate clustering metadata for "Why Grouped Together" (Issue #232)
-        clustering_metadata = _calculate_clustering_metadata(
-            cluster_article_ids, articles_cache, session, model
+    # Parallel LLM synthesis with INCREMENTAL persistence (#333): see
+    # _run_parallel_synthesis_and_persist's docstring for why persistence
+    # happens per-cluster instead of after the whole batch.
+    story_ids, skipped_duplicates, updated_stories, db_time = (
+        _run_parallel_synthesis_and_persist(
+            session,
+            cluster_data_list,
+            articles_cache,
+            model,
+            max_workers,
+            len(clusters),
+            pipeline_run_group_id,
         )
-
-        cluster_data_list.append(
-            {
-                "article_ids": cluster_article_ids,
-                "time_window_start": time_window_start,
-                "time_window_end": time_window_end,
-                "importance_score": importance,
-                "freshness_score": freshness,
-                "quality_score": quality,
-                "cluster_hash": hashlib.md5(
-                    json.dumps(sorted(cluster_article_ids)).encode()
-                ).hexdigest(),
-                "clustering_metadata": clustering_metadata,
-            }
-        )
-
-    # Parallel LLM synthesis with INCREMENTAL persistence (#333): each
-    # cluster's story is dedup-checked, created/merged, linked, embedded,
-    # and committed as soon as its own synthesis completes, instead of
-    # waiting for the entire batch. Previously a multi-hour run had zero
-    # durability until the very last line - any crash/restart mid-run lost
-    # all completed work. Synthesis itself still runs in parallel via
-    # ThreadPoolExecutor; persistence runs in the main thread as each
-    # future completes, so no additional session concurrency is introduced.
-    story_ids: List[int] = []
-    skipped_duplicates = 0
-    updated_stories = 0
-    db_time = 0.0
-    completed_count = 0
-
-    def generate_synthesis_for_cluster(cluster_data):
-        """Helper function for parallel execution."""
-        try:
-            cluster_articles = [
-                articles_cache[aid]
-                for aid in cluster_data["article_ids"]
-                if aid in articles_cache
-            ]
-            path = classify_cluster_path(cluster_articles)
-            synthesis_data = _generate_story_synthesis(
-                session,
-                cluster_data["article_ids"],
-                model,
-                articles_cache=articles_cache,
-                synthesis_path=path,
-            )
-            complexity_score = _compute_cluster_complexity(
-                session, cluster_data["article_ids"], cluster_articles, model
-            )
-            return {
-                "success": True,
-                "cluster_data": cluster_data,
-                "synthesis_data": synthesis_data,
-                "synthesis_path": path,
-                "complexity_score": complexity_score,
-            }
-        except Exception as e:
-            # exc_info=True (#340): the bare message alone previously gave
-            # no traceback, making root-causing failures like the #340
-            # NoneType bug much harder than it needed to be.
-            logger.error(f"Synthesis failed for cluster: {e}", exc_info=True)
-            return {
-                "success": False,
-                "cluster_data": cluster_data,
-                "error": str(e),
-            }
-
-    def _persist_synthesized_story(result: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Persist one successfully-synthesized cluster immediately: dedupe by
-        hash, merge into an overlapping story if one exists, else create a
-        new story + article links + embeddings - then commit. Called from
-        the as_completed() loop below (main thread only).
-
-        Returns {"outcome": "created"|"updated"|"skipped", "story_id": int|None}.
-        """
-        cluster_data = result["cluster_data"]
-        synthesis_data = result["synthesis_data"]
-        cluster_article_ids = cluster_data["article_ids"]
-        complexity_score = result.get("complexity_score")
-
-        # Skip if exact story already exists (same hash)
-        existing = session.execute(
-            text("SELECT 1 FROM stories WHERE story_hash = :hash LIMIT 1"),
-            {"hash": cluster_data["cluster_hash"]},
-        ).fetchone()
-        if existing:
-            logger.debug(
-                f"Skipping duplicate story with hash {cluster_data['cluster_hash']}"
-            )
-            return {"outcome": "skipped", "story_id": None}
-
-        # Check for overlapping story to update (v0.6.3 - ADR 0004)
-        overlap_result = find_overlapping_story(
-            session, cluster_article_ids, overlap_threshold=0.70
-        )
-
-        if overlap_result:
-            existing_story, existing_article_ids, overlap_ratio = overlap_result
-            merged_article_ids = list(existing_article_ids | set(cluster_article_ids))
-
-            # Only update if there are actually new articles
-            new_article_count = len(set(cluster_article_ids) - existing_article_ids)
-            if new_article_count == 0:
-                logger.debug(
-                    f"Skipping update - no new articles for story #{existing_story.id}"
-                )
-                return {"outcome": "skipped", "story_id": None}
-
-            try:
-                # Re-synthesize with merged articles
-                merged_cluster_articles = [
-                    articles_cache[aid]
-                    for aid in merged_article_ids
-                    if aid in articles_cache
-                ]
-                merged_path = classify_cluster_path(merged_cluster_articles)
-                merged_synthesis = _generate_story_synthesis(
-                    session,
-                    merged_article_ids,
-                    model,
-                    skip_cache=True,
-                    synthesis_path=merged_path,
-                )
-                merged_complexity_score = _compute_cluster_complexity(
-                    session, merged_article_ids, merged_cluster_articles, model
-                )
-
-                # Create new version
-                new_story_id = update_story_with_new_articles(
-                    session=session,
-                    existing_story=existing_story,
-                    existing_article_ids=existing_article_ids,
-                    merged_article_ids=merged_article_ids,
-                    synthesis_data=merged_synthesis,
-                    model=model,
-                    complexity_score=merged_complexity_score,
-                    cluster_data={
-                        **cluster_data,
-                        "cluster_hash": hashlib.md5(
-                            str(sorted(merged_article_ids)).encode()
-                        ).hexdigest(),
-                    },
-                )
-                session.commit()
-                logger.info(
-                    f"Updated story #{existing_story.id} → #{new_story_id} "
-                    f"(+{new_article_count} articles, {overlap_ratio:.0%} overlap)"
-                )
-                return {"outcome": "updated", "story_id": new_story_id}
-            except Exception as e:
-                session.rollback()
-                logger.error(f"Failed to update story: {e}", exc_info=True)
-                err_msg = str(e)
-                for aid in merged_article_ids:
-                    mark_article_failed(
-                        session,
-                        aid,
-                        err_msg,
-                        failure_stage="story_generation",
-                        run_group_id=pipeline_run_group_id,
-                        context="generate_stories_simple:overlap_update",
-                    )
-                session.commit()
-                return {"outcome": "skipped", "story_id": None}
-
-        # No overlap - create new story
-        try:
-            # Use synthesis quality metrics if available (Issue #105)
-            # Extract credibility metadata from synthesis (v0.8.2 - Issue #198)
-            cred_meta = synthesis_data.get("_credibility", {})
-
-            # Calculate confidence score and apply publish gate (#287)
-            _conf_score = calculate_confidence_score(
-                source_credibility=cred_meta.get("aggregate_score"),
-                article_count=len(cluster_article_ids),
-                freshness_score=cluster_data.get("freshness_score", 0.5),
-                synthesis_quality=synthesis_data.get("_quality_score", 0.5),
-            )
-            _gate_fields = gate_result_to_story_fields(evaluate_confidence(_conf_score))
-            if _gate_fields["status"] == "held":
-                logger.warning(
-                    f"New story held by confidence gate (score={_conf_score:.3f})"
-                )
-
-            story = Story(
-                title=synthesis_data.get("title")
-                or _generate_fallback_title(
-                    None,
-                    synthesis_data["synthesis"],
-                    synthesis_data.get("entities", []),
-                ),
-                synthesis=synthesis_data["synthesis"],
-                key_points_json=serialize_story_json_field(
-                    synthesis_data["key_points"]
-                ),
-                why_it_matters=synthesis_data["why_it_matters"],
-                topics_json=serialize_story_json_field(synthesis_data["topics"]),
-                entities_json=serialize_story_json_field(synthesis_data["entities"]),
-                article_count=len(cluster_article_ids),
-                importance_score=cluster_data["importance_score"],
-                freshness_score=cluster_data["freshness_score"],
-                # Use synthesis quality score if available, else cluster score
-                quality_score=synthesis_data.get(
-                    "_quality_score", cluster_data["quality_score"]
-                ),
-                # Confidence score: source reliability × breadth × recency × synthesis quality (#220)
-                confidence_score=_conf_score,
-                # Synthesis routing path: 'standard' or 'deep' (#282)
-                synthesis_path=synthesis_data.get("_synthesis_path", "standard"),
-                # Numeric cluster complexity score, advisory-only (#280)
-                complexity_score=complexity_score,
-                # Quality metrics (v0.8.1 - Issue #105)
-                quality_breakdown_json=serialize_story_json_field(
-                    synthesis_data.get("_quality_breakdown")
-                ),
-                title_source=synthesis_data.get("_title_source"),
-                parse_strategy=synthesis_data.get("_parse_strategy"),
-                # Clustering metadata (v0.8.1 - Issue #232)
-                clustering_metadata_json=(
-                    json.dumps(cluster_data.get("clustering_metadata"))
-                    if cluster_data.get("clustering_metadata")
-                    else None
-                ),
-                # Light RAG anchors injected into the synthesis prompt, if any (#259)
-                synthesis_anchors_json=json.dumps(
-                    synthesis_data.get("_synthesis_anchors", [])
-                ),
-                # Structured context anchors from the pre-synthesis retrieval hook (#279, #281)
-                context_anchors_json=json.dumps(
-                    to_background_anchors(synthesis_data.get("_retrieved_context", []))
-                ),
-                # Source credibility (v0.8.2 - Issue #198)
-                source_credibility_score=cred_meta.get("aggregate_score"),
-                low_credibility_warning=cred_meta.get("low_credibility_warning", False),
-                sources_excluded=cred_meta.get("sources_excluded", 0),
-                # Confidence gate fields (#287)
-                confidence_warning=_gate_fields["confidence_warning"],
-                failure_stage=_gate_fields["failure_stage"],
-                cluster_method="hybrid_topic_keywords_optimized",
-                story_hash=cluster_data["cluster_hash"],
-                generated_at=datetime.now(UTC),
-                first_seen=datetime.now(UTC),
-                last_updated=datetime.now(UTC),
-                time_window_start=cluster_data["time_window_start"],
-                time_window_end=cluster_data["time_window_end"],
-                model=model,
-                status=_gate_fields["status"],
-                processing_state=_gate_fields["processing_state"],
-                version=1,
-            )
-            session.add(story)
-            session.flush()  # assign story.id
-
-            for article_id in cluster_article_ids:
-                story_article = StoryArticle(
-                    story_id=story.id,
-                    article_id=article_id,
-                    relevance_score=1.0,
-                    is_primary=(article_id == cluster_article_ids[0]),
-                    added_at=datetime.now(UTC),
-                )
-                session.add(story_article)
-
-            apply_article_processing_state_batch(
-                session,
-                cluster_article_ids,
-                ArticleProcessingState.CLUSTERED,
-                context="generate_stories_simple",
-            )
-
-            maybe_embed_story_after_synthesis(session, story)
-            maybe_link_historical_context(session, story)
-
-            session.commit()
-            return {"outcome": "created", "story_id": story.id}
-
-        except Exception as e:
-            session.rollback()
-            logger.error(f"Failed to prepare story: {e}", exc_info=True)
-            err_msg = str(e)
-            for aid in cluster_article_ids:
-                mark_article_failed(
-                    session,
-                    aid,
-                    err_msg,
-                    failure_stage="story_generation",
-                    run_group_id=pipeline_run_group_id,
-                    context="generate_stories_simple:prepare_story",
-                )
-            session.commit()
-            return {"outcome": "skipped", "story_id": None}
-
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Submit all synthesis tasks
-        futures = {
-            executor.submit(generate_synthesis_for_cluster, cluster_data): i
-            for i, cluster_data in enumerate(cluster_data_list)
-        }
-
-        # Persist each result as soon as its synthesis completes
-        for future in as_completed(futures):
-            cluster_idx = futures[future]
-            completed_count += 1
-            try:
-                result = future.result()
-            except Exception as e:
-                logger.error(f"Failed to get synthesis result: {e}")
-                result = {
-                    "success": False,
-                    "cluster_data": cluster_data_list[cluster_idx],
-                    "error": str(e),
-                }
-
-            if not result["success"]:
-                err_msg = result.get("error") or "synthesis failed"
-                for aid in result["cluster_data"]["article_ids"]:
-                    mark_article_failed(
-                        session,
-                        aid,
-                        err_msg,
-                        failure_stage="story_generation",
-                        run_group_id=pipeline_run_group_id,
-                        context="generate_stories_simple:synthesis",
-                    )
-                session.commit()
-                logger.info(
-                    f"[{completed_count}/{len(clusters)}] Synthesis failed "
-                    f"(cluster {cluster_idx + 1}): {err_msg}"
-                )
-                continue
-
-            db_write_start = time.time()
-            outcome = _persist_synthesized_story(result)
-            db_time += time.time() - db_write_start
-
-            if outcome["outcome"] == "created":
-                story_ids.append(outcome["story_id"])
-                logger.info(
-                    f"[{completed_count}/{len(clusters)}] Story persisted "
-                    f"(id={outcome['story_id']}, cluster {cluster_idx + 1})"
-                )
-            elif outcome["outcome"] == "updated":
-                story_ids.append(outcome["story_id"])
-                updated_stories += 1
-                logger.info(
-                    f"[{completed_count}/{len(clusters)}] Story updated "
-                    f"(id={outcome['story_id']}, cluster {cluster_idx + 1})"
-                )
-            else:
-                skipped_duplicates += 1
+    )
 
     synthesis_time = time.time() - synthesis_start
-    logger.info(
-        f"Synthesis + incremental persistence complete: "
-        f"{len(story_ids)}/{len(clusters)} stories persisted "
-        f"({synthesis_time:.2f}s, avg {synthesis_time/len(clusters):.2f}s per cluster)"
-    )
-    if skipped_duplicates > 0:
-        logger.info(f"Skipped {skipped_duplicates} duplicate/no-op stories")
-    if updated_stories > 0:
-        logger.info(f"Updated {updated_stories} existing stories with new articles")
-
     overall_time = time.time() - overall_start
 
-    # Structured logging for story generation
-    logger.info(
-        "Story generation completed",
-        extra={
-            "duration_ms": round(overall_time * 1000, 2),
-            "stories_created": len(story_ids),
-            "stories_updated": updated_stories,
-            "articles_found": len(articles),
-            "clusters_created": len(clusters),
-            "duplicates_skipped": skipped_duplicates,
-            "fetch_time_ms": round(data_fetch_time * 1000, 2),
-            "synthesis_time_ms": round(synthesis_time * 1000, 2),
-            "db_time_ms": round(db_time * 1000, 2),
-        },
+    return _build_generation_result(
+        story_ids,
+        skipped_duplicates,
+        updated_stories,
+        articles,
+        clusters,
+        data_fetch_time,
+        synthesis_time,
+        db_time,
+        overall_time,
     )
-
-    # v0.6.1: Return detailed stats for better UX
-    # v0.6.3: Added stories_updated count
-    return {
-        "story_ids": story_ids,
-        "articles_found": len(articles),
-        "clusters_created": len(clusters),
-        "duplicates_skipped": skipped_duplicates,
-        "stories_updated": updated_stories,
-    }

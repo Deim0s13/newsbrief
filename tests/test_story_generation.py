@@ -133,23 +133,31 @@ def insert_test_articles(session):
     return article_ids
 
 
-def _check_llm_available():
-    """Check if Ollama LLM is available for testing."""
-    try:
-        import httpx
+def _check_llm_available() -> bool:
+    """
+    Check if the currently-configured LLM backend is reachable.
 
-        response = httpx.get("http://localhost:11434/api/tags", timeout=2.0)
-        return response.status_code == 200
+    Previously hardcoded to Ollama's port (11434), so this test was silently
+    a no-op (always skipped, or worse, always "passed" via skip) on macOS,
+    which resolves to the oMLX backend (port 8000, ADR-0033) rather than
+    Ollama. Delegates to LLMService.is_available(), which already dispatches
+    to whichever backend `device_profiles.<platform>.backend` resolves to.
+    """
+    try:
+        from app.llm import get_llm_service
+
+        return bool(get_llm_service().is_available())
     except Exception:
         return False
 
 
-@pytest.mark.requires_ollama
+@pytest.mark.requires_llm_backend
 def test_story_generation():
     """Test the full story generation pipeline."""
-    # Skip if LLM is not available (e.g., in CI environment)
+    # Skip if the configured LLM backend (Ollama or oMLX) is not available
+    # (e.g. in CI environment)
     if not _check_llm_available():
-        pytest.skip("Ollama LLM not available - skipping story generation test")
+        pytest.skip("LLM backend not available - skipping story generation test")
 
     print("🧪 Testing Story Generation Pipeline\n")
     print("=" * 60)
@@ -161,14 +169,20 @@ def test_story_generation():
         article_ids = insert_test_articles(session)
         print(f"✅ Inserted {len(article_ids)} test articles")
 
-        # Generate stories
+        # Generate stories -- resolve the model for whichever backend is
+        # actually configured (Ollama or oMLX, ADR-0033) rather than a
+        # hardcoded Ollama-only tag that oMLX wouldn't recognize.
+        from app.settings import get_settings_service
+
+        active_model = get_settings_service().get_active_model()
+
         print("\n🔄 Generating stories (24h window)...")
         result = generate_stories_simple(
             session=session,
             time_window_hours=24,
             min_articles_per_story=1,
             similarity_threshold=0.3,
-            model="llama3.1:8b",  # Will fall back if not available
+            model=active_model,
         )
 
         # Handle both dict return (new format) and list return (old format)
@@ -248,15 +262,3 @@ def test_story_generation():
             session.rollback()
         finally:
             session.close()
-
-
-def main():
-    """Run all tests and report results."""
-    test_story_generation()
-    print("\n" + "=" * 60)
-    print("✅ All tests passed!")
-    return 0
-
-
-if __name__ == "__main__":
-    exit(main())

@@ -15,6 +15,11 @@ flake8>=6.0.0
 mypy>=1.0.0
 types-bleach>=6.0.0  # Type stubs for bleach library
 
+# Code health audit tools (ad-hoc use, not wired into CI/pre-commit yet -- see v0.8.9)
+vulture>=2.11  # Dead code detection
+radon>=6.0.0  # Cyclomatic complexity / maintainability index
+deptry>=0.16.0  # Unused / undeclared dependency detection
+
 # Security
 safety>=2.3.0
 bandit>=1.7.0

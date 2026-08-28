@@ -136,19 +136,10 @@ def idempotency_feed():
             {"h": url_hash(article_url)},
         )
         s.execute(text("DELETE FROM feeds WHERE url = :u"), {"u": feed_url})
-        # Other tests insert feeds with explicit ids (e.g. id=1) without advancing the
-        # PostgreSQL sequence; realign so SERIAL allocates a free id (CI runs full suite).
-        s.execute(
-            text(
-                """
-                SELECT setval(
-                    pg_get_serial_sequence('feeds', 'id'),
-                    COALESCE((SELECT MAX(id) FROM feeds), 0),
-                    true
-                )
-                """
-            )
-        )
+        # Sequence resync against leftover explicit-id rows from earlier tests
+        # (e.g. id=1) is now handled centrally, after every test, by
+        # conftest.py's dispose_db_connections_after_test fixture (#358) --
+        # no need to guard against that here before this implicit-id insert.
         res = s.execute(
             text(
                 """

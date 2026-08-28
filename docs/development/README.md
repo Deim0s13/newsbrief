@@ -56,7 +56,7 @@ make dev
 
 ```bash
 # All non-LLM tests (requires dev DB at localhost:5433 — make db-up)
-pytest tests/ -v -m "not requires_ollama"
+pytest tests/ -v -m "not requires_llm_backend"
 
 # With coverage
 pytest tests/ --cov=app --cov-report=term

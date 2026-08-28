@@ -1,6 +1,6 @@
 [project]
 name = "newsbrief"
-version = "0.8.8"
+version = "0.8.9"
 description = "Story-based News Aggregator with AI Synthesis"
 
 [tool.pytest.ini_options]
@@ -14,7 +14,9 @@ filterwarnings = [
     "ignore::pytest.PytestReturnNotNoneWarning",
 ]
 markers = [
-    "requires_ollama: marks tests that need a live Ollama instance (deselect with -m 'not requires_ollama')",
+    # Renamed from requires_ollama (#360): tests carrying this marker are backend-aware
+    # (Ollama or oMLX) since the #337/#339 backend-selection fixes, not Ollama-only.
+    "requires_llm_backend: marks tests that need a live LLM backend, Ollama or oMLX (deselect with -m 'not requires_llm_backend')",
 ]
 
 [tool.coverage.run]
@@ -34,8 +36,10 @@ exclude_lines = [
     "if TYPE_CHECKING:",
 ]
 show_missing = true
-# Coverage threshold lowered to current level - can increase as coverage improves
-fail_under = 34
+# Raised from 34% to 45% (#360) -- actual coverage is 51% as of Aug 2026; 45% leaves
+# some headroom below that while catching real regressions instead of drift back
+# down. Re-raise as coverage improves further.
+fail_under = 45
 
 [tool.coverage.html]
 directory = "htmlcov"

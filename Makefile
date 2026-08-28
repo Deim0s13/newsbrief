@@ -359,10 +359,25 @@ migrate-history:                    ## Show migration history
 migrate-current:                    ## Show current migration version
 	DATABASE_URL=$${DATABASE_URL:-$(DEV_DATABASE_URL)} .venv/bin/alembic current
 
+# ---------- Model/RAG Evaluation Harness (#357) ----------
+# Recurring re-evaluation tools referenced from ADR-0025/0026/0033 and #330/#332/#336/#341.
+# Previously only runnable via `python3 scripts/...` remembered from memory/docs; promoted
+# to make targets purely for discoverability -- no changes to the scripts themselves.
+# All default to the dev DB (override with DATABASE_URL=... make ...) since they're
+# read-only and dev-focused; point at prod's DB explicitly if you need real prod data.
+model-fitness:                     ## Run model-fitness harness: make model-fitness ARGS="--backend ollama --model llama3.1:8b"
+	@test -n "$(ARGS)" || (echo "Set ARGS, e.g.: make model-fitness ARGS=\"--backend ollama --model llama3.1:8b\"" && exit 1)
+	DATABASE_URL=$${DATABASE_URL:-$(DEV_DATABASE_URL)} python3 scripts/model_fitness.py $(ARGS)
+
+embedding-benchmark:               ## Run embedding-model benchmark (#330): make embedding-benchmark [ARGS="--sample-size 200"]
+	DATABASE_URL=$${DATABASE_URL:-$(DEV_DATABASE_URL)} python3 scripts/embedding_benchmark.py $(ARGS)
+
+rag-eval:                          ## Run RAG go/no-go evaluation (ADR-0026): make rag-eval [ARGS="--sample-size 50 --json"]
+	DATABASE_URL=$${DATABASE_URL:-$(DEV_DATABASE_URL)} python3 scripts/rag_evaluation.py $(ARGS)
+
 # ---------- Hostname & TLS ----------
 HOSTNAME         ?= newsbrief.local
 PROJECT_PATH     ?= $(PWD)
-PODMAN_COMPOSE   ?= $(shell which podman-compose 2>/dev/null || echo podman-compose)
 
 hostname-setup:                   ## Add newsbrief.local to /etc/hosts (requires sudo)
 	@if grep -q "$(HOSTNAME)" /etc/hosts; then \
@@ -424,50 +439,13 @@ hostname-regen-certs:             ## Fix ERR_CERT_DATE_INVALID: regenerate Caddy
 		caddy:2-alpine
 	@echo "✅ Caddy restarted. Next: make hostname-trust-cert"
 
-# ---------- Autostart (app — macOS launchd only) ----------
-PLIST_NAME       := com.newsbrief.plist
-PLIST_DEST       := $(HOME)/Library/LaunchAgents/$(PLIST_NAME)
-
-autostart-install:                ## Install launchd plist for app auto-start on login (macOS only)
-ifeq ($(UNAME_S),Darwin)
-	@mkdir -p "$(PROJECT_PATH)/logs"
-	@mkdir -p "$$(dirname $(PLIST_DEST))"
-	@sed -e 's|__PROJECT_PATH__|$(PROJECT_PATH)|g' \
-	     -e 's|__PODMAN_COMPOSE_PATH__|$(PODMAN_COMPOSE)|g' \
-	     scripts/com.newsbrief.plist.template > $(PLIST_DEST)
-	@launchctl load $(PLIST_DEST)
-	@echo "✅ Autostart installed and enabled"
-else
-	@echo "autostart-install is macOS only. On Windows use Podman Desktop auto-start + Task Scheduler."
-endif
-
-autostart-uninstall:              ## Remove launchd plist (macOS only)
-ifeq ($(UNAME_S),Darwin)
-	@if [ -f "$(PLIST_DEST)" ]; then \
-		launchctl unload $(PLIST_DEST) 2>/dev/null || true; \
-		rm -f $(PLIST_DEST); \
-		echo "✅ Autostart disabled and removed"; \
-	else \
-		echo "Autostart not installed"; \
-	fi
-else
-	@echo "autostart-uninstall is macOS only."
-endif
-
-autostart-status:                 ## Check autostart status (macOS only)
-ifeq ($(UNAME_S),Darwin)
-	@if [ -f "$(PLIST_DEST)" ]; then \
-		echo "✅ Autostart is installed"; \
-		launchctl list | grep com.newsbrief || echo "   (not currently loaded)"; \
-	else \
-		echo "❌ Autostart not installed"; \
-		echo "   Run: make autostart-install"; \
-	fi
-else
-	@echo "autostart-status is macOS only."
-endif
-
 # ---------- Infrastructure Auto-Start ----------
+# Note (#356): a standalone-Compose-stack launchd autostart (app + Caddy + db,
+# scripts/com.newsbrief.plist.template) used to live here. Removed -- it
+# auto-started a full duplicate Compose app on macOS login, competing with
+# the K8s Deployment that's the real prod (see #325). `infra-autostart-install`
+# below is the correct macOS autostart path -- it starts kind + ArgoCD, which
+# manage that same K8s Deployment, not a separate app instance.
 infra-start:                      ## Manually start k8s infra (kind + ArgoCD + port-forwards)
 	@bash scripts/infra-start.sh
 
@@ -481,8 +459,8 @@ ifeq ($(UNAME_S),Darwin)
 	@echo "✅ Infra auto-start installed (macOS launchd)"
 	@echo "   The kind cluster + ArgoCD will start automatically on login"
 else
-	@echo "On Windows: run scripts/infra-task-install.ps1 in PowerShell to register the Task Scheduler task"
-	@echo "  powershell.exe -ExecutionPolicy Bypass -File scripts/infra-task-install.ps1"
+	@echo "infra-autostart-install is macOS only (kind + ArgoCD)."
+	@echo "On Windows, prod CD is Compose-based instead (ADR-0032) -- run: make compose-autostart-install"
 endif
 
 infra-autostart-uninstall:        ## Remove infra auto-start
@@ -491,7 +469,7 @@ ifeq ($(UNAME_S),Darwin)
 	@rm -f "$(HOME)/Library/LaunchAgents/com.newsbrief.infra.plist"
 	@echo "✅ Infra auto-start removed"
 else
-	@echo "On Windows: open Task Scheduler and delete the 'NewsBrief Infrastructure' task"
+	@echo "infra-autostart-uninstall is macOS only. On Windows, see: make compose-autostart-install"
 endif
 
 infra-autostart-status:           ## Check infra auto-start status
@@ -504,7 +482,7 @@ ifeq ($(UNAME_S),Darwin)
 		echo "   Run: make infra-autostart-install"; \
 	fi
 else
-	@echo "On Windows: check Task Scheduler for 'NewsBrief Infrastructure' task"
+	@echo "infra-autostart-status is macOS only. On Windows, check Task Scheduler for 'NewsBrief Compose Start'/'NewsBrief Compose Watch'."
 endif
 
 # ---------- Kubernetes Secrets ----------
@@ -517,13 +495,32 @@ k8s-omlx-secret:                  ## Create/update the oMLX API key Secret in ne
 				-n $$ns --dry-run=client -o yaml | kubectl apply -f -; \
 		done && echo "✅ newsbrief-omlx secret created/updated in both namespaces"'
 
-# ---------- Kubernetes Operations (Ansible) ----------
-recover:                          ## Recover all services after reboot/sleep
+k8s-db-secret:                    ## Create/update the DB credentials Secret in newsbrief-dev + newsbrief-prod (#357)
+	@test -f .env || { echo "❌ .env not found — run: make env-init"; exit 1; }
+	@echo "Creating/updating newsbrief-db-credentials Secret in newsbrief-dev + newsbrief-prod..."
+	@echo "Not tracked by ArgoCD/kustomize by design -- created out-of-band, same as newsbrief-omlx."
+	@PASSWORD="$$(grep '^POSTGRES_PASSWORD=' .env | cut -d= -f2-)"; \
+	test -n "$$PASSWORD" || { echo "❌ POSTGRES_PASSWORD not set in .env"; exit 1; }; \
+	kubectl create namespace newsbrief-dev --dry-run=client -o yaml | kubectl apply -f - >/dev/null; \
+	kubectl create namespace newsbrief-prod --dry-run=client -o yaml | kubectl apply -f - >/dev/null; \
+	kubectl create secret generic newsbrief-db-credentials -n newsbrief-dev \
+		--from-literal=DATABASE_URL="postgresql://newsbrief:$${PASSWORD}@host.containers.internal:5433/newsbrief" \
+		--dry-run=client -o yaml | kubectl apply -f -; \
+	kubectl create secret generic newsbrief-db-credentials -n newsbrief-prod \
+		--from-literal=DATABASE_URL="postgresql://newsbrief:$${PASSWORD}@host.containers.internal:5432/newsbrief" \
+		--dry-run=client -o yaml | kubectl apply -f -
+	@echo "✅ newsbrief-db-credentials Secret created/updated in both namespaces"
+	@echo "   Existing pods need a restart to pick up a changed value:"
+	@echo "   kubectl rollout restart deployment/newsbrief -n newsbrief-dev"
+	@echo "   kubectl rollout restart deployment/newsbrief -n newsbrief-prod"
+
+# ---------- Kubernetes Operations (recover/status) ----------
+recover:                          ## Recover all services after reboot/sleep (Podman machine + kind + ArgoCD + DB + Caddy + port-forwards)
 	@echo "🔄 Recovering NewsBrief environment..."
-	cd ansible && ansible-playbook -i inventory/localhost.yml playbooks/recover.yml
+	@bash scripts/infra-start.sh
 
 status:                           ## Check status of all services
-	cd ansible && ansible-playbook -i inventory/localhost.yml playbooks/status.yml
+	@bash scripts/infra-status.sh
 
 port-forwards:                    ## One-off restart of kubectl port-forwards (prod:8788, dev:8789, ArgoCD:8443)
 	@echo "🔌 Restarting port forwards..."
@@ -693,10 +690,10 @@ env-init:  ## Create .env from template with generated secure password
 	db-backup db-restore db-backup-list \
 	secrets-create secrets-list secrets-delete \
 	migrate migrate-dev migrate-new migrate-stamp migrate-history migrate-current \
+	model-fitness embedding-benchmark rag-eval \
 	hostname-setup hostname-check hostname-remove hostname-trust-cert hostname-regen-certs \
-	autostart-install autostart-uninstall autostart-status \
 	infra-start infra-autostart-install infra-autostart-uninstall infra-autostart-status \
-	k8s-omlx-secret \
+	k8s-omlx-secret k8s-db-secret \
 	recover status port-forwards argo-ui \
 	port-forwards-autostart-install port-forwards-autostart-uninstall port-forwards-autostart-status \
 	k8s-version-check k8s-version-check-autostart-install k8s-version-check-autostart-uninstall k8s-version-check-autostart-status \

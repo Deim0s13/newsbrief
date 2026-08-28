@@ -100,7 +100,7 @@ make dev        # Start dev server
 | `make refresh` | Refresh all feeds (fetch new articles) |
 | `make stories-generate` | Generate stories from recent articles |
 | `make api-health` | Check API health status |
-| `pytest tests/ -v -m "not requires_ollama"` | Run test suite (what CI runs) |
+| `pytest tests/ -v -m "not requires_llm_backend"` | Run test suite (what CI runs) |
 | `pre-commit run --all-files` | Run all linters/formatters |
 | `npm run build:css` | Rebuild Tailwind CSS |
 

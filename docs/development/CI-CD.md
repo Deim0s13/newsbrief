@@ -19,7 +19,7 @@ Two workflows in `.github/workflows/`, both triggered by `push`:
 
 ```
 lint ──┐
-       ├──► build-and-push ──► update-manifest ──► notify
+       ├──► build-and-push ──► update-manifest
 test ──┘
 ```
 
@@ -27,7 +27,6 @@ test ──┘
 2. **Test** — `pytest` against a `pgvector/pgvector:pg16` service container, then `alembic upgrade head`; `mypy` runs but is non-blocking (`continue-on-error: true`)
 3. **Build & Push** — multi-arch (`linux/amd64,linux/arm64`) build, pushes `ghcr.io/deim0s13/newsbrief:dev-latest` and `:sha-{short-sha}`
 4. **Update k8s Manifest** — commits the new `sha-{short-sha}` tag into `k8s/overlays/dev/kustomization.yaml` with `[skip ci]`, so ArgoCD's dev Application picks it up
-5. **Notify** — ntfy.sh push (`NTFY_TOPIC` secret)
 
 ### `ci-prod.yml` jobs
 
@@ -35,7 +34,7 @@ test ──┘
 check-version ──► lint ──┐
                  test ────┼──► build-and-push ──► security-scan ──► sign-image ──┐
                                                                   └► generate-sbom─┤
-                                                                                    ├──► create-release ──► update-manifest ──► notify
+                                                                                    ├──► create-release ──► update-manifest
 ```
 
 1. **Version check** — fails fast if `git tag` already contains `v{pyproject.toml version}`. **You must bump `[project].version` in `pyproject.toml` before merging to `main`, or this job blocks the whole pipeline.**
@@ -46,7 +45,6 @@ check-version ──► lint ──┐
 6. **Generate SBOM** — Trivy CycloneDX SBOM, uploaded as a build artifact and attached to the release
 7. **Create Release** — generates release notes from `git log {last_tag}..HEAD` and publishes a GitHub release tagged `v{version}` (checkout uses `fetch-depth: 0` — required for this history walk to see anything)
 8. **Update k8s Manifest** — bumps `k8s/overlays/prod/kustomization.yaml` to `v{version}` with `[skip ci]`
-9. **Notify** — ntfy.sh push, `urgent` priority + ❌ on any job failure
 
 ### Versioning
 
@@ -103,13 +101,23 @@ Images are published to GitHub Container Registry (GHCR):
 | Vulnerability scanning | Trivy | Both workflows can scan; `ci-prod.yml` also blocks on CRITICAL+fixable via SARIF |
 | Image signing | Cosign (key-based, `COSIGN_PRIVATE_KEY`/`COSIGN_PASSWORD`) | `ci-prod.yml` only |
 | SBOM generation | Trivy CycloneDX | `ci-prod.yml` only, attached to the GitHub release |
-| Secrets | GitHub Actions secrets (`COSIGN_PRIVATE_KEY`, `COSIGN_PASSWORD`, `NTFY_TOPIC`, `GITHUB_TOKEN`) | Repo Settings → Secrets |
+| Secrets | GitHub Actions secrets (`COSIGN_PRIVATE_KEY`, `COSIGN_PASSWORD`, `GITHUB_TOKEN`) | Repo Settings → Secrets |
 
 There is no in-cluster secret manager (no Bitwarden/Vault integration) — Cosign keys live only as GitHub Actions secrets, used purely at build time.
 
 ## Notifications
 
-Both workflows post to an [ntfy.sh](https://ntfy.sh) topic (`NTFY_TOPIC` secret) on every run — success or failure — via a plain `curl` step, no separate notification workflow.
+Neither workflow posts to ntfy.sh anymore — the `Notify` job (a plain `curl` to
+`ntfy.sh`) was removed (see ADR-0021's amendment) after repeatedly showing runs
+as failed purely from a transient DNS/network hiccup reaching ntfy.sh, with no
+timeout/retry/`continue-on-error` to absorb it — noise unrelated to whether the
+pipeline itself actually passed. Use `gh run list`/`gh run view` (see
+Troubleshooting below) for CI status instead.
+
+ntfy.sh itself is still used for **infra-level** alerting outside CI — the
+port-forward watchdog, `k8s-version-check.sh`, and Windows' `compose-watch.ps1`
+— via the `NTFY_TOPIC` value in `.env` (a different value from the now-removed
+GitHub Actions secret of the same name).
 
 ## Troubleshooting
 

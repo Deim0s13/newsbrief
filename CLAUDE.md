@@ -15,6 +15,9 @@ The app runs on **two machines** — a macOS MBP and a Windows machine — both 
 | Ollama | Ollama.app (native) | Ollama.exe (native, GPU) |
 | Ollama URL (containers) | `host.containers.internal:11434` | Same — identical |
 | Infra auto-start | launchd (`make infra-autostart-install`) | Task Scheduler (`scripts\compose-task-install.ps1`) |
+| Compose CLI | `podman-compose` (standalone tool) | `podman compose` (Podman's built-in v2 subcommand) |
+
+Two different Compose CLIs, deliberately (#357): macOS `Makefile` targets (`deploy`, `deploy-db-only`, `infra-start.sh`) use the standalone `podman-compose` because Podman secrets (`db_password`) need it — Podman's built-in `podman compose` doesn't support the `secrets:` block the same way. Windows `.ps1` scripts (`compose-start.ps1`, `compose-watch.ps1`) use the built-in `podman compose` instead and skip secrets entirely (password comes straight from `.env` — see `compose.windows.yaml`). Don't "simplify" this to one tool without re-checking that constraint.
 
 ---
 
@@ -45,17 +48,17 @@ On macOS, it starts a `pgvector/pg16` container via Podman.
 ### Tests
 ```bash
 pytest tests/ -v                                    # All non-LLM tests (requires dev DB at localhost:5433)
-pytest tests/ -v -m "not requires_ollama"           # Same — explicit (what CI runs)
-pytest tests/ -v -m "requires_ollama"               # LLM tests only (requires Ollama running)
+pytest tests/ -v -m "not requires_llm_backend"      # Same — explicit (what CI runs)
+pytest tests/ -v -m "requires_llm_backend"          # LLM tests only (requires Ollama/oMLX running)
 pytest tests/test_stories.py -v                     # Single test file
 pytest tests/ -v -k "test_ranking"                  # Single test by name
-pytest tests/ --cov=app --cov-report=term           # With coverage (threshold: 34%)
+pytest tests/ --cov=app --cov-report=term           # With coverage (threshold: 45%)
 ```
 
 Tests are split into three categories:
 - **Unit / mocked** — always safe, no external deps
 - **DB integration** — hit real PostgreSQL; skip automatically without `DATABASE_URL`
-- **LLM tests** (`@pytest.mark.requires_ollama`) — require live Ollama; excluded from CI via `-m "not requires_ollama"`
+- **LLM tests** (`@pytest.mark.requires_llm_backend`) — require a live LLM backend (Ollama or oMLX); excluded from CI via `-m "not requires_llm_backend"`
 
 Integration tests hit a **real PostgreSQL** (no mocks). Set `DATABASE_URL=postgresql://newsbrief:newsbrief_dev@localhost:5433/newsbrief` or start the dev DB with `make db-up`.
 
@@ -128,7 +131,6 @@ CI runs automatically on push. No local trigger commands needed.
 |---|---|
 | `COSIGN_PRIVATE_KEY` | Image signing (prod only) |
 | `COSIGN_PASSWORD` | Cosign key passphrase |
-| `NTFY_TOPIC` | ntfy.sh topic for pipeline notifications |
 
 ### Kubernetes / ArgoCD (macOS only)
 ```bash
@@ -293,7 +295,7 @@ The embedding model (`nomic-embed-text`, 768 dimensions) is separate and configu
 - **Windows CD**: `compose-watch.ps1` (native PowerShell) runs once daily at 06:00 via Task Scheduler, compares the running image digest against `ghcr.io/deim0s13/newsbrief:latest`, redeploys + migrates if changed.
 - Dev DB (`compose.dev.yaml`) runs on `newsbrief_dev_network`; prod DB runs on `newsbrief_default` — isolated to prevent DNS round-robin.
 - `make env-init` generates a single random password and substitutes it into both `POSTGRES_PASSWORD` and `DATABASE_URL` in `.env` — credentials are always in sync.
-- Pipeline CI notifications go to ntfy.sh topic set in `NTFY_TOPIC` env/secret. Deploy notifications sent by `compose-watch.sh` (Windows) use the same topic from `.env`.
+- CI (GitHub Actions) no longer sends ntfy.sh notifications (removed, ADR-0021 amendment — the curl had no timeout/retry, so ntfy.sh network blips repeatedly showed unrelated CI runs as failed; use `gh run list`/`gh run view` for CI status). ntfy.sh is still used for infra-level alerting (port-forward watchdog, `k8s-version-check.sh`, Windows' `compose-watch.ps1`) via `NTFY_TOPIC` in `.env`.
 
 ### Key Design Constraints
 

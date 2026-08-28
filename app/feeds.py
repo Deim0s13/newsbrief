@@ -128,6 +128,20 @@ class RefreshStats:
     items_updated: int = 0
 
 
+@dataclass
+class ArticleExtractionResult:
+    """Outcome of best-effort full-article content extraction for one entry."""
+
+    content_text: Optional[str]
+    extraction_method: str
+    extraction_quality: Optional[float]
+    extraction_error: Optional[str]
+    extracted_at: Optional[datetime]
+    extraction_time_ms: Optional[float]
+    author: Optional[str]
+    robots_blocked: bool
+
+
 # Configurable limits (can be overridden by environment variables)
 MAX_ITEMS_PER_REFRESH = int(os.getenv("NEWSBRIEF_MAX_ITEMS_PER_REFRESH", "500"))
 MAX_ITEMS_PER_FEED = int(os.getenv("NEWSBRIEF_MAX_ITEMS_PER_FEED", "50"))
@@ -1231,9 +1245,7 @@ def get_latest_import_summary() -> Optional[dict[str, Any]]:
         }
 
 
-def update_failed_import_status(
-    failed_import_id: int, status: str, resolved_feed_id: Optional[int] = None
-) -> bool:
+def update_failed_import_status(failed_import_id: int, status: str) -> bool:
     """Update the status of a failed import (resolved, dismissed)."""
     with session_scope() as s:
         result = s.execute(
@@ -1247,36 +1259,6 @@ def update_failed_import_status(
             {"status": status, "id": failed_import_id},
         )
         return result.rowcount > 0
-
-
-def cleanup_old_import_history(days: int = 30) -> int:
-    """Delete import history older than N days."""
-    with session_scope() as s:
-        # Delete old failed imports first (cascade should handle this, but be explicit)
-        s.execute(
-            text(
-                """
-                DELETE FROM failed_imports
-                WHERE import_id IN (
-                    SELECT id FROM import_history
-                    WHERE imported_at < NOW() - INTERVAL '%s days'
-                )
-                """
-                % days
-            )
-        )
-
-        # Delete old import history
-        result = s.execute(
-            text(
-                """
-                DELETE FROM import_history
-                WHERE imported_at < NOW() - INTERVAL '%s days'
-                """
-                % days
-            )
-        )
-        return result.rowcount
 
 
 def export_opml() -> str:
@@ -1380,6 +1362,433 @@ def export_opml() -> str:
     return ET.tostring(opml, encoding="unicode", xml_declaration=True)
 
 
+def _fetch_feed_response(
+    client: httpx.Client,
+    fid: int,
+    url: str,
+    etag: Optional[str],
+    last_mod: Optional[str],
+    stats: RefreshStats,
+) -> Optional[httpx.Response]:
+    """
+    Fetch a single feed's URL, using ETag/Last-Modified conditional headers.
+
+    Classifies the outcome (304 cached / HTTP error / connection error /
+    success), updates ``stats`` and feed health metrics accordingly, and
+    returns the response only on success. ``None`` means the caller should
+    move on to the next feed (already-cached, errored, or an exception) --
+    extracted from ``fetch_and_store()`` (#347), behavior unchanged.
+    """
+    headers = {}
+    if etag:
+        headers["If-None-Match"] = etag
+    if last_mod:
+        headers["If-Modified-Since"] = last_mod
+
+    fetch_start_time = time.time()
+
+    try:
+        resp = client.get(url, headers=headers)
+        response_time_ms = (time.time() - fetch_start_time) * 1000
+
+        # Handle cached response (still considered successful)
+        if resp.status_code == 304:
+            stats.feeds_cached_304 += 1
+            update_feed_health_metrics(fid, True, response_time_ms)
+            return None
+
+        # Handle error responses
+        if resp.status_code >= 400:
+            stats.feeds_error += 1
+            error_message = f"HTTP {resp.status_code}: {resp.reason_phrase}"
+            update_feed_health_metrics(fid, False, response_time_ms, error_message)
+            return None
+
+        # Success case
+        update_feed_health_metrics(fid, True, response_time_ms)
+        return resp
+
+    except Exception as e:
+        response_time_ms = (time.time() - fetch_start_time) * 1000
+        stats.feeds_error += 1
+        error_message = f"Connection error: {str(e)}"
+        update_feed_health_metrics(fid, False, response_time_ms, error_message)
+        return None
+
+
+def _store_feed_cache_headers(
+    fid: int, new_etag: Optional[str], new_last_mod: Optional[str]
+) -> None:
+    """Persist a feed's new ETag/Last-Modified headers after a successful fetch."""
+    with session_scope() as s:
+        s.execute(
+            text(
+                """
+                UPDATE feeds SET
+                    etag=:e,
+                    last_modified=:lm,
+                    updated_at=CURRENT_TIMESTAMP
+                WHERE id=:id
+            """
+            ),
+            {"e": new_etag, "lm": new_last_mod, "id": fid},
+        )
+
+
+def _lookup_existing_item(
+    h: str,
+) -> Optional[Tuple[int, Optional[str], Any, Optional[str]]]:
+    """
+    Look up an existing item by its url_hash.
+
+    Returns ``(id, content_hash, published, content)`` or ``None`` if no
+    item with this hash exists yet.
+    """
+    with session_scope() as s:
+        row = s.execute(
+            text(
+                """
+                SELECT id, content_hash, published, content
+                FROM items WHERE url_hash=:h LIMIT 1
+                """
+            ),
+            {"h": h},
+        ).fetchone()
+
+    if row is None:
+        return None
+    return (int(row[0]), row[1], row[2], row[3])
+
+
+def _extract_article_content(
+    client: httpx.Client, link: str, summary: str
+) -> ArticleExtractionResult:
+    """
+    Best-effort fetch + tiered extraction of an article's full text.
+
+    Checks robots.txt first; on any failure (blocked, non-HTML response,
+    or an exception), falls back gracefully with ``content_text=None`` --
+    the caller uses the RSS ``summary`` in that case.
+    """
+    try:
+        if not is_article_url_allowed(link):
+            return ArticleExtractionResult(
+                content_text=None,
+                extraction_method="blocked",
+                extraction_quality=None,
+                extraction_error="robots_txt_blocked",
+                extracted_at=None,
+                extraction_time_ms=None,
+                author=None,
+                robots_blocked=True,
+            )
+
+        page = client.get(link, follow_redirects=True, timeout=HTTP_TIMEOUT)
+        if page.status_code >= 400 or not page.headers.get(
+            "content-type", ""
+        ).startswith(("text/html", "application/xhtml")):
+            return ArticleExtractionResult(
+                content_text=None,
+                extraction_method="none",
+                extraction_quality=None,
+                extraction_error=None,
+                extracted_at=None,
+                extraction_time_ms=None,
+                author=None,
+                robots_blocked=False,
+            )
+
+        # Use tiered extraction (v0.8.0)
+        extraction_result = extract_content(
+            html=page.text,
+            url=link,
+            rss_summary=summary,
+        )
+        content_text = extraction_result.content
+        extraction_method = extraction_result.method
+
+        logger.debug(
+            f"Extracted {link} via {extraction_method}, "
+            f"quality={extraction_result.quality_score:.2f}, "
+            f"length={len(content_text) if content_text else 0}"
+        )
+
+        return ArticleExtractionResult(
+            content_text=content_text,
+            extraction_method=extraction_method,
+            extraction_quality=extraction_result.quality_score,
+            extraction_error=extraction_result.error,
+            extracted_at=datetime.now(timezone.utc),
+            extraction_time_ms=extraction_result.extraction_time_ms,
+            # Use trafilatura's author when RSS doesn't provide one
+            author=extraction_result.metadata.author or None,
+            robots_blocked=False,
+        )
+    except Exception as e:
+        logger.warning(f"Extraction failed for {link}: {e}")
+        return ArticleExtractionResult(
+            content_text=None,
+            extraction_method="failed",
+            extraction_quality=None,
+            extraction_error=str(e)[:200],  # Truncate long errors
+            extracted_at=None,
+            extraction_time_ms=None,
+            author=None,
+            robots_blocked=False,
+        )
+
+
+def _classify_and_score_item(
+    title: str,
+    content_for_analysis: str,
+    published: Optional[datetime],
+) -> Tuple[Any, Any]:
+    """
+    Classify an item's topic and calculate its ranking score (v0.4.0).
+
+    Returns ``(topic_result, ranking_result)``. ``content_for_analysis``
+    should already be the caller's ``content_text or summary or ""``
+    fallback chain.
+    """
+    topic_result = classify_article_topic(
+        title=title or "",
+        content=content_for_analysis,
+        use_llm_fallback=False,  # Use keywords only for feed ingestion performance
+    )
+
+    ranking_result = calculate_ranking_score(
+        published=published,
+        source_weight=1.0,  # Default source weight, can be customized per feed later
+        title=title or "",
+        content=content_for_analysis,
+        topic=topic_result.topic,
+    )
+
+    return topic_result, ranking_result
+
+
+def _upsert_item_row(
+    existing_id: Optional[int],
+    row_params: dict,
+    link: str,
+    fid: int,
+    stats: RefreshStats,
+) -> None:
+    """
+    Insert a new item row, or update an existing one, and update ``stats``.
+
+    ``row_params`` must contain all columns needed by both the INSERT and
+    UPDATE statements below (see call site in ``fetch_and_store``).
+    """
+    with session_scope() as s:
+        if existing_id is None:
+            try:
+                s.execute(
+                    text(
+                        """
+                    INSERT INTO items(feed_id, title, url, url_hash, published, author, summary, content, content_hash, ranking_score, topic, topic_confidence, source_weight, extraction_method, extraction_quality, extraction_error, extracted_at, extraction_time_ms, processing_state)
+                    VALUES(:feed_id, :title, :url, :url_hash, :published, :author, :summary, :content, :content_hash, :ranking_score, :topic, :topic_confidence, :source_weight, :extraction_method, :extraction_quality, :extraction_error, :extracted_at, :extraction_time_ms, :processing_state)
+                    ON CONFLICT (url_hash) DO NOTHING
+                    """
+                    ),
+                    row_params,
+                )
+                stats.items_inserted += 1
+            except IntegrityError as e:
+                logger.warning("Skipping item (integrity conflict): %s — %s", link, e)
+        else:
+            s.execute(
+                text(
+                    """
+                UPDATE items SET
+                    feed_id=:feed_id,
+                    title=:title,
+                    url=:url,
+                    published=:published,
+                    author=:author,
+                    summary=:summary,
+                    content=:content,
+                    content_hash=:content_hash,
+                    ranking_score=:ranking_score,
+                    topic=:topic,
+                    topic_confidence=:topic_confidence,
+                    source_weight=:source_weight,
+                    extraction_method=:extraction_method,
+                    extraction_quality=:extraction_quality,
+                    extraction_error=:extraction_error,
+                    extracted_at=:extracted_at,
+                    extraction_time_ms=:extraction_time_ms,
+                    processing_state=:processing_state
+                WHERE id=:item_id
+                """
+                ),
+                {**row_params, "item_id": existing_id},
+            )
+            stats.items_updated += 1
+
+    stats.total_items += 1
+    stats.items_per_feed[fid] += 1
+
+
+def _process_feed_entries(
+    client: httpx.Client,
+    fid: int,
+    entries: Iterable[Any],
+    stats: RefreshStats,
+    start_time: float,
+) -> None:
+    """
+    Process one feed's parsed entries: dedup, extract, classify, upsert.
+
+    Applies the global item limit, per-feed fairness limit, and overall
+    time limit, stopping early (via ``stats.hit_global_limit`` /
+    ``stats.hit_time_limit``) if any is hit. Mutates ``stats`` in place;
+    the caller is responsible for breaking its own feed loop afterward.
+    """
+    for entry in entries:
+        # Check global limit
+        if stats.total_items >= MAX_ITEMS_PER_REFRESH:
+            stats.hit_global_limit = True
+            break
+
+        # Check per-feed limit for fairness
+        if stats.items_per_feed[fid] >= MAX_ITEMS_PER_FEED:
+            break
+
+        # Check time limit
+        elapsed = time.time() - start_time
+        if elapsed > MAX_REFRESH_TIME_SECONDS:
+            stats.hit_time_limit = True
+            break
+
+        link = entry.get("link") or entry.get("id")
+        if not link:
+            continue
+
+        h = url_hash(link)
+
+        existing_id: Optional[int]
+        existing_hash: Optional[str]
+        existing_pub: Any
+        existing_content: Optional[str]
+
+        existing_item = _lookup_existing_item(h)
+        if existing_item is not None:
+            existing_id, existing_hash, existing_pub, existing_content = existing_item
+        else:
+            existing_id = existing_hash = existing_pub = existing_content = None
+
+        entry_updated = entry_updated_instant(entry)
+        published = entry_published_for_item(entry)
+
+        if existing_id is not None:
+            if not should_reingest_existing_item(
+                existing_pub, existing_content, entry_updated
+            ):
+                continue
+
+        title = entry.get("title") or ""
+        author = None
+
+        # Initial summary (feed-provided, sanitized for safety)
+        summary = sanitize_html(entry.get("summary") or "")
+
+        # Fetch article page for full text (best-effort)
+        extraction = _extract_article_content(client, link, summary)
+        content_text = extraction.content_text
+        extraction_method = extraction.extraction_method
+        extraction_quality = extraction.extraction_quality
+        extraction_error = extraction.extraction_error
+        extracted_at = extraction.extracted_at
+        extraction_time_ms = extraction.extraction_time_ms
+        if not author and extraction.author:
+            author = extraction.author
+        if extraction.robots_blocked:
+            stats.robots_txt_blocked_articles += 1
+
+        # Calculate content hash for AI caching
+        content_hash = create_content_hash(title, content_text or summary or "")
+
+        if (
+            existing_id is not None
+            and existing_hash is not None
+            and content_hash == existing_hash
+        ):
+            logger.debug(
+                "Skipping item update (content_hash unchanged): url_hash=%s",
+                h[:16],
+            )
+            continue
+
+        # Classify topic and calculate ranking score (v0.4.0)
+        topic_result, ranking_result = _classify_and_score_item(
+            title, content_text or summary or "", published
+        )
+
+        ingest_processing_state = article_state_after_ingest(
+            extraction_method,
+            extracted_at,
+            content_text,
+        )
+
+        row_params = {
+            "feed_id": fid,
+            "title": title,
+            "url": link,
+            "url_hash": h,
+            "published": published.replace(tzinfo=None) if published else None,
+            "author": author,
+            "summary": summary,
+            "content": content_text,
+            "content_hash": content_hash,
+            "ranking_score": ranking_result.score,
+            "topic": topic_result.topic,
+            "topic_confidence": topic_result.confidence,
+            "source_weight": 1.0,
+            "extraction_method": extraction_method,
+            "extraction_quality": extraction_quality,
+            "extraction_error": extraction_error,
+            "extracted_at": (
+                extracted_at.replace(tzinfo=None) if extracted_at else None
+            ),
+            "extraction_time_ms": extraction_time_ms,
+            "processing_state": ingest_processing_state.value,
+        }
+
+        _upsert_item_row(existing_id, row_params, link, fid, stats)
+
+
+def _finalize_refresh_stats(stats: RefreshStats, start_time: float) -> None:
+    """
+    Record final timing, refresh feed health scores, and log a structured summary.
+
+    Mutates ``stats.refresh_time_seconds`` in place.
+    """
+    stats.refresh_time_seconds = time.time() - start_time
+
+    try:
+        update_feed_health_scores()
+    except Exception as e:
+        # Don't fail the entire refresh if health score update fails
+        logger.warning(f"Failed to update health scores: {e}")
+
+    logger.info(
+        "Feed refresh completed",
+        extra={
+            "duration_ms": round(stats.refresh_time_seconds * 1000, 2),
+            "feeds_processed": stats.total_feeds_processed,
+            "articles_ingested": stats.total_items,
+            "articles_inserted": stats.items_inserted,
+            "articles_updated": stats.items_updated,
+            "feeds_cached": stats.feeds_cached_304,
+            "feeds_error": stats.feeds_error,
+            "feeds_disabled": stats.feeds_skipped_disabled,
+            "hit_time_limit": stats.hit_time_limit,
+            "hit_global_limit": stats.hit_global_limit,
+        },
+    )
+
+
 def fetch_and_store() -> RefreshStats:
     """
     Iterate all feeds, use ETag/Last-Modified. Respect robots_allowed/disabled.
@@ -1441,49 +1850,8 @@ def fetch_and_store() -> RefreshStats:
                 stats.feeds_skipped_robots += 1
                 continue
 
-            # Prepare cache headers
-            headers = {}
-            if etag:
-                headers["If-None-Match"] = etag
-            if last_mod:
-                headers["If-Modified-Since"] = last_mod
-
-            # Fetch feed with response time tracking
-            fetch_start_time = time.time()
-            fetch_success = False
-            error_message = None
-
-            try:
-                resp = client.get(url, headers=headers)
-                response_time_ms = (time.time() - fetch_start_time) * 1000
-
-                # Handle cached response (still considered successful)
-                if resp.status_code == 304:
-                    stats.feeds_cached_304 += 1
-                    fetch_success = True
-                    update_feed_health_metrics(fid, True, response_time_ms)
-                    continue
-
-                # Handle error responses
-                if resp.status_code >= 400:
-                    stats.feeds_error += 1
-                    fetch_success = False
-                    error_message = f"HTTP {resp.status_code}: {resp.reason_phrase}"
-                    update_feed_health_metrics(
-                        fid, False, response_time_ms, error_message
-                    )
-                    continue
-
-                # Success case
-                fetch_success = True
-                update_feed_health_metrics(fid, True, response_time_ms)
-
-            except Exception as e:
-                response_time_ms = (time.time() - fetch_start_time) * 1000
-                stats.feeds_error += 1
-                fetch_success = False
-                error_message = f"Connection error: {str(e)}"
-                update_feed_health_metrics(fid, False, response_time_ms, error_message)
+            resp = _fetch_feed_response(client, fid, url, etag, last_mod, stats)
+            if resp is None:
                 continue
 
             # Successfully fetched feed
@@ -1497,537 +1865,16 @@ def fetch_and_store() -> RefreshStats:
             parsed = feedparser.parse(resp.content)
 
             # Store cache headers only (metrics already updated by update_feed_health_metrics)
-            with session_scope() as s:
-                s.execute(
-                    text(
-                        """
-                    UPDATE feeds SET
-                        etag=:e,
-                        last_modified=:lm,
-                        updated_at=CURRENT_TIMESTAMP
-                    WHERE id=:id
-                """
-                    ),
-                    {"e": new_etag, "lm": new_last_mod, "id": fid},
-                )
+            _store_feed_cache_headers(fid, new_etag, new_last_mod)
 
             # Process feed entries with per-feed limit for fairness
-            for entry in parsed.entries:
-                # Check global limit
-                if stats.total_items >= MAX_ITEMS_PER_REFRESH:
-                    stats.hit_global_limit = True
-                    break
-
-                # Check per-feed limit for fairness
-                if stats.items_per_feed[fid] >= MAX_ITEMS_PER_FEED:
-                    break
-
-                # Check time limit
-                elapsed = time.time() - start_time
-                if elapsed > MAX_REFRESH_TIME_SECONDS:
-                    stats.hit_time_limit = True
-                    break
-
-                link = entry.get("link") or entry.get("id")
-                if not link:
-                    continue
-
-                h = url_hash(link)
-
-                with session_scope() as s:
-                    row = s.execute(
-                        text(
-                            """
-                        SELECT id, content_hash, published, content
-                        FROM items WHERE url_hash=:h LIMIT 1
-                        """
-                        ),
-                        {"h": h},
-                    ).fetchone()
-
-                existing_id = int(row[0]) if row else None
-                existing_hash = row[1] if row else None
-                existing_pub = row[2] if row else None
-                existing_content = row[3] if row else None
-
-                entry_updated = entry_updated_instant(entry)
-                published = entry_published_for_item(entry)
-
-                if existing_id is not None:
-                    if not should_reingest_existing_item(
-                        existing_pub, existing_content, entry_updated
-                    ):
-                        continue
-
-                title = entry.get("title") or ""
-                author = None
-
-                # Initial summary (feed-provided, sanitized for safety)
-                summary = sanitize_html(entry.get("summary") or "")
-
-                # Fetch article page for full text (best-effort)
-                # Extraction metadata for v0.8.0 observability
-                content_text = None
-                extraction_method = "none"
-                extraction_quality = None
-                extraction_error = None
-                extracted_at = None
-                extraction_time_ms = None
-
-                try:
-                    # Check robots.txt before fetching article content
-                    if is_article_url_allowed(link):
-                        page = client.get(
-                            link, follow_redirects=True, timeout=HTTP_TIMEOUT
-                        )
-                        if page.status_code < 400 and page.headers.get(
-                            "content-type", ""
-                        ).startswith(("text/html", "application/xhtml")):
-                            # Use tiered extraction (v0.8.0)
-                            extraction_result = extract_content(
-                                html=page.text,
-                                url=link,
-                                rss_summary=summary,
-                            )
-                            content_text = extraction_result.content
-                            extraction_method = extraction_result.method
-                            extraction_quality = extraction_result.quality_score
-                            extraction_error = extraction_result.error
-                            extracted_at = datetime.now(timezone.utc)
-                            extraction_time_ms = extraction_result.extraction_time_ms
-
-                            # Use trafilatura's author when RSS doesn't provide one
-                            if not author and extraction_result.metadata.author:
-                                author = extraction_result.metadata.author
-
-                            logger.debug(
-                                f"Extracted {link} via {extraction_method}, "
-                                f"quality={extraction_quality:.2f}, "
-                                f"length={len(content_text) if content_text else 0}"
-                            )
-                    else:
-                        stats.robots_txt_blocked_articles += 1
-                        extraction_method = "blocked"
-                        extraction_error = "robots_txt_blocked"
-                        # If robots.txt disallows, content_text remains None (graceful degradation)
-                except Exception as e:
-                    extraction_method = "failed"
-                    extraction_error = str(e)[:200]  # Truncate long errors
-                    logger.warning(f"Extraction failed for {link}: {e}")
-
-                # Calculate content hash for AI caching
-                content_hash = create_content_hash(title, content_text or summary or "")
-
-                if (
-                    existing_id is not None
-                    and existing_hash is not None
-                    and content_hash == existing_hash
-                ):
-                    logger.debug(
-                        "Skipping item update (content_hash unchanged): url_hash=%s",
-                        h[:16],
-                    )
-                    continue
-
-                # Classify article topic (v0.4.0)
-                topic_result = classify_article_topic(
-                    title=title or "",
-                    content=content_text or summary or "",
-                    use_llm_fallback=False,  # Use keywords only for feed ingestion performance
-                )
-
-                # Calculate ranking score (v0.4.0)
-                ranking_result = calculate_ranking_score(
-                    published=published,
-                    source_weight=1.0,  # Default source weight, can be customized per feed later
-                    title=title or "",
-                    content=content_text or summary or "",
-                    topic=topic_result.topic,
-                )
-
-                ingest_processing_state = article_state_after_ingest(
-                    extraction_method,
-                    extracted_at,
-                    content_text,
-                )
-
-                row_params = {
-                    "feed_id": fid,
-                    "title": title,
-                    "url": link,
-                    "url_hash": h,
-                    "published": published.replace(tzinfo=None) if published else None,
-                    "author": author,
-                    "summary": summary,
-                    "content": content_text,
-                    "content_hash": content_hash,
-                    "ranking_score": ranking_result.score,
-                    "topic": topic_result.topic,
-                    "topic_confidence": topic_result.confidence,
-                    "source_weight": 1.0,
-                    "extraction_method": extraction_method,
-                    "extraction_quality": extraction_quality,
-                    "extraction_error": extraction_error,
-                    "extracted_at": (
-                        extracted_at.replace(tzinfo=None) if extracted_at else None
-                    ),
-                    "extraction_time_ms": extraction_time_ms,
-                    "processing_state": ingest_processing_state.value,
-                }
-
-                with session_scope() as s:
-                    if existing_id is None:
-                        try:
-                            s.execute(
-                                text(
-                                    """
-                        INSERT INTO items(feed_id, title, url, url_hash, published, author, summary, content, content_hash, ranking_score, topic, topic_confidence, source_weight, extraction_method, extraction_quality, extraction_error, extracted_at, extraction_time_ms, processing_state)
-                        VALUES(:feed_id, :title, :url, :url_hash, :published, :author, :summary, :content, :content_hash, :ranking_score, :topic, :topic_confidence, :source_weight, :extraction_method, :extraction_quality, :extraction_error, :extracted_at, :extraction_time_ms, :processing_state)
-                        ON CONFLICT (url_hash) DO NOTHING
-                        """
-                                ),
-                                row_params,
-                            )
-                            stats.items_inserted += 1
-                        except IntegrityError as e:
-                            logger.warning(
-                                "Skipping item (integrity conflict): %s — %s", link, e
-                            )
-                    else:
-                        s.execute(
-                            text(
-                                """
-                        UPDATE items SET
-                            feed_id=:feed_id,
-                            title=:title,
-                            url=:url,
-                            published=:published,
-                            author=:author,
-                            summary=:summary,
-                            content=:content,
-                            content_hash=:content_hash,
-                            ranking_score=:ranking_score,
-                            topic=:topic,
-                            topic_confidence=:topic_confidence,
-                            source_weight=:source_weight,
-                            extraction_method=:extraction_method,
-                            extraction_quality=:extraction_quality,
-                            extraction_error=:extraction_error,
-                            extracted_at=:extracted_at,
-                            extraction_time_ms=:extraction_time_ms,
-                            processing_state=:processing_state
-                        WHERE id=:item_id
-                        """
-                            ),
-                            {**row_params, "item_id": existing_id},
-                        )
-                        stats.items_updated += 1
-
-                stats.total_items += 1
-                stats.items_per_feed[fid] += 1
+            _process_feed_entries(client, fid, parsed.entries, stats, start_time)
 
             # Break outer loop if limits hit
             if stats.hit_global_limit or stats.hit_time_limit:
                 break
 
-    # Record final timing
-    stats.refresh_time_seconds = time.time() - start_time
-
-    # Update health scores for all feeds after refresh
-    try:
-        update_feed_health_scores()
-    except Exception as e:
-        # Don't fail the entire refresh if health score update fails
-        logger.warning(f"Failed to update health scores: {e}")
-
-    # Log structured refresh summary
-    logger.info(
-        "Feed refresh completed",
-        extra={
-            "duration_ms": round(stats.refresh_time_seconds * 1000, 2),
-            "feeds_processed": stats.total_feeds_processed,
-            "articles_ingested": stats.total_items,
-            "articles_inserted": stats.items_inserted,
-            "articles_updated": stats.items_updated,
-            "feeds_cached": stats.feeds_cached_304,
-            "feeds_error": stats.feeds_error,
-            "feeds_disabled": stats.feeds_skipped_disabled,
-            "hit_time_limit": stats.hit_time_limit,
-            "hit_global_limit": stats.hit_global_limit,
-        },
-    )
-
-    return stats
-
-
-def _calculate_ranking_score_legacy(
-    article_data: dict, source_weight: float = 1.0
-) -> float:
-    """Calculate ranking score for an article (legacy version)."""
-    score = 0.0
-
-    # Base score from source weight
-    score += source_weight
-
-    # Recency boost (newer articles get much higher scores)
-    if article_data.get("published"):
-        try:
-            from datetime import datetime, timezone
-
-            published = datetime.fromisoformat(
-                article_data["published"].replace("Z", "+00:00")
-            )
-            now = datetime.now(timezone.utc)
-            days_old = (now - published).days
-
-            # More aggressive recency scoring for better differentiation
-            if days_old <= 0:  # Today
-                score += 20.0
-            elif days_old <= 1:  # Yesterday
-                score += 15.0
-            elif days_old <= 3:  # Last 3 days
-                score += 10.0
-            elif days_old <= 7:  # Last week
-                score += 5.0
-            elif days_old <= 30:  # Last month
-                score += 2.0
-            else:  # Older
-                score += 0.5
-        except:
-            pass
-
-    # Title quality boost (longer, more descriptive titles)
-    title = article_data.get("title", "")
-    if len(title) > 100:
-        score += 2.0
-    elif len(title) > 50:
-        score += 1.0
-    elif len(title) < 20:
-        score -= 0.5  # Penalty for very short titles
-
-    # Content quality boost
-    content = article_data.get("content", "") or ""
-    if len(content) > 5000:
-        score += 3.0
-    elif len(content) > 2000:
-        score += 2.0
-    elif len(content) > 1000:
-        score += 1.0
-    elif len(content) < 200:
-        score -= 1.0  # Penalty for very short content
-
-    # Source quality boost (some sources are more reliable)
-    url = article_data.get("url", "")
-    if any(
-        domain in url.lower()
-        for domain in [
-            "github.com",
-            "stackoverflow.com",
-            "arstechnica.com",
-            "techcrunch.com",
-        ]
-    ):
-        score += 2.0
-    elif any(domain in url.lower() for domain in ["bbc.co.uk", "cnn.com", "npr.org"]):
-        score += 1.0
-
-    return max(score, 0.1)  # Ensure minimum positive score
-
-
-# Mapping from common feed category names to topic IDs
-CATEGORY_TO_TOPIC_MAP: dict[str, str] = {
-    # Sports
-    "sports": "sports",
-    "sport": "sports",
-    "football": "sports",
-    "soccer": "sports",
-    "basketball": "sports",
-    "tennis": "sports",
-    "cricket": "sports",
-    "rugby": "sports",
-    # Gaming
-    "gaming": "gaming",
-    "games": "gaming",
-    "video games": "gaming",
-    "esports": "gaming",
-    # Entertainment
-    "entertainment": "entertainment",
-    "movies": "entertainment",
-    "music": "entertainment",
-    "tv": "entertainment",
-    "television": "entertainment",
-    "celebrity": "entertainment",
-    # Finance
-    "finance": "finance",
-    "fsi": "finance",
-    "fsi / finance": "finance",
-    "banking": "finance",
-    "fintech": "finance",
-    "financial services": "finance",
-    # Tech categories
-    "tech": "devtools",
-    "technology": "devtools",
-    "engineering": "devtools",
-    "engineering / company tech blogs": "devtools",
-    "tech (ai, security, cloud, dev)": "devtools",
-    # News
-    "general news": "general",
-    "news": "general",
-    "world": "politics",
-    "politics": "politics",
-    # Regional
-    "a/nz region signals": "finance",  # Likely regulatory/finance focused
-}
-
-
-def map_category_to_topic(category: Optional[str]) -> Optional[str]:
-    """
-    Map a feed category name to a topic ID.
-
-    Args:
-        category: Feed category from OPML import
-
-    Returns:
-        Topic ID if a mapping exists, None otherwise
-    """
-    if not category:
-        return None
-    return CATEGORY_TO_TOPIC_MAP.get(category.lower().strip())
-
-
-def classify_article_for_feed(
-    article_data: dict, feed_category: Optional[str] = None
-) -> tuple[str, float]:
-    """
-    Classify article topic using the unified topic classification service.
-
-    This is a compatibility wrapper for the new centralized topic system.
-    Uses keyword-based classification for feed ingestion (faster).
-    LLM classification is available for reclassification operations.
-
-    If a feed_category is provided and maps to a known topic, it will be used
-    as a hint to boost that topic's score during classification.
-
-    Args:
-        article_data: Dictionary with 'title', 'content', 'summary' keys
-        feed_category: Optional category from the feed (OPML import)
-
-    Returns:
-        Tuple of (topic_id, confidence)
-    """
-    title = article_data.get("title", "") or ""
-    content = article_data.get("content", "") or ""
-    summary = article_data.get("summary", "") or ""
-
-    # Check if feed category maps to a known topic
-    category_topic = map_category_to_topic(feed_category)
-
-    # Use unified topic service (keywords only for ingestion performance)
-    result = classify_topic_unified(
-        title=title,
-        summary=f"{content} {summary}".strip(),
-        use_llm=False,  # Use keywords for feed ingestion (faster)
-    )
-
-    # If keyword classification returned 'general' but we have a category hint,
-    # use the category-based topic with moderate confidence
-    if result.topic == "general" and category_topic:
-        logger.debug(
-            f"Using feed category '{feed_category}' -> topic '{category_topic}' "
-            f"(keyword classification returned 'general')"
-        )
-        return category_topic, 0.6  # Moderate confidence from category hint
-
-    # If keyword classification has low confidence but category matches, boost it
-    if category_topic and result.topic == category_topic and result.confidence < 0.7:
-        boosted_confidence = min(result.confidence + 0.2, 0.9)
-        logger.debug(
-            f"Boosting confidence for '{result.topic}' from {result.confidence:.2f} "
-            f"to {boosted_confidence:.2f} (feed category match)"
-        )
-        return result.topic, boosted_confidence
-
-    return result.topic, result.confidence
-
-
-def recalculate_rankings_and_topics() -> dict:
-    """Recalculate ranking scores and topic classifications for all existing articles."""
-    from sqlalchemy import text
-
-    from .db import session_scope
-
-    stats = {"articles_processed": 0, "topics_assigned": 0, "rankings_updated": 0}
-
-    with session_scope() as s:
-        # Get all articles that need ranking/topic updates
-        rows = s.execute(
-            text(
-                """
-                SELECT id, title, url, published, summary, content, ranking_score, topic, topic_confidence
-                FROM items
-                ORDER BY created_at DESC
-            """
-            )
-        ).all()
-
-        for row in rows:
-            (
-                article_id,
-                title,
-                url,
-                published,
-                summary,
-                content,
-                current_ranking,
-                current_topic,
-                current_confidence,
-            ) = row
-
-            # Prepare article data
-            article_data = {
-                "title": title or "",
-                "content": content or "",
-                "summary": summary or "",
-                "published": (
-                    published.isoformat()
-                    if published and hasattr(published, "isoformat")
-                    else str(published) if published else None
-                ),
-                "url": url,
-            }
-
-            # Calculate new ranking and topic
-            new_ranking = _calculate_ranking_score_legacy(
-                article_data, source_weight=1.0
-            )
-            new_topic, new_confidence = classify_article_for_feed(article_data)
-
-            # Update the article
-            s.execute(
-                text(
-                    """
-                    UPDATE items
-                    SET ranking_score = :ranking_score,
-                        topic = :topic,
-                        topic_confidence = :topic_confidence,
-                        source_weight = :source_weight
-                    WHERE id = :article_id
-                """
-                ),
-                {
-                    "article_id": article_id,
-                    "ranking_score": new_ranking,
-                    "topic": new_topic,
-                    "topic_confidence": new_confidence,
-                    "source_weight": 1.0,
-                },
-            )
-
-            stats["articles_processed"] += 1
-            if new_topic:
-                stats["topics_assigned"] += 1
-            if new_ranking != current_ranking:
-                stats["rankings_updated"] += 1
+    _finalize_refresh_stats(stats, start_time)
 
     return stats
 
@@ -2079,51 +1926,5 @@ def update_feed_health_scores() -> dict:
 
         if stats["feeds_updated"] > 0:
             stats["avg_health_score"] = total_health / stats["feeds_updated"]
-
-    return stats
-
-
-def update_feed_names() -> dict:
-    """Update existing feeds with proper names from their RSS feeds."""
-    from urllib.parse import urlparse
-
-    from sqlalchemy import text
-
-    from .db import session_scope
-
-    stats = {"feeds_updated": 0, "feeds_failed": 0}
-
-    with session_scope() as s:
-        # Get all feeds without names or with generic names
-        rows = s.execute(
-            text(
-                "SELECT id, url, name FROM feeds WHERE name IS NULL OR name = '' OR name LIKE 'Feed from %' OR name = 'Unnamed Feed'"
-            )
-        ).all()
-
-        for row in rows:
-            feed_id, feed_url, current_name = row
-
-            # Create a descriptive name from URL domain
-            feed_name = None
-            try:
-                domain = urlparse(feed_url).netloc
-                if domain:
-                    feed_name = f"Feed from {domain}"
-                else:
-                    feed_name = "Unnamed Feed"
-            except Exception:
-                feed_name = "Unnamed Feed"
-
-            # Only update if we have a different name
-            if feed_name and feed_name != current_name:
-                try:
-                    s.execute(
-                        text("UPDATE feeds SET name = :name WHERE id = :feed_id"),
-                        {"name": feed_name, "feed_id": feed_id},
-                    )
-                    stats["feeds_updated"] += 1
-                except Exception:
-                    stats["feeds_failed"] += 1
 
     return stats

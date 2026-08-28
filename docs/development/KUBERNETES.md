@@ -2,7 +2,7 @@
 
 This guide covers the local Kubernetes environment used for **production CD on macOS**: a `kind` cluster running ArgoCD, which watches this Git repo and auto-syncs the `dev` and `prod` overlays. There is no Tekton, in-cluster registry, or webhook relay in the current setup — CI runs entirely on GitHub Actions (see [CI-CD.md](CI-CD.md)); this cluster only does GitOps deployment.
 
-> **2026-08-23 cleanup**: the git-level Tekton/registry removal (earlier repo tidy-up) had never actually been applied to the *live* cluster — `tekton-pipelines`/`tekton-pipelines-resolvers` namespaces (9 pods) and a leftover Tekton Triggers `el-newsbrief-listener` in `default` were still running, alongside a crash-looping unused ArgoCD `applicationset-controller`. All deleted/scaled to 0 — see [#325](https://github.com/Deim0s13/newsbrief/issues/325) follow-up. If you ever see these again after a full cluster rebuild (`kind delete cluster` + Ansible re-install), that's expected — they ship in ArgoCD's default `install.yaml` bundle and need re-cleaning (applicationset-controller: `kubectl scale deployment argocd-applicationset-controller -n argocd --replicas=0`); Tekton itself should never come back since it's fully removed from the manifests ArgoCD/Ansible apply.
+> **2026-08-23 cleanup**: the git-level Tekton/registry removal (earlier repo tidy-up) had never actually been applied to the *live* cluster — `tekton-pipelines`/`tekton-pipelines-resolvers` namespaces (9 pods) and a leftover Tekton Triggers `el-newsbrief-listener` in `default` were still running, alongside a crash-looping unused ArgoCD `applicationset-controller`. All deleted/scaled to 0 — see [#325](https://github.com/Deim0s13/newsbrief/issues/325) follow-up. If you ever see these again after a full cluster rebuild (`kind delete cluster` + `make infra-start`/`make recover`), that's expected — they ship in ArgoCD's default `install.yaml` bundle and need re-cleaning (applicationset-controller: `kubectl scale deployment argocd-applicationset-controller -n argocd --replicas=0`); Tekton itself should never come back since it's fully removed from the manifests ArgoCD applies.
 
 > Windows does not run this stack at all — see [ADR-0032](../adr/0032-cross-platform-cd-strategy.md) for why Windows uses Podman Compose + GHCR polling instead.
 
@@ -71,22 +71,23 @@ make k8s-version-check-autostart-install  # periodic Git-vs-running-image drift 
 
 ### `make infra-start` (`scripts/infra-start.sh`)
 
+0. If the Podman machine isn't responding, runs `podman machine start` and waits for it — covers the "laptop woke from sleep" case where Podman Desktop.app is still running but its VM is suspended
 1. Starts **only the `db` Compose service** (`podman-compose ... up -d db`, equivalent to `make deploy-db-only`) — the Postgres DB the kind pods connect to via `host.containers.internal:5432`. Deliberately does **not** run a bare `up -d`, which would also start the standalone `api`/`proxy` Compose services — a stale duplicate of the real K8s-based prod with no auto-update path on macOS (see [Podman-Compose "prod" duplicate](#known-issue-podman-compose-prod-duplicate) below).
 2. Creates the `newsbrief-dev` kind cluster if it doesn't already exist (config: `k8s/kind/cluster-config.yaml`), otherwise starts the existing container
 3. Exports kubeconfig (`kind export kubeconfig --name newsbrief-dev`)
-4. Waits for the ArgoCD `argocd-server` Deployment to become available
-5. **Re-applies `k8s/argocd/` Application CRs if missing** — cluster recreation wipes ArgoCD's own state, so this makes the script safe to re-run after a full cluster rebuild
-6. Triggers an async sync for both `newsbrief-dev` and `newsbrief-prod` Applications
-7. Re-establishes `kubectl port-forward`s for the prod app, dev app, and ArgoCD UI
+4. **Installs ArgoCD itself** (namespace + upstream `install.yaml`) if the `argocd` namespace doesn't exist yet — only hit on a genuinely brand-new cluster, since recreated-but-previously-seen clusters already have it
+5. Waits for the ArgoCD `argocd-server` Deployment to become available
+6. **Re-applies `k8s/argocd/` Application CRs if missing** — cluster recreation wipes ArgoCD's own state, so this makes the script safe to re-run after a full cluster rebuild
+7. **Ensures the `newsbrief-db-credentials` Secret exists in both namespaces** (#357) — reads `POSTGRES_PASSWORD` from `.env`, same source of truth as the Podman `db_password` secret. Unlike the optional oMLX key, this one is required: a missing Secret means pods can't start at all, so it runs before the sync below, not after. See [Secrets](#secrets) below.
+8. Triggers an async sync for both `newsbrief-dev` and `newsbrief-prod` Applications
+9. Re-establishes `kubectl port-forward`s for the prod app, dev app, and ArgoCD UI
+10. Best-effort starts the Caddy reverse proxy (`newsbrief-proxy`, using the checked-in `Caddyfile`) so `https://newsbrief.local` keeps working — optional, not required for the `localhost:8788`/`:8789` access paths above
 
-### Manual recovery (Ansible)
+### `make recover` / `make status`
 
-For a fuller recovery after a reboot/sleep (also brings up Caddy, checks Ollama, etc.):
+`make recover` runs this same `infra-start.sh` script — it's the "after a reboot/sleep" entry point, kept as a separate target for discoverability/muscle memory. `make status` runs `scripts/infra-status.sh`, a read-only report covering the same components (Podman machine, kind cluster, ArgoCD, prod pods, Caddy, port-forwards).
 
-```bash
-make recover     # runs ansible/playbooks/recover.yml
-make status      # runs ansible/playbooks/status.yml
-```
+These previously ran an Ansible playbook (`ansible/playbooks/{recover,status}.yml`) that had drifted from this script — different Compose flags, a call to an already-archived kind-registry setup script, a narrower ArgoCD apply scope — and was only discovered broken during a code-health audit, not an actual outage. Ansible has been removed from the repo; `infra-start.sh`/`infra-status.sh` are now the single source of truth for both automatic and manual recovery. See [#352](https://github.com/Deim0s13/newsbrief/issues/352).
 
 ### Manual cluster teardown
 
@@ -112,7 +113,15 @@ Open `https://localhost:8443` (username `admin`; password via `kubectl -n argocd
 | `AppProject` | Allowed repos/namespaces | `k8s/argocd/project.yaml` |
 | `Application` (dev) | Watches `dev` branch → `newsbrief-dev` namespace | `k8s/argocd/app-dev.yaml` |
 | `Application` (prod) | Watches `main` branch → `newsbrief-prod` namespace | `k8s/argocd/app-prod.yaml` |
-| `ApplicationSet` | Alternative to the two `Application` files above (not currently active — both individual apps are used instead; the `argocd-applicationset-controller` Deployment that ships with the ArgoCD `install.yaml` bundle is scaled to 0 replicas since it's unused and was crash-looping) | `k8s/argocd/appset.yaml` |
+
+Each environment gets its own individual `Application` file — an
+`ApplicationSet` alternative was considered but removed (#355), since
+`infra-start.sh` applies `k8s/argocd/` as a raw directory (`kubectl apply -f`,
+not through kustomize), so an ApplicationSet living alongside the individual
+apps would have generated Applications with the same names and fought over
+ownership. Note: the `argocd-applicationset-controller` Deployment that ships
+with the ArgoCD `install.yaml` bundle is scaled to 0 replicas — it's unused
+and was crash-looping.
 
 Auto-sync is enabled; ArgoCD polls Git every **5 minutes** (`timeout.reconciliation: 300s` in `k8s/argocd/argocd-cm.yaml`).
 
@@ -120,6 +129,24 @@ Auto-sync is enabled; ArgoCD polls Git every **5 minutes** (`timeout.reconciliat
 kubectl get applications -n argocd
 kubectl describe application newsbrief-prod -n argocd
 argocd app sync newsbrief-prod   # force an out-of-cycle sync
+```
+
+## Secrets
+
+Two Secrets are created **out-of-band**, per namespace, and deliberately not tracked by kustomize/ArgoCD — if they were git-tracked, ArgoCD's `selfHeal` would revert any real value back to a placeholder (or delete it) on every reconcile.
+
+| Secret | Key | Purpose | Created by |
+|--------|-----|---------|------------|
+| `newsbrief-db-credentials` | `DATABASE_URL` | Full Postgres connection string (moved out of the git-tracked `newsbrief-config` ConfigMap — #357, the repo is public) | `make k8s-db-secret`, also ensured on every `make infra-start`/`make recover` run (step 7 above) |
+| `newsbrief-omlx` | `api-key` | oMLX API key (#343, macOS-only backend, ADR-0033) | `make k8s-omlx-secret` (manual only — not wired into `infra-start.sh`, since it's `optional: true` in the Deployment) |
+
+`newsbrief-db-credentials` reads `POSTGRES_PASSWORD` from `.env` (the same source of truth as the Podman `db_password` secret used by `make deploy`) and reconstructs the per-namespace connection string (dev: `host.containers.internal:5433`, prod: `:5432` — see `compose.dev.yaml`/`compose.prod.yaml`). It's required, not optional: a missing Secret means the API/migrate/embed-backfill pods fail to start (`CreateContainerConfigError`) rather than silently running without a DB.
+
+```bash
+make k8s-db-secret     # create/update in both namespaces
+# After a password change, existing pods need a restart to pick it up:
+kubectl rollout restart deployment/newsbrief -n newsbrief-dev
+kubectl rollout restart deployment/newsbrief -n newsbrief-prod
 ```
 
 ### Known issue: ArgoCD sync status unreliable ([#325](https://github.com/Deim0s13/newsbrief/issues/325))
@@ -201,7 +228,7 @@ k8s/
 └── argocd/
     ├── kustomization.yaml
     ├── project.yaml
-    ├── app-dev.yaml, app-prod.yaml, appset.yaml
+    ├── app-dev.yaml, app-prod.yaml
     ├── argocd-cm.yaml          # poll interval, UI config
     └── notifications-cm.yaml, notifications-secret.yaml
 ```

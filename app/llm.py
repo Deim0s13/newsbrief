@@ -17,7 +17,6 @@ from .models import (
     ChunkSummary,
     StructuredSummary,
     TextChunk,
-    create_cache_key,
     create_content_hash,
     extract_first_sentences,
 )
@@ -1084,42 +1083,6 @@ Summary:"""
             error=error,
             content_hash=content_hash,
         )
-
-    def batch_summarize(
-        self,
-        articles: list[tuple[str, str]],
-        model: Optional[str] = None,
-        use_structured: bool = True,
-    ) -> list[SummaryResult]:
-        """
-        Summarize multiple articles in batch.
-
-        Args:
-            articles: List of (title, content) tuples
-            model: Optional model override
-            use_structured: Whether to generate structured summaries
-
-        Returns:
-            List of SummaryResult objects
-        """
-        results = []
-        for title, content in articles:
-            try:
-                result = self.summarize_article(title, content, model, use_structured)
-                results.append(result)
-            except Exception as e:
-                content_hash = create_content_hash(title, content or "")
-                results.append(
-                    SummaryResult(
-                        summary="",
-                        model=model or self.model,
-                        success=False,
-                        error=f"Batch processing error: {e}",
-                        content_hash=content_hash,
-                    )
-                )
-
-        return results
 
 
 # Singleton service instance

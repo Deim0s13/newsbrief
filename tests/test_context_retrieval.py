@@ -11,8 +11,6 @@ if not os.environ.get("DATABASE_URL"):
 
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import text
-
 from app.context_retrieval import (
     get_retrieval_hook_settings,
     is_retrieval_hook_enabled,
@@ -20,20 +18,7 @@ from app.context_retrieval import (
     to_background_anchors,
 )
 from app.orm_models import Item, Story
-from tests.pg_testutil import pg_session_truncate_story_graph
-
-
-def _vec(seed: float, dims: int = 768) -> list[float]:
-    return [seed + 0.0001 * i for i in range(dims)]
-
-
-def _seed_feed(session) -> None:
-    session.execute(
-        text(
-            "INSERT INTO feeds (id, url, name, disabled, health_score) "
-            "VALUES (1, 'http://example.com/feed', 'Test Feed', 0, 100.0)"
-        )
-    )
+from tests.pg_testutil import _seed_feed, _vec, pg_session_truncate_story_graph
 
 
 def test_is_retrieval_hook_enabled_env_off(monkeypatch: pytest.MonkeyPatch) -> None:

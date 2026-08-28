@@ -3,6 +3,17 @@
 # - Enhanced health checks
 # - Pod anti-affinity for HA
 # Note: Persistent storage (PVC) is handled via JSON patch in kustomization.yaml
+#
+# Why replicas: 2 + a PDB on a single-node kind cluster (#357): the anti-affinity
+# below is a no-op today (there's only one node to schedule onto, so it can't
+# actually spread pods) -- this is NOT multi-node HA. What it does buy, even on
+# one node: zero-downtime rolling deploys (maxUnavailable: 0 means the old pod
+# keeps serving until the new one is Ready) and survival of a single pod
+# crashing/OOMing. The PDB (`pdb.yaml`, minAvailable: 1) protects that same
+# property against voluntary evictions (kubectl drain, descheduler). If this
+# ever moves to a real multi-node cluster, the anti-affinity starts pulling its
+# weight for free -- until then, don't read this as evidence of a multi-node
+# setup that doesn't exist.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -27,7 +38,9 @@ spec:
                 topologyKey: kubernetes.io/hostname
       containers:
         - name: newsbrief
-          # Mutable semver tags on Kind local registry: always resolve the digest Argo just synced.
+          # Prod image tag (v<version>) is updated automatically by ci-prod.yml's
+          # update-manifest job on each release — see kustomization.yaml's images:
+          # block. imagePullPolicy: Always guards against any residual stale pull.
           imagePullPolicy: Always
           resources:
             requests:

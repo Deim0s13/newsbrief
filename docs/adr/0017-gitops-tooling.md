@@ -3,6 +3,8 @@
 ## Status
 **Accepted** - January 2026
 
+> Note (August 2026): The ArgoCD-for-CD decision here remains valid and in active use. Where the rationale below cites "Tekton for CI" as the paired tool, that half is superseded — Tekton was later replaced by GitHub Actions (see ADR-0016/ADR-0032); ArgoCD continues to handle CD exactly as decided here.
+
 ## Context
 
 GitOps is a paradigm where Git is the single source of truth for declarative infrastructure and applications. Changes are made via Git commits, and an operator reconciles the cluster state to match Git.

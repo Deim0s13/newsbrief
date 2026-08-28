@@ -11,29 +11,13 @@ if not os.environ.get("DATABASE_URL"):
 
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import text
-
 from app.orm_models import Item
 from app.semantic_dedup import (
     get_semantic_dedupe_settings,
     is_semantic_dedupe_enabled,
     maybe_flag_semantic_duplicate,
 )
-from tests.pg_testutil import pg_session_truncate_story_graph
-
-
-def _vec(seed: float, dims: int = 768) -> list[float]:
-    """Deterministic vector; small seed deltas => near-1.0 cosine similarity."""
-    return [seed + 0.0001 * i for i in range(dims)]
-
-
-def _seed_feed(session) -> None:
-    session.execute(
-        text(
-            "INSERT INTO feeds (id, url, name, disabled, health_score) "
-            "VALUES (1, 'http://example.com/feed', 'Test Feed', 0, 100.0)"
-        )
-    )
+from tests.pg_testutil import _seed_feed, _vec, pg_session_truncate_story_graph
 
 
 def test_is_semantic_dedupe_enabled_env_off(monkeypatch: pytest.MonkeyPatch) -> None:

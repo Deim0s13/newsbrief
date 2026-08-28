@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """
-Manual test for story generation with real Ollama LLM.
+Manual test for story generation with a real, live LLM backend.
 Tests the complete synthesis pipeline with actual AI generation.
 
-NOTE: These tests require Ollama to be running with llama3.1:8b model.
-Run manually with: pytest tests/test_story_generation_with_llm.py -m requires_ollama -v
+NOTE: These tests require a live LLM backend -- Ollama or oMLX, whichever
+`device_profiles.<platform>.backend` resolves to (ADR-0033) -- with its
+active model available.
+Run manually with: pytest tests/test_story_generation_with_llm.py -m requires_llm_backend -v
 
 Uses PostgreSQL via DATABASE_URL (ADR 0022).
 """
@@ -17,18 +19,25 @@ from sqlalchemy import text
 
 from app.db import SessionLocal, init_db
 from app.llm import get_llm_service
+from app.settings import get_settings_service
 from app.stories import _generate_story_synthesis, generate_stories_simple
 
-pytestmark = pytest.mark.requires_ollama
+pytestmark = pytest.mark.requires_llm_backend
+
+
+def _active_model() -> str:
+    """Resolve the model for whichever backend is actually configured."""
+    return get_settings_service().get_active_model()
 
 
 def _check_llm_available():
-    """Check if LLM is available, skip test if not."""
+    """Check if the configured LLM backend is available, skip test if not."""
     llm_service = get_llm_service()
     if not llm_service.is_available():
-        pytest.skip("Ollama not available - skipping LLM test")
-    if not llm_service.ensure_model("llama3.1:8b"):
-        pytest.skip("Model llama3.1:8b not available - skipping LLM test")
+        pytest.skip("LLM backend not available - skipping LLM test")
+    model = _active_model()
+    if not llm_service.ensure_model(model):
+        pytest.skip(f"Model {model} not available - skipping LLM test")
 
 
 def setup_test_db():
@@ -58,21 +67,21 @@ def setup_test_db():
 
 
 def test_llm_availability():
-    """Test if Ollama is available."""
-    print("🔍 Checking Ollama availability...")
+    """Test if the configured LLM backend is available."""
+    print("🔍 Checking LLM backend availability...")
 
     llm_service = get_llm_service()
 
     if not llm_service.is_available():
-        print("⚠️ Ollama is not available - skipping LLM tests")
+        print("⚠️ LLM backend is not available - skipping LLM tests")
         import pytest
 
-        pytest.skip("Ollama not available")
+        pytest.skip("LLM backend not available")
 
-    print("✅ Ollama is available")
+    print("✅ LLM backend is available")
 
     # Check if model is available
-    model = "llama3.1:8b"
+    model = _active_model()
     print(f"🔍 Checking model: {model}...")
 
     if not llm_service.ensure_model(model):
@@ -159,7 +168,7 @@ def test_synthesis_with_llm():
         print("-" * 70)
 
         synthesis_data = _generate_story_synthesis(
-            session, article_ids, model="llama3.1:8b"
+            session, article_ids, model=_active_model()
         )
 
         print("\n📰 Generated Story:")
@@ -277,13 +286,17 @@ def test_full_pipeline_with_llm():
 
         # Generate stories
         print("🔄 Running story generation pipeline...")
-        story_ids = generate_stories_simple(
+        result = generate_stories_simple(
             session=session,
             time_window_hours=24,
             min_articles_per_story=1,
             similarity_threshold=0.3,
-            model="llama3.1:8b",
+            model=_active_model(),
         )
+        # generate_stories_simple() returns a dict (story_ids/articles_found/...),
+        # not a bare list -- len(result) would silently count dict keys (5)
+        # instead of stories generated.
+        story_ids = result["story_ids"]
 
         print(f"\n✅ Generated {len(story_ids)} stories")
         print(f"   Articles clustered: {len(articles)} → {len(story_ids)} stories")
@@ -313,44 +326,3 @@ def test_full_pipeline_with_llm():
             session.rollback()
         finally:
             session.close()
-
-
-def main():
-    """Run all manual tests."""
-    print("=" * 70)
-    print("🧪 Manual Story Generation Test with Real Ollama LLM")
-    print("=" * 70)
-
-    # Check Ollama availability
-    if not test_llm_availability():
-        print("\n❌ Cannot proceed without Ollama")
-        print("\n💡 To fix:")
-        print("   1. Start Ollama: ollama serve")
-        print("   2. Pull model: ollama pull llama3.1:8b")
-        print("   3. Run this test again")
-        return 1
-
-    # Test synthesis
-    success1, msg1 = test_synthesis_with_llm()
-
-    # Test full pipeline
-    success2, msg2 = test_full_pipeline_with_llm()
-
-    # Summary
-    print("\n" + "=" * 70)
-    print("📊 Test Summary")
-    print("=" * 70)
-    print(f"LLM Synthesis Test: {'✅ PASS' if success1 else '❌ FAIL'} - {msg1}")
-    print(f"Full Pipeline Test: {'✅ PASS' if success2 else '❌ FAIL'} - {msg2}")
-
-    if success1 and success2:
-        print("\n✅ All manual tests passed!")
-        print("\n🎉 Story generation with LLM is working correctly!")
-        return 0
-    else:
-        print("\n❌ Some tests failed")
-        return 1
-
-
-if __name__ == "__main__":
-    exit(main())
