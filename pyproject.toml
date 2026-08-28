@@ -1,6 +1,6 @@
 [project]
 name = "newsbrief"
-version = "0.8.8"
+version = "0.8.9"
 description = "Story-based News Aggregator with AI Synthesis"
 
 [tool.pytest.ini_options]
