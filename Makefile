@@ -375,6 +375,9 @@ embedding-benchmark:               ## Run embedding-model benchmark (#330): make
 rag-eval:                          ## Run RAG go/no-go evaluation (ADR-0026): make rag-eval [ARGS="--sample-size 50 --json"]
 	DATABASE_URL=$${DATABASE_URL:-$(DEV_DATABASE_URL)} python3 scripts/rag_evaluation.py $(ARGS)
 
+entity-backfill:                   ## Normalize cached entity extractions into entities/entity_mentions (#199): make entity-backfill [ARGS="--dry-run"]
+	DATABASE_URL=$${DATABASE_URL:-$(DEV_DATABASE_URL)} .venv/bin/python -m app.cli entity-backfill $(ARGS)
+
 # ---------- Hostname & TLS ----------
 HOSTNAME         ?= newsbrief.local
 PROJECT_PATH     ?= $(PWD)
@@ -690,7 +693,7 @@ env-init:  ## Create .env from template with generated secure password
 	db-backup db-restore db-backup-list \
 	secrets-create secrets-list secrets-delete \
 	migrate migrate-dev migrate-new migrate-stamp migrate-history migrate-current \
-	model-fitness embedding-benchmark rag-eval \
+	model-fitness embedding-benchmark rag-eval entity-backfill \
 	hostname-setup hostname-check hostname-remove hostname-trust-cert hostname-regen-certs \
 	infra-start infra-autostart-install infra-autostart-uninstall infra-autostart-status \
 	k8s-omlx-secret k8s-db-secret \

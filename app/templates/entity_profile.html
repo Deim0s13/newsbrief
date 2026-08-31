@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}{{ entity.canonical_name }} - NewsBrief{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Breadcrumb -->
+    <nav class="mb-6">
+        <a href="/entities" class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-sm flex items-center">
+    10|            <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+            </svg>
+            Back to Entities
+        </a>
+    </nav>
+
+    <!-- Entity Header -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-8 mb-8">
+        <div class="flex items-start justify-between gap-4 mb-4">
+    20|            <div>
+                <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">{{ entity.canonical_name }}</h1>
+                {% if entity.aliases %}
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                    Also known as: {{ entity.aliases|join(', ') }}
+                </p>
+                {% endif %}
+            </div>
+            <span class="flex-shrink-0 px-3 py-1 rounded-full text-sm font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200">
+                {{ entity.entity_type|title }}
+    30|            </span>
+        </div>
+
+        {% if entity.description %}
+        <p class="text-gray-700 dark:text-gray-300 mb-4">{{ entity.description }}</p>
+        {% endif %}
+
+        <div class="grid grid-cols-3 gap-4 text-sm pt-4 border-t border-gray-200 dark:border-gray-700">
+            <div>
+                <span class="text-gray-500 dark:text-gray-400">Mentions</span>
+                <div class="font-semibold text-gray-900 dark:text-white">{{ entity.mention_count }}</div>
+    40|            </div>
+            <div>
+                <span class="text-gray-500 dark:text-gray-400">First Seen</span>
+                <div class="font-semibold text-gray-900 dark:text-white entity-first-seen" data-timestamp="{{ entity.first_seen.isoformat() }}">{{ entity.first_seen.strftime('%d %b %Y') }}</div>
+            </div>
+            <div>
+                <span class="text-gray-500 dark:text-gray-400">Last Seen</span>
+                <div class="font-semibold text-gray-900 dark:text-white entity-last-seen" data-timestamp="{{ entity.last_seen.isoformat() }}">{{ entity.last_seen.strftime('%d %b %Y') }}</div>
+            </div>
+        </div>
+    </div>
+    50|
+    <!-- Co-mentioned Entities -->
+    {% if entity.co_mentioned %}
+    <div class="mb-8">
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">Frequently Mentioned Alongside</h2>
+        <div class="flex flex-wrap gap-2">
+            {% for co in entity.co_mentioned %}
+            <a href="/entities/{{ co.id }}" class="inline-flex items-center px-3 py-1.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm rounded-full hover:bg-indigo-100 hover:text-indigo-800 dark:hover:bg-indigo-900 dark:hover:text-indigo-200 transition-colors">
+                {{ co.canonical_name }}
+                <span class="ml-1.5 text-xs text-gray-500 dark:text-gray-400">×{{ co.co_mention_count }}</span>
+    60|            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Mention Timeline -->
+    <div>
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">Mention Timeline</h2>
+        {% if entity.timeline %}
+        <div class="space-y-3">
+    70|            {% for item in entity.timeline %}
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4">
+                <div class="flex items-start justify-between gap-3">
+                    <div class="flex-1">
+                        <a href="/article/{{ item.article_id }}" class="text-sm font-medium text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 line-clamp-2">
+                            {{ item.article_title }}
+                        </a>
+                        {% if item.story_id %}
+                        <div class="mt-1">
+                            <a href="/story/{{ item.story_id }}" class="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
+    80|                                Part of story: {{ item.story_title }}
+                            </a>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <time class="flex-shrink-0 text-xs text-gray-500 dark:text-gray-400 entity-mention-time" data-timestamp="{{ item.mentioned_at.isoformat() }}">
+                        {{ item.mentioned_at.strftime('%d %b %Y') }}
+                    </time>
+                </div>
+            </div>
+            {% endfor %}
+    90|        </div>
+        {% else %}
+        <div class="text-center py-8 text-gray-500 dark:text-gray-400">
+            <p>No mentions recorded yet.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+   100|document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.entity-first-seen, .entity-last-seen, .entity-mention-time').forEach(function(el) {
+        const timestamp = el.getAttribute('data-timestamp');
+        if (timestamp) {
+            el.textContent = DateUtils.formatMediumDate(timestamp);
+            el.title = DateUtils.formatDateTime(timestamp);
+        }
+    });
+});
+</script>
+{% endblock %}

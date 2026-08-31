@@ -14,6 +14,7 @@ import os
 from datetime import UTC, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session
 
 from .orm_models import Story
@@ -24,6 +25,15 @@ logger = logging.getLogger(__name__)
 DEFAULT_THRESHOLD = 0.75
 DEFAULT_WINDOW_DAYS = 30
 DEFAULT_MAX_LINKS = 3
+
+# Entity-overlap re-ranking (#284, ADR-0023): a secondary signal from the
+# normalized entity graph (#199) that nudges the ranking of candidates that
+# already passed the embedding-similarity threshold below -- it never lets a
+# candidate skip that gate, and never overrides a much stronger embedding
+# match. Small and capped by design: this is a tiebreaker, not a replacement
+# for the semantic signal.
+ENTITY_OVERLAP_WEIGHT = 0.03
+ENTITY_OVERLAP_MAX_BOOST = 0.12
 
 
 def is_historical_linking_enabled() -> bool:
@@ -67,6 +77,9 @@ def maybe_link_historical_context(
             date_range=(window_start, window_end),
         )
 
+        if results:
+            results = _rerank_by_entity_overlap(session, int(story.id), results)
+
         links: List[Dict[str, Any]] = [
             {
                 "story_id": r.id,
@@ -98,6 +111,67 @@ def maybe_link_historical_context(
             e,
             exc_info=True,
         )
+
+
+def _rerank_by_entity_overlap(
+    session: Session, story_id: int, results: List[SimilarityResult]
+) -> List[SimilarityResult]:
+    """
+    Re-sort embedding-similarity candidates (all already above ``threshold``)
+    by a combined score that adds a small, capped boost for shared
+    normalized entities (#199 ``entity_mentions``). Candidates with no entity
+    overlap data (e.g. pre-#199 stories, or backfill hasn't reached them)
+    keep their pure-embedding order -- this only ever reorders within the
+    already-qualified set, never changes ``continues_similarity``'s meaning
+    (still the raw embedding similarity of whichever story ends up on top).
+    """
+    candidate_ids = [r.id for r in results]
+    overlap_counts = _entity_overlap_counts(session, story_id, candidate_ids)
+    if not overlap_counts:
+        return results
+
+    def combined_score(r: SimilarityResult) -> float:
+        boost = min(
+            overlap_counts.get(r.id, 0) * ENTITY_OVERLAP_WEIGHT,
+            ENTITY_OVERLAP_MAX_BOOST,
+        )
+        return r.similarity + boost
+
+    reranked = sorted(results, key=combined_score, reverse=True)
+    if reranked[0].id != results[0].id:
+        logger.info(
+            "Story %s: entity overlap re-ranked continuation candidate from "
+            "story %s to story %s (%d shared entities)",
+            story_id,
+            results[0].id,
+            reranked[0].id,
+            overlap_counts.get(reranked[0].id, 0),
+        )
+    return reranked
+
+
+def _entity_overlap_counts(
+    session: Session, story_id: int, candidate_story_ids: List[int]
+) -> Dict[int, int]:
+    """Shared normalized-entity counts between ``story_id`` and each candidate."""
+    if not candidate_story_ids:
+        return {}
+    rows = session.execute(
+        text(
+            """
+            SELECT em2.story_id, COUNT(DISTINCT em1.entity_id) AS shared_count
+            FROM entity_mentions em1
+            JOIN entity_mentions em2
+                ON em2.entity_id = em1.entity_id AND em2.story_id != em1.story_id
+            WHERE em1.story_id = :sid
+                AND em2.story_id IN :candidate_ids
+                AND em2.story_id IS NOT NULL
+            GROUP BY em2.story_id
+            """
+        ).bindparams(bindparam("candidate_ids", expanding=True)),
+        {"sid": story_id, "candidate_ids": candidate_story_ids},
+    ).fetchall()
+    return {int(r[0]): int(r[1]) for r in rows}
 
 
 def _merge_context_anchors(

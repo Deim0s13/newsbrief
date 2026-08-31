@@ -55,6 +55,7 @@ from .entities import (
     get_cached_entities,
     get_entity_overlap,
 )
+from .entity_normalization import link_entity_mentions_to_story
 from .historical_linking import maybe_link_historical_context
 from .light_rag import (
     SynthesisAnchor,
@@ -118,7 +119,14 @@ SIMILARITY_TOPIC_WEIGHT = float(
 )  # Weight for same-topic bonus
 
 # Import ORM models from central location
-from .orm_models import Base, Item, SourceCredibility, Story, StoryArticle
+from .orm_models import (
+    Base,
+    EntityMention,
+    Item,
+    SourceCredibility,
+    Story,
+    StoryArticle,
+)
 
 
 def _parse_datetime(value: Any) -> Optional[datetime]:
@@ -361,6 +369,7 @@ def get_stories(
     status: Optional[str] = "active",
     order_by: str = "importance",
     topic: Optional[str] = None,
+    entity_id: Optional[int] = None,
     apply_interests: bool = True,
 ) -> List[StoryOut]:
     """
@@ -373,6 +382,9 @@ def get_stories(
         status: Filter by status ('active', 'archived', or None for all)
         order_by: Sort order ('importance', 'freshness', or 'generated_at')
         topic: Filter by topic (matches if topic is in story's topics list)
+        entity_id: Filter to stories with a normalized entity_mentions row for
+            this entity (#202) -- distinct from ``topic``, which matches the
+            free-form synthesis output, not the relational entity graph.
         apply_interests: If True and order_by is 'importance', blend with interest scores
 
     Returns:
@@ -394,6 +406,16 @@ def get_stories(
     # Topics are stored as JSON array, so we use LIKE to check if topic is present
     if topic:
         query = query.filter(Story.topics_json.like(f'%"{topic}"%'))
+
+    if entity_id is not None:
+        query = query.filter(
+            Story.id.in_(
+                session.query(EntityMention.story_id).filter(
+                    EntityMention.entity_id == entity_id,
+                    EntityMention.story_id.isnot(None),
+                )
+            )
+        )
 
     # Check if we should apply personalized ranking
     use_interest_ranking = (
@@ -726,6 +748,11 @@ def update_story_with_new_articles(
         ArticleProcessingState.CLUSTERED,
         context="update_story_with_new_articles",
     )
+
+    # Backfill story_id onto entity_mentions for the full merged article set
+    # (#199); re-pointing old articles' mentions from the superseded story
+    # to this new version, plus linking the newly-added ones.
+    link_entity_mentions_to_story(session, new_story_id, merged_article_ids)
 
     logger.info(
         f"Created story #{new_story_id} v{new_version} "
@@ -3131,6 +3158,11 @@ def _persist_synthesized_story(
             ArticleProcessingState.CLUSTERED,
             context="generate_stories_simple",
         )
+
+        # Backfill story_id onto entity_mentions for these articles (#199);
+        # normalization already ran per-article during clustering above,
+        # before this story existed.
+        link_entity_mentions_to_story(session, story.id, cluster_article_ids)
 
         maybe_embed_story_after_synthesis(session, story)
         maybe_link_historical_context(session, story)

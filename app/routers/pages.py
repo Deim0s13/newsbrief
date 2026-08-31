@@ -6,9 +6,11 @@ import json
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 
 from ..deps import session_scope, templates
+from ..entity_connections import find_entity_connected_stories
+from ..entity_profile import get_entity_profile, search_entities
 from ..models import StructuredSummary, extract_first_sentences
 from ..retrieval import RetrievalService
 from ..stories import get_story_by_id
@@ -48,6 +50,28 @@ def story_detail_page(request: Request, story_id: int):
         # Related stories panel (#260)
         related_stories = RetrievalService(s).find_related_stories(story_id, top_k=5)
 
+        # Entity-based story connections (#202) -- a different signal from
+        # the embedding-based related_stories above: connected because the
+        # stories share normalized entities, not semantic similarity.
+        entity_connections = find_entity_connected_stories(s, story_id, top_k=5)
+
+        # Best-effort name -> entity id lookup so the "Key Entities" chips
+        # below can link to /entities/<id> (#201). story.entities is a flat
+        # list of free-form names from the synthesis LLM call -- not the
+        # same source as the normalized entity graph -- so this is a
+        # case-insensitive match, not a guaranteed one; unmatched names stay
+        # plain (non-clickable) text in the template.
+        entity_name_to_id: dict = {}
+        if story.entities:
+            rows = s.execute(
+                text(
+                    "SELECT id, canonical_name FROM entities "
+                    "WHERE lower(canonical_name) IN :names"
+                ).bindparams(bindparam("names", expanding=True)),
+                {"names": [e.lower() for e in story.entities]},
+            ).fetchall()
+            entity_name_to_id = {r[1].lower(): r[0] for r in rows}
+
         # "Continues from..." banner (#261): only set when historical linking
         # (#258) found a match above threshold at generation time.
         continues_from = None
@@ -62,6 +86,8 @@ def story_detail_page(request: Request, story_id: int):
         {
             "story": story,
             "related_stories": related_stories,
+            "entity_connections": entity_connections,
+            "entity_name_to_id": entity_name_to_id,
             "continues_from": continues_from,
             "current_page": "stories",
         },
@@ -204,5 +230,49 @@ def search_page(request: Request, q: str = ""):
             "search_query": search_query,
             "result_count": len(articles),
             "current_page": "articles",
+        },
+    )
+
+
+@router.get("/entities", response_class=HTMLResponse)
+def entities_search_page(
+    request: Request,
+    q: str = "",
+    type: str = "",
+):
+    """
+    Entity search/browse page (#201). With no ``q``, shows the most-mentioned
+    entities as a default "browse" listing rather than an empty page.
+    """
+    with session_scope() as s:
+        results = search_entities(s, q, entity_type=type or None)
+
+    return templates.TemplateResponse(
+        request,
+        "entities_search.html",
+        {
+            "results": results,
+            "search_query": q,
+            "selected_type": type,
+            "current_page": "entities",
+        },
+    )
+
+
+@router.get("/entities/{entity_id}", response_class=HTMLResponse)
+def entity_profile_page(request: Request, entity_id: int):
+    """Individual entity profile page (#201): header, mention timeline, co-mentioned entities."""
+    with session_scope() as s:
+        profile = get_entity_profile(s, entity_id)
+
+    if not profile:
+        raise HTTPException(status_code=404, detail="Entity not found")
+
+    return templates.TemplateResponse(
+        request,
+        "entity_profile.html",
+        {
+            "entity": profile,
+            "current_page": "entities",
         },
     )

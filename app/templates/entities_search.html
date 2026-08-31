@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Entities{% if search_query %}: {{ search_query }}{% endif %} - NewsBrief{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Entities</h1>
+        <p class="mt-2 text-gray-600 dark:text-gray-300">
+            Companies, people, products, and other entities tracked across stories and articles.
+        </p>
+    </div>
+
+    <!-- Search Form -->
+    10|    <div class="mb-8">
+        <form action="/entities" method="GET" class="flex flex-wrap gap-4">
+            <div class="flex-1 min-w-[240px]">
+                <input type="search"
+                       name="q"
+                       value="{{ search_query }}"
+                       placeholder="Search entities by name or alias..."
+                       class="w-full px-4 py-3 text-lg border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400">
+            </div>
+    20|            <select name="type" class="px-4 py-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                <option value="" {% if not selected_type %}selected{% endif %}>All Types</option>
+                {% for t in ['company', 'person', 'product', 'technology', 'location'] %}
+                <option value="{{ t }}" {% if selected_type == t %}selected{% endif %}>{{ t|title }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg flex items-center space-x-2">
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m21 21-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                </svg>
+    30|                <span>Search</span>
+            </button>
+        </form>
+    </div>
+
+    <!-- Results -->
+    {% if results %}
+    <div class="mb-4 text-sm text-gray-500 dark:text-gray-400">
+        {% if search_query %}Showing {{ results|length }} result{{ "s" if results|length != 1 else "" }}{% else %}Most mentioned entities{% endif %}
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    40|        {% for entity in results %}
+        <a href="/entities/{{ entity.id }}" class="block p-4 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md transition-all">
+            <div class="flex items-start justify-between gap-2 mb-1">
+                <span class="font-semibold text-gray-900 dark:text-white">{{ entity.canonical_name }}</span>
+                <span class="flex-shrink-0 text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">{{ entity.entity_type|title }}</span>
+            </div>
+            <div class="text-sm text-gray-500 dark:text-gray-400">
+                {{ entity.mention_count }} mention{{ "s" if entity.mention_count != 1 else "" }}
+            </div>
+        </a>
+    50|        {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center py-12 text-gray-500 dark:text-gray-400">
+        <svg class="mx-auto h-12 w-12 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m21 21-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+        </svg>
+        <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">No entities found</h3>
+        <p>Try a different search term{% if selected_type %} or clear the type filter{% endif %}.</p>
+    </div>
+    60|    {% endif %}
+</div>
+{% endblock %}
