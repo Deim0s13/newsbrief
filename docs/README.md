@@ -55,11 +55,11 @@ Historical documentation (no longer actively maintained):
 |----------|------|
 | **Quick Start** | [user-guide/QUICK-START.md](user-guide/QUICK-START.md) |
 | **API Reference** | [user-guide/API.md](user-guide/API.md) |
-| **Latest Release** | [v0.8.8](https://github.com/Deim0s13/newsbrief/releases) |
+| **Latest Release** | [v0.9.0](https://github.com/Deim0s13/newsbrief/releases) |
 | **Project Board** | [GitHub Projects](https://github.com/users/Deim0s13/projects/8) |
 | **Issues** | [GitHub Issues](https://github.com/Deim0s13/newsbrief/issues) |
 | **Milestones** | [GitHub Milestones](https://github.com/Deim0s13/newsbrief/milestones) |
 
 ---
 
-**Last Updated**: August 2026 · **Current Version**: v0.8.8
+**Last Updated**: September 2026 · **Current Version**: v0.9.0

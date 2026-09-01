@@ -74,6 +74,16 @@
         <span id="story-count-text">Loading stories...</span>
     </div>
 
+    <!-- Entity Filter Banner (#202): shown when arriving via /stories?entity=<id>
+         from a clickable entity chip on a story detail page. -->
+    <div id="entity-filter-banner" class="hidden mb-4 p-3 rounded-md bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 flex items-center justify-between">
+        <span class="text-sm text-indigo-800 dark:text-indigo-200">
+            Showing stories mentioning <strong id="entity-filter-name"></strong>
+            <span class="text-indigo-500 dark:text-indigo-400">(<span id="entity-filter-type"></span>)</span>
+        </span>
+        <button id="entity-filter-clear" class="text-sm text-indigo-600 dark:text-indigo-300 hover:underline">Clear filter</button>
+    </div>
+
     <!-- Stories Loading State -->
     <div id="loading" class="hidden">
         <div class="flex items-center justify-center py-12">

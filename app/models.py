@@ -543,6 +543,9 @@ class StoriesListOut(BaseModel):
     total: int
     limit: int
     offset: int
+    # Set when filtering by ?entity=<id> (#202); lets the UI show "Filtered
+    # by entity: X" without a second lookup round-trip.
+    entity_filter: Optional["EntityFilterOut"] = None
 
 
 class StoryGenerationRequest(BaseModel):
@@ -763,5 +766,44 @@ class SemanticSearchOut(BaseModel):
     results: List[SimilarityResultOut] = Field(default_factory=list)
 
 
+# Entity-based story connections (#202, ADR-0023, v0.9.0)
+class SharedEntityOut(BaseModel):
+    """One entity shared between the source story and a connection."""
+
+    id: int
+    canonical_name: str
+    entity_type: str
+
+
+class EntityConnectionOut(BaseModel):
+    """One entity-based story connection hit."""
+
+    story_id: int
+    title: str
+    generated_at: Optional[datetime] = None
+    shared_entity_count: int
+    score: float
+    strength: str = Field(
+        ..., description="'strong' (2+ shared entities) or 'weak' (1)"
+    )
+    shared_entities: List[SharedEntityOut] = Field(default_factory=list)
+
+
+class EntityConnectionsOut(BaseModel):
+    """Response for GET /stories/{id}/entity-connections."""
+
+    query_id: int
+    results: List[EntityConnectionOut] = Field(default_factory=list)
+
+
+class EntityFilterOut(BaseModel):
+    """Echoes the entity a /stories list is currently filtered by (#202)."""
+
+    id: int
+    canonical_name: str
+    entity_type: str
+
+
 # Update forward references
 SummaryResponse.model_rebuild()
+StoriesListOut.model_rebuild()

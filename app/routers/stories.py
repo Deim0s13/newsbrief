@@ -12,9 +12,17 @@ from sqlalchemy import text
 
 from ..datetime_utils import coerce_datetime
 from ..deps import limiter, session_scope
+from ..entity_connections import DEFAULT_MIN_SHARED_ENTITIES
+from ..entity_connections import DEFAULT_TOP_K as ENTITY_CONNECTIONS_DEFAULT_TOP_K
+from ..entity_connections import MAX_TOP_K as ENTITY_CONNECTIONS_MAX_TOP_K
+from ..entity_connections import find_entity_connected_stories
 from ..models import (
+    EntityConnectionOut,
+    EntityConnectionsOut,
+    EntityFilterOut,
     ItemOut,
     RelatedStoriesOut,
+    SharedEntityOut,
     SimilarityResultOut,
     StoriesListOut,
     StoryGenerationRequest,
@@ -135,6 +143,9 @@ def list_stories_endpoint(
     topic: str = Query(
         None, description="Filter by topic (e.g., 'ai-ml', 'security', 'politics')"
     ),
+    entity: int = Query(
+        None, description="Filter by entity ID (#202) -- see GET /entities/{id}"
+    ),
     apply_interests: bool = Query(
         True,
         description="Apply interest-based ranking (blends importance with topic preferences)",
@@ -153,6 +164,25 @@ def list_stories_endpoint(
             )
 
         with session_scope() as s:
+            entity_filter_out = None
+            if entity is not None:
+                entity_row = s.execute(
+                    text(
+                        "SELECT id, canonical_name, entity_type FROM entities "
+                        "WHERE id = :eid"
+                    ),
+                    {"eid": entity},
+                ).first()
+                if not entity_row:
+                    raise HTTPException(
+                        status_code=404, detail=f"Entity with ID {entity} not found"
+                    )
+                entity_filter_out = EntityFilterOut(
+                    id=entity_row[0],
+                    canonical_name=entity_row[1],
+                    entity_type=entity_row[2],
+                )
+
             status_filter = None if status == "all" else status
             stories = get_stories(
                 session=s,
@@ -161,6 +191,7 @@ def list_stories_endpoint(
                 status=status_filter,
                 order_by=order_by,
                 topic=topic,
+                entity_id=entity,
                 apply_interests=apply_interests,
             )
 
@@ -172,6 +203,12 @@ def list_stories_endpoint(
             if topic:
                 count_parts.append("topics_json LIKE :topic_pattern")
                 count_params["topic_pattern"] = f'%"{topic}"%'
+            if entity is not None:
+                count_parts.append(
+                    "id IN (SELECT story_id FROM entity_mentions "
+                    "WHERE entity_id = :entity_id AND story_id IS NOT NULL)"
+                )
+                count_params["entity_id"] = entity
             count_sql = "SELECT COUNT(*) FROM stories"
             if count_parts:
                 count_sql += " WHERE " + " AND ".join(count_parts)
@@ -182,6 +219,7 @@ def list_stories_endpoint(
                 total=total,
                 limit=limit,
                 offset=offset,
+                entity_filter=entity_filter_out,
             )
     except HTTPException:
         raise
@@ -411,4 +449,63 @@ def get_related_stories(
         return RelatedStoriesOut(
             query_id=story_id,
             results=[SimilarityResultOut(**r.__dict__) for r in results],
+        )
+
+
+@router.get(
+    "/stories/{story_id}/entity-connections", response_model=EntityConnectionsOut
+)
+def get_entity_connections(
+    story_id: int,
+    top_k: int = Query(
+        ENTITY_CONNECTIONS_DEFAULT_TOP_K,
+        ge=1,
+        le=ENTITY_CONNECTIONS_MAX_TOP_K,
+        description="Max results",
+    ),
+    min_shared_entities: int = Query(
+        DEFAULT_MIN_SHARED_ENTITIES,
+        ge=1,
+        description="Minimum shared entities to count as a connection",
+    ),
+):
+    """
+    Other stories sharing normalized entities with this one (#202) -- a
+    different signal from the embedding-based /related above: connected
+    because they mention the same companies/people/products, not because
+    their synthesized text is semantically similar.
+    """
+    with session_scope() as s:
+        exists = s.execute(
+            text("SELECT id FROM stories WHERE id = :sid"), {"sid": story_id}
+        ).first()
+        if not exists:
+            raise HTTPException(
+                status_code=404, detail=f"Story with ID {story_id} not found"
+            )
+
+        results = find_entity_connected_stories(
+            s, story_id, top_k=top_k, min_shared_entities=min_shared_entities
+        )
+        return EntityConnectionsOut(
+            query_id=story_id,
+            results=[
+                EntityConnectionOut(
+                    story_id=r.story_id,
+                    title=r.title,
+                    generated_at=r.generated_at,
+                    shared_entity_count=r.shared_entity_count,
+                    score=r.score,
+                    strength=r.strength,
+                    shared_entities=[
+                        SharedEntityOut(
+                            id=se.id,
+                            canonical_name=se.canonical_name,
+                            entity_type=se.entity_type,
+                        )
+                        for se in r.shared_entities
+                    ],
+                )
+                for r in results
+            ],
         )

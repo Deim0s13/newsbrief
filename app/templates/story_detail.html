@@ -444,9 +444,16 @@
             <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Key Entities</h3>
             <div class="flex flex-wrap gap-2">
                 {% for entity in story.entities %}
+                {% set entity_id = entity_name_to_id.get(entity.lower()) if entity_name_to_id else None %}
+                {% if entity_id %}
+                <a href="/entities/{{ entity_id }}" class="px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm rounded-full hover:bg-blue-100 hover:text-blue-800 dark:hover:bg-blue-900 dark:hover:text-blue-200 transition-colors" title="View {{ entity }}'s entity profile">
+                    {{ entity }}
+                </a>
+                {% else %}
                 <span class="px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm rounded-full">
                     {{ entity }}
                 </span>
+                {% endif %}
                 {% endfor %}
             </div>
         </div>
@@ -555,6 +562,38 @@
                     {% if related.published_at %}
                     <span class="text-xs text-gray-500 dark:text-gray-400 mt-1 block">{{ related.published_at.strftime('%d %b %Y') }}</span>
                     {% endif %}
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Entity Connections (#202): a different signal from the two
+             embedding-based sections above -- connected because the stories
+             share normalized entities (companies/people/products), not
+             because their synthesized text is semantically similar. -->
+        {% if entity_connections and entity_connections|length > 0 %}
+        <div class="mt-8 pt-8 border-t border-gray-200 dark:border-gray-700">
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
+                <svg class="h-5 w-5 mr-2 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 100-8 4 4 0 000 8zm6 0a4 4 0 10-8 0"></path>
+                </svg>
+                Related Stories (Shared Entities)
+            </h2>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {% for conn in entity_connections %}
+                <a href="/story/{{ conn.story_id }}" class="block p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600 hover:border-blue-300 dark:hover:border-blue-600 transition-colors">
+                    <div class="flex items-start justify-between gap-2 mb-2">
+                        <span class="text-sm font-medium text-gray-900 dark:text-white line-clamp-2">{{ conn.title }}</span>
+                        <span class="flex-shrink-0 text-xs px-2 py-0.5 rounded-full {{ 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200' if conn.strength == 'strong' else 'bg-gray-200 text-gray-700 dark:bg-gray-600 dark:text-gray-300' }}">
+                            {{ conn.shared_entity_count }} shared
+                        </span>
+                    </div>
+                    <div class="flex flex-wrap gap-1">
+                        {% for shared in conn.shared_entities %}
+                        <span class="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">{{ shared.canonical_name }}</span>
+                        {% endfor %}
+                    </div>
                 </a>
                 {% endfor %}
             </div>

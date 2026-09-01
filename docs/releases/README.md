@@ -6,9 +6,34 @@ Quick reference for all NewsBrief releases. For detailed release notes, see [Git
 
 ---
 
+## v0.9.x - Intelligence Platform
+
+### v0.9.0 - Entity Intelligence System (Current)
+**September 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.9.0)
+
+Phase 2 of the intelligence platform strategy ([ADR-0023](../adr/0023-intelligence-platform-strategy.md)) — builds a normalized entity graph on top of the per-article entity extraction that already existed, and uses it to connect stories, browse entities, and improve continuity linking.
+
+**Highlights:**
+- **Normalized Entity Graph**: `entities`/`entity_mentions` tables; canonicalization/dedup wired into the existing per-article extraction at cluster time; one-time backfill script (`make entity-backfill`) (#199)
+- **Entity-Based Story Connections**: Shared-entity query ranked by count + prominence + temporal proximity; `GET /stories/{id}/entity-connections`; `/stories?entity=<id>` filter with a UI banner (#202)
+- **Entity Profile Pages**: `/entities/{id}` (mention timeline, co-mentioned entities) and `/entities?q=` search/browse; clickable entity chips on story detail pages (#201)
+- **Entity-Aware Continuity Linking**: `historical_linking.py` re-ranks embedding-qualified candidates with a small, capped entity-overlap boost — breaks near-ties, never overrides a materially stronger embedding match (#284)
+- **Migrations**: `029_entity_intelligence`
+
 ## v0.8.x - Content Quality
 
-### v0.8.8 - Backlog & Ops Triage (Current)
+### v0.8.9 - Code Health & Tech Debt
+**August 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.8.9)
+
+One-time code-health audit across `app/`, `tests/`, `scripts/`, and infra/docs — findings-only pass with cleanup executed issue-by-issue, not a feature release. Full methodology and findings in [`docs/development/CODE-REVIEW-2026-08.md`](../development/CODE-REVIEW-2026-08.md).
+
+**Highlights:**
+- **App-code cleanup**: confirmed dead code + 2 unused dependencies removed; `generate_stories_simple`/`fetch_and_store` (the two most complex functions in the app) decomposed into smaller helpers; Story CRUD API duplication investigated and documented (#345-347)
+- **Infra cleanup**: `make recover` fixed, stale Tekton/kind-registry references purged from ADRs/docs, CI workflows deduplicated into a shared reusable workflow, orphaned/duplicate infra files removed, ambiguous Windows autostart paths resolved, prod/dev DB password moved out of git into a K8s Secret (#352-357)
+- **Test-suite fixes**: a real DB sequence-desync bug fixed (`resync_sequences()` helper, now run after every test), duplicated test setup helpers consolidated, coverage-threshold doc drift fixed (34%→45% floor, matching actual 51%) — and, found along the way, a real assertion-bypass bug in `test_models.py` where 18 tests could never actually fail under pytest (#358-360)
+- **CI reliability**: removed the flaky ntfy `Notify` step from `ci-dev.yml`/`ci-prod.yml` — its `curl` call had no timeout/retry, so a network blip reaching ntfy.sh repeatedly showed unrelated, otherwise-passing runs as failed (ADR-0021 amendment)
+
+### v0.8.8 - Backlog & Ops Triage
 **August 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.8.8)
 
 Ops/reliability triage milestone — no new user-facing features, focused on closing gaps found while stabilizing dev/prod after the v0.8.7 release.

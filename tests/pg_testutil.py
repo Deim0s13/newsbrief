@@ -157,6 +157,8 @@ def resync_sequences(
         "story_articles",
         "retrieval_traces",
         "synthesis_cache",
+        "entities",
+        "entity_mentions",
     ),
 ) -> None:
     """Advance each table's serial ``id`` sequence past its current max value.
@@ -205,6 +207,27 @@ def pg_session_truncate_synthesis_cache() -> Session:
     init_db()
     session = SessionLocal()
     session.execute(text("TRUNCATE synthesis_cache RESTART IDENTITY CASCADE"))
+    session.commit()
+    return session
+
+
+def pg_session_truncate_entity_graph() -> Session:
+    """Fresh session; story graph + entities/entity_mentions truncated with identity reset.
+
+    For #199/#202/#201/#284 (v0.9.0) tests -- entity_mentions has FKs to both
+    items and stories, but ``entities`` has no FK back to either, so it needs
+    explicit truncation alongside the usual story-graph tables.
+    """
+    from app.db import SessionLocal, init_db
+
+    init_db()
+    session = SessionLocal()
+    session.execute(
+        text(
+            "TRUNCATE entity_mentions, entities, story_articles, stories, items, "
+            "feeds RESTART IDENTITY CASCADE"
+        )
+    )
     session.commit()
     return session
 

@@ -172,6 +172,30 @@ CREATE INDEX idx_entity_mentions_article ON entity_mentions(article_id);
 CREATE INDEX idx_entity_mentions_story ON entity_mentions(story_id);
 ```
 
+**Implementation status (v0.9.0, shipped Aug 2026)**: The schema above shipped
+as designed, plus one addition (`entities.last_seen`, needed by the profile
+pages below but only implicit in this ADR's `first_seen`). Delivered against
+issues #199-#202 and #284:
+- Entity extraction/normalization/dedup wired into the existing per-article
+  LLM extraction at cluster time, plus a one-time backfill script
+  (`app/entity_normalization.py`, `app/entity_backfill.py`) — #199, extends #200.
+- Entity-based story connections: stories sharing entities, ranked by shared
+  count + prominence + temporal proximity, surfaced via
+  `GET /stories/{id}/entity-connections` and clickable entity chips
+  (`app/entity_connections.py`) — #202.
+- Entity profile pages (`/entities/{id}`) with mention timeline and
+  co-mentioned entities, plus basic name/alias search (`/entities?q=`)
+  (`app/entity_profile.py`) — #201.
+- Entity overlap as a secondary, capped re-ranking signal alongside the
+  existing embedding-based continuity check in `historical_linking.py`
+  (never overrides a stronger embedding match, only breaks near-ties) — #284.
+
+**Deferred** (out of this pass, tracked separately): per-entity sentiment
+(`avg_sentiment`/`sentiment_score` ship in the schema but stay unpopulated —
+the extraction prompt doesn't currently produce it), entity-based alerts, and
+fuzzy/LLM-based disambiguation beyond exact-match-after-canonicalization
+(e.g. "Amazon" vs "Amazon.com Inc." still register as distinct entities).
+
 #### v0.9.1 - Multi-Perspective Synthesis
 **Goal**: Show what sources agree/disagree on, not just merge them.
 

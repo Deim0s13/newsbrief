@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional, Set, Union
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from .entity_normalization import normalize_and_store_entities
 from .llm import get_llm_service
 from .llm_output import EnhancedEntityOutput, EntityOutput, parse_and_validate
 from .processing_states import ArticleProcessingState, apply_article_processing_state
@@ -820,6 +821,7 @@ def extract_and_cache_entities(
     if use_cache:
         cached = get_cached_entities(article_id, session, model)
         if cached:
+            _normalize_entities_safe(session, article_id, cached)
             return cached
 
     # Extract entities
@@ -828,4 +830,28 @@ def extract_and_cache_entities(
     # Store in cache
     store_entity_cache(article_id, entities, session, model)
 
+    _normalize_entities_safe(session, article_id, entities)
+
     return entities
+
+
+def _normalize_entities_safe(
+    session: Session, article_id: int, entities: ExtractedEntities
+) -> None:
+    """
+    Best-effort normalization into the relational entity graph (#199,
+    ADR-0023). Fire-and-forget, matching the "embeddings optional" pattern
+    elsewhere in the pipeline: a normalization failure must never break
+    extraction/clustering, which is why entities_json/get_cached_entities
+    above remain the source of truth for clustering similarity.
+    """
+    try:
+        normalize_and_store_entities(session, article_id, entities)
+        session.commit()
+    except Exception as e:
+        logger.warning(
+            "Entity normalization failed for article %s (non-fatal): %s",
+            article_id,
+            e,
+        )
+        session.rollback()

@@ -34,6 +34,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 # Keep in sync with alembic/versions/017_embedding_vector_768.py (#251).
@@ -602,6 +603,105 @@ class RetrievalTrace(Base):
     __table_args__ = (
         Index("idx_retrieval_traces_type", "query_type"),
         Index("idx_retrieval_traces_created", "created_at"),
+    )
+
+
+class Entity(Base):
+    """
+    Canonical, deduplicated entity (#199, ADR-0023, v0.9.0).
+
+    Populated by ``app/entity_normalization.py`` from the existing per-article
+    LLM extraction (``app/entities.py``) -- either at cluster time (go-forward)
+    or via the one-time ``python -m app.cli entity-backfill`` script. Not a
+    replacement for ``items.entities_json`` / ``stories.entities_json``, which
+    remain the fast path for clustering similarity.
+
+    ``entity_type`` is one of the extraction categories: company, product,
+    person, technology, location.
+    """
+
+    __tablename__ = "entities"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    canonical_name = Column(String(255), nullable=False)
+    entity_type = Column(String(50), nullable=False)
+    aliases = Column(JSONB, nullable=False, default=list, server_default="[]")
+    description = Column(Text, nullable=True)
+    # Mapped to the DB column "metadata" under a non-reserved Python attribute
+    # name -- "metadata" is reserved on declarative models (Base.metadata).
+    entity_metadata = Column(
+        "metadata", JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    first_seen = Column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+    last_seen = Column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+    mention_count = Column(Integer, nullable=False, default=0)
+    # Nullable and unpopulated for now -- the extraction prompt doesn't
+    # produce per-entity sentiment yet (separate scope, not silently dropped).
+    avg_sentiment = Column(Float, nullable=True)
+    created_at = Column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+    updated_at = Column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+    mentions = relationship(
+        "EntityMention", back_populates="entity", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        Index("idx_entities_type", "entity_type"),
+        Index("idx_entities_mention_count", "mention_count"),
+    )
+
+
+class EntityMention(Base):
+    """
+    One occurrence of an ``Entity`` in an article, optionally linked to the
+    story it was clustered into (#199, ADR-0023, v0.9.0).
+
+    ``story_id`` is set once the article is clustered into a story
+    (``app/stories.py`` links it in right after the ``StoryArticle`` rows are
+    created); it stays ``NULL`` for mentions from articles not yet in a story.
+
+    ``prominence_score`` blends the extraction's per-entity confidence with a
+    role multiplier (primary_subject > quoted > mentioned) into a single
+    weighting signal for entity-based story connections (#202); there is no
+    separate ``role`` column in this schema.
+    """
+
+    __tablename__ = "entity_mentions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    entity_id = Column(
+        Integer, ForeignKey("entities.id", ondelete="CASCADE"), nullable=False
+    )
+    article_id = Column(
+        Integer, ForeignKey("items.id", ondelete="CASCADE"), nullable=False
+    )
+    story_id = Column(
+        Integer, ForeignKey("stories.id", ondelete="SET NULL"), nullable=True
+    )
+    mention_context = Column(Text, nullable=True)
+    sentiment_score = Column(Float, nullable=True)
+    prominence_score = Column(Float, nullable=True)
+    mentioned_at = Column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+    entity = relationship("Entity", back_populates="mentions")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "entity_id", "article_id", name="uq_entity_mentions_entity_article"
+        ),
+        Index("idx_entity_mentions_entity_id", "entity_id"),
+        Index("idx_entity_mentions_article_id", "article_id"),
+        Index("idx_entity_mentions_story_id", "story_id"),
     )
 
 

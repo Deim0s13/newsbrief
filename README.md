@@ -438,6 +438,9 @@ make hostname-trust-cert
 
 | Release | Summary |
 |---------|---------|
+| v0.9.0 | Entity intelligence system: normalized entity graph (`entities`/`entity_mentions`), entity-based story connections, entity profile pages + search, entity-aware continuity linking ([ADR-0023](docs/adr/0023-intelligence-platform-strategy.md)) |
+| v0.8.9 | Code-health audit (app/tests/infra/docs): dead code + duplication removed, two complexity hotspots decomposed, DB password moved out of git into a K8s Secret, test-suite bugs fixed (sequence desync, an assertion-bypass gap), flaky CI ntfy step removed |
+| v0.8.8 | Ops/reliability triage: manual `/refresh`/`/stories/generate` routed through tracked pipeline stages, oMLX wired up in K8s, embed-backfill hardening, self-healing port-forwards |
 | v0.8.7 | Model optimisation & platform intelligence: hardware-informed, device-aware model profiles ([ADR-0033](docs/adr/0033-hardware-informed-model-selection.md)); oMLX backend adopted on macOS; embedding model re-evaluated (no change); model-fitness harness formalized (`scripts/model_fitness.py`) |
 | v0.8.6 | RAG milestone completion: embeddings as a pipeline stage, semantic dedup, light RAG context anchors, bounded retrieval hook, historical linking, cluster complexity scoring, go/no-go evaluation harness |
 | v0.8.5 | Pipeline completion & stability: confidence scoring + publish gate, standard/deep synthesis split, per-type data retention, E2E pipeline tests, stuck-item observability |
@@ -455,7 +458,6 @@ make hostname-trust-cert
 
 ### Upcoming
 
-- **Entity Intelligence System** (v0.9.0): deeper entity linking and disambiguation
 - **RAG re-evaluation**: re-run `scripts/rag_evaluation.py` after a normal week of production ingestion to validate the relatedness-precision gate at realistic corpus size (ADR-0026 follow-up condition)
 - **Fine-tuning feasibility**: Deferred — better alternatives first (ADR-0027)
 

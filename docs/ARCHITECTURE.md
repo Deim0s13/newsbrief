@@ -1,7 +1,7 @@
 # NewsBrief Architecture Document
 
-> **Version**: 1.6
-> **Last Updated**: August 2026 (v0.8.6)
+> **Version**: 1.7
+> **Last Updated**: August 2026 (v0.9.0)
 > **Status**: Living Document
 
 ---
@@ -65,6 +65,10 @@ NewsBrief is a **self-hosted, privacy-focused** application designed to:
 | **FR-04** | Cluster related articles into stories | Must | ✅ Complete |
 | **FR-05** | Synthesize multi-article narratives using LLM | Must | ✅ Complete |
 | **FR-06** | Extract entities (companies, people, products) | Must | ✅ Complete |
+| **FR-06a** | Normalize extracted entities into a deduplicated relational graph (entities/entity_mentions) | Should | ✅ Complete (v0.9.0, ADR-0023) |
+| **FR-06b** | Entity-based story connections (stories sharing entities) | Should | ✅ Complete (v0.9.0, ADR-0023) |
+| **FR-06c** | Entity profile pages (mention timeline, co-mentioned entities, search) | Should | ✅ Complete (v0.9.0, ADR-0023) |
+| **FR-06d** | Entity overlap as a secondary signal in historical continuity linking | Could | ✅ Complete (v0.9.0, ADR-0023) |
 | **FR-07** | Classify stories by topic (Security, AI/ML, etc.) | Must | ✅ Complete |
 | **FR-08** | Schedule automatic feed refresh and story generation | Must | ✅ Complete |
 | **FR-09** | Provide web interface for browsing stories | Must | ✅ Complete |
@@ -465,9 +469,11 @@ flowchart TB
             Archive["Story Archiver"]
         end
 
-        subgraph EntitySvc["Entity Service (entities.py)"]
-            NER["Entity Extractor"]
-            EntityStore["Entity Storage"]
+        subgraph EntitySvc["Entity Service (v0.9.0, ADR-0023)"]
+            NER["Entity Extractor<br/>(entities.py)"]
+            EntityNorm["Normalization/Dedup<br/>(entity_normalization.py)"]
+            EntityConn["Entity Connections<br/>(entity_connections.py)"]
+            EntityProfile["Entity Profiles + Search<br/>(entity_profile.py)"]
         end
 
         subgraph RankSvc["Ranking Service (ranking.py)"]
@@ -516,6 +522,9 @@ flowchart TB
     StorySvc --> Cluster
     StorySvc --> RankSvc
     EntitySvc --> LLMOutput
+    NER --> EntityNorm
+    StorySvc --> EntityNorm
+    HistLink --> EntityNorm
     FeedSvc --> ExtractSvc
     LLMSvc --> CacheSvc
     LLMSvc --> LLMOutput
@@ -547,7 +556,10 @@ flowchart TB
 |-----------|----------------|-----------|
 | **Feed Manager** | RSS fetching, parsing, health monitoring | `feeds.py` |
 | **Story Generator** | Clustering, synthesis, title generation | `stories.py` |
-| **Entity Extractor** | NER for companies, people, products | `entities.py` |
+| **Entity Extractor** | LLM-based NER for companies, people, products, technologies, locations (per-article, cached) | `entities.py` |
+| **Entity Normalization** | Canonicalizes/dedupes extracted entities into a relational graph; upserts `entities`/`entity_mentions` (v0.9.0, ADR-0023) | `entity_normalization.py`, `entity_backfill.py` |
+| **Entity Connections** | Finds other stories sharing entities, ranked by shared count + prominence + recency (v0.9.0, #202) | `entity_connections.py` |
+| **Entity Profiles** | Per-entity profile (mention timeline, co-mentioned entities) + name/alias search (v0.9.0, #201) | `entity_profile.py` |
 | **Topic Classifier** | Categorization (Security, AI/ML, etc.) | `topics.py` |
 | **Ranking Engine** | Interest matching, source weighting | `ranking.py` |
 | **Credibility Service** | Source credibility lookup, MBFC data import | `credibility.py`, `credibility_import.py` |
@@ -565,7 +577,7 @@ flowchart TB
 | **Context Retrieval Hook** | Fetches retrieval context for a cluster during the pipeline's retrieval stage (v0.8.6) | `context_retrieval.py` |
 | **Semantic Dedup** | Post-hoc detection of paraphrased duplicate articles via embedding similarity (v0.8.6) | `semantic_dedup.py` |
 | **Light RAG** | Structured historical context anchors injected into synthesis prompts (v0.8.6) | `light_rag.py` |
-| **Historical Linking** | Detects and links a story to the story it continues (v0.8.6) | `historical_linking.py` |
+| **Historical Linking** | Detects and links a story to the story it continues; embedding similarity is the primary signal, with a capped entity-overlap boost as a secondary re-ranking signal among already-qualified candidates (v0.8.6, extended v0.9.0 #284) | `historical_linking.py` |
 | **Retrieval Tracing** | Records retrieval query latency/results for observability and evaluation (v0.8.6) | `retrieval_tracing.py` |
 | **Cluster Complexity Scoring** | Numeric 0.0-1.0 score routing clusters to standard vs deep synthesis (v0.8.6) | `stories.py` (`compute_cluster_complexity`) |
 | **Publish Gate** | Confidence-based publish/warn/hold decision before a story becomes visible (v0.8.5) | `publish_gate.py` |
@@ -644,7 +656,9 @@ erDiagram
     Item }o--o{ Story : "contributes to"
     Story ||--o{ StoryArticle : has
     Item ||--o{ StoryArticle : references
-    Story ||--o{ Entity : mentions
+    Entity ||--o{ EntityMention : "mentioned via"
+    Item ||--o{ EntityMention : "mentions (article)"
+    Story ||--o{ EntityMention : "mentions (story, backfilled)"
     Item }o--o| Item : "duplicate_of (semantic dedup)"
     Story }o--o| Story : "continues_story (historical linking)"
     Story ||--o{ RetrievalTrace : "retrieval queries"
@@ -709,10 +723,26 @@ erDiagram
 
     Entity {
         int id PK
-        int story_id FK
-        string name
-        string type
+        string canonical_name "unique per (lower(name), type)"
+        string entity_type "company|person|product|technology|location"
+        json aliases "v0.9.0"
+        text description
+        json metadata "v0.9.0, unpopulated"
+        datetime first_seen
+        datetime last_seen "v0.9.0"
         int mention_count
+        float avg_sentiment "v0.9.0, unpopulated"
+    }
+
+    EntityMention {
+        int id PK
+        int entity_id FK
+        int article_id FK "items.id"
+        int story_id FK "nullable, backfilled post-cluster"
+        text mention_context
+        float sentiment_score "unpopulated"
+        float prominence_score "confidence x role"
+        datetime mentioned_at
     }
 
     SourceCredibility {
@@ -756,15 +786,17 @@ flowchart LR
         Embed["Embedding (Ollama, v0.8.6)"]
         Dedup["Semantic Dedup (v0.8.6)"]
         Cluster["Article Clustering"]
+        EntityNorm["Entity Extraction + Normalization<br/>(v0.9.0, at cluster time)"]
         Retrieve["Retrieval Hook + Light RAG Anchors (v0.8.6)"]
         Synthesize["Story Synthesis"]
-        HistLink["Historical Linking (v0.8.6)"]
+        HistLink["Historical Linking<br/>(embedding + entity overlap, v0.8.6/v0.9.0)"]
         Rank["Ranking & Scoring"]
     end
 
     subgraph Store["Storage"]
         Items["Items Table<br/>(+ embedding, duplicate_of_id)"]
         Stories["Stories Table<br/>(+ embedding, context_anchors, continues_story_id)"]
+        Entities["Entities + EntityMentions<br/>(v0.9.0)"]
         Cache["Synthesis Cache"]
         Traces["Retrieval Traces"]
     end
@@ -782,10 +814,13 @@ flowchart LR
     Embed --> Dedup
     Dedup --> Items
     Items --> Cluster
+    Cluster --> EntityNorm
+    EntityNorm --> Entities
     Cluster --> Retrieve
     Retrieve --> Traces
     Retrieve --> Synthesize
     Synthesize --> HistLink
+    Entities --> HistLink
     HistLink --> Stories
     Synthesize --> Cache
     Stories --> Rank

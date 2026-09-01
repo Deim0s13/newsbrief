@@ -50,6 +50,39 @@ function setupEventListeners() {
     if (loadMoreBtn) {
         loadMoreBtn.addEventListener('click', loadMoreStories);
     }
+
+    // Entity filter clear (#202)
+    const entityFilterClear = document.getElementById('entity-filter-clear');
+    if (entityFilterClear) {
+        entityFilterClear.addEventListener('click', function() {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('entity');
+            window.history.replaceState({}, '', url.toString());
+            loadStories();
+        });
+    }
+}
+
+// Entity filter (#202): the ?entity=<id> query param drives an extra server-side
+// filter on /stories. Read-only from the URL -- there's no UI control to set it,
+// it's only reached by clicking an entity chip on a story detail page.
+function getEntityFilterFromUrl() {
+    const raw = new URLSearchParams(window.location.search).get('entity');
+    const id = parseInt(raw, 10);
+    return Number.isFinite(id) ? id : null;
+}
+
+function renderEntityFilterBanner(entityFilter) {
+    const banner = document.getElementById('entity-filter-banner');
+    if (!banner) return;
+
+    if (entityFilter) {
+        document.getElementById('entity-filter-name').textContent = entityFilter.canonical_name;
+        document.getElementById('entity-filter-type').textContent = entityFilter.entity_type;
+        banner.classList.remove('hidden');
+    } else {
+        banner.classList.add('hidden');
+    }
 }
 
 async function loadStories() {
@@ -83,6 +116,12 @@ async function loadStories() {
             params.set('topic', topic);
         }
 
+        // Add entity filter if present in the URL (#202)
+        const entityId = getEntityFilterFromUrl();
+        if (entityId) {
+            params.set('entity', entityId.toString());
+        }
+
         const apiUrl = `/stories?${params.toString()}`;
         console.log('Loading stories from:', apiUrl);
 
@@ -110,6 +149,8 @@ async function loadStories() {
             countText.textContent = `Showing ${data.stories.length} of ${data.total} stories`;
             statsDiv.classList.remove('hidden');
         }
+
+        renderEntityFilterBanner(data.entity_filter);
 
         if (data.stories.length === 0) {
             container.innerHTML = `
@@ -187,6 +228,12 @@ async function loadMoreStories() {
         // Add topic filter if selected
         if (topic) {
             params.set('topic', topic);
+        }
+
+        // Add entity filter if present in the URL (#202)
+        const entityId = getEntityFilterFromUrl();
+        if (entityId) {
+            params.set('entity', entityId.toString());
         }
 
         const response = await fetch(`/stories?${params.toString()}`);
