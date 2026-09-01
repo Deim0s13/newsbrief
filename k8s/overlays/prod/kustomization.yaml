@@ -47,7 +47,7 @@ images:
   - name: localhost:5000/newsbrief
     newName: ghcr.io/deim0s13/newsbrief
     # Tag updated automatically by ci-prod.yml update-manifest job on each release
-    newTag: v0.8.9
+    newTag: v0.9.0
 
 # Prod-specific configuration overrides
 # DATABASE_URL is NOT here -- it lives in the newsbrief-db-credentials Secret
