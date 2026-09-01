@@ -146,6 +146,43 @@ class TestFindEntityConnectedStories:
         finally:
             session.close()
 
+    def test_shared_entities_deduplicated_across_multiple_articles(self):
+        """A candidate story mentioning the same shared entity in several of
+        its own articles must still list that entity once in
+        ``shared_entities`` (regression: the join wasn't DISTINCT)."""
+        session = pg_session_truncate_entity_graph()
+        try:
+            seed_default_feed(session)
+            now = datetime.now(UTC)
+
+            source_id = _make_story(session, "Source Story", now)
+            candidate_id = _make_story(session, "Candidate Story", now)
+            session.commit()
+
+            for i in range(1, 5):
+                _make_article(session, i)
+            _make_entity(session, 1, "CompanyA")
+            session.commit()
+
+            # Source mentions CompanyA once.
+            _make_mention(session, 1, 1, source_id)
+            # Candidate mentions CompanyA across three of its own articles.
+            _make_mention(session, 1, 2, candidate_id)
+            _make_mention(session, 1, 3, candidate_id)
+            _make_mention(session, 1, 4, candidate_id)
+            session.commit()
+
+            results = find_entity_connected_stories(session, source_id)
+
+            assert len(results) == 1
+            connection = results[0]
+            assert connection.story_id == candidate_id
+            assert connection.shared_entity_count == 1
+            assert len(connection.shared_entities) == 1
+            assert connection.shared_entities[0].canonical_name == "CompanyA"
+        finally:
+            session.close()
+
     def test_min_shared_entities_filters_weak_matches(self):
         session = pg_session_truncate_entity_graph()
         try:

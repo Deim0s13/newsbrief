@@ -169,7 +169,7 @@ def _shared_entities_by_story(
     rows = session.execute(
         text(
             """
-            SELECT em.story_id, e.id, e.canonical_name, e.entity_type
+            SELECT DISTINCT em.story_id, e.id, e.canonical_name, e.entity_type
             FROM entity_mentions em
             JOIN entities e ON e.id = em.entity_id
             WHERE em.story_id IN :candidate_ids
