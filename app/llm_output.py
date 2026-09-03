@@ -34,7 +34,7 @@ from typing import (
     Union,
 )
 
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -372,6 +372,110 @@ class EntityItem(BaseModel):
         return "mentioned"
 
 
+class PerspectiveOutput(BaseModel):
+    """
+    Validated output from perspective detection (#203, ADR-0023, v0.9.1).
+
+    Piggybacks on the same LLM call as entity extraction (one JSON response,
+    same pattern as v0.8.1's EnhancedEntityOutput) rather than a separate
+    round-trip -- see app/entities.py extract_entities().
+
+    Deliberately coarse (4 categories, bounded enums) and optional: most
+    articles (dev tools, product news, etc.) have no identifiable political/
+    stakeholder angle, and ``applicable=False`` lets the LLM say so instead
+    of forcing every article into a perspective frame it doesn't have.
+
+    Used by: app/entities.py extract_entities()
+    """
+
+    applicable: bool = Field(
+        default=False,
+        description=(
+            "Whether this article has an identifiable perspective/viewpoint "
+            "at all (false for purely factual/technical content)"
+        ),
+    )
+    political_leaning: Optional[
+        Literal["left", "center-left", "center", "center-right", "right"]
+    ] = Field(default=None, description="Political/ideological leaning, if any")
+    stakeholder: Optional[
+        Literal["business", "consumer", "regulatory", "labor", "environmental"]
+    ] = Field(default=None, description="Primary stakeholder viewpoint, if any")
+    regional: Optional[Literal["local", "national", "international"]] = Field(
+        default=None, description="Geographic scope of the viewpoint, if any"
+    )
+    tone: Optional[Literal["supportive", "critical", "neutral", "analytical"]] = Field(
+        default=None, description="Tone toward the article's subject, if any"
+    )
+    confidence: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=1.0,
+        description="Confidence in the perspective classification",
+    )
+
+    @field_validator("applicable", mode="before")
+    @classmethod
+    def coerce_applicable(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            return v.strip().lower() in {"true", "yes", "1"}
+        return bool(v)
+
+    @field_validator("political_leaning", mode="before")
+    @classmethod
+    def normalize_political_leaning(cls, v: Any) -> Optional[str]:
+        allowed = {"left", "center-left", "center", "center-right", "right"}
+        return cls._normalize_or_none(v, allowed)
+
+    @field_validator("stakeholder", mode="before")
+    @classmethod
+    def normalize_stakeholder(cls, v: Any) -> Optional[str]:
+        allowed = {"business", "consumer", "regulatory", "labor", "environmental"}
+        return cls._normalize_or_none(v, allowed)
+
+    @field_validator("regional", mode="before")
+    @classmethod
+    def normalize_regional(cls, v: Any) -> Optional[str]:
+        allowed = {"local", "national", "international"}
+        return cls._normalize_or_none(v, allowed)
+
+    @field_validator("tone", mode="before")
+    @classmethod
+    def normalize_tone(cls, v: Any) -> Optional[str]:
+        allowed = {"supportive", "critical", "neutral", "analytical"}
+        return cls._normalize_or_none(v, allowed)
+
+    @staticmethod
+    def _normalize_or_none(v: Any, allowed: set) -> Optional[str]:
+        """A hallucinated/out-of-enum value degrades to None rather than a
+        validation error -- consistent with the rest of this module's
+        allow_partial parsing philosophy."""
+        if isinstance(v, str) and v.strip().lower() in allowed:
+            return v.strip().lower()
+        return None
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def coerce_confidence(cls, v: Any) -> float:
+        try:
+            return max(0.0, min(1.0, float(v)))
+        except (ValueError, TypeError):
+            return 0.6
+
+    @model_validator(mode="after")
+    def clear_fields_when_not_applicable(self) -> "PerspectiveOutput":
+        """If the model says a perspective doesn't apply, don't trust any
+        category fields it filled in anyway (contradictory output)."""
+        if not self.applicable:
+            self.political_leaning = None
+            self.stakeholder = None
+            self.regional = None
+            self.tone = None
+        return self
+
+
 class EnhancedEntityOutput(BaseModel):
     """
     Validated output from enhanced entity extraction LLM calls.
@@ -403,6 +507,10 @@ class EnhancedEntityOutput(BaseModel):
     locations: List[EntityItem] = Field(
         default_factory=list,
         description="Location/place entities with metadata",
+    )
+    perspective: PerspectiveOutput = Field(
+        default_factory=lambda: PerspectiveOutput(),
+        description="Article perspective/viewpoint classification (#203, v0.9.1)",
     )
 
     @field_validator(

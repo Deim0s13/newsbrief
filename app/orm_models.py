@@ -117,6 +117,11 @@ class Item(Base):
     entities_json = Column(Text)
     entities_extracted_at = Column(DateTime)
     entities_model = Column(Text)
+    # Perspective/viewpoint classification (v0.9.1, #203, ADR-0023) --
+    # extracted in the same LLM call as entities (see app/entities.py
+    # extract_entities()), cached separately here since it's a distinct
+    # concern from entity extraction and most articles have none.
+    perspective_json = Column(Text)
     # Content extraction metadata (v0.8.0 - ADR-0024)
     extraction_method = Column(String(20), default="legacy")
     extraction_quality = Column(Float)

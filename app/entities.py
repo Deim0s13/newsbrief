@@ -9,6 +9,10 @@ Enhanced in v0.8.1 (Issue #103) with:
 - Entity roles (primary_subject, mentioned, quoted)
 - Disambiguation hints
 - Few-shot examples for better accuracy
+
+Extended in v0.9.1 (Issue #203, ADR-0023) with perspective/viewpoint
+classification, piggybacked on the same LLM call (one JSON response) rather
+than a separate round-trip -- see ArticlePerspective and extract_entities().
 """
 
 from __future__ import annotations
@@ -24,7 +28,12 @@ from sqlalchemy.orm import Session
 
 from .entity_normalization import normalize_and_store_entities
 from .llm import get_llm_service
-from .llm_output import EnhancedEntityOutput, EntityOutput, parse_and_validate
+from .llm_output import (
+    EnhancedEntityOutput,
+    EntityOutput,
+    PerspectiveOutput,
+    parse_and_validate,
+)
 from .processing_states import ArticleProcessingState, apply_article_processing_state
 
 logger = logging.getLogger(__name__)
@@ -75,12 +84,81 @@ class EntityWithMetadata:
 
 
 @dataclass
+class ArticlePerspective:
+    """
+    Perspective/viewpoint classification for an article (#203, ADR-0023,
+    v0.9.1). Extracted in the same LLM call as entities (see
+    extract_entities()) and cached in its own ``items.perspective_json``
+    column, keyed by the same ``entities_model``/``entities_extracted_at``
+    cache-validity tracking as entities (they're always produced together).
+
+    Deliberately coarse (4 bounded categories) and optional --
+    ``applicable=False`` is the expected/common case for purely factual or
+    technical content (e.g. most dev-tool articles), not an error.
+    """
+
+    applicable: bool = False
+    political_leaning: Optional[str] = None
+    stakeholder: Optional[str] = None
+    regional: Optional[str] = None
+    tone: Optional[str] = None
+    confidence: float = 0.6
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "applicable": self.applicable,
+            "political_leaning": self.political_leaning,
+            "stakeholder": self.stakeholder,
+            "regional": self.regional,
+            "tone": self.tone,
+            "confidence": self.confidence,
+        }
+
+    def to_json_string(self) -> str:
+        return json.dumps(self.to_dict())
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ArticlePerspective":
+        return cls(
+            applicable=bool(data.get("applicable", False)),
+            political_leaning=data.get("political_leaning"),
+            stakeholder=data.get("stakeholder"),
+            regional=data.get("regional"),
+            tone=data.get("tone"),
+            confidence=float(data.get("confidence", 0.6) or 0.6),
+        )
+
+    @classmethod
+    def from_json_string(cls, json_str: str) -> "ArticlePerspective":
+        return cls.from_dict(json.loads(json_str))
+
+    @classmethod
+    def from_output(cls, output: "PerspectiveOutput") -> "ArticlePerspective":
+        """Build from the validated LLM response schema."""
+        return cls(
+            applicable=output.applicable,
+            political_leaning=output.political_leaning,
+            stakeholder=output.stakeholder,
+            regional=output.regional,
+            tone=output.tone,
+            confidence=output.confidence,
+        )
+
+
+@dataclass
 class ExtractedEntities:
     """
     Structured entity data extracted from article content.
 
     Supports both legacy (list of strings) and enhanced (list of EntityWithMetadata)
     formats for backward compatibility.
+
+    ``perspective`` (v0.9.1, #203) is populated from the same LLM call but
+    persisted to a separate ``items.perspective_json`` column rather than
+    folded into ``entities_json`` -- it's a different concern from entity
+    extraction and this keeps entity_normalization.py/entity_backfill.py
+    (which read entities_json) unaffected. It is intentionally NOT part of
+    to_json_string()/from_json_string() below.
     """
 
     companies: List[Union[str, EntityWithMetadata]] = field(default_factory=list)
@@ -88,6 +166,7 @@ class ExtractedEntities:
     people: List[Union[str, EntityWithMetadata]] = field(default_factory=list)
     technologies: List[Union[str, EntityWithMetadata]] = field(default_factory=list)
     locations: List[Union[str, EntityWithMetadata]] = field(default_factory=list)
+    perspective: Optional[ArticlePerspective] = None
 
     def _normalize_entity(
         self, entity: Union[str, EntityWithMetadata, Dict]
@@ -301,6 +380,23 @@ ARTICLE:
    - Include: Cities, countries, regions central to the story
    - Exclude: Generic locations not meaningful to the article
 
+=== PERSPECTIVE (only if genuinely applicable) ===
+
+Most articles (tech/product news, dev tools, factual reporting) have NO
+identifiable political or stakeholder viewpoint -- for these, set
+"applicable": false and leave the category fields null. Only set
+"applicable": true when the article clearly takes or reports a viewpoint
+on a contested topic (politics, policy, business controversy, etc.).
+
+When applicable, classify:
+- political_leaning: "left" | "center-left" | "center" | "center-right" | "right"
+- stakeholder: "business" | "consumer" | "regulatory" | "labor" | "environmental"
+- regional: "local" | "national" | "international" (scope of the viewpoint)
+- tone: "supportive" | "critical" | "neutral" | "analytical" (toward the subject)
+- confidence: 0.0-1.0
+
+Do not guess a category you're unsure of -- leave it null rather than forcing a label.
+
 === ENTITY METADATA ===
 
 For each entity, provide:
@@ -338,7 +434,8 @@ Output:
   "technologies": [
     {{"name": "large language models", "confidence": 0.8, "role": "mentioned", "disambiguation": null}}
   ],
-  "locations": []
+  "locations": [],
+  "perspective": {{"applicable": false, "political_leaning": null, "stakeholder": null, "regional": null, "tone": null, "confidence": 0.6}}
 }}
 
 Example 2 - Acquisition story:
@@ -358,8 +455,27 @@ Output:
   "technologies": [
     {{"name": "cybersecurity", "confidence": 0.8, "role": "mentioned", "disambiguation": null}}
   ],
-  "locations": []
+  "locations": [],
+  "perspective": {{"applicable": false, "political_leaning": null, "stakeholder": null, "regional": null, "tone": null, "confidence": 0.6}}
 }}
+
+Example 3 - Single-lens policy story (perspective IS applicable):
+Article: "Small business owners are warning that the city's new minimum wage increase will force layoffs and price hikes, calling the policy 'well-intentioned but economically reckless' for local retailers already struggling with rising costs."
+
+Output:
+{{
+  "companies": [],
+  "products": [],
+  "people": [],
+  "technologies": [],
+  "locations": [],
+  "perspective": {{"applicable": true, "political_leaning": null, "stakeholder": "business", "regional": "local", "tone": "critical", "confidence": 0.7}}
+}}
+
+Note: classify the perspective THIS article is written from/reports (its
+dominant lens), not every viewpoint mentioned -- a balanced article citing
+multiple sides is usually "applicable": false or "tone": "neutral"/"analytical"
+rather than an artificial single stakeholder pick.
 
 === YOUR TASK ===
 
@@ -369,7 +485,8 @@ Now extract entities from the article above. Output ONLY valid JSON matching thi
   "products": [...],
   "people": [...],
   "technologies": [...],
-  "locations": [...]
+  "locations": [...],
+  "perspective": {{"applicable": true|false, "political_leaning": "...", "stakeholder": "...", "regional": "...", "tone": "...", "confidence": 0.0-1.0}}
 }}
 
 Rules:
@@ -377,6 +494,7 @@ Rules:
 - Include empty arrays [] for categories with no entities
 - Use proper capitalization
 - Be precise: prefer fewer high-confidence entities over many low-confidence ones
+- Default to "applicable": false for perspective unless the article clearly has one
 - Output ONLY the JSON, no additional text
 
 JSON:"""
@@ -533,10 +651,14 @@ def extract_entities(
                         )
                         for e in parsed_enhanced.locations
                     ],
+                    perspective=ArticlePerspective.from_output(
+                        parsed_enhanced.perspective
+                    ),
                 )
                 logger.info(
                     f"Enhanced entity extraction: {len(entities.all_entities())} entities "
-                    f"(avg confidence: {entities.average_confidence():.2f})"
+                    f"(avg confidence: {entities.average_confidence():.2f}); "
+                    f"perspective applicable={entities.perspective.applicable if entities.perspective else False}"
                 )
 
         # Fall back to legacy parsing if enhanced failed or not enabled
@@ -618,7 +740,7 @@ def get_cached_entities(
         row = session.execute(
             text(
                 """
-            SELECT entities_json, entities_extracted_at, entities_model
+            SELECT entities_json, entities_extracted_at, entities_model, perspective_json
             FROM items
             WHERE id = :article_id
             AND entities_json IS NOT NULL
@@ -638,6 +760,16 @@ def get_cached_entities(
 
             # Parse and return cached entities
             entities = ExtractedEntities.from_json_string(row[0])
+            perspective_json = row[3]
+            if perspective_json:
+                try:
+                    entities.perspective = ArticlePerspective.from_json_string(
+                        perspective_json
+                    )
+                except Exception:
+                    logger.debug(
+                        f"Failed to parse cached perspective for article {article_id}"
+                    )
             logger.debug(f"Entity cache hit for article {article_id}")
             return entities
 
@@ -672,7 +804,8 @@ def store_entity_cache(
             UPDATE items
             SET entities_json = :entities_json,
                 entities_extracted_at = :extracted_at,
-                entities_model = :model
+                entities_model = :model,
+                perspective_json = :perspective_json
             WHERE id = :article_id
             """
             ),
@@ -680,6 +813,11 @@ def store_entity_cache(
                 "entities_json": entities.to_json_string(),
                 "extracted_at": datetime.now().isoformat(),
                 "model": model,
+                "perspective_json": (
+                    entities.perspective.to_json_string()
+                    if entities.perspective
+                    else None
+                ),
                 "article_id": article_id,
             },
         )
