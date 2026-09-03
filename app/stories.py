@@ -50,8 +50,10 @@ from .context_retrieval import retrieve_cluster_context, to_background_anchors
 from .credibility import canonicalize_domain
 from .datetime_utils import coerce_datetime
 from .entities import (
+    ArticlePerspective,
     ExtractedEntities,
     extract_and_cache_entities,
+    get_article_perspectives,
     get_cached_entities,
     get_entity_overlap,
 )
@@ -675,6 +677,15 @@ def update_story_with_new_articles(
         why_it_matters=synthesis_data.get("why_it_matters", ""),
         topics_json=serialize_story_json_field(synthesis_data.get("topics", [])),
         entities_json=serialize_story_json_field(synthesis_data.get("entities", [])),
+        # Consensus/divergence (#204, ADR-0023, v0.9.1) -- empty/None default
+        # is the common case, not a failure (see SynthesisOutput docstring).
+        consensus_points_json=serialize_story_json_field(
+            synthesis_data.get("consensus_points", [])
+        ),
+        divergence_points_json=serialize_story_json_field(
+            synthesis_data.get("divergence_points", [])
+        ),
+        source_agreement_score=synthesis_data.get("source_agreement_score"),
         article_count=len(merged_article_ids),
         importance_score=cluster_data.get("importance_score", 0.5),
         freshness_score=cluster_data.get("freshness_score", 0.5),
@@ -961,6 +972,10 @@ def _story_db_to_model(  # type: ignore[misc]
         why_it_matters=story.why_it_matters,  # type: ignore[arg-type]
         topics=deserialize_story_json_field(story.topics_json),  # type: ignore[arg-type]
         entities=deserialize_story_json_field(story.entities_json),  # type: ignore[arg-type]
+        # Consensus/divergence (#204, ADR-0023, v0.9.1)
+        consensus_points=_safe_json_loads_list(story.consensus_points_json),  # type: ignore[arg-type]
+        divergence_points=_safe_json_loads_list(story.divergence_points_json),  # type: ignore[arg-type]
+        source_agreement_score=story.source_agreement_score,  # type: ignore[arg-type]
         article_count=story.article_count,  # type: ignore[arg-type]
         importance_score=story.importance_score,  # type: ignore[arg-type]
         freshness_score=story.freshness_score,  # type: ignore[arg-type]
@@ -1740,6 +1755,13 @@ def _run_synthesis_pass(
         "why_it_matters": parsed_output.why_it_matters,
         "topics": list(parsed_output.topics),
         "entities": list(parsed_output.entities),
+        # Consensus/divergence (#204, v0.9.1) -- empty/None is the common
+        # case, not a failure; see SynthesisOutput docstring.
+        "consensus_points": [cp.model_dump() for cp in parsed_output.consensus_points],
+        "divergence_points": [
+            dp.model_dump() for dp in parsed_output.divergence_points
+        ],
+        "source_agreement_score": parsed_output.source_agreement_score,
         "_parse_metrics": parse_metrics,
     }
 
@@ -1779,6 +1801,13 @@ def _run_refinement_pass(
 
     # Preserve internal metadata from draft
     refined["_parse_metrics"] = draft_synthesis.get("_parse_metrics")
+    # Preserve consensus/divergence (#204, v0.9.1) -- the refinement prompt's
+    # own output schema doesn't include these fields (it only polishes
+    # wording/structure), so they'd otherwise be silently dropped here since
+    # `refined` is a brand-new dict from a different JSON schema, not a
+    # merge into draft_synthesis.
+    for key in ("consensus_points", "divergence_points", "source_agreement_score"):
+        refined.setdefault(key, draft_synthesis.get(key))
 
     logger.debug("Refinement pass completed successfully")
     return refined
@@ -2026,6 +2055,27 @@ def _run_hierarchical_synthesis(
     }
 
 
+def _format_perspective_hint(perspective: Optional["ArticlePerspective"]) -> str:
+    """
+    Render a cached per-article perspective (#203) as a short prompt hint
+    for consensus/divergence detection (#204, v0.9.1). Empty string for the
+    common case (no perspective, or not yet extracted) -- callers should
+    treat an empty hint as "no signal", not an error.
+    """
+    if not perspective or not perspective.applicable:
+        return ""
+    parts = []
+    if perspective.stakeholder:
+        parts.append(f"stakeholder={perspective.stakeholder}")
+    if perspective.political_leaning:
+        parts.append(f"political={perspective.political_leaning}")
+    if perspective.regional:
+        parts.append(f"regional={perspective.regional}")
+    if perspective.tone:
+        parts.append(f"tone={perspective.tone}")
+    return ", ".join(parts)
+
+
 def _prepare_articles_for_synthesis(
     session: Session,
     article_ids: list[int],
@@ -2086,10 +2136,12 @@ def _prepare_articles_for_synthesis(
         session.execute(
             text(
                 f"""
-                SELECT id, title, summary, ai_summary, topic, ranking_score, published
-                FROM items
-                WHERE id IN ({placeholders})
-                ORDER BY COALESCE(ranking_score, 0) DESC, published DESC
+                SELECT i.id, i.title, i.summary, i.ai_summary, i.topic,
+                       i.ranking_score, i.published, f.name AS source_name
+                FROM items i
+                LEFT JOIN feeds f ON f.id = i.feed_id
+                WHERE i.id IN ({placeholders})
+                ORDER BY COALESCE(i.ranking_score, 0) DESC, i.published DESC
                 """
             ),
             params,
@@ -2108,6 +2160,12 @@ def _prepare_articles_for_synthesis(
                 "topic": m.get("topic"),
                 "ranking_score": m.get("ranking_score", 0.0) or 0.0,
                 "published": str(m["published"]) if m.get("published") else None,
+                # Source attribution for consensus/divergence (v0.9.1, #204).
+                # Only wired for this direct-DB-fetch path, not the
+                # articles_cache path below -- source name isn't part of
+                # that cache's shape, and this is scoped to the direct
+                # synthesis strategy (<=8 articles) for now.
+                "source_name": m.get("source_name"),
             }
         )
     return prepare_articles_from_data(normalized)
@@ -2237,11 +2295,20 @@ def _enhanced_synthesis_pipeline(
         # Direct strategy: use selected (prioritized) articles
         selected_articles = selection_result.selected
 
+        # === Perspective lookup for consensus/divergence grounding (v0.9.1,
+        # #204). Cheap batch SELECT (mirrors credibility lookup above); only
+        # wired for the direct strategy for now -- see #204 scoping note. ===
+        perspective_map = get_article_perspectives(
+            session, [a.id for a in selected_articles]
+        )
+
         # Build article summaries for prompts (already prioritized)
         article_summaries = [
             {
                 "title": a.title,
                 "summary": a.summary[:500],
+                "source": a.source_name or "Unknown source",
+                "perspective_hint": _format_perspective_hint(perspective_map.get(a.id)),
             }
             for a in selected_articles
         ]
@@ -2451,6 +2518,12 @@ def _generate_story_synthesis(
             "why_it_matters": pipeline_result.get("why_it_matters"),
             "topics": pipeline_result.get("topics", []),
             "entities": pipeline_result.get("entities", []),
+            # Consensus/divergence (#204, v0.9.1) -- only populated by the
+            # direct synthesis strategy today; map-reduce/hierarchical
+            # clusters simply get the empty/None default (see #204 scoping).
+            "consensus_points": pipeline_result.get("consensus_points", []),
+            "divergence_points": pipeline_result.get("divergence_points", []),
+            "source_agreement_score": pipeline_result.get("source_agreement_score"),
         }
 
         # Get parse metrics from pipeline (if available)
@@ -3087,6 +3160,16 @@ def _persist_synthesized_story(
             why_it_matters=synthesis_data["why_it_matters"],
             topics_json=serialize_story_json_field(synthesis_data["topics"]),
             entities_json=serialize_story_json_field(synthesis_data["entities"]),
+            # Consensus/divergence (#204, ADR-0023, v0.9.1) -- empty/None
+            # default is the common case, not a failure (see
+            # SynthesisOutput docstring).
+            consensus_points_json=serialize_story_json_field(
+                synthesis_data.get("consensus_points", [])
+            ),
+            divergence_points_json=serialize_story_json_field(
+                synthesis_data.get("divergence_points", [])
+            ),
+            source_agreement_score=synthesis_data.get("source_agreement_score"),
             article_count=len(cluster_article_ids),
             importance_score=cluster_data["importance_score"],
             freshness_score=cluster_data["freshness_score"],

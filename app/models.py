@@ -411,6 +411,15 @@ class StoryOut(BaseModel):
     why_it_matters: Optional[str] = None
     topics: List[str] = Field(default_factory=list)
     entities: List[str] = Field(default_factory=list)
+    # Consensus/divergence across source articles (v0.9.1, #204, ADR-0023).
+    # Empty list is the common case (sources agree/complement each other),
+    # not a failure -- see SynthesisOutput docstring in llm_output.py.
+    # Currently only populated for the direct synthesis strategy (<=8
+    # articles); loosely-typed dicts (not nested Pydantic models) to match
+    # the existing synthesis_anchors/context_anchors pattern below.
+    consensus_points: List[Dict[str, Any]] = Field(default_factory=list)
+    divergence_points: List[Dict[str, Any]] = Field(default_factory=list)
+    source_agreement_score: Optional[float] = None
     article_count: int
     importance_score: float = 0.0
     freshness_score: float = 0.0

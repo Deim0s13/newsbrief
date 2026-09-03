@@ -33,9 +33,12 @@ def get_synthesis_prompt(
     # Format analysis context
     analysis_context = _format_analysis_context(analysis)
 
-    # Format article context (abbreviated)
+    # Format article context (abbreviated), tagged with source name +
+    # cached perspective hint when available (#204, v0.9.1) so the LLM can
+    # attribute consensus/divergence to specific sources instead of
+    # inferring attribution from scratch.
     articles_context = "\n".join(
-        f"- {a.get('title', 'Untitled')[:max_title_chars]}"
+        _format_article_line(a, max_title_chars)
         for a in article_summaries[:max_articles]
     )
 
@@ -84,6 +87,23 @@ WRITING GUIDELINES:
    - Prioritize entities central to the story
    - Include entities mentioned across multiple sources
 
+7. CONSENSUS_POINTS (optional, usually empty): Only if 2+ *different named
+   sources* explicitly agree on a specific claim, list it with which
+   sources back it. Do NOT invent agreement -- for most clusters (sources
+   simply complementing each other, or only one distinct source) this
+   should be an empty list.
+
+8. DIVERGENCE_POINTS (optional, usually empty): Only if named sources
+   genuinely disagree on facts, or clearly emphasize/frame the same topic
+   from different angles (e.g. business vs. consumer, different political
+   framing) -- list the topic and each side with its source(s). Do NOT
+   force a divergence that isn't really there; empty is the expected
+   default for most tech/product news.
+
+9. SOURCE_AGREEMENT_SCORE (optional): 0.0-1.0 overall agreement across
+   sources, only if you identified at least one consensus or divergence
+   point above. Omit (null) otherwise.
+
 Respond with valid JSON only:
 {{
   "title": "Compelling headline here",
@@ -91,7 +111,10 @@ Respond with valid JSON only:
   "key_points": ["Point 1", "Point 2", "Point 3"],
   "why_it_matters": "Significance and implications...",
   "topics": ["Topic1", "Topic2"],
-  "entities": ["Entity1", "Entity2", "Entity3"]
+  "entities": ["Entity1", "Entity2", "Entity3"],
+  "consensus_points": [{{"claim": "...", "sources": ["Source A", "Source B"], "confidence": 0.8}}],
+  "divergence_points": [{{"topic": "...", "perspectives": [{{"view": "...", "sources": ["Source A"]}}, {{"view": "...", "sources": ["Source B"]}}]}}],
+  "source_agreement_score": 0.8
 }}
 
 JSON:"""
@@ -113,7 +136,7 @@ def get_deep_synthesis_prompt(
     """
     analysis_context = _format_analysis_context(analysis)
     articles_context = "\n".join(
-        f"- {a.get('title', 'Untitled')[:max_title_chars]}"
+        _format_article_line(a, max_title_chars)
         for a in article_summaries[:max_articles]
     )
     type_instructions = _get_type_instructions(story_type)
@@ -158,6 +181,21 @@ WRITING GUIDELINES FOR COMPLEX STORIES:
    - Include entities on different sides of the debate or topic
    - Prioritise entities mentioned across multiple sources
 
+7. CONSENSUS_POINTS: List specific claims where 2+ *named sources*
+   explicitly agree, with which sources back each one. This story type was
+   routed here because it likely has multiple angles -- look for genuine
+   agreement, but still only list it if it's really attributable to named
+   sources (not just "everyone covers this event").
+
+8. DIVERGENCE_POINTS: This is the most important structured output for a
+   complex/multi-angle story -- list each topic where named sources
+   disagree on facts or clearly frame/emphasize it differently, with each
+   side's view and which source(s) hold it.
+
+9. SOURCE_AGREEMENT_SCORE: 0.0-1.0 overall agreement across sources. Given
+   this story was routed as complex/divergent, expect this to often be
+   below 0.7 -- but still reflect what the sources actually show.
+
 Respond with valid JSON only:
 {{
   "title": "Compelling headline capturing the tension",
@@ -165,10 +203,30 @@ Respond with valid JSON only:
   "key_points": ["Point covering agreement", "Point on disagreement/uncertainty", "Point 3"],
   "why_it_matters": "Multi-perspective significance and unresolved questions...",
   "topics": ["Topic1", "Topic2"],
-  "entities": ["Entity1", "Entity2", "Entity3"]
+  "entities": ["Entity1", "Entity2", "Entity3"],
+  "consensus_points": [{{"claim": "...", "sources": ["Source A", "Source B"], "confidence": 0.8}}],
+  "divergence_points": [{{"topic": "...", "perspectives": [{{"view": "...", "sources": ["Source A"]}}, {{"view": "...", "sources": ["Source B"]}}]}}],
+  "source_agreement_score": 0.5
 }}
 
 JSON:"""
+
+
+def _format_article_line(a: dict[str, str], max_title_chars: int) -> str:
+    """
+    Format one article's line for the SOURCE ARTICLES block, tagged with
+    its source name and cached perspective hint when available (#204,
+    v0.9.1). Both are optional keys added by app/stories.py's direct
+    synthesis path -- absent for other callers (e.g. story-type detection),
+    which is fine since this just falls back to the plain title.
+    """
+    title = a.get("title", "Untitled")[:max_title_chars]
+    source = a.get("source")
+    hint = a.get("perspective_hint")
+    tag = f"[{source}]" if source else ""
+    if hint:
+        tag = f"{tag} ({hint})" if tag else f"({hint})"
+    return f"- {tag} {title}".strip() if tag else f"- {title}"
 
 
 def _format_analysis_context(analysis: AnalysisResult) -> str:

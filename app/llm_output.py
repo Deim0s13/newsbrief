@@ -47,11 +47,74 @@ T = TypeVar("T", bound=BaseModel)
 # =============================================================================
 
 
+class ConsensusPointOutput(BaseModel):
+    """
+    A fact/claim that multiple sources in the cluster agree on (#204,
+    ADR-0023, v0.9.1). Part of SynthesisOutput.
+    """
+
+    claim: str = Field(..., min_length=1, max_length=300)
+    sources: List[str] = Field(default_factory=list, max_length=8)
+    confidence: float = Field(default=0.7, ge=0.0, le=1.0)
+
+    @field_validator("sources", mode="before")
+    @classmethod
+    def ensure_sources_list(cls, v: Any) -> List[str]:
+        if isinstance(v, str):
+            return [v]
+        if isinstance(v, list):
+            return [str(s).strip() for s in v if s][:8]
+        return []
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def coerce_confidence(cls, v: Any) -> float:
+        try:
+            return max(0.0, min(1.0, float(v)))
+        except (ValueError, TypeError):
+            return 0.7
+
+
+class DivergencePerspectiveOutput(BaseModel):
+    """One side of a divergence point -- a viewpoint + which sources hold it."""
+
+    view: str = Field(..., min_length=1, max_length=300)
+    sources: List[str] = Field(default_factory=list, max_length=8)
+
+    @field_validator("sources", mode="before")
+    @classmethod
+    def ensure_sources_list(cls, v: Any) -> List[str]:
+        if isinstance(v, str):
+            return [v]
+        if isinstance(v, list):
+            return [str(s).strip() for s in v if s][:8]
+        return []
+
+
+class DivergencePointOutput(BaseModel):
+    """
+    A topic on which sources in the cluster disagree or emphasize
+    differently (#204, ADR-0023, v0.9.1). Part of SynthesisOutput.
+    """
+
+    topic: str = Field(..., min_length=1, max_length=200)
+    perspectives: List[DivergencePerspectiveOutput] = Field(
+        default_factory=list, max_length=4
+    )
+
+
 class SynthesisOutput(BaseModel):
     """
     Validated output from story synthesis LLM calls.
 
     Used by: app/stories.py _generate_story_synthesis()
+
+    consensus_points/divergence_points/source_agreement_score added in
+    v0.9.1 (#204, ADR-0023): all default to empty/None, which is the
+    expected outcome for the common case where a cluster's sources simply
+    agree/complement each other (most of a personal tech-heavy feed) --
+    these fields exist for the minority of clusters with a genuine,
+    attributable difference in emphasis or claims across sources.
     """
 
     title: str = Field(
@@ -85,6 +148,22 @@ class SynthesisOutput(BaseModel):
         max_length=10,
         description="List of 3-7 key entities mentioned",
     )
+    consensus_points: List[ConsensusPointOutput] = Field(
+        default_factory=list,
+        max_length=5,
+        description="Facts/claims multiple sources agree on (only when genuinely attributable to specific sources)",
+    )
+    divergence_points: List[DivergencePointOutput] = Field(
+        default_factory=list,
+        max_length=3,
+        description="Topics where sources disagree or emphasize differently (empty is the common/expected case)",
+    )
+    source_agreement_score: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Overall agreement level across sources (1.0 = full agreement); omit if not meaningfully assessable",
+    )
 
     @field_validator("key_points", mode="before")
     @classmethod
@@ -105,6 +184,16 @@ class SynthesisOutput(BaseModel):
         if isinstance(v, list):
             return [str(item) for item in v if item]
         return []
+
+    @field_validator("source_agreement_score", mode="before")
+    @classmethod
+    def coerce_agreement_score(cls, v: Any) -> Optional[float]:
+        if v is None:
+            return None
+        try:
+            return max(0.0, min(1.0, float(v)))
+        except (ValueError, TypeError):
+            return None
 
 
 class TopicOutput(BaseModel):

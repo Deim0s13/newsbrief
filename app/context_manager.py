@@ -79,6 +79,8 @@ class ArticleForSynthesis:
     # Source credibility fields (v0.8.2 - Issue #198)
     credibility_score: Optional[float] = None  # 0.0-1.0, None if unknown
     is_eligible_for_synthesis: bool = True  # False for satire/conspiracy/fake_news
+    # Source name for attribution in multi-perspective synthesis (v0.9.1, #204)
+    source_name: Optional[str] = None
 
     @property
     def estimated_tokens(self) -> int:
@@ -627,6 +629,7 @@ def prepare_articles_from_data(
                 published=data.get("published"),
                 topic=data.get("topic"),
                 feed_id=data.get("feed_id"),
+                source_name=data.get("source_name"),
             )
         else:
             # Tuple format: (id, title, summary, ai_summary, topic, ...)

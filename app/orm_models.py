@@ -193,6 +193,15 @@ class Story(Base):
     why_it_matters = Column(Text)
     topics_json = Column(Text)
     entities_json = Column(Text)
+    # Consensus/divergence across source articles (v0.9.1, #204, ADR-0023);
+    # extracted in the same synthesis LLM call, no extra round-trip. Null/
+    # empty-list is the common case (sources broadly agree), not a failure
+    # -- see SynthesisOutput in llm_output.py. Only populated by the direct
+    # synthesis strategy for now (<=8 articles); map-reduce/hierarchical
+    # clusters leave these null.
+    consensus_points_json = Column(Text)
+    divergence_points_json = Column(Text)
+    source_agreement_score = Column(Float, nullable=True)
     article_count = Column(Integer, default=0)
     importance_score = Column(Float, default=0.0)
     freshness_score = Column(Float, default=0.0)

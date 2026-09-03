@@ -973,6 +973,61 @@ def extract_and_cache_entities(
     return entities
 
 
+def get_article_perspectives(
+    session: Session, article_ids: List[int]
+) -> Dict[int, ArticlePerspective]:
+    """
+    Batch-lookup cached perspective classifications for a set of articles
+    (v0.9.1, #204). Mirrors app/stories.py's get_article_credibility() --
+    used by synthesis to ground consensus/divergence detection in already
+    -computed per-article signals rather than re-inferring everything from
+    raw text at synthesis time.
+
+    Only returns entries for articles that have a non-null
+    ``perspective_json`` (i.e. were already entity-extracted); articles not
+    yet processed, or with ``applicable=False``, are simply absent/neutral
+    -- callers should treat a missing entry the same as "no perspective".
+
+    Args:
+        session: Database session
+        article_ids: Article IDs to look up
+
+    Returns:
+        Dict mapping article_id -> ArticlePerspective (only for hits)
+    """
+    if not article_ids:
+        return {}
+
+    placeholders = ", ".join(f":id_{i}" for i in range(len(article_ids)))
+    params = {f"id_{i}": aid for i, aid in enumerate(article_ids)}
+
+    try:
+        rows = session.execute(
+            text(
+                f"""
+                SELECT id, perspective_json
+                FROM items
+                WHERE id IN ({placeholders})
+                AND perspective_json IS NOT NULL
+                """
+            ),
+            params,
+        ).fetchall()
+    except Exception as e:
+        logger.warning(f"Failed to batch-lookup article perspectives: {e}")
+        return {}
+
+    result: Dict[int, ArticlePerspective] = {}
+    for article_id, perspective_json in rows:
+        try:
+            result[int(article_id)] = ArticlePerspective.from_json_string(
+                perspective_json
+            )
+        except Exception:
+            logger.debug(f"Failed to parse perspective_json for article {article_id}")
+    return result
+
+
 def _normalize_entities_safe(
     session: Session, article_id: int, entities: ExtractedEntities
 ) -> None:
