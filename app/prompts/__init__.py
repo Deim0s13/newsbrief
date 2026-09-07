@@ -48,6 +48,7 @@ class AnalysisResult(NamedTuple):
 # Re-export prompt functions
 from .analysis import create_analysis_prompt, parse_analysis_response
 from .detection import create_detection_prompt, parse_detection_response
+from .grounding import grounding_block, refinement_grounding_block
 from .map_reduce import (
     create_group_summary_prompt,
     create_hierarchical_tier1_prompt,
@@ -76,4 +77,7 @@ __all__ = [
     "create_reduce_prompt",
     "create_hierarchical_tier1_prompt",
     "create_hierarchical_tier2_prompt",
+    # Anti-hallucination / date-grounding (hotfix, Sep 2026)
+    "grounding_block",
+    "refinement_grounding_block",
 ]

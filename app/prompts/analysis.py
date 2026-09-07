@@ -10,6 +10,7 @@ import logging
 from typing import Optional
 
 from . import AnalysisResult
+from .grounding import grounding_block
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,8 @@ def create_analysis_prompt(
 
     return f"""You are a senior news analyst preparing to write a synthesized story from multiple sources.
 Before writing, carefully analyze these articles to extract key information.
+
+{grounding_block()}
 
 STORY TYPE: {story_type}
 

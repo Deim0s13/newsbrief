@@ -7,6 +7,7 @@ synthesis for each pattern.
 """
 
 from . import AnalysisResult, StoryType
+from .grounding import grounding_block
 
 
 def get_synthesis_prompt(
@@ -46,6 +47,8 @@ def get_synthesis_prompt(
     type_instructions = _get_type_instructions(story_type)
 
     return f"""You are a senior news editor at a respected publication. Your task is to synthesize multiple source articles into a single, compelling story.
+
+{grounding_block()}
 
 STORY TYPE: {story_type.value.upper()}
 {type_instructions}
@@ -148,6 +151,8 @@ def get_deep_synthesis_prompt(
     type_instructions = _get_type_instructions(story_type)
 
     return f"""You are a senior news editor at a respected publication covering a complex, multi-angle story. Your task is to synthesize multiple source articles that approach this issue from different perspectives.
+
+{grounding_block()}
 
 STORY TYPE: {story_type.value.upper()}
 {type_instructions}
