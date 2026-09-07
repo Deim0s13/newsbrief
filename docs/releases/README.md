@@ -8,7 +8,21 @@ Quick reference for all NewsBrief releases. For detailed release notes, see [Git
 
 ## v0.9.x - Intelligence Platform
 
-### v0.9.0 - Entity Intelligence System (Current)
+### v0.9.1 - Multi-Perspective Synthesis (Current)
+**September 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.9.1)
+
+Phase 3 of the intelligence platform strategy ([ADR-0023](../adr/0023-intelligence-platform-strategy.md)) — detects per-article perspective/stance, surfaces where sources agree/disagree with attribution, flags one-sided coverage, and visualizes it on the story detail page. Includes a same-release hotfix for a real production quality report (fabricated dates/facts in synthesis, sort-filter not persisting).
+
+**Highlights:**
+- **Perspective Detection**: Per-article stakeholder/political-leaning/regional/tone tags extracted in the same LLM call as entity extraction — no new round-trips (#203)
+- **Consensus/Divergence Detection**: Synthesis pass now also extracts what sources agree on and where they diverge, with explicit publication-name attribution (#204)
+- **Coverage Gap Detection**: Rule-based (no LLM) one-sided-coverage flagging across a story's cluster, using the existing perspective tags (#229)
+- **Perspective Visualization UI**: Collapsible "Multi-Perspective Coverage" panel + per-article perspective chips on the story detail page (#205)
+- **Hotfix — anti-hallucination grounding**: every synthesis-pipeline prompt (analysis/detection/synthesis/refinement/map-reduce, 9 functions) now states today's actual date and instructs the model to ground strictly in the provided content instead of its own training-era knowledge — fixes a real case of a fabricated "2024" year and an inverted player-club fact on Sep 2026 output
+- **Hotfix — sort-filter persistence**: story list status/sort/topic/interests-toggle selections now persist across navigation instead of resetting to "Importance" on every page load
+- **Migrations**: `030_perspective_detection`, `031_consensus_divergence`, `032_coverage_gaps`
+
+### v0.9.0 - Entity Intelligence System
 **September 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.9.0)
 
 Phase 2 of the intelligence platform strategy ([ADR-0023](../adr/0023-intelligence-platform-strategy.md)) — builds a normalized entity graph on top of the per-article entity extraction that already existed, and uses it to connect stories, browse entities, and improve continuity linking.
