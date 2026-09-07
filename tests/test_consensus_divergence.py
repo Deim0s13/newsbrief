@@ -323,6 +323,46 @@ class TestStoryPersistenceRoundTrip:
         assert out.consensus_points == []
         assert out.divergence_points == []
         assert out.source_agreement_score is None
+        assert out.coverage_gaps == []
+
+    def test_coverage_gaps_round_trip(self, perspective_test_db):
+        import json
+
+        from app.orm_models import Story
+
+        session = perspective_test_db
+        gaps = [
+            {
+                "dimension": "stakeholder",
+                "present": ["business"],
+                "missing": "consumer or labor viewpoint",
+            }
+        ]
+        story = Story(
+            title="Test story",
+            synthesis="A test synthesis sentence that is long enough to pass the fifty character minimum length validator.",
+            key_points_json=serialize_story_json_field(["point"]),
+            coverage_gaps_json=json.dumps(gaps),
+            article_count=1,
+            importance_score=0.5,
+            freshness_score=0.5,
+            cluster_method="test",
+            story_hash=f"test-consensus-{uuid.uuid4()}",
+            generated_at=datetime.now(UTC),
+            first_seen=datetime.now(UTC),
+            last_updated=datetime.now(UTC),
+            time_window_start=datetime.now(UTC),
+            time_window_end=datetime.now(UTC),
+            model="test-model",
+            status="active",
+            version=1,
+        )
+        session.add(story)
+        session.commit()
+        session.refresh(story)
+
+        out = _story_db_to_model(story, articles=[])
+        assert out.coverage_gaps == gaps
 
     def test_populated_fields_round_trip(self, perspective_test_db):
         import json

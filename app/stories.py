@@ -74,6 +74,7 @@ from .models import (
     deserialize_story_json_field,
     serialize_story_json_field,
 )
+from .perspective_gaps import detect_perspective_gaps
 from .processing_states import (
     ArticleProcessingState,
     StoryProcessingState,
@@ -686,6 +687,10 @@ def update_story_with_new_articles(
             synthesis_data.get("divergence_points", [])
         ),
         source_agreement_score=synthesis_data.get("source_agreement_score"),
+        # Rule-based viewpoint gaps (#229, v0.9.1)
+        coverage_gaps_json=serialize_story_json_field(
+            synthesis_data.get("coverage_gaps", [])
+        ),
         article_count=len(merged_article_ids),
         importance_score=cluster_data.get("importance_score", 0.5),
         freshness_score=cluster_data.get("freshness_score", 0.5),
@@ -976,6 +981,8 @@ def _story_db_to_model(  # type: ignore[misc]
         consensus_points=_safe_json_loads_list(story.consensus_points_json),  # type: ignore[arg-type]
         divergence_points=_safe_json_loads_list(story.divergence_points_json),  # type: ignore[arg-type]
         source_agreement_score=story.source_agreement_score,  # type: ignore[arg-type]
+        # Rule-based viewpoint gaps (#229, v0.9.1)
+        coverage_gaps=_safe_json_loads_list(story.coverage_gaps_json),  # type: ignore[arg-type]
         article_count=story.article_count,  # type: ignore[arg-type]
         importance_score=story.importance_score,  # type: ignore[arg-type]
         freshness_score=story.freshness_score,  # type: ignore[arg-type]
@@ -2361,6 +2368,11 @@ def _enhanced_synthesis_pipeline(
             "core_facts_count": len(analysis.core_facts),
             "tensions_count": len(analysis.tensions),
         }
+        # Rule-based (no LLM) viewpoint gap detection (#229, v0.9.1), reusing
+        # the perspective_map already fetched above for consensus/divergence.
+        result["coverage_gaps"] = detect_perspective_gaps(
+            list(perspective_map.values())
+        )
         # Light RAG anchors actually injected into this prompt (#259)
         result["_synthesis_anchors"] = [
             {
@@ -2524,6 +2536,9 @@ def _generate_story_synthesis(
             "consensus_points": pipeline_result.get("consensus_points", []),
             "divergence_points": pipeline_result.get("divergence_points", []),
             "source_agreement_score": pipeline_result.get("source_agreement_score"),
+            # Rule-based viewpoint gaps (#229, v0.9.1) -- only populated by
+            # the direct synthesis strategy today (see #204/#229 scoping).
+            "coverage_gaps": pipeline_result.get("coverage_gaps", []),
         }
 
         # Get parse metrics from pipeline (if available)
@@ -3170,6 +3185,10 @@ def _persist_synthesized_story(
                 synthesis_data.get("divergence_points", [])
             ),
             source_agreement_score=synthesis_data.get("source_agreement_score"),
+            # Rule-based viewpoint gaps (#229, v0.9.1)
+            coverage_gaps_json=serialize_story_json_field(
+                synthesis_data.get("coverage_gaps", [])
+            ),
             article_count=len(cluster_article_ids),
             importance_score=cluster_data["importance_score"],
             freshness_score=cluster_data["freshness_score"],

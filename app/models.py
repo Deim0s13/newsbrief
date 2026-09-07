@@ -420,6 +420,9 @@ class StoryOut(BaseModel):
     consensus_points: List[Dict[str, Any]] = Field(default_factory=list)
     divergence_points: List[Dict[str, Any]] = Field(default_factory=list)
     source_agreement_score: Optional[float] = None
+    # Rule-based (no LLM) viewpoint gap detection (v0.9.1, #229, ADR-0023);
+    # see app/perspective_gaps.py. Empty list is the common case.
+    coverage_gaps: List[Dict[str, Any]] = Field(default_factory=list)
     article_count: int
     importance_score: float = 0.0
     freshness_score: float = 0.0

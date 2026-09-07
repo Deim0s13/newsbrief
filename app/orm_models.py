@@ -202,6 +202,11 @@ class Story(Base):
     consensus_points_json = Column(Text)
     divergence_points_json = Column(Text)
     source_agreement_score = Column(Float, nullable=True)
+    # Rule-based (no LLM) viewpoint gap detection (v0.9.1, #229, ADR-0023);
+    # see app/perspective_gaps.py detect_perspective_gaps(). Null/empty is
+    # the common case. Only populated by the direct synthesis strategy for
+    # now, same scoping as consensus/divergence above.
+    coverage_gaps_json = Column(Text)
     article_count = Column(Integer, default=0)
     importance_score = Column(Float, default=0.0)
     freshness_score = Column(Float, default=0.0)
