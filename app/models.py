@@ -188,6 +188,16 @@ class ItemOut(BaseModel):
     feed_id: Optional[int] = Field(
         None, description="ID of the feed this article belongs to"
     )
+    source_name: Optional[str] = Field(
+        None, description="Feed/publication name (v0.9.1, #205)"
+    )
+    # Cached per-article perspective classification (v0.9.1, #203/#205);
+    # loosely-typed dict (not a nested Pydantic model) matching the
+    # consensus_points/divergence_points precedent on StoryOut -- only
+    # present when applicable=True, None otherwise (the common case).
+    perspective: Optional[Dict[str, Any]] = Field(
+        None, description="Perspective classification when applicable, else None"
+    )
     # Legacy plain text AI summary (for backward compatibility)
     ai_summary: Optional[str] = None
     ai_model: Optional[str] = None
@@ -411,6 +421,18 @@ class StoryOut(BaseModel):
     why_it_matters: Optional[str] = None
     topics: List[str] = Field(default_factory=list)
     entities: List[str] = Field(default_factory=list)
+    # Consensus/divergence across source articles (v0.9.1, #204, ADR-0023).
+    # Empty list is the common case (sources agree/complement each other),
+    # not a failure -- see SynthesisOutput docstring in llm_output.py.
+    # Currently only populated for the direct synthesis strategy (<=8
+    # articles); loosely-typed dicts (not nested Pydantic models) to match
+    # the existing synthesis_anchors/context_anchors pattern below.
+    consensus_points: List[Dict[str, Any]] = Field(default_factory=list)
+    divergence_points: List[Dict[str, Any]] = Field(default_factory=list)
+    source_agreement_score: Optional[float] = None
+    # Rule-based (no LLM) viewpoint gap detection (v0.9.1, #229, ADR-0023);
+    # see app/perspective_gaps.py. Empty list is the common case.
+    coverage_gaps: List[Dict[str, Any]] = Field(default_factory=list)
     article_count: int
     importance_score: float = 0.0
     freshness_score: float = 0.0

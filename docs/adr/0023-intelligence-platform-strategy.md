@@ -234,6 +234,53 @@ ALTER TABLE stories ADD COLUMN source_agreement_score FLOAT;
 }
 ```
 
+**Implementation status (v0.9.1, shipped Sep 2026)**: Delivered against
+issues #203, #204, #229, #205, in four phases with two review checkpoints
+against real/synthetic data (see commit history for details). Several
+deviations from the design above, agreed with the user at each phase:
+
+- **Perspective detection (#203)** extends the existing per-article entity
+  extraction LLM call rather than adding a new one — `PerspectiveOutput`
+  (`app/llm_output.py`) classifies `stakeholder`/`political_leaning`/
+  `regional`/`tone`, cached in `items.perspective_json` alongside entities.
+  `applicable=False` is the expected/common case (confirmed against real
+  feed data: 6/6 tech articles in the Checkpoint 1 sample were not
+  applicable — this feed is tech/product news, not general political
+  coverage).
+- **Consensus/divergence (#204)** extends the synthesis LLM call
+  (`SynthesisOutput.consensus_points`/`divergence_points`/
+  `source_agreement_score`) rather than a separate pass, grounded by tagging
+  each source article in the prompt with its feed name + cached perspective
+  hint. `sources` values are required (via explicit prompt instruction added
+  after a Checkpoint 2 finding) to be the article's publication name, not an
+  in-text stakeholder/actor name the model might otherwise pick up on (e.g.
+  "TechCorp" instead of the outlet that reported on TechCorp). Only wired
+  for the direct synthesis strategy (≤8 articles/cluster) — map-reduce/
+  hierarchical clusters leave these null.
+- **Coverage gaps (#229)** is rule-based, not LLM-based — no story-type
+  classifier exists in this codebase, so `app/perspective_gaps.py` instead
+  checks the 3 populated perspective dimensions from #203 (`stakeholder`,
+  `political_leaning`, `regional`; `tone` excluded as framing, not a
+  viewpoint gap) for one-sided coverage across a cluster, requiring ≥2
+  articles with a value before evaluating a dimension. Output drops the
+  `expected_sources` field from the example above (a rule-based check can't
+  know what a missing source would say) in favor of `{dimension, present,
+  missing}`. Same direct-strategy-only scoping as consensus/divergence.
+- **UI (#205)** ships a reduced scope, agreed with the user given how
+  sparse perspective data is in practice on this feed: a collapsible
+  "Multi-Perspective Coverage" panel (consensus/divergence/gaps/agreement
+  score) plus per-article source name + perspective chips on the story
+  detail page. The visual spectrum bar and click-to-filter-by-perspective
+  from the original issue are deferred as a possible fast-follow — nothing
+  shipped here is throwaway if that's built later, it's additive on the
+  same markup/data.
+
+**Deferred** (out of this pass, tracked separately): the spectrum
+bar/click-to-filter UI noted above; "contested fact" flagging as its own
+concept distinct from divergence_points; extending consensus/divergence/gaps
+to the map-reduce and hierarchical synthesis strategies (>8 articles/
+cluster).
+
 #### v0.9.2 - Story Evolution & Timeline
 **Goal**: Track how stories develop over time.
 

@@ -11,6 +11,8 @@ import json
 import logging
 from typing import Any, Dict, List, Optional
 
+from .grounding import grounding_block
+
 logger = logging.getLogger(__name__)
 
 
@@ -43,6 +45,8 @@ def create_group_summary_prompt(
 
     return f"""You are condensing a group of related news articles into a summary for further synthesis.
 This is group {group_number} of {total_groups} groups covering a {story_type} story.
+
+{grounding_block()}
 
 {articles_text}
 
@@ -156,6 +160,8 @@ def create_reduce_prompt(
     return f"""You are a senior news editor synthesizing coverage from {total_articles} articles
 organized into {len(group_summaries)} thematic groups. Story type: {story_type}
 
+{grounding_block(source_label="group summaries and facts below")}
+
 GROUP SUMMARIES:
 {groups_text}
 
@@ -222,6 +228,8 @@ def create_hierarchical_tier1_prompt(
     return f"""Summarize this cluster of {len(article_summaries)} related articles.
 This is cluster {tier_number} of {total_tiers} being processed for a large story.
 
+{grounding_block()}
+
 {articles_text}
 
 Create a detailed summary preserving all important information:
@@ -274,6 +282,8 @@ def create_hierarchical_tier2_prompt(
 
     return f"""You are synthesizing a major story covered by {total_articles} articles.
 The articles have been pre-processed into {len(tier1_summaries)} thematic clusters.
+
+{grounding_block(source_label="cluster summaries and facts below")}
 
 CLUSTER SUMMARIES:
 {summaries_text}

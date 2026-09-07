@@ -9,6 +9,8 @@ import json
 import logging
 from typing import Any, Optional
 
+from .grounding import refinement_grounding_block
+
 logger = logging.getLogger(__name__)
 
 
@@ -35,6 +37,8 @@ def create_refinement_prompt(
 
     return f"""You are a senior editor reviewing a synthesized news story before publication.
 Critique and improve this draft, focusing on quality issues.
+
+{refinement_grounding_block()}
 
 STORY TYPE: {story_type}
 SOURCE COUNT: {article_count} articles

@@ -117,6 +117,11 @@ class Item(Base):
     entities_json = Column(Text)
     entities_extracted_at = Column(DateTime)
     entities_model = Column(Text)
+    # Perspective/viewpoint classification (v0.9.1, #203, ADR-0023) --
+    # extracted in the same LLM call as entities (see app/entities.py
+    # extract_entities()), cached separately here since it's a distinct
+    # concern from entity extraction and most articles have none.
+    perspective_json = Column(Text)
     # Content extraction metadata (v0.8.0 - ADR-0024)
     extraction_method = Column(String(20), default="legacy")
     extraction_quality = Column(Float)
@@ -188,6 +193,20 @@ class Story(Base):
     why_it_matters = Column(Text)
     topics_json = Column(Text)
     entities_json = Column(Text)
+    # Consensus/divergence across source articles (v0.9.1, #204, ADR-0023);
+    # extracted in the same synthesis LLM call, no extra round-trip. Null/
+    # empty-list is the common case (sources broadly agree), not a failure
+    # -- see SynthesisOutput in llm_output.py. Only populated by the direct
+    # synthesis strategy for now (<=8 articles); map-reduce/hierarchical
+    # clusters leave these null.
+    consensus_points_json = Column(Text)
+    divergence_points_json = Column(Text)
+    source_agreement_score = Column(Float, nullable=True)
+    # Rule-based (no LLM) viewpoint gap detection (v0.9.1, #229, ADR-0023);
+    # see app/perspective_gaps.py detect_perspective_gaps(). Null/empty is
+    # the common case. Only populated by the direct synthesis strategy for
+    # now, same scoping as consensus/divergence above.
+    coverage_gaps_json = Column(Text)
     article_count = Column(Integer, default=0)
     importance_score = Column(Float, default=0.0)
     freshness_score = Column(Float, default=0.0)

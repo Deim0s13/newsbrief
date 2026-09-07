@@ -10,7 +10,66 @@ let _generationPollInterval = null;
 // newer one's results, showing stories in the wrong sort order.
 let _loadStoriesRequestSeq = 0;
 
+// Filter preferences persistence (hotfix, Sep 2026): the status/sort/topic/
+// interests-toggle controls were never persisted anywhere, so every full
+// page navigation (e.g. clicking into a story then "Back to Stories" --
+// a plain <a href>, not a real browser back/forward action, so bfcache
+// never applies here) reset them to their HTML defaults ("Importance" for
+// sort). Selecting "Freshness" only ever "stuck" until the user left the
+// page, which looked like the story order randomly reverting.
+const FILTER_STORAGE_KEY = 'newsbrief.storyFilters';
+
+function saveFilterPreferences() {
+    try {
+        const statusFilter = document.getElementById('status-filter');
+        const sortFilter = document.getElementById('sort-filter');
+        const topicFilter = document.getElementById('topic-filter');
+        const interestsToggle = document.getElementById('interests-toggle');
+
+        localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify({
+            status: statusFilter ? statusFilter.value : undefined,
+            order_by: sortFilter ? sortFilter.value : undefined,
+            topic: topicFilter ? topicFilter.value : undefined,
+            apply_interests: interestsToggle ? interestsToggle.checked : undefined
+        }));
+    } catch (e) {
+        // localStorage can throw (private browsing, quota exceeded) --
+        // filter persistence is a nice-to-have, never worth failing the
+        // page for.
+        console.warn('Failed to save filter preferences:', e);
+    }
+}
+
+function restoreFilterPreferences() {
+    try {
+        const raw = localStorage.getItem(FILTER_STORAGE_KEY);
+        if (!raw) return;
+        const prefs = JSON.parse(raw);
+
+        const statusFilter = document.getElementById('status-filter');
+        const sortFilter = document.getElementById('sort-filter');
+        const topicFilter = document.getElementById('topic-filter');
+        const interestsToggle = document.getElementById('interests-toggle');
+
+        if (statusFilter && prefs.status !== undefined) {
+            statusFilter.value = prefs.status;
+        }
+        if (sortFilter && prefs.order_by !== undefined) {
+            sortFilter.value = prefs.order_by;
+        }
+        if (topicFilter && prefs.topic !== undefined) {
+            topicFilter.value = prefs.topic;
+        }
+        if (interestsToggle && prefs.apply_interests !== undefined) {
+            interestsToggle.checked = prefs.apply_interests;
+        }
+    } catch (e) {
+        console.warn('Failed to restore filter preferences:', e);
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
+    restoreFilterPreferences();
     loadStories();
     setupEventListeners();
     checkGenerationStatus();
@@ -101,6 +160,10 @@ async function loadStories() {
         const orderBy = document.getElementById('sort-filter').value;
         const topic = document.getElementById('topic-filter')?.value || '';
         const applyInterests = document.getElementById('interests-toggle')?.checked ?? true;
+
+        // Persist whatever's currently selected so it survives navigating
+        // away and back (see restoreFilterPreferences() above)
+        saveFilterPreferences();
 
         // Build API URL
         const params = new URLSearchParams({

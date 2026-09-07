@@ -10,6 +10,7 @@ import logging
 from typing import Optional
 
 from . import StoryType, StoryTypeResult
+from .grounding import grounding_block
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,8 @@ def create_detection_prompt(
     )
 
     return f"""Analyze these related news articles and classify the story pattern.
+
+{grounding_block()}
 
 {articles_text}
 
