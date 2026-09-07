@@ -30,7 +30,7 @@ images:
   - name: localhost:5000/newsbrief
     newName: ghcr.io/deim0s13/newsbrief
     # Tag updated automatically by ci-dev.yml update-manifest job on each push to dev
-    newTag: sha-04d0818512db277d609597f2abc566e372ec40fd
+    newTag: sha-b8bb270539a64471a5e7d07a11132a341776c48c
 
 # Dev-specific configuration overrides
 # DATABASE_URL is NOT here -- it lives in the newsbrief-db-credentials Secret
