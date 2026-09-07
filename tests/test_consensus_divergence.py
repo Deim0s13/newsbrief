@@ -289,6 +289,108 @@ class TestGetArticlePerspectives:
         assert result[article_with_perspective].stakeholder == "business"
 
 
+class TestGetStoryByIdPerspectiveFields:
+    """app.stories.get_story_by_id() surfacing source_name/perspective on
+    ItemOut for supporting articles (v0.9.1, #205 UI backend wiring)."""
+
+    def test_supporting_articles_include_source_name_and_perspective(
+        self, perspective_test_db
+    ):
+        from app.stories import get_story_by_id
+        from tests.pg_testutil import create_test_story, link_test_articles_to_story
+
+        session = perspective_test_db
+        perspective = ArticlePerspective(
+            applicable=True, stakeholder="business", tone="critical"
+        )
+        row = session.execute(
+            text(
+                """
+                INSERT INTO items (feed_id, title, url, url_hash, published, perspective_json)
+                VALUES (9101, 'Has perspective', :url, :hash, NOW(), :pj)
+                RETURNING id
+                """
+            ),
+            {
+                "url": f"http://test-consensus.example/{uuid.uuid4()}",
+                "hash": str(uuid.uuid4()),
+                "pj": perspective.to_json_string(),
+            },
+        )
+        article_id = row.scalar()
+        session.commit()
+
+        story_id = create_test_story(
+            session,
+            title="Test story",
+            synthesis="A test synthesis sentence that is long enough to pass the fifty character minimum length validator.",
+            key_points=["point"],
+            why_it_matters="It matters for testing purposes.",
+            topics=["Business"],
+            entities=["TestCo"],
+            importance_score=0.5,
+            freshness_score=0.5,
+            model="test-model",
+            time_window_start=datetime.now(UTC),
+            time_window_end=datetime.now(UTC),
+            story_hash=f"test-consensus-{uuid.uuid4()}",
+        )
+        link_test_articles_to_story(session, story_id, [article_id], article_id)
+
+        story = get_story_by_id(session, story_id)
+        assert story is not None
+        assert len(story.supporting_articles) == 1
+        article = story.supporting_articles[0]
+        assert article.source_name == "Reuters Test Feed"
+        assert article.perspective == perspective.to_dict()
+
+    def test_not_applicable_perspective_is_none_on_article(self, perspective_test_db):
+        from app.stories import get_story_by_id
+        from tests.pg_testutil import create_test_story, link_test_articles_to_story
+
+        session = perspective_test_db
+        not_applicable = ArticlePerspective(applicable=False)
+        row = session.execute(
+            text(
+                """
+                INSERT INTO items (feed_id, title, url, url_hash, published, perspective_json)
+                VALUES (9101, 'Neutral article', :url, :hash, NOW(), :pj)
+                RETURNING id
+                """
+            ),
+            {
+                "url": f"http://test-consensus.example/{uuid.uuid4()}",
+                "hash": str(uuid.uuid4()),
+                "pj": not_applicable.to_json_string(),
+            },
+        )
+        article_id = row.scalar()
+        session.commit()
+
+        story_id = create_test_story(
+            session,
+            title="Test story",
+            synthesis="A test synthesis sentence that is long enough to pass the fifty character minimum length validator.",
+            key_points=["point"],
+            why_it_matters="It matters for testing purposes.",
+            topics=["Tech"],
+            entities=["TestCo"],
+            importance_score=0.5,
+            freshness_score=0.5,
+            model="test-model",
+            time_window_start=datetime.now(UTC),
+            time_window_end=datetime.now(UTC),
+            story_hash=f"test-consensus-{uuid.uuid4()}",
+        )
+        link_test_articles_to_story(session, story_id, [article_id], article_id)
+
+        story = get_story_by_id(session, story_id)
+        assert story is not None
+        article = story.supporting_articles[0]
+        assert article.source_name == "Reuters Test Feed"
+        assert article.perspective is None
+
+
 class TestStoryPersistenceRoundTrip:
     """Story ORM <-> StoryOut for consensus_points_json/divergence_points_json/
     source_agreement_score (v0.9.1, #204)."""

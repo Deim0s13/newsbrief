@@ -299,15 +299,16 @@ def get_story_by_id(session: Session, story_id: int) -> Optional[StoryOut]:
         rows = session.execute(
             text(
                 f"""
-                SELECT id, title, url, published, summary, content_hash, content,
-                       ai_summary, ai_model, ai_generated_at,
-                       structured_summary_json, structured_summary_model,
-                       structured_summary_content_hash, structured_summary_generated_at,
-                       ranking_score, topic, topic_confidence, source_weight, feed_id,
-                       processing_state
-                FROM items
-                WHERE id IN ({placeholders})
-                ORDER BY ranking_score DESC
+                SELECT i.id, i.title, i.url, i.published, i.summary, i.content_hash, i.content,
+                       i.ai_summary, i.ai_model, i.ai_generated_at,
+                       i.structured_summary_json, i.structured_summary_model,
+                       i.structured_summary_content_hash, i.structured_summary_generated_at,
+                       i.ranking_score, i.topic, i.topic_confidence, i.source_weight, i.feed_id,
+                       i.processing_state, f.name AS source_name, i.perspective_json
+                FROM items i
+                LEFT JOIN feeds f ON f.id = i.feed_id
+                WHERE i.id IN ({placeholders})
+                ORDER BY i.ranking_score DESC
                 """
             ),
             params,
@@ -340,6 +341,18 @@ def get_story_by_id(session: Session, story_id: int) -> Optional[StoryOut]:
                 except Exception:
                     pass
 
+            # Per-article perspective for the UI (v0.9.1, #205) -- only
+            # surfaced when applicable=True, matching the rest of this
+            # milestone's "empty/None is the common case" convention.
+            perspective_dict = None
+            if r[21]:
+                try:
+                    parsed_perspective = ArticlePerspective.from_json_string(r[21])
+                    if parsed_perspective.applicable:
+                        perspective_dict = parsed_perspective.to_dict()
+                except Exception:
+                    logger.debug(f"Failed to parse perspective_json for article {r[0]}")
+
             articles.append(
                 ItemOut(
                     id=r[0],
@@ -359,6 +372,8 @@ def get_story_by_id(session: Session, story_id: int) -> Optional[StoryOut]:
                     source_weight=r[17] or 1.0,
                     feed_id=r[18],
                     processing_state=r[19] or "fetched",
+                    source_name=r[20],
+                    perspective=perspective_dict,
                 )
             )
 

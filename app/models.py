@@ -188,6 +188,16 @@ class ItemOut(BaseModel):
     feed_id: Optional[int] = Field(
         None, description="ID of the feed this article belongs to"
     )
+    source_name: Optional[str] = Field(
+        None, description="Feed/publication name (v0.9.1, #205)"
+    )
+    # Cached per-article perspective classification (v0.9.1, #203/#205);
+    # loosely-typed dict (not a nested Pydantic model) matching the
+    # consensus_points/divergence_points precedent on StoryOut -- only
+    # present when applicable=True, None otherwise (the common case).
+    perspective: Optional[Dict[str, Any]] = Field(
+        None, description="Perspective classification when applicable, else None"
+    )
     # Legacy plain text AI summary (for backward compatibility)
     ai_summary: Optional[str] = None
     ai_model: Optional[str] = None
