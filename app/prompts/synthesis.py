@@ -100,6 +100,12 @@ WRITING GUIDELINES:
    force a divergence that isn't really there; empty is the expected
    default for most tech/product news.
 
+   IMPORTANT for both 7 and 8 -- "sources" MUST be the publication name(s)
+   from the [bracketed tag] in SOURCE ARTICLES above (e.g. "Reuters"),
+   NEVER a company/person/organization named inside the article text (e.g.
+   NOT "TechCorp" or "Labor advocates"). If an article has no bracketed
+   tag, use its title instead of inventing a source name.
+
 9. SOURCE_AGREEMENT_SCORE (optional): 0.0-1.0 overall agreement across
    sources, only if you identified at least one consensus or divergence
    point above. Omit (null) otherwise.
@@ -191,6 +197,12 @@ WRITING GUIDELINES FOR COMPLEX STORIES:
    complex/multi-angle story -- list each topic where named sources
    disagree on facts or clearly frame/emphasize it differently, with each
    side's view and which source(s) hold it.
+
+   IMPORTANT for both 7 and 8 -- "sources" MUST be the publication name(s)
+   from the [bracketed tag] in SOURCE ARTICLES above (e.g. "Reuters"),
+   NEVER a company/person/organization named inside the article text (e.g.
+   NOT "TechCorp" or "Labor advocates"). If an article has no bracketed
+   tag, use its title instead of inventing a source name.
 
 9. SOURCE_AGREEMENT_SCORE: 0.0-1.0 overall agreement across sources. Given
    this story was routed as complex/divergent, expect this to often be
