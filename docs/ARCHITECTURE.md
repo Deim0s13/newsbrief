@@ -1,7 +1,7 @@
 # NewsBrief Architecture Document
 
 > **Version**: 1.7
-> **Last Updated**: August 2026 (v0.9.0)
+> **Last Updated**: September 2026 (v0.9.1)
 > **Status**: Living Document
 
 ---
@@ -83,6 +83,10 @@ NewsBrief is a **self-hosted, privacy-focused** application designed to:
 | **FR-17** | Post-hoc semantic deduplication of paraphrased articles | Should | ✅ Complete (v0.8.6, ADR-0026) |
 | **FR-18** | Historical linking between a story and the story it continues | Should | ✅ Complete (v0.8.6, ADR-0026) |
 | **FR-19** | Bounded retrieval context injected into synthesis (light RAG) | Could | ✅ Complete (v0.8.6, ADR-0026) |
+| **FR-20** | Detect per-article perspective (stakeholder, political leaning, region, tone) | Should | ✅ Complete (v0.9.1, ADR-0023) |
+| **FR-21** | Detect consensus/divergence across a story's source articles, with source attribution | Should | ✅ Complete (v0.9.1, ADR-0023; direct synthesis strategy only, ≤8 articles/cluster) |
+| **FR-22** | Flag one-sided perspective coverage gaps (rule-based) | Could | ✅ Complete (v0.9.1, ADR-0023) |
+| **FR-23** | Surface perspective/consensus/divergence/gaps on the story detail page | Should | ✅ Complete (v0.9.1, ADR-0023; reduced scope — no spectrum bar/filter, see ADR-0023) |
 
 ### 2.2 User Stories
 
@@ -585,6 +589,9 @@ flowchart TB
 | **Retention Service** | Per-type data retention with dry-run preview and daily purge job | `retention.py` |
 | **Ingest Idempotency** | Stable article identity (`url_hash`) and `content_hash`-gated updates (ADR-0031) | `ingest_idempotency.py` |
 | **Operator Audit** | Audit log for manual admin actions (retries, discards) | `operator_audit.py` |
+| **Perspective Detection** | Per-article stakeholder/political-leaning/regional/tone classification, extracted in the same LLM call as entities (v0.9.1, #203, ADR-0023) | `entities.py` (`ArticlePerspective`), `llm_output.py` (`PerspectiveOutput`) |
+| **Consensus/Divergence Detection** | Cross-source agreement/disagreement extraction, in the same LLM call as synthesis; direct strategy only (v0.9.1, #204, ADR-0023) | `stories.py`, `llm_output.py` (`ConsensusPointOutput`/`DivergencePointOutput`), `prompts/synthesis.py` |
+| **Perspective Gap Detection** | Rule-based (no LLM) one-sided-coverage flagging across a story's cluster (v0.9.1, #229, ADR-0023) | `perspective_gaps.py` |
 
 ### 7.5 Story Processing Pipeline (orchestration)
 
