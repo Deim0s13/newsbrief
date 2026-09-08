@@ -1,7 +1,7 @@
 # NewsBrief Architecture Document
 
-> **Version**: 1.7
-> **Last Updated**: September 2026 (v0.9.1)
+> **Version**: 1.8
+> **Last Updated**: September 2026 (v0.9.2)
 > **Status**: Living Document
 
 ---
@@ -87,6 +87,9 @@ NewsBrief is a **self-hosted, privacy-focused** application designed to:
 | **FR-21** | Detect consensus/divergence across a story's source articles, with source attribution | Should | ✅ Complete (v0.9.1, ADR-0023; direct synthesis strategy only, ≤8 articles/cluster) |
 | **FR-22** | Flag one-sided perspective coverage gaps (rule-based) | Could | ✅ Complete (v0.9.1, ADR-0023) |
 | **FR-23** | Surface perspective/consensus/divergence/gaps on the story detail page | Should | ✅ Complete (v0.9.1, ADR-0023; reduced scope — no spectrum bar/filter, see ADR-0023) |
+| **FR-24** | Detect and record discrete story lifecycle events (broke/update/development) as a story evolves | Should | ✅ Complete (v0.9.2, ADR-0023; rule-based classification, no LLM call — correction/resolved event types not yet auto-detected) |
+| **FR-25** | Track narrative development status (breaking/developing/established) per story | Should | ✅ Complete (v0.9.2, ADR-0023; deterministic recency/update-count rules) |
+| **FR-26** | Surface story timeline and update recency on the story detail and list pages | Should | ✅ Complete (v0.9.2, ADR-0023; reduced scope — timeline panel hidden for single-event stories, no scrubbing/"view as of date") |
 
 ### 2.2 User Stories
 
@@ -592,6 +595,7 @@ flowchart TB
 | **Perspective Detection** | Per-article stakeholder/political-leaning/regional/tone classification, extracted in the same LLM call as entities (v0.9.1, #203, ADR-0023) | `entities.py` (`ArticlePerspective`), `llm_output.py` (`PerspectiveOutput`) |
 | **Consensus/Divergence Detection** | Cross-source agreement/disagreement extraction, in the same LLM call as synthesis; direct strategy only (v0.9.1, #204, ADR-0023) | `stories.py`, `llm_output.py` (`ConsensusPointOutput`/`DivergencePointOutput`), `prompts/synthesis.py` |
 | **Perspective Gap Detection** | Rule-based (no LLM) one-sided-coverage flagging across a story's cluster (v0.9.1, #229, ADR-0023) | `perspective_gaps.py` |
+| **Story Evolution & Timeline** | Rule-based (no LLM) lifecycle event detection (broke/update/development) and narrative-development status (breaking/developing/established) as stories are created/updated (v0.9.2, #206/#207, ADR-0023) | `story_events.py`, `orm_models.py` (`StoryEvent`) |
 
 ### 7.5 Story Processing Pipeline (orchestration)
 

@@ -313,6 +313,64 @@ CREATE INDEX idx_story_events_story ON story_events(story_id);
 CREATE INDEX idx_story_events_occurred ON story_events(occurred_at);
 ```
 
+**Implementation status (v0.9.2, shipped Sep 2026)**: Delivered against
+issues #206, #207, #283, #208, #209, with one review checkpoint. Notable
+deviations from the design above, agreed with the user:
+
+- **`story_status` default is `'breaking'`, not `'active'`** as shown in
+  the schema sketch above — `'active'` is already the meaning of the
+  existing `stories.status` column (pipeline/publish lifecycle, ADR-0004/
+  #287); reusing it for `story_status` (narrative-development lifecycle)
+  would have made two differently-scoped concepts look like the same
+  value by coincidence.
+- **Event detection (#207) is entirely rule-based, not LLM-classified.**
+  Unlike perspective/consensus/divergence in v0.9.1, this deliberately
+  does *not* extend the update-synthesis LLM call: `broke` fires once
+  automatically when a story is first created; `update` vs. `development`
+  is classified from new-article ratio + dormancy-then-reactivation
+  (`app/story_events.py`), not narrative judgment. This was a checkpoint
+  decision — LLM-based "what changed" summarization was considered and
+  deferred (see Deferred below) rather than reintroducing v0.9.1's
+  LLM-output-quality-tuning cycle for a first pass.
+- **`correction` and `resolved` event types are defined but not yet
+  auto-detected.** Reliably flagging "this update contradicts earlier
+  reporting" needs an actual old-synthesis-vs-new-synthesis comparison;
+  doing it cheaply risked false-positive corrections eroding trust (the
+  same trust concern that motivated the v0.9.1 grounding-block hotfix).
+  Both values remain valid for manual/future use.
+- **`story_status` transitions are lazy, not push-based.** Set at
+  write-time when a `broke`/`update` event is created, plus a bulk
+  `refresh_stale_story_statuses()` sweep run opportunistically at the end
+  of every story-generation pass (scheduled or manual) to catch stories
+  that simply went quiet without a new event triggering a write.
+- **#283 (continuity linking) is satisfied mostly by existing
+  infrastructure**, not a new build: cross-story semantic linking already
+  existed (`continues_story_id`, `app/historical_linking.py`, v0.8.6); the
+  richer same-story version-chain relationship (continues/development)
+  is now covered by #207's events instead of a separate relationship
+  taxonomy.
+- **#208 (timeline UI) ships a reduced scope**, matching the v0.9.1 UI
+  precedent: a collapsible "Story Timeline" panel plus a lifecycle badge,
+  hidden entirely for stories that haven't evolved (single-event
+  timeline, `update_count == 0`) rather than showing low-signal chrome on
+  every story. No scrubbing, animation, or "view as of date".
+- **#209 (update notifications) is descoped from personalized
+  notifications to a non-personalized indicator.** The issue's own
+  requirements ("track which stories users have viewed") depend on
+  read/view tracking that doesn't exist anywhere in this codebase yet
+  (tracked separately as #125, not scheduled until v0.11.2) — building
+  personalized "notify me" without that foundation isn't possible.
+  Shipped instead: an "Updated Xh ago" badge on the stories list and a
+  new `order_by=updated` sort option (`stories.last_major_update`
+  coalesced with `generated_at`).
+
+**Deferred** (out of this pass, tracked separately): LLM-generated
+"what's new" event descriptions (current descriptions are deterministic
+strings, e.g. "3 new articles from 2 sources added"); automatic
+`correction`/`resolved` event detection; personalized per-user update
+notifications (blocked on #125 read-tracking); timeline scrubbing/
+animation/"view as of date" UI.
+
 #### v0.9.3 - Smart Data Extraction
 **Goal**: Pull structured data from unstructured content.
 

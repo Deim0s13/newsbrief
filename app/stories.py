@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, cast
 
-from sqlalchemy import desc, text
+from sqlalchemy import desc, func, text
 from sqlalchemy.orm import Session
 
 from .context_manager import (
@@ -107,6 +107,12 @@ from .quality_metrics import (
     log_llm_metrics,
 )
 from .story_embeddings import maybe_embed_story_after_synthesis
+from .story_events import (
+    create_broke_event,
+    create_update_event,
+    get_story_events,
+    refresh_stale_story_statuses,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -377,7 +383,13 @@ def get_story_by_id(session: Session, story_id: int) -> Optional[StoryOut]:
                 )
             )
 
-    return _story_db_to_model(story, articles, primary_article_id)
+    # Story Evolution & Timeline (v0.9.2, #206/#208): full event history
+    # only fetched for the single-story detail view, not the list view
+    # below -- the list view already has story_status/last_major_update
+    # directly on the Story row without an extra per-story query.
+    events = get_story_events(session, story.id)  # type: ignore[arg-type]
+
+    return _story_db_to_model(story, articles, primary_article_id, events=events)
 
 
 def get_stories(
@@ -542,6 +554,17 @@ def get_stories(
             query = query.order_by(
                 desc(Story.generated_at), desc(Story.id)
             )  # Use generated_at for freshness
+            query = query.offset(offset).limit(limit)
+            stories = query.all()
+        elif order_by == "updated":
+            # Story Evolution & Timeline (v0.9.2, #209 descoped): most
+            # recently *updated* first, falling back to generated_at for
+            # stories with no recorded update yet (last_major_update is
+            # null until a story_events row exists -- see app/story_events.py).
+            query = query.order_by(
+                desc(func.coalesce(Story.last_major_update, Story.generated_at)),
+                desc(Story.id),
+            )
             query = query.offset(offset).limit(limit)
             stories = query.all()
         else:  # generated_at
@@ -785,6 +808,17 @@ def update_story_with_new_articles(
     # to this new version, plus linking the newly-added ones.
     link_entity_mentions_to_story(session, new_story_id, merged_article_ids)
 
+    # Story Evolution & Timeline (v0.9.2, #206/#207): record an
+    # update/development event for this new version. Rule-based
+    # classification (new-article ratio + dormancy), no extra LLM call.
+    create_update_event(
+        session,
+        new_story,
+        existing_story,
+        sorted(new_articles),
+        len(merged_article_ids),
+    )
+
     logger.info(
         f"Created story #{new_story_id} v{new_version} "
         f"(supersedes #{old_story_id} v{old_version})"
@@ -952,6 +986,7 @@ def _story_db_to_model(  # type: ignore[misc]
     story: Story,
     articles: List[ItemOut],
     primary_article_id: Optional[int] = None,
+    events: Optional[List[Dict[str, Any]]] = None,
 ) -> StoryOut:
     """
     Convert ORM Story to Pydantic StoryOut model.
@@ -960,6 +995,9 @@ def _story_db_to_model(  # type: ignore[misc]
         story: ORM Story object
         articles: List of supporting articles
         primary_article_id: ID of primary article
+        events: Chronological story_events list (v0.9.2, #206/#208);
+            omitted (empty) for list-view callers that don't need full
+            per-story event history -- see get_story_by_id vs. get_stories.
 
     Returns:
         StoryOut model
@@ -1040,6 +1078,12 @@ def _story_db_to_model(  # type: ignore[misc]
         context_anchors=_safe_json_loads_list(
             story.context_anchors_json  # type: ignore[arg-type]
         ),
+        # Story Evolution & Timeline (v0.9.2, #206/#207/#208)
+        story_status=story.story_status or "breaking",  # type: ignore[arg-type]
+        first_reported_at=story.first_reported_at,  # type: ignore[arg-type]
+        last_major_update=story.last_major_update,  # type: ignore[arg-type]
+        update_count=story.update_count or 0,  # type: ignore[arg-type]
+        events=events or [],
     )
     # fmt: on
 
@@ -3281,6 +3325,11 @@ def _persist_synthesized_story(
         # before this story existed.
         link_entity_mentions_to_story(session, story.id, cluster_article_ids)
 
+        # Story Evolution & Timeline (v0.9.2, #206/#207): record the
+        # initial 'broke' event and set lifecycle columns. Rule-based,
+        # no LLM call.
+        create_broke_event(session, story, cluster_article_ids)
+
         maybe_embed_story_after_synthesis(session, story)
         maybe_link_historical_context(session, story)
 
@@ -3579,6 +3628,14 @@ def generate_stories_simple(
 
     synthesis_time = time.time() - synthesis_start
     overall_time = time.time() - overall_start
+
+    # Story Evolution & Timeline (v0.9.2, #206): sweep for stories whose
+    # story_status has gone stale purely from time passing (no update
+    # event to trigger a write). Best-effort -- never fails generation.
+    try:
+        refresh_stale_story_statuses(session)
+    except Exception as e:
+        logger.warning("refresh_stale_story_statuses failed (non-fatal): %s", e)
 
     return _build_generation_result(
         story_ids,

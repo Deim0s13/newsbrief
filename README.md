@@ -438,6 +438,7 @@ make hostname-trust-cert
 
 | Release | Summary |
 |---------|---------|
+| v0.9.2 | Story evolution & timeline: rule-based lifecycle event detection (broke/update/development), narrative-development status tracking (breaking/developing/established), story timeline UI, "Updated Xh ago" indicator + sort-by-recently-updated ([ADR-0023](docs/adr/0023-intelligence-platform-strategy.md)) |
 | v0.9.1 | Multi-perspective synthesis: per-article perspective detection, consensus/divergence detection with source attribution, rule-based coverage-gap detection, perspective visualization UI ([ADR-0023](docs/adr/0023-intelligence-platform-strategy.md)); hotfix: anti-hallucination date-grounding across all synthesis prompts, story sort-filter persistence |
 | v0.9.0 | Entity intelligence system: normalized entity graph (`entities`/`entity_mentions`), entity-based story connections, entity profile pages + search, entity-aware continuity linking ([ADR-0023](docs/adr/0023-intelligence-platform-strategy.md)) |
 | v0.8.9 | Code-health audit (app/tests/infra/docs): dead code + duplication removed, two complexity hotspots decomposed, DB password moved out of git into a K8s Secret, test-suite bugs fixed (sequence desync, an assertion-bypass gap), flaky CI ntfy step removed |
