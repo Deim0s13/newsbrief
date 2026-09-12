@@ -476,6 +476,17 @@ class StoryOut(BaseModel):
     # with post-synthesis historical linking (#258), each tagged
     # kind="current"|"background" with a rationale string (#281)
     context_anchors: List[Dict[str, Any]] = Field(default_factory=list)
+    # Story Evolution & Timeline (v0.9.2, #206/#207/#208, ADR-0023).
+    # story_status is narrative-development state (breaking/developing/
+    # established), distinct from `status` above (pipeline/publish
+    # lifecycle) -- see app/story_events.py. events is chronological
+    # (oldest first), empty for stories with no recorded events yet
+    # (e.g. rows created before this migration).
+    story_status: str = "breaking"
+    first_reported_at: Optional[datetime] = None
+    last_major_update: Optional[datetime] = None
+    update_count: int = 0
+    events: List[Dict[str, Any]] = Field(default_factory=list)
 
     @property
     def credibility_label(self) -> str:

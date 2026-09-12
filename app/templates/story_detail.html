@@ -63,6 +63,18 @@
             {% endif %}
 
             <div class="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400 ml-auto">
+                <!-- Story lifecycle badge (v0.9.2, #206/#208): only shown once a
+                     story has actually evolved -- a "Breaking" badge on every
+                     brand-new story would be noise, not signal. -->
+                {% if story.update_count and story.update_count > 0 %}
+                <span class="flex items-center px-2 py-0.5 rounded-full text-xs font-medium
+                    {% if story.story_status == 'developing' %}bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300
+                    {% elif story.story_status == 'established' %}bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300
+                    {% else %}bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300{% endif %}"
+                    title="Updated {{ story.update_count }} time{{ 's' if story.update_count != 1 else '' }} since first reported">
+                    {{ story.story_status|capitalize }} &middot; updated {{ story.update_count }}x
+                </span>
+                {% endif %}
                 <span class="flex items-center">
                     <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
@@ -471,6 +483,54 @@
         </div>
         {% endif %}
 
+        <!-- Story Timeline Panel (v0.9.2, #206/#207/#208) -- only shown once
+             a story has more than its initial 'broke' event, i.e. it has
+             actually evolved. A single-event timeline is redundant with the
+             lifecycle badge above. -->
+        {% if story.events and story.events|length > 1 %}
+        <div id="timeline-panel" class="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
+            <button onclick="toggleTimelinePanel()" class="w-full flex items-center justify-between text-left">
+                <h3 class="text-sm font-semibold text-blue-800 dark:text-blue-300 flex items-center">
+                    <svg class="h-4 w-4 mr-2 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    Story Timeline
+                    <span class="ml-2 text-xs font-normal text-blue-600 dark:text-blue-400">({{ story.events|length }} events)</span>
+                </h3>
+                <svg id="timeline-chevron" class="h-4 w-4 text-blue-600 dark:text-blue-400 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+            </button>
+
+            <div id="timeline-details" class="hidden mt-4">
+                <ol class="relative border-l border-blue-300 dark:border-blue-700 ml-2 space-y-4">
+                    {% for event in story.events %}
+                    <li class="ml-4">
+                        <span class="absolute -left-1.5 flex items-center justify-center w-3 h-3 rounded-full
+                            {% if event.event_type == 'broke' %}bg-red-500
+                            {% elif event.event_type == 'development' %}bg-purple-500
+                            {% elif event.event_type == 'correction' %}bg-amber-500
+                            {% elif event.event_type == 'resolved' %}bg-green-500
+                            {% else %}bg-blue-500{% endif %}"></span>
+                        <div class="flex items-center justify-between flex-wrap gap-1">
+                            <span class="text-xs font-medium uppercase tracking-wide
+                                {% if event.event_type == 'broke' %}text-red-700 dark:text-red-400
+                                {% elif event.event_type == 'development' %}text-purple-700 dark:text-purple-400
+                                {% elif event.event_type == 'correction' %}text-amber-700 dark:text-amber-400
+                                {% elif event.event_type == 'resolved' %}text-green-700 dark:text-green-400
+                                {% else %}text-blue-700 dark:text-blue-400{% endif %}">
+                                {{ event.event_type }}
+                            </span>
+                            <time class="timeline-event-date text-xs text-gray-500 dark:text-gray-400" data-timestamp="{{ event.occurred_at.isoformat() if event.occurred_at else '' }}"></time>
+                        </div>
+                        <p class="text-sm text-gray-700 dark:text-gray-300 mt-0.5">{{ event.event_description }}</p>
+                    </li>
+                    {% endfor %}
+                </ol>
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Continues From Banner (#261) -->
         {% if continues_from %}
         <div class="mb-6 p-4 bg-teal-50 dark:bg-teal-900/20 border-l-4 border-teal-600 dark:border-teal-400 rounded-r-lg">
@@ -774,6 +834,15 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    // Format story timeline event dates (v0.9.2, #208)
+    document.querySelectorAll('.timeline-event-date').forEach(function(el) {
+        const timestamp = el.getAttribute('data-timestamp');
+        if (timestamp) {
+            el.textContent = formatTimeAgo(timestamp);
+            el.title = DateUtils.formatDateTime(timestamp);
+        }
+    });
+
     // Load credibility badges for supporting articles (Issue #197)
     loadCredibilityBadges();
 });
@@ -808,6 +877,17 @@ function toggleClusteringPanel() {
 function togglePerspectivePanel() {
     const details = document.getElementById('perspective-details');
     const chevron = document.getElementById('perspective-chevron');
+
+    if (details && chevron) {
+        details.classList.toggle('hidden');
+        chevron.classList.toggle('rotate-180');
+    }
+}
+
+// Story timeline panel toggle (v0.9.2, #208)
+function toggleTimelinePanel() {
+    const details = document.getElementById('timeline-details');
+    const chevron = document.getElementById('timeline-chevron');
 
     if (details && chevron) {
         details.classList.toggle('hidden');

@@ -138,7 +138,8 @@ def list_stories_endpoint(
         "active", description="Filter by status: active, archived, or all"
     ),
     order_by: str = Query(
-        "importance", description="Sort field: importance, freshness, or generated_at"
+        "importance",
+        description="Sort field: importance, freshness, generated_at, or updated",
     ),
     topic: str = Query(
         None, description="Filter by topic (e.g., 'ai-ml', 'security', 'politics')"
@@ -157,10 +158,13 @@ def list_stories_endpoint(
             raise HTTPException(
                 status_code=400, detail="status must be 'active', 'archived', or 'all'"
             )
-        if order_by not in ["importance", "freshness", "generated_at"]:
+        if order_by not in ["importance", "freshness", "generated_at", "updated"]:
             raise HTTPException(
                 status_code=400,
-                detail="order_by must be 'importance', 'freshness', or 'generated_at'",
+                detail=(
+                    "order_by must be 'importance', 'freshness', "
+                    "'generated_at', or 'updated'"
+                ),
             )
 
         with session_scope() as s:

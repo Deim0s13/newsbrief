@@ -357,6 +357,19 @@ function createStoryElement(story) {
     // Article count
     element.querySelector('.article-count-number').textContent = `${story.article_count} sources`;
 
+    // Story Evolution & Timeline (v0.9.2, #209 descoped): "Updated Xh ago"
+    // badge, only shown once a story has actually had an update event --
+    // most stories never do, so this stays hidden by default (see template).
+    if (story.update_count && story.update_count > 0 && story.last_major_update) {
+        const updatedBadge = element.querySelector('.story-updated-badge');
+        if (updatedBadge) {
+            updatedBadge.classList.remove('hidden');
+            const updatedTime = element.querySelector('.story-updated-time');
+            updatedTime.textContent = formatTimeAgo(story.last_major_update);
+            updatedBadge.title = `Updated ${story.update_count} time${story.update_count !== 1 ? 's' : ''} since first reported`;
+        }
+    }
+
     // Scores
     const scoresSpan = element.querySelector('.story-scores');
     scoresSpan.textContent = `I:${(story.importance_score * 100).toFixed(0)} F:${(story.freshness_score * 100).toFixed(0)}`;

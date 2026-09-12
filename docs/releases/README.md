@@ -8,7 +8,20 @@ Quick reference for all NewsBrief releases. For detailed release notes, see [Git
 
 ## v0.9.x - Intelligence Platform
 
-### v0.9.1 - Multi-Perspective Synthesis (Current)
+### v0.9.2 - Story Evolution & Timeline (Current)
+**September 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.9.2)
+
+Phase 2 of the intelligence platform strategy's Story Evolution work ([ADR-0023](../adr/0023-intelligence-platform-strategy.md)) — detects discrete lifecycle events as stories are created and updated, tracks narrative-development status, and surfaces both on the story detail and list pages. Unlike v0.9.1's perspective/consensus work, event classification here is deliberately rule-based rather than LLM-classified — see ADR-0023's implementation-status note for why.
+
+**Highlights:**
+- **Story Event Detection**: A `broke` event fires automatically when a story is first generated; `update`/`development` events fire when a story gains new articles, classified by new-article ratio + dormancy-then-reactivation — no LLM call (#206, #207)
+- **Lifecycle Status**: `story_status` (breaking/developing/established) derived from age and update recency, refreshed opportunistically after every story-generation run (#206)
+- **Continuity Exposure**: Story timeline + lifecycle fields surfaced on the story detail API/UI, alongside the existing cross-story `continues_story_id` linking (#283)
+- **Story Timeline UI**: Collapsible "Story Timeline" panel + lifecycle badge on the story detail page — hidden for stories that haven't evolved yet, to avoid low-signal chrome (#208, reduced scope)
+- **"Updated Xh ago"**: Badge on the stories list + new `order_by=updated` sort option; personalized per-user notifications descoped pending read-tracking (#125, not yet built) (#209, descoped)
+- **Migrations**: `033_story_events`
+
+### v0.9.1 - Multi-Perspective Synthesis
 **September 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.9.1)
 
 Phase 3 of the intelligence platform strategy ([ADR-0023](../adr/0023-intelligence-platform-strategy.md)) — detects per-article perspective/stance, surfaces where sources agree/disagree with attribution, flags one-sided coverage, and visualizes it on the story detail page. Includes a same-release hotfix for a real production quality report (fabricated dates/facts in synthesis, sort-filter not persisting).

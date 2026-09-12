@@ -274,10 +274,22 @@ class Story(Base):
     # into a single list of {story_id, title, similarity, published_at,
     # kind: "current"|"background", rationale} entries.
     context_anchors_json = Column(Text, nullable=True)
+    # Story Evolution & Timeline (v0.9.2, #206, ADR-0023). story_status is
+    # narrative-development state (breaking/developing/established),
+    # distinct from `status` (pipeline/publish lifecycle, ADR-0004/#287)
+    # and `processing_state` (orchestration state, ADR-0030). Derived by
+    # simple recency/update-count rules in app/story_events.py, not LLM.
+    story_status = Column(String(20), nullable=False, default="breaking")
+    first_reported_at = Column(DateTime(timezone=True), nullable=True)
+    last_major_update = Column(DateTime(timezone=True), nullable=True)
+    update_count = Column(Integer, nullable=False, default=0)
 
     # Relationships
     story_articles = relationship(
         "StoryArticle", back_populates="story", cascade="all, delete-orphan"
+    )
+    story_events = relationship(
+        "StoryEvent", back_populates="story", cascade="all, delete-orphan"
     )
 
     __table_args__ = (
@@ -315,6 +327,42 @@ class StoryArticle(Base):
         UniqueConstraint("story_id", "article_id", name="uq_story_article"),
         Index("idx_story_articles_story", "story_id"),
         Index("idx_story_articles_article", "article_id"),
+    )
+
+
+class StoryEvent(Base):
+    """
+    Discrete, timestamped event in a story's lifecycle (v0.9.2, #206,
+    #207, ADR-0023). Created automatically: a 'broke' event when a story
+    is first generated (rule-based, no LLM), and an update/development/
+    correction/resolved event whenever update_story_with_new_articles()
+    creates a new version -- classified in the same synthesis LLM call
+    that produces the new version's content, no extra round-trip (see
+    app/story_events.py).
+    """
+
+    __tablename__ = "story_events"
+
+    id = Column(Integer, primary_key=True)
+    story_id = Column(
+        Integer, ForeignKey("stories.id", ondelete="CASCADE"), nullable=False
+    )
+    event_type = Column(
+        String(20), nullable=False
+    )  # broke/update/development/correction/resolved
+    event_title = Column(String(255), nullable=True)
+    event_description = Column(Text, nullable=True)
+    source_articles_json = Column(Text, nullable=True)
+    significance_score = Column(Float, nullable=False, default=0.5)
+    occurred_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+    # Relationships
+    story = relationship("Story", back_populates="story_events")
+
+    __table_args__ = (
+        Index("idx_story_events_story", "story_id"),
+        Index("idx_story_events_occurred", "occurred_at"),
     )
 
 
