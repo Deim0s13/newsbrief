@@ -195,6 +195,7 @@ def _run_summarize_batch(
     """
     from sqlalchemy import text
 
+    from app.data_extraction import maybe_extract_data_after_summary
     from app.item_embeddings import maybe_embed_item_after_summary
     from app.llm import get_llm_service
     from app.processing_states import mark_article_failed
@@ -334,6 +335,13 @@ def _run_summarize_batch(
                         result,
                         use_structured=True,
                         feed_summary=article["feed_summary"],
+                    )
+                    maybe_extract_data_after_summary(
+                        session,
+                        item_id,
+                        article["title"],
+                        article["content"],
+                        result=result,
                     )
                 except Exception as e:
                     stats["errors"] += 1
@@ -638,6 +646,7 @@ def execute_summarize_item_stage(
     """
     from sqlalchemy import text
 
+    from app.data_extraction import maybe_extract_data_after_summary
     from app.item_embeddings import maybe_embed_item_after_summary
     from app.llm import get_llm_service
 
@@ -735,6 +744,13 @@ def execute_summarize_item_stage(
                     result,
                     use_structured=True,
                     feed_summary=feed_summary,
+                )
+                maybe_extract_data_after_summary(
+                    session,
+                    item_id,
+                    title,
+                    content,
+                    result=result,
                 )
             stats["model"] = model
             ok = True

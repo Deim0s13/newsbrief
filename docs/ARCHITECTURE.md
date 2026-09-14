@@ -1,7 +1,7 @@
 # NewsBrief Architecture Document
 
-> **Version**: 1.8
-> **Last Updated**: September 2026 (v0.9.2)
+> **Version**: 1.9
+> **Last Updated**: September 2026 (v0.9.3)
 > **Status**: Living Document
 
 ---
@@ -90,6 +90,9 @@ NewsBrief is a **self-hosted, privacy-focused** application designed to:
 | **FR-24** | Detect and record discrete story lifecycle events (broke/update/development) as a story evolves | Should | ✅ Complete (v0.9.2, ADR-0023; rule-based classification, no LLM call — correction/resolved event types not yet auto-detected) |
 | **FR-25** | Track narrative development status (breaking/developing/established) per story | Should | ✅ Complete (v0.9.2, ADR-0023; deterministic recency/update-count rules) |
 | **FR-26** | Surface story timeline and update recency on the story detail and list pages | Should | ✅ Complete (v0.9.2, ADR-0023; reduced scope — timeline panel hidden for single-event stories, no scrubbing/"view as of date") |
+| **FR-27** | Extract structured data points (statistics/quotes/claims/dates/amounts) from article content | Should | ✅ Complete (v0.9.3, ADR-0023; LLM-based, full-content prompt, no geographic/location data type — see ADR-0023) |
+| **FR-28** | Surface extracted data points on the story detail page, filterable by type | Should | ✅ Complete (v0.9.3, ADR-0023; "Key Facts" panel, client-side type filter, no corpus-wide search) |
+| **FR-29** | Flag same-story data conflicts and cross-continuation value changes (rule-based) | Could | ✅ Complete (v0.9.3, ADR-0023; reduced scope — word-overlap heuristic, bounded to one story + its continuation chain, not corpus-wide) |
 
 ### 2.2 User Stories
 
@@ -596,6 +599,8 @@ flowchart TB
 | **Consensus/Divergence Detection** | Cross-source agreement/disagreement extraction, in the same LLM call as synthesis; direct strategy only (v0.9.1, #204, ADR-0023) | `stories.py`, `llm_output.py` (`ConsensusPointOutput`/`DivergencePointOutput`), `prompts/synthesis.py` |
 | **Perspective Gap Detection** | Rule-based (no LLM) one-sided-coverage flagging across a story's cluster (v0.9.1, #229, ADR-0023) | `perspective_gaps.py` |
 | **Story Evolution & Timeline** | Rule-based (no LLM) lifecycle event detection (broke/update/development) and narrative-development status (breaking/developing/established) as stories are created/updated (v0.9.2, #206/#207, ADR-0023) | `story_events.py`, `orm_models.py` (`StoryEvent`) |
+| **Smart Data Extraction** | LLM-based structured data extraction (statistic/quote/claim/date/amount) from article content, run as a dedicated post-summarize call (v0.9.3, #210/#211, ADR-0023) | `data_extraction.py`, `orm_models.py` (`ExtractedData`) |
+| **Data Point Tracking** | Rule-based (no LLM) same-story conflict detection + cross-continuation value-change detection, via word-overlap subject matching (v0.9.3, #213 reduced scope, ADR-0023) | `data_trends.py` |
 
 ### 7.5 Story Processing Pipeline (orchestration)
 

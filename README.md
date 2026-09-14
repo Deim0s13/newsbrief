@@ -438,6 +438,7 @@ make hostname-trust-cert
 
 | Release | Summary |
 |---------|---------|
+| v0.9.3 | Smart data extraction: LLM-based extraction of statistics/quotes/claims/dates/amounts from article content, "Key Facts" panel with type filters on the story detail page, rule-based same-story conflict + cross-continuation change detection ([ADR-0023](docs/adr/0023-intelligence-platform-strategy.md)) |
 | v0.9.2 | Story evolution & timeline: rule-based lifecycle event detection (broke/update/development), narrative-development status tracking (breaking/developing/established), story timeline UI, "Updated Xh ago" indicator + sort-by-recently-updated ([ADR-0023](docs/adr/0023-intelligence-platform-strategy.md)) |
 | v0.9.1 | Multi-perspective synthesis: per-article perspective detection, consensus/divergence detection with source attribution, rule-based coverage-gap detection, perspective visualization UI ([ADR-0023](docs/adr/0023-intelligence-platform-strategy.md)); hotfix: anti-hallucination date-grounding across all synthesis prompts, story sort-filter persistence |
 | v0.9.0 | Entity intelligence system: normalized entity graph (`entities`/`entity_mentions`), entity-based story connections, entity profile pages + search, entity-aware continuity linking ([ADR-0023](docs/adr/0023-intelligence-platform-strategy.md)) |

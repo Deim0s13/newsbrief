@@ -617,6 +617,108 @@
         </div>
         {% endif %}
 
+        <!-- Key Facts Panel (v0.9.3, #211/#212, ADR-0023): structured data
+             points (statistics/quotes/claims/dates/amounts) extracted from
+             article content by LLM. Hidden entirely when extraction found
+             nothing -- same "no signal, no chrome" convention as the
+             Multi-Perspective/Timeline panels above. Rendered by looping
+             supporting_articles (each already carries its own
+             extracted_data, see stories.py get_story_by_id) rather than the
+             flat story.extracted_data list, so each card can link straight
+             back to its source article without a separate id->article
+             lookup. -->
+        {% set key_facts_count = story.extracted_data|length %}
+        {% if key_facts_count > 0 %}
+        <div id="key-facts-panel" class="mb-8 p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-200 dark:border-emerald-700">
+            <button onclick="toggleKeyFactsPanel()" class="w-full flex items-center justify-between text-left">
+                <h3 class="text-sm font-semibold text-emerald-800 dark:text-emerald-300 flex items-center">
+                    <svg class="h-4 w-4 mr-2 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    Key Facts
+                    <span class="ml-2 text-xs font-normal text-emerald-600 dark:text-emerald-400">({{ key_facts_count }})</span>
+                </h3>
+                <svg id="key-facts-chevron" class="h-4 w-4 text-emerald-600 dark:text-emerald-400 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+            </button>
+
+            <div id="key-facts-details" class="hidden mt-4">
+                <!-- Rule-based (no LLM) tracking, reduced scope of #213 --
+                     see app/data_trends.py. Both lists are the common-case
+                     empty, so this block only renders when there's
+                     something to say. -->
+                {% if story.data_changes or story.data_conflicts %}
+                <div class="mb-4 space-y-1.5">
+                    {% for change in story.data_changes %}
+                    <p class="text-xs text-teal-800 dark:text-teal-300 bg-teal-100 dark:bg-teal-900/40 rounded px-2 py-1">
+                        <span class="font-medium">↗ Updated:</span>
+                        previously reported as <strong>{{ change.previous_value }}</strong>, now <strong>{{ change.current_value }}</strong>
+                        {% if change.context %}<span class="text-teal-700 dark:text-teal-400">({{ change.context }})</span>{% endif %}
+                        <a href="/story/{{ change.previous_story_id }}" class="underline hover:no-underline ml-1">previous report</a>
+                    </p>
+                    {% endfor %}
+                    {% for conflict in story.data_conflicts %}
+                    <p class="text-xs text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 rounded px-2 py-1">
+                        <span class="font-medium">⚠ Sources disagree:</span>
+                        {% for v in conflict.reported_values %}{{ v.value }}{% if not loop.last %} vs. {% endif %}{% endfor %}
+                        {% if conflict.context %}<span class="text-amber-700 dark:text-amber-400">({{ conflict.context }})</span>{% endif %}
+                    </p>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <!-- Type filter (client-side, no re-fetch -- data already on page) -->
+                <div class="flex flex-wrap gap-2 mb-4">
+                    <button type="button" class="key-facts-filter-btn px-2.5 py-1 text-xs rounded-full font-medium bg-emerald-600 text-white" data-filter="all">All</button>
+                    <button type="button" class="key-facts-filter-btn px-2.5 py-1 text-xs rounded-full font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-800 dark:text-emerald-100" data-filter="statistic">Statistics</button>
+                    <button type="button" class="key-facts-filter-btn px-2.5 py-1 text-xs rounded-full font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-800 dark:text-emerald-100" data-filter="quote">Quotes</button>
+                    <button type="button" class="key-facts-filter-btn px-2.5 py-1 text-xs rounded-full font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-800 dark:text-emerald-100" data-filter="claim">Claims</button>
+                    <button type="button" class="key-facts-filter-btn px-2.5 py-1 text-xs rounded-full font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-800 dark:text-emerald-100" data-filter="date">Dates</button>
+                    <button type="button" class="key-facts-filter-btn px-2.5 py-1 text-xs rounded-full font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-800 dark:text-emerald-100" data-filter="amount">Amounts</button>
+                </div>
+
+                <div id="key-facts-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {% for article in story.supporting_articles %}
+                    {% for point in article.extracted_data %}
+                    <div class="key-facts-card p-3 bg-white dark:bg-gray-800 rounded border border-emerald-200 dark:border-emerald-700" data-type="{{ point.data_type }}">
+                        <div class="flex items-center justify-between mb-1.5">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium uppercase tracking-wide
+                                {% if point.data_type == 'statistic' %}bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200
+                                {% elif point.data_type == 'quote' %}bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200
+                                {% elif point.data_type == 'claim' %}bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200
+                                {% elif point.data_type == 'date' %}bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200
+                                {% else %}bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200{% endif %}">
+                                {{ point.data_type }}
+                            </span>
+                            <button type="button" class="copy-citation-btn text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400"
+                                title="Copy citation"
+                                data-copy-text="&quot;{{ point.value }}&quot;{% if point.attribution %} — {{ point.attribution }}{% endif %} ({{ article.source_name or article.title }})">
+                                <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                                </svg>
+                            </button>
+                        </div>
+                        <p class="text-sm font-medium text-gray-900 dark:text-white">
+                            {{ point.value }}{% if point.unit and point.data_type in ('statistic', 'amount') %} {{ point.unit }}{% endif %}
+                        </p>
+                        {% if point.attribution %}
+                        <p class="text-xs italic text-gray-600 dark:text-gray-400 mt-0.5">— {{ point.attribution }}</p>
+                        {% endif %}
+                        {% if point.context %}
+                        <p class="text-xs text-gray-500 dark:text-gray-500 mt-1 line-clamp-2">{{ point.context }}</p>
+                        {% endif %}
+                        <a href="/article/{{ article.id }}" class="text-xs text-emerald-700 dark:text-emerald-400 hover:underline mt-1.5 inline-block">
+                            {{ article.source_name or article.title }}
+                        </a>
+                    </div>
+                    {% endfor %}
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Supporting Articles -->
         {% if story.supporting_articles and story.supporting_articles|length > 0 %}
         <div class="mt-8 pt-8 border-t border-gray-200 dark:border-gray-700">
@@ -894,6 +996,55 @@ function toggleTimelinePanel() {
         chevron.classList.toggle('rotate-180');
     }
 }
+
+// Key Facts panel toggle + type filter + copy citation (v0.9.3, #212)
+function toggleKeyFactsPanel() {
+    const details = document.getElementById('key-facts-details');
+    const chevron = document.getElementById('key-facts-chevron');
+
+    if (details && chevron) {
+        details.classList.toggle('hidden');
+        chevron.classList.toggle('rotate-180');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Type filter buttons -- purely client-side, all data is already
+    // rendered on the page (no re-fetch needed for a handful of cards).
+    const filterButtons = document.querySelectorAll('.key-facts-filter-btn');
+    filterButtons.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            const filter = btn.getAttribute('data-filter');
+
+            filterButtons.forEach(function(b) {
+                b.classList.remove('bg-emerald-600', 'text-white');
+                b.classList.add('bg-emerald-100', 'text-emerald-800', 'dark:bg-emerald-800', 'dark:text-emerald-100');
+            });
+            btn.classList.remove('bg-emerald-100', 'text-emerald-800', 'dark:bg-emerald-800', 'dark:text-emerald-100');
+            btn.classList.add('bg-emerald-600', 'text-white');
+
+            document.querySelectorAll('.key-facts-card').forEach(function(card) {
+                const show = filter === 'all' || card.getAttribute('data-type') === filter;
+                card.style.display = show ? '' : 'none';
+            });
+        });
+    });
+
+    // Copy citation buttons
+    document.querySelectorAll('.copy-citation-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            const text = btn.getAttribute('data-copy-text') || '';
+            navigator.clipboard.writeText(text).then(function() {
+                const original = btn.title;
+                btn.title = 'Copied!';
+                setTimeout(function() { btn.title = original; }, 1500);
+            }).catch(function() {
+                // Clipboard API can fail without permissions/HTTPS in some
+                // contexts -- fail silently, this is a convenience feature.
+            });
+        });
+    });
+});
 
 // Load credibility badges for all articles (Issue #197)
 async function loadCredibilityBadges() {

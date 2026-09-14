@@ -680,6 +680,87 @@ class FreeFormTopicOutput(BaseModel):
             return 0.5
 
 
+# Data types supported by extraction -- deliberately excludes "location":
+# the existing NER pipeline (entities.py) already covers location names,
+# and true geographic tagging (coordinates/maps) has no supporting
+# infrastructure here (deferred to v0.11.2). See #210/#211, ADR-0023.
+_EXTRACTED_DATA_TYPES = {"statistic", "quote", "claim", "date", "amount"}
+
+
+class ExtractedDataItem(BaseModel):
+    """
+    A single structured data point extracted from an article (#211,
+    ADR-0023, v0.9.3).
+
+    ``value`` is the core extracted text (e.g. "3.4%", "This is
+    unprecedented", "10,000 jobs"). ``unit``/``attribution`` are optional
+    and only meaningful for some data_types (unit for statistic/amount,
+    attribution -- the speaker -- for quote); left None otherwise rather
+    than modeled as separate per-type classes, since this is a flat list
+    the LLM fills in per item, not a fixed multi-field record.
+
+    Used by: app/data_extraction.py extract_data_points()
+    """
+
+    data_type: str = Field(..., description="statistic/quote/claim/date/amount")
+    value: str = Field(..., min_length=1, description="The extracted data point text")
+    context: Optional[str] = Field(
+        default=None, description="Surrounding sentence/context for verification"
+    )
+    attribution: Optional[str] = Field(
+        default=None, description="Speaker/source, mainly for quotes"
+    )
+    unit: Optional[str] = Field(
+        default=None, description="Unit of measure, mainly for statistics/amounts"
+    )
+    confidence: float = Field(default=0.6, ge=0.0, le=1.0)
+
+    @field_validator("data_type", mode="before")
+    @classmethod
+    def normalize_data_type(cls, v: Any) -> str:
+        """Lowercase/strip; unrecognized types are dropped at the container
+        level (ExtractedDataOutput), not raised here -- same
+        degrade-rather-than-fail philosophy as PerspectiveOutput."""
+        return str(v).strip().lower() if v else ""
+
+    @field_validator("value", "context", "attribution", "unit", mode="before")
+    @classmethod
+    def coerce_optional_str(cls, v: Any) -> Any:
+        if v is None:
+            return v
+        return str(v).strip() or None
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def coerce_confidence(cls, v: Any) -> float:
+        try:
+            return max(0.0, min(1.0, float(v)))
+        except (ValueError, TypeError):
+            return 0.6
+
+
+class ExtractedDataOutput(BaseModel):
+    """
+    Validated output from LLM-based structured data extraction (#211,
+    ADR-0023, v0.9.3).
+
+    Used by: app/data_extraction.py extract_data_points()
+    """
+
+    data_points: List[ExtractedDataItem] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def drop_invalid_items(self) -> "ExtractedDataOutput":
+        """Filter out items with an unrecognized data_type or empty value
+        rather than failing the whole extraction over one bad item."""
+        self.data_points = [
+            item
+            for item in self.data_points
+            if item.data_type in _EXTRACTED_DATA_TYPES and item.value
+        ]
+        return self
+
+
 # =============================================================================
 # JSON REPAIR FUNCTIONS
 # =============================================================================

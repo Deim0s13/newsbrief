@@ -9,6 +9,7 @@ from typing import Any, List, Optional
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import text
 
+from ..data_extraction import maybe_extract_data_after_summary
 from ..datetime_utils import coerce_datetime
 from ..deps import session_scope
 from ..item_embeddings import (
@@ -389,6 +390,13 @@ def generate_summaries(request: SummaryRequest):
                         result,
                         use_structured=request.use_structured,
                         feed_summary=feed_summary,
+                    )
+                    maybe_extract_data_after_summary(
+                        s,
+                        item_id,
+                        title,
+                        content,
+                        result=result,
                     )
                 else:
                     errors += 1
