@@ -334,11 +334,11 @@ class StoryEvent(Base):
     """
     Discrete, timestamped event in a story's lifecycle (v0.9.2, #206,
     #207, ADR-0023). Created automatically: a 'broke' event when a story
-    is first generated (rule-based, no LLM), and an update/development/
-    correction/resolved event whenever update_story_with_new_articles()
-    creates a new version -- classified in the same synthesis LLM call
-    that produces the new version's content, no extra round-trip (see
-    app/story_events.py).
+    is first generated, and an update/development event whenever
+    update_story_with_new_articles() creates a new version. Both event
+    types are rule-based (new-article ratio + dormancy heuristics), not
+    LLM-classified -- no extra LLM round-trip is involved (see
+    app/story_events.py for the classification logic and rationale).
     """
 
     __tablename__ = "story_events"
@@ -363,6 +363,48 @@ class StoryEvent(Base):
     __table_args__ = (
         Index("idx_story_events_story", "story_id"),
         Index("idx_story_events_occurred", "occurred_at"),
+    )
+
+
+class ExtractedData(Base):
+    """
+    Structured data point (statistic, quote, claim, date, or amount)
+    pulled from an article's full content by an LLM call (v0.9.3, #210,
+    #211, ADR-0023). See app/data_extraction.py for the extraction logic.
+
+    ``data_type`` is intentionally one of statistic/quote/claim/date/amount
+    only -- no 'location' type. Location *names* are already covered by
+    the existing NER pipeline (Entity/EntityMention, v0.9.0); true
+    geographic tagging (coordinates, maps) has no supporting
+    infrastructure in this codebase and is deferred to v0.11.2.
+
+    ``data_value`` is JSONB (not Text) because its shape varies by
+    ``data_type`` (e.g. a statistic carries a "unit", a quote carries a
+    "speaker") and may need per-key querying later (e.g. filter quotes by
+    speaker) without another migration.
+
+    No ``story_id`` column -- cross-story aggregation (#213) joins through
+    ``story_articles`` on ``article_id`` rather than denormalizing a
+    story-scoped foreign key here (unlike ``EntityMention.story_id``, this
+    table has no per-story graph query that needs the shortcut).
+    """
+
+    __tablename__ = "extracted_data"
+
+    id = Column(Integer, primary_key=True)
+    article_id = Column(
+        Integer, ForeignKey("items.id", ondelete="CASCADE"), nullable=False
+    )
+    data_type = Column(String(20), nullable=False)  # statistic/quote/claim/date/amount
+    data_value = Column(JSONB, nullable=False)
+    context = Column(Text, nullable=True)
+    confidence_score = Column(Float, nullable=True)
+    extraction_method = Column(String(20), nullable=False, default="llm")
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+    __table_args__ = (
+        Index("idx_extracted_data_article", "article_id"),
+        Index("idx_extracted_data_type", "data_type"),
     )
 
 

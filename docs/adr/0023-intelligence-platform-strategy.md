@@ -396,6 +396,77 @@ CREATE INDEX idx_extracted_data_article ON extracted_data(article_id);
 CREATE INDEX idx_extracted_data_type ON extracted_data(data_type);
 ```
 
+**Implementation status (v0.9.3, shipped Sep 2026)**: Delivered against
+issues #210, #211, #212, #213, with one review checkpoint. Notable
+deviations from the design above, agreed with the user:
+
+- **`data_type` taxonomy is `statistic`/`quote`/`claim`/`date`/`amount`,
+  not `statistic`/`quote`/`location`/`date`** as sketched above —
+  `location` is dropped and `claim` is added. Location *names* are
+  already covered by the existing NER pipeline (`Entity`/`EntityMention`,
+  v0.9.0); a coordinate-less "location" data point here would just
+  duplicate that without adding value. `claim` (specific factual
+  assertions worth verifying) was added because it turned out to be one
+  of the most common data-point shapes in real article content that
+  didn't fit `statistic`/`quote`/`date`/`amount`.
+- **Extraction is its own dedicated LLM call, not piggybacked onto
+  summarization or entity extraction** (unlike v0.9.1's perspective-on-
+  entities piggyback). It runs on the article's full content (not the
+  summary) so specific numbers/quotes aren't lost to summarization's
+  compression, and keeps its own circuit breaker (`data_extraction`) so a
+  bad run doesn't couple to summarization's or entity extraction's
+  failure modes.
+- **`extracted_data.context` (surrounding sentence, for verification) was
+  added** beyond the original schema sketch — every trackable data point
+  needs some text to judge "is this really the same statistic as that
+  other one" (see #213 below), and `context` is what that comparison
+  runs against.
+- **A real prompt-quality bug was found and fixed during the checkpoint**:
+  the model was silently normalizing currency symbols (writing `"$250"`
+  for a `£250` figure while correctly labeling `unit: "pounds"`). Fixed
+  with an explicit "preserve the original currency symbol" prompt
+  instruction; confirmed fixed by re-running against the same article.
+- **Per-data-point confidence scores are sometimes uniform across a
+  whole extraction response** (e.g. all `0.6`, or all `0.9`) rather than
+  differentiated per item — confirmed (by inspecting raw LLM JSON
+  directly) to be real sampling variance in the underlying 8B model's
+  output, not a defect in the parsing/storage pipeline, which faithfully
+  preserves whatever the model returns. Left as a known limitation:
+  `#212`'s UI sorts by `confidence_score`, so sort order is occasionally
+  arbitrary within one article.
+- **#212 (Key Facts UI) does not include a corpus-wide search/filter
+  endpoint** — "structured data storage for search/filter" from the goal
+  above is satisfied only as a client-side type filter (statistic/quote/
+  claim/date/amount) within one story's Key Facts panel, not a new
+  `/search`-style API across all `extracted_data` rows. No existing UI
+  pattern or issue asked for a dedicated cross-story data-point search
+  page; descoped as out of scope for a first pass.
+- **#213 (cross-story tracking) ships a much smaller scope than "aggregate
+  statistics across ALL stories."** A corpus-wide version needs a
+  canonical "subject of this statistic" label this codebase has no
+  infrastructure for (no embeddings/index over data points). Scoped down
+  at the v0.9.3 proposal checkpoint to two bounded, rule-based (no LLM)
+  checks instead: same-story conflict detection (two different articles
+  in one story reporting a different value for what looks like the same
+  statistic) and continuation-chain change detection (diffing against the
+  story this one continues, via the existing `continues_story_id` link,
+  v0.8.6) — both using word-overlap (Jaccard similarity on `context`) as
+  a deliberately coarse, explainable "same subject" heuristic (see
+  `app/data_trends.py`). No geographic/location-based tracking (see the
+  `data_type` deviation above).
+- **Geographic tagging and mapping** (from the goal bullets above) was
+  not attempted at all — no coordinates, no map UI, no location data
+  type. This has no supporting infrastructure anywhere in this codebase
+  and is tracked separately for the v0.11.2 visualization milestone.
+
+**Deferred** (out of this pass, tracked separately): geographic tagging/
+mapping (v0.11.2); corpus-wide data-point search/aggregation across all
+stories, not just a continuation chain; multi-chunk extraction for very
+long articles (current cap is a single ~6000-char prompt window, no
+map-reduce); LLM-based (rather than word-overlap) same-subject matching
+for #213, if the heuristic's false-positive/negative rate proves too
+coarse in practice.
+
 ### Phase 3: Context Layer (v0.10.x)
 
 #### v0.10.0 - "Why This Matters" Context Engine

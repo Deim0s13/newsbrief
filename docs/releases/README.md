@@ -8,7 +8,20 @@ Quick reference for all NewsBrief releases. For detailed release notes, see [Git
 
 ## v0.9.x - Intelligence Platform
 
-### v0.9.2 - Story Evolution & Timeline (Current)
+### v0.9.3 - Smart Data Extraction (Current)
+**September 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.9.3)
+
+Phase 2 of the intelligence platform strategy's Smart Data Extraction work ([ADR-0023](../adr/0023-intelligence-platform-strategy.md)) — extracts structured data points (statistics, quotes, claims, dates, amounts) from full article content via a dedicated LLM call, surfaces them on the story detail page with type filtering, and flags rule-based conflicts/changes across a story's own articles and its continuation chain. Includes a real prompt-quality fix found during the review checkpoint (currency symbol normalization).
+
+**Highlights:**
+- **Data Extraction**: Dedicated post-summarize LLM call (own circuit breaker, fire-and-forget) pulls statistic/quote/claim/date/amount data points from an article's full content — not the summary, to avoid losing specifics to compression (#210, #211)
+- **Key Facts Panel**: Collapsible panel on the story detail page with type-filter buttons, per-point confidence, quote attribution, copy-citation, and a link back to the source article — hidden entirely when extraction found nothing (#212)
+- **Data Point Tracking (reduced scope)**: Rule-based (no LLM), word-overlap "same subject" heuristic flags same-story source conflicts and "previously reported as X, now Y" changes across a story's continuation chain (`continues_story_id`, v0.8.6) — not a corpus-wide aggregation (#213, reduced scope)
+- **Prompt fix found during checkpoint**: the model was silently rewriting `£250` as `"$250"` while correctly labeling the unit as pounds; fixed with an explicit "preserve the original currency symbol" instruction
+- **No geographic tagging/mapping** — descoped, no supporting infrastructure exists yet (tracked for v0.11.2)
+- **Migrations**: `034_extracted_data`
+
+### v0.9.2 - Story Evolution & Timeline
 **September 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.9.2)
 
 Phase 2 of the intelligence platform strategy's Story Evolution work ([ADR-0023](../adr/0023-intelligence-platform-strategy.md)) — detects discrete lifecycle events as stories are created and updated, tracks narrative-development status, and surfaces both on the story detail and list pages. Unlike v0.9.1's perspective/consensus work, event classification here is deliberately rule-based rather than LLM-classified — see ADR-0023's implementation-status note for why.

@@ -48,6 +48,8 @@ from .context_manager import (
 )
 from .context_retrieval import retrieve_cluster_context, to_background_anchors
 from .credibility import canonicalize_domain
+from .data_extraction import get_extracted_data_for_story
+from .data_trends import find_data_changes, find_data_conflicts
 from .datetime_utils import coerce_datetime
 from .entities import (
     ArticlePerspective,
@@ -292,6 +294,14 @@ def get_story_by_id(session: Session, story_id: int) -> Optional[StoryOut]:
         (sa.article_id for sa in story.story_articles if sa.is_primary), None
     )
 
+    # Structured data points extracted from article content (v0.9.3,
+    # #211/#212, ADR-0023) -- fetched once for the whole story and grouped
+    # by article_id below, rather than N per-article queries.
+    extracted_data = get_extracted_data_for_story(session, story.id)  # type: ignore[arg-type]
+    extracted_by_article: Dict[int, List[Dict[str, Any]]] = {}
+    for point in extracted_data:
+        extracted_by_article.setdefault(point["article_id"], []).append(point)
+
     # Query articles from items table
     articles: List[ItemOut] = []
     if article_ids:
@@ -380,6 +390,7 @@ def get_story_by_id(session: Session, story_id: int) -> Optional[StoryOut]:
                     processing_state=r[19] or "fetched",
                     source_name=r[20],
                     perspective=perspective_dict,
+                    extracted_data=extracted_by_article.get(r[0], []),
                 )
             )
 
@@ -389,7 +400,23 @@ def get_story_by_id(session: Session, story_id: int) -> Optional[StoryOut]:
     # directly on the Story row without an extra per-story query.
     events = get_story_events(session, story.id)  # type: ignore[arg-type]
 
-    return _story_db_to_model(story, articles, primary_article_id, events=events)
+    # Reduced-scope #213: rule-based data conflict/change detection, bounded
+    # to this story's own articles + its immediate continuation predecessor
+    # -- see app/data_trends.py for why a corpus-wide version was descoped.
+    data_conflicts = find_data_conflicts(extracted_data)
+    data_changes = find_data_changes(
+        session, story.id, story.continues_story_id  # type: ignore[arg-type]
+    )
+
+    return _story_db_to_model(
+        story,
+        articles,
+        primary_article_id,
+        events=events,
+        extracted_data=extracted_data,
+        data_conflicts=data_conflicts,
+        data_changes=data_changes,
+    )
 
 
 def get_stories(
@@ -987,6 +1014,9 @@ def _story_db_to_model(  # type: ignore[misc]
     articles: List[ItemOut],
     primary_article_id: Optional[int] = None,
     events: Optional[List[Dict[str, Any]]] = None,
+    extracted_data: Optional[List[Dict[str, Any]]] = None,
+    data_conflicts: Optional[List[Dict[str, Any]]] = None,
+    data_changes: Optional[List[Dict[str, Any]]] = None,
 ) -> StoryOut:
     """
     Convert ORM Story to Pydantic StoryOut model.
@@ -998,6 +1028,13 @@ def _story_db_to_model(  # type: ignore[misc]
         events: Chronological story_events list (v0.9.2, #206/#208);
             omitted (empty) for list-view callers that don't need full
             per-story event history -- see get_story_by_id vs. get_stories.
+        extracted_data: Structured data points aggregated across this
+            story's supporting articles (v0.9.3, #211/#212); same
+            omit-for-list-view convention as ``events``.
+        data_conflicts: Rule-based same-story conflict groups (#213,
+            reduced scope); same omit-for-list-view convention.
+        data_changes: Rule-based cross-continuation value changes (#213,
+            reduced scope); same omit-for-list-view convention.
 
     Returns:
         StoryOut model
@@ -1084,6 +1121,11 @@ def _story_db_to_model(  # type: ignore[misc]
         last_major_update=story.last_major_update,  # type: ignore[arg-type]
         update_count=story.update_count or 0,  # type: ignore[arg-type]
         events=events or [],
+        # Structured data extraction (v0.9.3, #211/#212)
+        extracted_data=extracted_data or [],
+        # Rule-based data tracking, reduced scope (v0.9.3, #213)
+        data_conflicts=data_conflicts or [],
+        data_changes=data_changes or [],
     )
     # fmt: on
 

@@ -226,6 +226,12 @@ class ItemOut(BaseModel):
         ArticleProcessingState.FETCHED.value,
         description="Pipeline processing state (ADR-0030); separate from story membership",
     )
+    # Structured data points extracted from this article's full content
+    # (statistic/quote/claim/date/amount, v0.9.3, #211, ADR-0023).
+    # Loosely-typed dicts, same pattern as perspective/consensus_points.
+    # Only populated where the caller explicitly fetches it (see
+    # get_story_by_id() in stories.py); empty list otherwise, not an error.
+    extracted_data: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class SummaryRequest(BaseModel):
@@ -487,6 +493,18 @@ class StoryOut(BaseModel):
     last_major_update: Optional[datetime] = None
     update_count: int = 0
     events: List[Dict[str, Any]] = Field(default_factory=list)
+    # Structured data points aggregated across all of this story's
+    # supporting articles (v0.9.3, #211/#212, ADR-0023) -- see
+    # app/data_extraction.py get_extracted_data_for_story(). Empty list is
+    # the common case (extraction found nothing, or ran before this
+    # migration existed), not a failure.
+    extracted_data: List[Dict[str, Any]] = Field(default_factory=list)
+    # Rule-based (no LLM) data point tracking, reduced scope of #213 --
+    # see app/data_trends.py for the word-overlap "same subject" heuristic
+    # and why full corpus-wide aggregation was descoped. Both empty is the
+    # common case.
+    data_conflicts: List[Dict[str, Any]] = Field(default_factory=list)
+    data_changes: List[Dict[str, Any]] = Field(default_factory=list)
 
     @property
     def credibility_label(self) -> str:
