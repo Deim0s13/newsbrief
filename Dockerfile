@@ -11,7 +11,11 @@
 FROM python:3.11-slim AS builder
 
 # Install build dependencies for lxml, psycopg, etc.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# apt-get upgrade applies Debian security patches to packages already present
+# in the base image (not just the ones listed below) -- without it, base-image
+# OS packages can drift behind upstream security fixes between base image
+# rebuilds and trip the CI Trivy CRITICAL-with-fix gate (see #ci-prod).
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     build-essential \
     libxml2-dev \
     libxslt1-dev \
@@ -59,7 +63,9 @@ ENV NEWSBRIEF_GIT_SHA=${GIT_SHA} \
 # Install only runtime libraries (not -dev packages)
 # libxml2 and libxslt1.1 are runtime deps for lxml
 # libpq5 is runtime dep for psycopg
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# apt-get upgrade applies Debian security patches to packages already present
+# in the base image (not just the ones listed below) -- see builder stage note.
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     libxml2 \
     libxslt1.1 \
     libpq5 \
