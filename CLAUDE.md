@@ -208,8 +208,15 @@ app/
 ├── stories.py           # Story generation: clustering, synthesis, archiving
 ├── feeds.py             # RSS fetch, parse, feed health scoring
 ├── llm.py               # Ollama integration, chunking, synthesis cache calls
+├── llm_backends.py      # Pluggable LLM backend abstraction: Ollama (Windows/fallback) vs oMLX (macOS) (v0.8.7, ADR-0025/ADR-0033)
 ├── llm_output.py        # JSON parsing, repair, schema validation, circuit breaker
 ├── entities.py          # Named entity extraction (NER)
+├── entity_normalization.py # Canonicalizes/dedups per-article entities into the entities/entity_mentions graph (v0.9.0, #199)
+├── entity_connections.py # Shared-entity story connections, ranked by count/prominence/recency (v0.9.0, #202)
+├── entity_profile.py    # Entity detail pages + search (v0.9.0, #201)
+├── entity_backfill.py   # CLI: backfill the entity graph from already-cached LLM extractions (v0.9.0, #199)
+├── failed_entities.py   # List/discard/retry dead-letter entities from failed pipeline stages (ADR-0030 M3, #293)
+├── perspective_gaps.py  # Rule-based one-sided-coverage detection over per-article perspective tags (v0.9.1, #229)
 ├── extraction.py        # Tiered article content extraction
 ├── ranking.py           # Interest + source-quality blended scoring
 ├── credibility.py       # Source credibility lookup (MBFC data)
@@ -220,7 +227,11 @@ app/
 ├── pipeline_runner.py   # Orchestrated stage execution (ADR-0029)
 ├── pipeline_monitoring.py # Stage-run metrics and stuck-item detection
 ├── processing_states.py # ArticleProcessingState / StoryProcessingState enums + transitions
+├── story_events.py      # Story lifecycle event detection (broke/update/development) + status (v0.9.2, #206/#207)
 ├── operator_audit.py    # Audit log for manual admin actions
+├── data_extraction.py   # Post-summarize LLM extraction of statistics/quotes/claims/dates/amounts (v0.9.3, #211)
+├── data_trends.py       # Rule-based same-story conflict + cross-continuation change detection over extracted data (v0.9.3, #213)
+├── context_generation.py # Post-synthesis "why this matters"/background/glossary/precedent LLM stage (v0.10.0, ADR-0023)
 ├── publish_gate.py      # Confidence-based publish/warn/hold decision (v0.8.5)
 ├── retention.py         # Per-type data retention, dry-run preview, purge job (v0.8.5)
 ├── embedding_service.py # Async Ollama embedding generation
@@ -249,8 +260,8 @@ app/
 ### Data Flow
 
 1. **Ingest**: APScheduler calls `feeds.py` → fetches RSS → `extraction.py` extracts article text → stored as `Item` rows with `processing_state = enriched`.
-2. **Summarize + embed**: `llm.py` summarizes each article; `item_embeddings.py` embeds title+summary via Ollama and persists the vector; `synthesis_cache.py` caches LLM responses; `semantic_dedup.py` flags paraphrased duplicates by embedding similarity (`duplicate_of_id`).
-3. **Cluster → Retrieve → Synthesize**: `stories.py` clusters `Item`s by similarity and computes a numeric complexity score (routes standard vs deep synthesis) → `context_retrieval.py` fetches bounded historical context via `retrieval.py`, and `light_rag.py` builds structured context anchors → `context_manager.py` selects/chunks articles → `llm.py` synthesizes a narrative (direct / map-reduce / hierarchical based on cluster size in `model_config.json`) → `historical_linking.py` checks whether the story continues an earlier one → `story_embeddings.py` embeds the result.
+2. **Summarize + embed**: `llm.py` summarizes each article; `entities.py` extracts entities + perspective tags in the same call, normalized into the entity graph by `entity_normalization.py`; `data_extraction.py` pulls structured data points (statistics/quotes/claims/dates/amounts) from the full article content; `item_embeddings.py` embeds title+summary via Ollama and persists the vector; `synthesis_cache.py` caches LLM responses; `semantic_dedup.py` flags paraphrased duplicates by embedding similarity (`duplicate_of_id`).
+3. **Cluster → Retrieve → Synthesize**: `stories.py` clusters `Item`s by similarity and computes a numeric complexity score (routes standard vs deep synthesis) → `context_retrieval.py` fetches bounded historical context via `retrieval.py`, and `light_rag.py` builds structured context anchors → `context_manager.py` selects/chunks articles → `llm.py` synthesizes a narrative (direct / map-reduce / hierarchical based on cluster size in `model_config.json`) → `historical_linking.py` checks whether the story continues an earlier one → `story_embeddings.py` embeds the result. `story_events.py` records a lifecycle event (`broke`/`update`/`development`) and refreshes `story_status`; `context_generation.py` generates significance/background/glossary/precedent context; `data_trends.py` flags rule-based conflicts/changes against the story's own articles and continuation chain — all fire-and-forget, post-synthesis.
 4. **Publish gate**: `publish_gate.py` uses the story's confidence score to decide publish / publish-with-warning / hold.
 5. **Rank**: `ranking.py` blends importance + freshness + source credibility + user interest weights (`data/interests.json`, `data/source_weights.json`).
 6. **Serve**: FastAPI routers return JSON or Jinja2 HTML (including `/search/semantic`, `/stories/{id}/related`, `/items/{id}/similar` via `retrieval.py`); Caddy terminates TLS in production.

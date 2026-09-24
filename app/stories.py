@@ -27,6 +27,10 @@ from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, cast
 from sqlalchemy import desc, func, text
 from sqlalchemy.orm import Session
 
+from .context_generation import (
+    get_story_context,
+    maybe_generate_context_after_synthesis,
+)
 from .context_manager import (
     ArticleForSynthesis,
     ContextMetrics,
@@ -408,6 +412,9 @@ def get_story_by_id(session: Session, story_id: int) -> Optional[StoryOut]:
         session, story.id, story.continues_story_id  # type: ignore[arg-type]
     )
 
+    # Post-synthesis context generation (v0.10.0, #214/#215/#285)
+    story_context = get_story_context(session, story.id)  # type: ignore[arg-type]
+
     return _story_db_to_model(
         story,
         articles,
@@ -416,6 +423,7 @@ def get_story_by_id(session: Session, story_id: int) -> Optional[StoryOut]:
         extracted_data=extracted_data,
         data_conflicts=data_conflicts,
         data_changes=data_changes,
+        story_context=story_context,
     )
 
 
@@ -852,6 +860,7 @@ def update_story_with_new_articles(
     )
 
     maybe_embed_story_after_synthesis(session, new_story)
+    maybe_generate_context_after_synthesis(session, new_story)
 
     return new_story_id  # type: ignore[return-value]
 
@@ -1017,6 +1026,7 @@ def _story_db_to_model(  # type: ignore[misc]
     extracted_data: Optional[List[Dict[str, Any]]] = None,
     data_conflicts: Optional[List[Dict[str, Any]]] = None,
     data_changes: Optional[List[Dict[str, Any]]] = None,
+    story_context: Optional[List[Dict[str, Any]]] = None,
 ) -> StoryOut:
     """
     Convert ORM Story to Pydantic StoryOut model.
@@ -1035,6 +1045,9 @@ def _story_db_to_model(  # type: ignore[misc]
             reduced scope); same omit-for-list-view convention.
         data_changes: Rule-based cross-continuation value changes (#213,
             reduced scope); same omit-for-list-view convention.
+        story_context: Post-synthesis significance/background/glossary/
+            precedent items (v0.10.0, #214/#215/#285); same
+            omit-for-list-view convention as ``events``.
 
     Returns:
         StoryOut model
@@ -1126,6 +1139,8 @@ def _story_db_to_model(  # type: ignore[misc]
         # Rule-based data tracking, reduced scope (v0.9.3, #213)
         data_conflicts=data_conflicts or [],
         data_changes=data_changes or [],
+        # Post-synthesis context generation (v0.10.0, #214/#215/#285)
+        story_context=story_context or [],
     )
     # fmt: on
 
@@ -3374,6 +3389,7 @@ def _persist_synthesized_story(
 
         maybe_embed_story_after_synthesis(session, story)
         maybe_link_historical_context(session, story)
+        maybe_generate_context_after_synthesis(session, story)
 
         session.commit()
         return {"outcome": "created", "story_id": story.id}

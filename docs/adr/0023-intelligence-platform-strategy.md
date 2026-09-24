@@ -484,6 +484,80 @@ coarse in practice.
 - Feed-based context (connects to your interests)
 - Historical database for precedent matching
 
+**Schema additions**:
+```sql
+CREATE TABLE story_context (
+    id SERIAL PRIMARY KEY,
+    story_id INT REFERENCES stories(id) ON DELETE CASCADE,
+    context_type VARCHAR(20) NOT NULL,  -- significance/background/glossary/precedent
+    content JSONB NOT NULL,
+    source_story_ids JSONB,
+    confidence_score FLOAT,
+    generation_method VARCHAR(20) DEFAULT 'llm',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_story_context_story ON story_context(story_id);
+CREATE INDEX idx_story_context_type ON story_context(context_type);
+```
+
+**Implementation status (v0.10.0, shipped Sep 2026)**: Delivered against
+issues #285, #214, #215, #216, with one review checkpoint against a
+real-world sample story. Notable deviations from the design above, agreed
+with the user:
+
+- **Additive, not a replacement, for the pre-existing
+  `stories.why_it_matters` column.** That column (a single free-text
+  paragraph generated inline in the core synthesis prompt since early
+  versions) already partially satisfied this milestone's goal before
+  #285 was even scoped. Rather than risk a breaking change to synthesis
+  prompts, quality scoring, and the tests that already assert on
+  `why_it_matters`, the new `story_context` table/stage sits alongside
+  it — the story detail page now renders both in the same "Why It
+  Matters" box (legacy paragraph + new multi-angle significance
+  breakdown underneath).
+- **#285's "formal pipeline stage" is a dedicated LLM call
+  (`app/context_generation.py`), not a blend into synthesis** — same
+  separation rationale as v0.9.3's data extraction: it runs on the
+  story's own synthesis text (not raw articles) so every context type is
+  grounded in what was actually published, and it has its own circuit
+  breaker (`context_generation`) so a bad run doesn't couple to
+  synthesis's failure mode.
+- **One combined LLM call produces all four context types
+  (significance/background/glossary/precedent), not four separate
+  calls** — cost/latency reasons. `background` and `precedent` are
+  gated in code, not left to the LLM to decide whether to volunteer:
+  - `background` (#215's "complex stories" requirement) requires
+    `article_count >= 5` OR `complexity_score >= 0.5` (reusing #280's
+    existing advisory score rather than adding new config).
+  - `precedent` requires the story to already have a resolved
+    `continues_story_id` or light_rag anchor — it must reference a prior
+    story this codebase already identified as related, never free-text
+    historical trivia the LLM might invent.
+  - `significance` and `glossary` are requested for every story.
+- **"Reference previous related stories" (#215) reuses existing
+  infrastructure rather than rebuilding it** — `context_anchors_json`/
+  `continues_story_id` (#258/#279/#281) already covers this and is
+  unchanged; `precedent` only adds a short narrative note on top of an
+  already-resolved link, it doesn't do its own related-story search.
+- **#216's "context personalization toggle" / "Customize my context"
+  was not attempted.** This is a single-user app with no per-user
+  auth/preferences infrastructure anywhere in the codebase (see ADR-0023
+  Phase 5's "Optional user authentication" as the first point anything
+  like this could hang off); tracked as a gap, not silently dropped.
+- **Glossary uses hover tooltips (`title` attribute) for definitions**,
+  not a separate on-click popover component — the simplest option that
+  satisfies #216's "inline term definitions" AC without a new JS
+  interaction pattern.
+
+**Deferred** (out of this pass, tracked separately): context
+personalization/preferences (#216, blocked on no auth system, see
+v1.0.0 below); entity-based and feed-based context inputs to the prompt
+beyond the topics/entities already on the `Story` row; a dedicated
+historical-precedent database/index (precedent is currently limited to
+whatever `continues_story_id`/light_rag anchors already resolved, not a
+broader precedent search).
+
 #### v0.10.1 - Trend Detection & Analysis
 **Goal**: Surface patterns humans might miss.
 
