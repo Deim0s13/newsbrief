@@ -584,7 +584,15 @@
         {% endif %}
 
         <!-- Why It Matters -->
-        {% if story.why_it_matters %}
+        {# Significance angles (v0.10.0, #214/#285, ADR-0023): multi-angle
+           breakdown from the new post-synthesis Context Engine, additive
+           alongside the legacy story.why_it_matters paragraph above --
+           rendered in the same box rather than a separate section so the
+           page doesn't grow a second "why this matters"-sounding heading
+           (#216 AC: "context available but not overwhelming"). #285/#214
+           deliberately did not touch why_it_matters itself. #}
+        {% set significance_items = story.story_context | selectattr('context_type', 'equalto', 'significance') | list %}
+        {% if story.why_it_matters or significance_items %}
         <div class="mb-8 p-6 bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-600 dark:border-blue-400 rounded-r-lg">
             <h2 class="text-lg font-semibold text-blue-900 dark:text-blue-300 mb-3 flex items-center">
                 <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -592,7 +600,19 @@
                 </svg>
                 Why It Matters
             </h2>
+            {% if story.why_it_matters %}
             <p class="text-blue-800 dark:text-blue-200">{{ story.why_it_matters }}</p>
+            {% endif %}
+            {% if significance_items %}
+            <div class="{{ 'mt-3 pt-3 border-t border-blue-200 dark:border-blue-800' if story.why_it_matters else '' }} grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {% for item in significance_items %}
+                <div class="flex items-start gap-2 text-sm">
+                    <span class="flex-shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-xs font-medium uppercase tracking-wide bg-blue-200 text-blue-900 dark:bg-blue-800 dark:text-blue-100">{{ item.dimension }}</span>
+                    <span class="text-blue-800 dark:text-blue-200">{{ item.text }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
         </div>
         {% endif %}
 
@@ -715,6 +735,69 @@
                     {% endfor %}
                     {% endfor %}
                 </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Additional Context Panel (v0.10.0, #215/#216, ADR-0023):
+             background/glossary/precedent from the post-synthesis Context
+             Engine (app/context_generation.py). Hidden entirely when
+             nothing was generated for this story -- same "no signal, no
+             chrome" convention as Key Facts above. Significance angles are
+             rendered in the Why It Matters box above instead, not here. -->
+        {% set background_items = story.story_context | selectattr('context_type', 'equalto', 'background') | list %}
+        {% set glossary_items = story.story_context | selectattr('context_type', 'equalto', 'glossary') | list %}
+        {% set precedent_items = story.story_context | selectattr('context_type', 'equalto', 'precedent') | list %}
+        {% set context_panel_count = background_items|length + glossary_items|length + precedent_items|length %}
+        {% if context_panel_count > 0 %}
+        <div id="context-panel" class="mb-8 p-4 bg-violet-50 dark:bg-violet-900/20 rounded-lg border border-violet-200 dark:border-violet-700">
+            <button onclick="toggleContextPanel()" class="w-full flex items-center justify-between text-left">
+                <h3 class="text-sm font-semibold text-violet-800 dark:text-violet-300 flex items-center">
+                    <svg class="h-4 w-4 mr-2 text-violet-600 dark:text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+                    </svg>
+                    Additional Context
+                    <span class="ml-2 text-xs font-normal text-violet-600 dark:text-violet-400">({{ context_panel_count }})</span>
+                </h3>
+                <svg id="context-chevron" class="h-4 w-4 text-violet-600 dark:text-violet-400 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+            </button>
+
+            <div id="context-details" class="hidden mt-4 space-y-4">
+                {% if background_items %}
+                <div>
+                    <h4 class="text-xs font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-300 mb-1.5">Background</h4>
+                    {% for item in background_items %}
+                    <p class="text-sm text-violet-900 dark:text-violet-100 mb-1.5">{{ item.text }}</p>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                {% if glossary_items %}
+                <div>
+                    <h4 class="text-xs font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-300 mb-1.5">Glossary</h4>
+                    <div class="flex flex-wrap gap-2">
+                        {% for item in glossary_items %}
+                        <span class="px-2 py-1 bg-white dark:bg-gray-800 text-violet-800 dark:text-violet-200 text-xs rounded-full border border-violet-200 dark:border-violet-700 cursor-help" title="{{ item.definition }}">
+                            {{ item.term }}
+                        </span>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if precedent_items %}
+                <div>
+                    <h4 class="text-xs font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-300 mb-1.5">Historical Precedent</h4>
+                    {% for item in precedent_items %}
+                    <p class="text-sm text-violet-900 dark:text-violet-100 mb-1.5">
+                        {{ item.text }}
+                        {% if item.related_story_id %}<a href="/story/{{ item.related_story_id }}" class="underline hover:no-underline ml-1">see related story</a>{% endif %}
+                    </p>
+                    {% endfor %}
+                </div>
+                {% endif %}
             </div>
         </div>
         {% endif %}
@@ -1001,6 +1084,17 @@ function toggleTimelinePanel() {
 function toggleKeyFactsPanel() {
     const details = document.getElementById('key-facts-details');
     const chevron = document.getElementById('key-facts-chevron');
+
+    if (details && chevron) {
+        details.classList.toggle('hidden');
+        chevron.classList.toggle('rotate-180');
+    }
+}
+
+// Additional Context panel toggle (v0.10.0, #216)
+function toggleContextPanel() {
+    const details = document.getElementById('context-details');
+    const chevron = document.getElementById('context-chevron');
 
     if (details && chevron) {
         details.classList.toggle('hidden');

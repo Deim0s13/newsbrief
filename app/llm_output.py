@@ -761,6 +761,199 @@ class ExtractedDataOutput(BaseModel):
         return self
 
 
+_SIGNIFICANCE_DIMENSIONS = {"economic", "social", "political", "personal"}
+
+
+class SignificanceAngle(BaseModel):
+    """
+    One angle of a story's significance (#214, ADR-0023, v0.10.0) --
+    e.g. its economic impact vs. its political implications. A story
+    typically has 2-4 of these, not all four dimensions every time (some
+    stories genuinely have no meaningful "political" angle, etc.).
+
+    Deliberately a flat list the LLM fills in per angle (same pattern as
+    ExtractedDataItem) rather than four fixed fields, since not every
+    dimension applies to every story.
+
+    Used by: app/context_generation.py generate_context_items()
+    """
+
+    dimension: str = Field(..., description="economic/social/political/personal")
+    text: str = Field(
+        ..., min_length=1, description="2-3 sentence significance explanation"
+    )
+    confidence: float = Field(default=0.6, ge=0.0, le=1.0)
+
+    @field_validator("dimension", mode="before")
+    @classmethod
+    def normalize_dimension(cls, v: Any) -> str:
+        """Lowercase/strip; unrecognized dimensions are dropped at the
+        container level (ContextGenerationOutput), not raised here --
+        same degrade-rather-than-fail philosophy as ExtractedDataItem."""
+        return str(v).strip().lower() if v else ""
+
+    @field_validator("text", mode="before")
+    @classmethod
+    def coerce_text(cls, v: Any) -> Any:
+        if v is None:
+            return v
+        return str(v).strip() or None
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def coerce_confidence(cls, v: Any) -> float:
+        try:
+            return max(0.0, min(1.0, float(v)))
+        except (ValueError, TypeError):
+            return 0.6
+
+
+class BackgroundItem(BaseModel):
+    """
+    One background fact/paragraph giving readers context needed to
+    understand a *complex* story (#215, ADR-0023, v0.10.0) -- e.g. how a
+    long-running dispute got to this point. Only requested for stories
+    gated as "complex" by ``context_generation.py`` (article count /
+    complexity_score), per #215's acceptance criteria; not every story
+    gets a background section.
+
+    Used by: app/context_generation.py generate_context_items()
+    """
+
+    text: str = Field(..., min_length=1, description="2-4 sentence background")
+    confidence: float = Field(default=0.6, ge=0.0, le=1.0)
+
+    @field_validator("text", mode="before")
+    @classmethod
+    def coerce_text(cls, v: Any) -> Any:
+        if v is None:
+            return v
+        return str(v).strip() or None
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def coerce_confidence(cls, v: Any) -> float:
+        try:
+            return max(0.0, min(1.0, float(v)))
+        except (ValueError, TypeError):
+            return 0.6
+
+
+class GlossaryTerm(BaseModel):
+    """
+    One jargon/technical term explained inline for readers (#215,
+    ADR-0023, v0.10.0). Requested for every story (not complexity-gated
+    like background) -- a story can be short but still use a term like
+    "quantitative easing" that benefits from a one-line gloss.
+
+    Used by: app/context_generation.py generate_context_items()
+    """
+
+    term: str = Field(..., min_length=1)
+    definition: str = Field(
+        ..., min_length=1, description="One-sentence, plain-English"
+    )
+    confidence: float = Field(default=0.6, ge=0.0, le=1.0)
+
+    @field_validator("term", "definition", mode="before")
+    @classmethod
+    def coerce_str(cls, v: Any) -> Any:
+        if v is None:
+            return v
+        return str(v).strip() or None
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def coerce_confidence(cls, v: Any) -> float:
+        try:
+            return max(0.0, min(1.0, float(v)))
+        except (ValueError, TypeError):
+            return 0.6
+
+
+class PrecedentItem(BaseModel):
+    """
+    A short note tying this story to a similar past event (#215,
+    ADR-0023, v0.10.0). Only requested when the story already has at
+    least one resolved prior-story link (``continues_story_id`` or a
+    light_rag anchor, see ``context_generation._story_source_story_ids``)
+    -- this is deliberately NOT free-text historical trivia the LLM
+    might invent; it must ground precedent in a story this codebase has
+    already identified as related, hence ``related_story_id``.
+
+    Used by: app/context_generation.py generate_context_items()
+    """
+
+    text: str = Field(..., min_length=1, description="1-3 sentence precedent note")
+    related_story_id: Optional[int] = Field(
+        default=None, description="Which resolved prior story this refers to"
+    )
+    confidence: float = Field(default=0.6, ge=0.0, le=1.0)
+
+    @field_validator("text", mode="before")
+    @classmethod
+    def coerce_text(cls, v: Any) -> Any:
+        if v is None:
+            return v
+        return str(v).strip() or None
+
+    @field_validator("related_story_id", mode="before")
+    @classmethod
+    def coerce_related_story_id(cls, v: Any) -> Optional[int]:
+        if v is None or v == "":
+            return None
+        try:
+            return int(v)
+        except (ValueError, TypeError):
+            return None
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def coerce_confidence(cls, v: Any) -> float:
+        try:
+            return max(0.0, min(1.0, float(v)))
+        except (ValueError, TypeError):
+            return 0.6
+
+
+class ContextGenerationOutput(BaseModel):
+    """
+    Validated output from the post-synthesis context generation stage
+    (#214/#215/#285, ADR-0023, v0.10.0).
+
+    ``background``/``glossary``/``precedent`` (#215) extend the
+    ``significance``-only container shipped for #214 -- the LLM is asked
+    for whichever subset applies via prompt instructions built in
+    ``context_generation._create_context_prompt()``; fields the prompt
+    didn't ask for should come back empty, but validation here defends
+    against the model volunteering them anyway.
+
+    Used by: app/context_generation.py generate_context_items()
+    """
+
+    significance: List[SignificanceAngle] = Field(default_factory=list)
+    background: List[BackgroundItem] = Field(default_factory=list)
+    glossary: List[GlossaryTerm] = Field(default_factory=list)
+    precedent: List[PrecedentItem] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def drop_invalid_items(self) -> "ContextGenerationOutput":
+        """Filter out items with an unrecognized dimension or empty
+        text/definition rather than failing the whole generation over
+        one bad item."""
+        self.significance = [
+            item
+            for item in self.significance
+            if item.dimension in _SIGNIFICANCE_DIMENSIONS and item.text
+        ]
+        self.background = [item for item in self.background if item.text]
+        self.glossary = [
+            item for item in self.glossary if item.term and item.definition
+        ]
+        self.precedent = [item for item in self.precedent if item.text]
+        return self
+
+
 # =============================================================================
 # JSON REPAIR FUNCTIONS
 # =============================================================================

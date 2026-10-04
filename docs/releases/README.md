@@ -6,9 +6,24 @@ Quick reference for all NewsBrief releases. For detailed release notes, see [Git
 
 ---
 
+## v0.10.x - Context Layer
+
+### v0.10.0 - "Why This Matters" Context Engine (Current)
+**September 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.10.0)
+
+Phase 3 of the intelligence platform strategy's Context Layer work ([ADR-0023](../adr/0023-intelligence-platform-strategy.md)) — a dedicated post-synthesis LLM stage that generates multi-angle significance, background for complex stories, glossary terms, and historical precedent notes, surfaced on the story detail page. Additive alongside the pre-existing `stories.why_it_matters` column, not a replacement — see ADR-0023's implementation-status note for the full rationale.
+
+**Highlights:**
+- **Context Generation Stage**: One dedicated post-synthesis LLM call (own circuit breaker, fire-and-forget) produces significance/background/glossary/precedent items, grounded in the story's own synthesis text rather than the raw articles (#285, #214)
+- **Significance Angles**: 2-4 economic/social/political/personal angles per story, rendered inside the existing "Why It Matters" box alongside the legacy paragraph (#214)
+- **Background, Glossary, Precedent (reduced/gated scope)**: background only requested for "complex" stories (`article_count >= 5` or `complexity_score >= 0.5`); glossary requested for every story; precedent only requested when the story already has a resolved `continues_story_id`/light_rag anchor, never invented from scratch (#215)
+- **Additional Context Panel**: New collapsible panel on the story detail page for background/glossary (hover-tooltip definitions)/precedent — hidden entirely when nothing was generated (#216)
+- **Context personalization toggle descoped**: no per-user auth/preferences infrastructure exists in this single-user app; tracked as a known gap, not silently dropped (#216)
+- **Migrations**: `035_story_context`
+
 ## v0.9.x - Intelligence Platform
 
-### v0.9.3 - Smart Data Extraction (Current)
+### v0.9.3 - Smart Data Extraction
 **September 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.9.3)
 
 Phase 2 of the intelligence platform strategy's Smart Data Extraction work ([ADR-0023](../adr/0023-intelligence-platform-strategy.md)) — extracts structured data points (statistics, quotes, claims, dates, amounts) from full article content via a dedicated LLM call, surfaces them on the story detail page with type filtering, and flags rule-based conflicts/changes across a story's own articles and its continuation chain. Includes a real prompt-quality fix found during the review checkpoint (currency symbol normalization).

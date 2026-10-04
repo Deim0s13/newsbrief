@@ -505,6 +505,14 @@ class StoryOut(BaseModel):
     # common case.
     data_conflicts: List[Dict[str, Any]] = Field(default_factory=list)
     data_changes: List[Dict[str, Any]] = Field(default_factory=list)
+    # Post-synthesis context generation (v0.10.0, #214/#215/#285,
+    # ADR-0023) -- see app/context_generation.py get_story_context().
+    # Each item has context_type ("significance"/"background"/"glossary"/
+    # "precedent") plus type-specific fields (dimension/text, term/
+    # definition, related_story_id). Empty list is the common case for
+    # stories generated before this migration, or when the LLM found
+    # nothing worth surfacing for a given type.
+    story_context: List[Dict[str, Any]] = Field(default_factory=list)
 
     @property
     def credibility_label(self) -> str:
