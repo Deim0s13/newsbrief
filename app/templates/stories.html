@@ -10,6 +10,28 @@
         <p class="mt-2 text-gray-600 dark:text-gray-300">AI-synthesized news from multiple sources</p>
     </div>
 
+    <!-- Trending Now widget (#218) -->
+    {% if top_trends %}
+    <div class="mb-6 p-4 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+        <div class="flex items-center justify-between mb-3">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Trending Now</h2>
+            <a href="/trends" class="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">View all trends &rarr;</a>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            {% for t in top_trends %}
+            <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm
+                {% if t.trend_direction == 'hot' %}bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200
+                {% elif t.trend_direction == 'growing' %}bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200
+                {% else %}bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200{% endif %}">
+                {% if t.trend_direction == 'hot' %}🔥{% elif t.trend_direction == 'growing' %}📈{% else %}✨{% endif %}
+                {{ t.display_name }}
+                {% if t.velocity is not none %}<span class="opacity-70">{{ t.velocity }}x</span>{% endif %}
+            </span>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Filters and Actions -->
     <div class="mb-6 flex flex-wrap gap-4 items-center">
         <!-- Status Filter -->

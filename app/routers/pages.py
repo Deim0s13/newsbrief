@@ -8,12 +8,14 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy import bindparam, text
 
+from ..anomaly_detection import detect_anomalies
 from ..deps import session_scope, templates
 from ..entity_connections import find_entity_connected_stories
 from ..entity_profile import get_entity_profile, search_entities
 from ..models import StructuredSummary, extract_first_sentences
 from ..retrieval import RetrievalService
 from ..stories import get_story_by_id
+from ..trend_detection import compute_topic_trends
 
 router = APIRouter(prefix="", tags=["pages"])
 
@@ -21,10 +23,20 @@ router = APIRouter(prefix="", tags=["pages"])
 @router.get("/", response_class=HTMLResponse)
 def home_page(request: Request):
     """Main web interface page - Stories landing page."""
+    with session_scope() as s:
+        # Compact "Trending Now" widget (#218): just the standout topics
+        # (hot/growing/emerging), capped at 5 -- full detail lives on /trends.
+        trends = compute_topic_trends(s)
+    top_trends = [
+        t.to_dict()
+        for t in trends
+        if t.trend_direction in ("hot", "growing", "emerging")
+    ][:5]
+
     return templates.TemplateResponse(
         request,
         "stories.html",
-        {"current_page": "stories"},
+        {"current_page": "stories", "top_trends": top_trends},
     )
 
 
@@ -274,5 +286,33 @@ def entity_profile_page(request: Request, entity_id: int):
         {
             "entity": profile,
             "current_page": "entities",
+        },
+    )
+
+
+@router.get("/trends", response_class=HTMLResponse)
+def trends_page(request: Request, days: int = 14):
+    """Trending topics dashboard (#218, v0.10.1, ADR-0023): topic velocity/
+    acceleration from trend_detection.py plus spike/silence/new-entrant
+    anomalies from anomaly_detection.py. All computed live from recent
+    pipeline data -- nothing persisted (see ADR-0023)."""
+    days = days if days in (7, 14, 30) else 14
+
+    with session_scope() as s:
+        # baseline_days intentionally stays at the module default (7)
+        # regardless of the display window, so "velocity" means the same
+        # thing (today vs. the trailing 7-day average) no matter which
+        # sparkline range the user picks.
+        trends = compute_topic_trends(s, days=days)
+        anomalies = detect_anomalies(s)
+
+    return templates.TemplateResponse(
+        request,
+        "trends.html",
+        {
+            "trends": [t.to_dict() for t in trends],
+            "anomalies": [a.to_dict() for a in anomalies],
+            "selected_days": days,
+            "current_page": "trends",
         },
     )
