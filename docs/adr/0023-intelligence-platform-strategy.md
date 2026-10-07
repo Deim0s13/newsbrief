@@ -630,7 +630,7 @@ cross-story (as opposed to cross-topic) trend identification — the design
 goal's "cross-story trend identification" is satisfied here at the topic
 level, not by linking individual stories into trend narratives.
 
-#### v0.10.2 - Confidence & Transparency System
+#### v0.10.3 - Confidence & Transparency System
 **Goal**: Be honest about what we know and don't know.
 
 - Per-story confidence scoring

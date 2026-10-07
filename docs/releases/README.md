@@ -11,10 +11,8 @@ Quick reference for all NewsBrief releases. For detailed release notes, see [Git
 ### v0.10.2 - Hotfix (Current)
 **October 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.10.2)
 
-Three unrelated fixes found/applied while releasing v0.10.1:
-- OPML import: a file whose `<outline>` entries have no `xmlUrl` attribute (e.g. a plain list of feed/newsletter names, not a real OPML export) now fails the import with a clear message instead of silently reporting "0 added, 0 updated, 0 skipped" as a success
+One fix, found while verifying the v0.10.1 rollout:
 - `compose.yaml`'s `db` service now has `restart: unless-stopped` (matching `caddy` in the same file, and what `compose.windows.yaml` already does) — previously, if the prod DB container died during a Podman VM sleep/wake blip, it stayed down indefinitely instead of self-healing, which caused ~2 days of unnoticed `newsbrief-prod` downtime
-- `scripts/infra-start.sh`: idempotent `kubectl patch` giving `argocd-repo-server` CPU/memory requests and more patient liveness/readiness probes, to stop the same class of VM-blip from compounding into a multi-thousand-restart crash loop (local dev infra only, not part of the deployed app)
 
 ### v0.10.1 - Trend Detection & Analysis
 **October 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.10.1)
@@ -27,6 +25,10 @@ Phase 3 of the intelligence platform strategy ([ADR-0023](../adr/0023-intelligen
 - **Trends Dashboard**: New `/trends` page — day-range selector (7/14/30d), anomaly list, per-topic cards with a sparkline and templated "why trending" explanation; compact "Trending Now" widget on the homepage (#218)
 - **Sentiment-shift tracking explicitly descoped**: `items.perspective_json.tone` (v0.9.1) is populated on only ~8% of articles — confirmed against real production data during scoping — too sparse for a meaningful signal; documented as a known gap rather than built on thin data
 - **No new table/migration**: live `GROUP BY` queries over `items`, matching this app's real volume (~15-70 articles/day across ~10 topics); the module-level TTL cache mirrors `app/topics.py`'s existing `_topics_cache` pattern
+
+**Also included in this release (unrelated drive-by fixes):**
+- OPML import: a file whose `<outline>` entries have no `xmlUrl` attribute (e.g. a plain list of feed/newsletter names, not a real OPML export) now fails the import with a clear message instead of silently reporting "0 added, 0 updated, 0 skipped" as a success
+- `scripts/infra-start.sh`: idempotent `kubectl patch` giving `argocd-repo-server` CPU/memory requests and more patient liveness/readiness probes, to stop a Podman-VM-blip-triggered crash loop from compounding into thousands of restarts (local dev infra only, not part of the deployed app)
 
 ### v0.10.0 - "Why This Matters" Context Engine
 **September 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.10.0)
