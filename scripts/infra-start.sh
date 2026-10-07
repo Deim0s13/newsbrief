@@ -99,6 +99,30 @@ kubectl wait \
 
 log "ArgoCD is ready"
 
+# 6b. Harden argocd-repo-server against the recurring crash-loop we keep
+# hitting after Podman VM blips (e.g. laptop sleep/wake — see step 0's
+# comment). Root cause: the vanilla upstream install.yaml ships repo-server
+# with no resource requests and a 5s liveness timeout. When the VM
+# restarts, every ArgoCD pod's sandbox gets recreated at once and they all
+# compete for CPU on cold start; repo-server (the heaviest — git clone +
+# manifest rendering) can't answer its health check in time, gets killed,
+# restarts into the same contention, and the cycle compounds into
+# thousands of restarts instead of settling. Giving it a CPU/memory
+# request (not a hard limit — a limit would risk CFS-throttling making
+# this worse) and a more patient probe lets it actually finish starting
+# before being judged unhealthy. Applied as an idempotent patch (not baked
+# into a committed manifest) since ArgoCD itself is installed from the
+# upstream URL above, not a local overlay.
+log "Hardening argocd-repo-server resources/probes against VM-blip restart storms..."
+kubectl patch deployment argocd-repo-server -n argocd --type=strategic -p '{
+  "spec": {"template": {"spec": {"containers": [{
+    "name": "argocd-repo-server",
+    "resources": {"requests": {"cpu": "200m", "memory": "256Mi"}},
+    "livenessProbe": {"timeoutSeconds": 15, "failureThreshold": 5, "initialDelaySeconds": 45},
+    "readinessProbe": {"timeoutSeconds": 5}
+  }]}}}
+}' 2>&1 | sed "s/^/${LOG_PREFIX} /" || log "Warning: failed to patch argocd-repo-server (deployment not found yet?)"
+
 # 7. Ensure ArgoCD Application CRs exist — cluster recreation wipes them
 if ! kubectl get application newsbrief-prod -n argocd >/dev/null 2>&1; then
     log "ArgoCD Applications not found — applying from k8s/argocd/..."
