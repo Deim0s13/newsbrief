@@ -438,6 +438,7 @@ make hostname-trust-cert
 
 | Release | Summary |
 |---------|---------|
+| v0.10.2 | Hotfix: OPML import now reports a clear error instead of a silent 0-feed "success" when a file has no `xmlUrl` entries; prod `db` Compose container now has `restart: unless-stopped` so it self-heals after a Podman VM blip instead of staying down indefinitely; `argocd-repo-server` given CPU/memory requests and more patient probes to stop a VM-blip-triggered crash-loop (dev infra only, `scripts/infra-start.sh`) |
 | v0.10.1 | Trend & anomaly detection: live-computed topic velocity/acceleration and spike/silence/new-source anomalies (no LLM, no new table), new `/trends` dashboard + homepage "Trending Now" widget ([ADR-0023](docs/adr/0023-intelligence-platform-strategy.md)) |
 | v0.10.0 | Context Engine: dedicated post-synthesis LLM stage generating multi-angle significance ("why this matters"), background for complex stories, glossary terms, and historical precedent notes; "Why It Matters" box + new collapsible "Additional Context" panel on the story detail page ([ADR-0023](docs/adr/0023-intelligence-platform-strategy.md)) |
 | v0.9.3 | Smart data extraction: LLM-based extraction of statistics/quotes/claims/dates/amounts from article content, "Key Facts" panel with type filters on the story detail page, rule-based same-story conflict + cross-continuation change detection ([ADR-0023](docs/adr/0023-intelligence-platform-strategy.md)) |
