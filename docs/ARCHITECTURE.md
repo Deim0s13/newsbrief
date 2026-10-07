@@ -1,7 +1,7 @@
 # NewsBrief Architecture Document
 
 > **Version**: 1.10
-> **Last Updated**: September 2026 (v0.10.0)
+> **Last Updated**: October 2026 (v0.10.1)
 > **Status**: Living Document
 
 ---
@@ -96,6 +96,9 @@ NewsBrief is a **self-hosted, privacy-focused** application designed to:
 | **FR-30** | Generate multi-angle significance ("why this matters") as a dedicated post-synthesis pipeline stage | Should | ✅ Complete (v0.10.0, ADR-0023; additive alongside the pre-existing `stories.why_it_matters` column, not a replacement) |
 | **FR-31** | Generate background context, glossary terms, and historical precedent notes for stories | Could | ✅ Complete (v0.10.0, ADR-0023; background gated to "complex" stories, precedent gated to stories with an already-resolved prior-story link) |
 | **FR-32** | Surface significance/background/glossary/precedent on the story detail page | Should | ✅ Complete (v0.10.0, ADR-0023; significance folded into the existing "Why It Matters" box, background/glossary/precedent in a new collapsible "Additional Context" panel — no personalization toggle, no auth system exists) |
+| **FR-33** | Detect topic velocity/acceleration trends (hot/growing/stable/declining/emerging) from recent article volume | Should | ✅ Complete (v0.10.1, ADR-0023; rule-based, live-computed daily buckets with a short in-process cache — no new table, no LLM call) |
+| **FR-34** | Detect statistical volume anomalies (spikes, silences, new-source coverage) | Could | ✅ Complete (v0.10.1, ADR-0023; z-score over a 30-day baseline — sentiment-shift and predictive signals explicitly descoped, see ADR-0023) |
+| **FR-35** | Surface trend/anomaly data on a dashboard and the homepage | Should | ✅ Complete (v0.10.1, ADR-0023; server-rendered `/trends` page + compact "Trending Now" homepage widget) |
 
 ### 2.2 User Stories
 
@@ -605,6 +608,7 @@ flowchart TB
 | **Smart Data Extraction** | LLM-based structured data extraction (statistic/quote/claim/date/amount) from article content, run as a dedicated post-summarize call (v0.9.3, #210/#211, ADR-0023) | `data_extraction.py`, `orm_models.py` (`ExtractedData`) |
 | **Data Point Tracking** | Rule-based (no LLM) same-story conflict detection + cross-continuation value-change detection, via word-overlap subject matching (v0.9.3, #213 reduced scope, ADR-0023) | `data_trends.py` |
 | **Context Engine** | Dedicated post-synthesis LLM call generating significance angles (economic/social/political/personal), background (complex stories only), glossary terms, and historical precedent notes (grounded in already-resolved prior-story links); additive alongside `stories.why_it_matters`, own circuit breaker (v0.10.0, #285/#214/#215, ADR-0023) | `context_generation.py`, `orm_models.py` (`StoryContext`), `llm_output.py` (`ContextGenerationOutput`) |
+| **Trend & Anomaly Detection** | Rule-based (no LLM) topic velocity/acceleration classification against a trailing baseline, plus z-score volume spikes, topic silences, and new-source-on-established-topic flags; live-computed with a short in-process cache, no new table (v0.10.1, #217/#219, ADR-0023) | `trend_detection.py`, `anomaly_detection.py` |
 
 ### 7.5 Story Processing Pipeline (orchestration)
 

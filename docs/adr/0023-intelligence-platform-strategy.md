@@ -567,6 +567,69 @@ broader precedent search).
 - Predictive signals based on patterns
 - Trend alerts and dashboards
 
+**Implementation status (v0.10.1, shipped Oct 2026)**: Delivered against
+issues #217, #218, #219, with one review checkpoint against real production
+data (69 feeds, ~15-70 articles/day across ~10 topics). Notable deviations
+from the design above, agreed with the user at the planning and checkpoint
+stages:
+
+- **Live computation, no new table or scheduled job.** At this app's real
+  volume (confirmed against prod before designing anything), a few
+  `GROUP BY items` queries answer this cheaply — a persisted daily-snapshot
+  table would be premature infrastructure. A short in-process TTL cache
+  (`app/trend_detection.py`, mirroring `app/topics.py`'s existing
+  `_topics_cache` mtime-reload pattern) avoids recomputing on every request
+  without a migration.
+- **Daily buckets, not hourly.** The design goal above implies hourly
+  granularity ("articles per hour/day"); at this volume, hourly buckets
+  would be almost entirely zeros/ones with no real signal. Descoped to
+  daily only.
+- **"Sentiment trend tracking" is explicitly descoped, not built.**
+  `items.perspective_json.tone` (v0.9.1) is only populated on ~8% of
+  articles (confirmed by a live prod query during scoping) and is `null`
+  even then unless an article reads as clearly opinionated — a signal
+  built on it would almost always be empty. Flagged here rather than
+  silently dropped; revisit if perspective coverage improves.
+- **"Predictive signals" was not attempted.** No labeled historical
+  dataset exists in this codebase to validate a predictive model against;
+  descoped to the two bounded, explainable signals that shipped (velocity/
+  acceleration, and the three anomaly types below) rather than guessing at
+  forecasting.
+- **Anomaly detection (#219) adds a wider, stricter check than #217's
+  "hot" classification** — a fixed 2x-baseline ratio (velocity) is a
+  different signal from a z-score over a 30-day trailing baseline
+  (`app/anomaly_detection.py`): a topic that normally varies a lot needs a
+  bigger jump to count as a statistical anomaly than one that's always
+  steady. Three types shipped: **spike** (z-score jump), **silence** (a
+  reliably-covered topic going quiet), and **new_entrant** (a feed
+  covering an already-established topic for the first time in 30 days —
+  explicitly distinct from a topic itself being new, which is #217's
+  "emerging" classification, not an anomaly).
+- **Dashboard (#218) is a server-rendered page, not a JSON API + client
+  fetch.** `app/templates/stories.html` (the only other page on this
+  app's "trending" surface) turned out to be a JS-driven, client-filtered
+  SPA-style page — the new `/trends` page instead follows the
+  `story_detail.html`/`entity_profile.html` convention (data computed in
+  the route handler, rendered server-side), consistent with how every
+  other v0.9.x/v0.10.x feature in this codebase ships its UI. A compact
+  "Trending Now" widget (hot/growing/emerging topics only) was added to
+  the homepage to satisfy the "trends visible on homepage" acceptance
+  criterion without duplicating the full dashboard there.
+- **A real latent bug was found and fixed before building the dashboard
+  on top of it**: `compute_topic_trends()`'s acceleration calculation
+  (today's velocity vs. yesterday's) needs data further back than its own
+  sparkline window fetches once the requested day-range is small relative
+  to the baseline window — e.g. a 7-day dashboard view with the default
+  7-day baseline. Fixed by decoupling "how far back to query" from "how
+  many days to display"; covered by a regression test.
+
+**Deferred** (out of this pass, tracked separately): sentiment-shift
+tracking (needs broader perspective-tag coverage first); predictive/
+forecasting signals (needs a labeled dataset to validate against);
+cross-story (as opposed to cross-topic) trend identification — the design
+goal's "cross-story trend identification" is satisfied here at the topic
+level, not by linking individual stories into trend narratives.
+
 #### v0.10.2 - Confidence & Transparency System
 **Goal**: Be honest about what we know and don't know.
 

@@ -8,7 +8,19 @@ Quick reference for all NewsBrief releases. For detailed release notes, see [Git
 
 ## v0.10.x - Context Layer
 
-### v0.10.0 - "Why This Matters" Context Engine (Current)
+### v0.10.1 - Trend Detection & Analysis (Current)
+**October 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.10.1)
+
+Phase 3 of the intelligence platform strategy ([ADR-0023](../adr/0023-intelligence-platform-strategy.md)) — detects which topics are getting more or less coverage than their recent baseline (velocity/acceleration) and flags statistically-significant volume anomalies, computed live from `items.topic`/`items.published` rather than a new persisted table.
+
+**Highlights:**
+- **Topic Velocity & Trend Detection**: Daily-bucketed topic counts vs. a trailing 7-day baseline; `hot`/`growing`/`stable`/`declining`/`emerging` classification plus day-over-day acceleration — rule-based, no LLM call, 5-minute in-process cache (`app/trend_detection.py`) (#217)
+- **Anomaly & Pattern Detection**: Z-score volume spikes (30-day baseline), topic "silences" (reliably-covered topic going quiet), and new-source-on-established-topic flags (`app/anomaly_detection.py`) (#219)
+- **Trends Dashboard**: New `/trends` page — day-range selector (7/14/30d), anomaly list, per-topic cards with a sparkline and templated "why trending" explanation; compact "Trending Now" widget on the homepage (#218)
+- **Sentiment-shift tracking explicitly descoped**: `items.perspective_json.tone` (v0.9.1) is populated on only ~8% of articles — confirmed against real production data during scoping — too sparse for a meaningful signal; documented as a known gap rather than built on thin data
+- **No new table/migration**: live `GROUP BY` queries over `items`, matching this app's real volume (~15-70 articles/day across ~10 topics); the module-level TTL cache mirrors `app/topics.py`'s existing `_topics_cache` pattern
+
+### v0.10.0 - "Why This Matters" Context Engine
 **September 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.10.0)
 
 Phase 3 of the intelligence platform strategy's Context Layer work ([ADR-0023](../adr/0023-intelligence-platform-strategy.md)) — a dedicated post-synthesis LLM stage that generates multi-angle significance, background for complex stories, glossary terms, and historical precedent notes, surfaced on the story detail page. Additive alongside the pre-existing `stories.why_it_matters` column, not a replacement — see ADR-0023's implementation-status note for the full rationale.

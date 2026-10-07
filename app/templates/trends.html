@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block title %}Trends - NewsBrief{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="mb-8 flex flex-wrap items-end justify-between gap-4">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Trends</h1>
+            <p class="mt-2 text-gray-600 dark:text-gray-300">
+                Which topics are getting more or less coverage than usual, computed live from the last {{ selected_days }} days.
+            </p>
+        </div>
+        <div class="flex items-center gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1 text-sm">
+            {% for d in [7, 14, 30] %}
+            <a href="/trends?days={{ d }}"
+               class="px-3 py-1.5 rounded-md font-medium transition-colors {% if selected_days == d %}bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-sm{% else %}text-gray-500 dark:text-gray-300 hover:text-gray-700 dark:hover:text-white{% endif %}">
+                {{ d }}d
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Anomalies -->
+    {% if anomalies %}
+    <div class="mb-8">
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">Anomalies</h2>
+        <div class="space-y-2">
+            {% for a in anomalies %}
+            <div class="flex items-start gap-3 p-3 rounded-lg border
+                {% if a.severity == 'high' %}bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800
+                {% elif a.severity == 'medium' %}bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800
+                {% else %}bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700{% endif %}">
+                <span class="flex-shrink-0 mt-0.5 text-xs font-semibold uppercase px-2 py-0.5 rounded-full
+                    {% if a.severity == 'high' %}bg-red-200 text-red-900 dark:bg-red-800 dark:text-red-100
+                    {% elif a.severity == 'medium' %}bg-amber-200 text-amber-900 dark:bg-amber-800 dark:text-amber-100
+                    {% else %}bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200{% endif %}">
+                    {% if a.anomaly_type == 'spike' %}Spike{% elif a.anomaly_type == 'silence' %}Silence{% else %}New Source{% endif %}
+                </span>
+                <div class="text-sm text-gray-800 dark:text-gray-200">
+                    <span class="font-medium">{{ a.display_name }}</span> &mdash; {{ a.description }}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Trending topics -->
+    <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">Topic Velocity</h2>
+    {% if trends %}
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {% for t in trends %}
+        <div class="p-4 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+            <div class="flex items-start justify-between gap-2 mb-2">
+                <span class="font-semibold text-gray-900 dark:text-white">{{ t.display_name }}</span>
+                <span class="flex-shrink-0 text-xs font-medium px-2 py-0.5 rounded-full
+                    {% if t.trend_direction == 'hot' %}bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200
+                    {% elif t.trend_direction == 'growing' %}bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200
+                    {% elif t.trend_direction == 'declining' %}bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300
+                    {% elif t.trend_direction == 'emerging' %}bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200
+                    {% else %}bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200{% endif %}">
+                    {% if t.trend_direction == 'hot' %}🔥 Hot{% elif t.trend_direction == 'growing' %}📈 Growing{% elif t.trend_direction == 'declining' %}📉 Declining{% elif t.trend_direction == 'emerging' %}✨ Emerging{% else %}Stable{% endif %}
+                </span>
+            </div>
+
+            <!-- Sparkline -->
+            {% set peak = (t.sparkline|max) if t.sparkline else 0 %}
+            <div class="flex items-end gap-0.5 h-10 mb-2">
+                {% for count in t.sparkline %}
+                <div class="flex-1 rounded-sm {% if loop.last %}bg-blue-500{% else %}bg-gray-200 dark:bg-gray-600{% endif %}"
+                     style="height: {{ ((count / peak * 100) if peak else 0)|round(0, 'floor')|int }}%; min-height: 2px;"
+                     title="{{ count }} article{{ 's' if count != 1 else '' }}"></div>
+                {% endfor %}
+            </div>
+
+            <p class="text-sm text-gray-600 dark:text-gray-300">
+                {{ t.today_count }} today
+                {% if t.velocity is not none %}
+                vs {{ t.baseline_avg }}/day typical ({{ t.velocity }}x)
+                {% else %}
+                &mdash; no recent baseline
+                {% endif %}
+                &middot; {{ t.coverage_breadth }} source{{ 's' if t.coverage_breadth != 1 else '' }}
+            </p>
+            {% if t.sources %}
+            <p class="mt-1 text-xs text-gray-400 dark:text-gray-500 truncate" title="{{ t.sources|join(', ') }}">
+                {{ t.sources|join(', ') }}
+            </p>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center py-12 text-gray-500 dark:text-gray-400">
+        <p>No topic activity in the selected window yet.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

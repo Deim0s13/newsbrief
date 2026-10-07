@@ -232,6 +232,8 @@ app/
 ├── data_extraction.py   # Post-summarize LLM extraction of statistics/quotes/claims/dates/amounts (v0.9.3, #211)
 ├── data_trends.py       # Rule-based same-story conflict + cross-continuation change detection over extracted data (v0.9.3, #213)
 ├── context_generation.py # Post-synthesis "why this matters"/background/glossary/precedent LLM stage (v0.10.0, ADR-0023)
+├── trend_detection.py   # Rule-based topic velocity/acceleration (hot/growing/stable/declining/emerging), live-computed with a short TTL cache (v0.10.1, #217, ADR-0023)
+├── anomaly_detection.py # Rule-based volume spikes/silences/new-source flags over topic coverage (v0.10.1, #219, ADR-0023)
 ├── publish_gate.py      # Confidence-based publish/warn/hold decision (v0.8.5)
 ├── retention.py         # Per-type data retention, dry-run preview, purge job (v0.8.5)
 ├── embedding_service.py # Async Ollama embedding generation
