@@ -702,6 +702,22 @@ def import_opml_content(
                     {"total": total_feeds, "id": import_id},
                 )
 
+        if total_feeds == 0:
+            # The file parsed as valid XML but no <outline> elements carried an
+            # xmlUrl attribute -- most likely a list of feed/newsletter *names*
+            # rather than an actual OPML export with real feed URLs. Surface
+            # this explicitly instead of silently "completing" a 0-feed import.
+            msg = (
+                "No feed URLs found in this file: outline entries are missing "
+                "the xmlUrl attribute, so this doesn't look like a valid OPML "
+                "feed export (it may be a list of feed/newsletter names only)."
+            )
+            result["errors"].append(msg)
+            logger.warning(f"OPML import found 0 feeds with xmlUrl: {msg}")
+            if import_id:
+                fail_import(import_id, msg)
+            return result
+
         # Helper to get attribute case-insensitively
         def get_attr_ci(elem: ET.Element, name: str, default: str = "") -> str:
             """Get attribute case-insensitively."""

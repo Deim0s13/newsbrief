@@ -165,9 +165,13 @@ def import_feeds_opml(
         failed_msg = (
             f", {result['feeds_failed']} failed" if result["feeds_failed"] > 0 else ""
         )
+        if result.get("errors"):
+            message = f"Import found nothing to add: {'; '.join(result['errors'])}"
+        else:
+            message = f"Import completed: {result['feeds_added']} added, {result['feeds_updated']} updated, {result['feeds_skipped']} skipped{failed_msg}"
         return {
             "success": True,
-            "message": f"Import completed: {result['feeds_added']} added, {result['feeds_updated']} updated, {result['feeds_skipped']} skipped{failed_msg}",
+            "message": message,
             "details": result,
         }
     except UnicodeDecodeError:
@@ -256,10 +260,14 @@ async def import_feeds_opml_upload(
                 if result["feeds_failed"] > 0
                 else ""
             )
+            if result.get("errors"):
+                message = f"Import found nothing to add: {'; '.join(result['errors'])}"
+            else:
+                message = f"Import completed: {result['feeds_added']} added, {result['feeds_updated']} updated, {result['feeds_skipped']} skipped{failed_msg}"
             return {
                 "success": True,
                 "filename": file.filename,
-                "message": f"Import completed: {result['feeds_added']} added, {result['feeds_updated']} updated, {result['feeds_skipped']} skipped{failed_msg}",
+                "message": message,
                 "async": False,
                 "details": result,
             }

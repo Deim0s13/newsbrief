@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Resolved OPML for the "Open-Source-AI-News Newsletters" list.
+
+  Your original file had names only (no xmlUrl), so nothing could import.
+  Each entry below was verified by fetching the publisher's site and
+  confirming a real, working RSS/Atom feed. Entries that had NO working
+  public RSS feed were left out entirely; see the summary of excluded
+  newsletters provided alongside this file for why.
+
+  Review before importing: a couple of names were ambiguous (two
+  different "Big Brain" newsletters exist, "True Positive Weekly" is
+  NOT the same as "Artificial Intelligence Weekly" despite similar
+  domains) and are called out inline.
+-->
+<opml version="2.0">
+  <head>
+    <title>Open-Source-AI-News Newsletters (resolved)</title>
+  </head>
+  <body>
+
+    <outline text="Daily AI Briefings">
+      <outline type="rss" text="TLDR AI (unofficial mirror -- TLDR has no official RSS)" xmlUrl="https://bullrich.dev/tldr-rss/ai.rss" htmlUrl="https://ai.tldr.tech/" />
+      <outline type="rss" text="The Rundown AI" xmlUrl="https://rss.beehiiv.com/feeds/2R3C6Bt5wj.xml" htmlUrl="https://www.therundown.ai/" />
+      <outline type="rss" text="The Neuron" xmlUrl="https://rss.beehiiv.com/feeds/N4eCstxvgX.xml" htmlUrl="https://www.theneurondaily.com/" />
+      <outline type="rss" text="Ben's Bites" xmlUrl="https://www.bensbites.com/feed" htmlUrl="https://www.bensbites.com/" />
+      <outline type="rss" text="Not A Bot" xmlUrl="https://notabotai.substack.com/feed" htmlUrl="https://notabotai.substack.com/" />
+      <outline type="rss" text="Inside AI" xmlUrl="https://insideai.news/feed/" htmlUrl="https://insideai.news/" />
+      <outline type="rss" text="AI Hustle" xmlUrl="https://theaihustle.substack.com/feed" htmlUrl="https://theaihustle.substack.com/" />
+      <outline type="rss" text="Big Brain (AI careers newsletter -- NOT the same as the smaller 'Big Brain AI' digest)" xmlUrl="https://rss.beehiiv.com/feeds/3zvX7cCztj.xml" htmlUrl="https://bigbrain.beehiiv.com/" />
+    </outline>
+
+    <outline text="AI Tools &amp; Product Discovery">
+      <outline type="rss" text="Augmented Coding Weekly" xmlUrl="http://augmentedcoding.dev/feed.xml" htmlUrl="http://augmentedcoding.dev/" />
+      <outline type="rss" text="Finxter AI Nuggets" xmlUrl="https://blog.finxter.com/ai/feed" htmlUrl="https://blog.finxter.com/ai/" />
+      <outline type="rss" text="Altern AI Tools Newsletter" xmlUrl="https://newsletter.altern.ai/feed" htmlUrl="https://newsletter.altern.ai/" />
+    </outline>
+
+    <outline text="Research &amp; Technical Deep Dives">
+      <outline type="rss" text="Import AI" xmlUrl="https://importai.substack.com/feed" htmlUrl="https://importai.substack.com/" />
+      <outline type="rss" text="The Gradient" xmlUrl="https://thegradientpub.substack.com/feed" htmlUrl="https://thegradientpub.substack.com/" />
+      <outline type="rss" text="Ahead of AI" xmlUrl="https://magazine.sebastianraschka.com/feed" htmlUrl="https://magazine.sebastianraschka.com/" />
+      <outline type="rss" text="AlphaSignal" xmlUrl="https://alphasignal.ai/feed.xml" htmlUrl="https://alphasignal.ai/" />
+      <outline type="rss" text="LLMs Research" xmlUrl="https://llmsresearch.substack.com/feed" htmlUrl="https://llmsresearch.substack.com/" />
+      <outline type="rss" text="BuzzRobot AI Newsletter" xmlUrl="https://buzzrobot.substack.com/feed" htmlUrl="https://buzzrobot.substack.com/" />
+      <outline type="rss" text="Turing Post" xmlUrl="https://turingpost.substack.com/feed" htmlUrl="https://www.turingpost.com/" />
+    </outline>
+
+    <outline text="Engineering, MLOps &amp; Developer Tools">
+      <outline type="rss" text="AI For Developers" xmlUrl="https://aifordevelopers.substack.com/feed" htmlUrl="https://aifordevelopers.substack.com/" />
+      <outline type="rss" text="The ML Engineer" xmlUrl="https://machinelearning.substack.com/feed" htmlUrl="https://machinelearning.substack.com/" />
+      <outline type="rss" text="Artificial Intelligence Weekly" xmlUrl="https://aiweekly.co/feed" htmlUrl="https://aiweekly.co/" />
+    </outline>
+
+    <outline text="Data Science &amp; Machine Learning">
+      <outline type="rss" text="Data Elixir" xmlUrl="https://dataelixir.com/feed/" htmlUrl="https://dataelixir.com/" />
+      <outline type="rss" text="KDnuggets News" xmlUrl="https://www.kdnuggets.com/feed" htmlUrl="https://www.kdnuggets.com/" />
+      <outline type="rss" text="True Positive Weekly (NOT the same as 'Artificial Intelligence Weekly' above, despite the similar aiweekly domain)" xmlUrl="https://aiweekly.substack.com/feed" htmlUrl="https://aiweekly.substack.com/" />
+      <outline type="rss" text="The AI Evaluation Substack" xmlUrl="https://aievaluation.substack.com/feed" htmlUrl="https://aievaluation.substack.com/" />
+    </outline>
+
+    <outline text="Business, Marketing &amp; Productivity">
+      <outline type="rss" text="The Marketing Newsletter" xmlUrl="https://themarketingnewsletter.org/feed" htmlUrl="https://themarketingnewsletter.org/" />
+    </outline>
+
+    <outline text="Policy, Ethics &amp; AI Governance">
+      <outline type="rss" text="AI Ethics Brief" xmlUrl="https://brief.montrealethics.ai/feed" htmlUrl="https://brief.montrealethics.ai/" />
+    </outline>
+
+  </body>
+</opml>
