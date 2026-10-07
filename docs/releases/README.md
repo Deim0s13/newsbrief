@@ -8,7 +8,15 @@ Quick reference for all NewsBrief releases. For detailed release notes, see [Git
 
 ## v0.10.x - Context Layer
 
-### v0.10.1 - Trend Detection & Analysis (Current)
+### v0.10.2 - Hotfix (Current)
+**October 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.10.2)
+
+Three unrelated fixes found/applied while releasing v0.10.1:
+- OPML import: a file whose `<outline>` entries have no `xmlUrl` attribute (e.g. a plain list of feed/newsletter names, not a real OPML export) now fails the import with a clear message instead of silently reporting "0 added, 0 updated, 0 skipped" as a success
+- `compose.yaml`'s `db` service now has `restart: unless-stopped` (matching `caddy` in the same file, and what `compose.windows.yaml` already does) — previously, if the prod DB container died during a Podman VM sleep/wake blip, it stayed down indefinitely instead of self-healing, which caused ~2 days of unnoticed `newsbrief-prod` downtime
+- `scripts/infra-start.sh`: idempotent `kubectl patch` giving `argocd-repo-server` CPU/memory requests and more patient liveness/readiness probes, to stop the same class of VM-blip from compounding into a multi-thousand-restart crash loop (local dev infra only, not part of the deployed app)
+
+### v0.10.1 - Trend Detection & Analysis
 **October 2026** · [GitHub Release](https://github.com/Deim0s13/newsbrief/releases/tag/v0.10.1)
 
 Phase 3 of the intelligence platform strategy ([ADR-0023](../adr/0023-intelligence-platform-strategy.md)) — detects which topics are getting more or less coverage than their recent baseline (velocity/acceleration) and flags statistically-significant volume anomalies, computed live from `items.topic`/`items.published` rather than a new persisted table.
